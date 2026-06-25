@@ -12,6 +12,30 @@
 
 ---
 
+## Execution notes (SDK 56 adaptations — applied 2026-06-25)
+
+The scaffold installed **Expo SDK 56**, which differs from this plan's original
+assumptions. The following deviations were made during execution and are the
+source of truth:
+
+- **Route directory is `src/app/`** (not root `app/`). All route paths below map
+  to `src/app/...`.
+- **Auth pattern uses `Stack.Protected` with a `guard` prop** (the SDK 56
+  recommended approach) instead of the older `useSegments` + `router.replace`
+  redirect in the root layout.
+- **Auth screens are top-level `src/app/sign-in.tsx` and `src/app/sign-up.tsx`**
+  (not an `(auth)` route group), which avoids a grouped-index route collision.
+- **`reset-project` was not run** (it is interactive); the leftover starter files
+  (`src/app/index.tsx`, `src/app/explore.tsx`, and the unused
+  `src/components/`, `src/constants/`, `src/hooks/`, `src/global.css`) were
+  deleted directly instead.
+- **Test file imports Jest globals** via `import { describe, it, expect } from '@jest/globals'`
+  so `tsc --noEmit` passes cleanly.
+- The Expo app lives at `accountability-app/`; the git repo root is the parent
+  `New folder/`. Work happens on branch `phase-0-foundation-auth`.
+
+---
+
 ### Task 1: Scaffold the Expo app
 
 **Files:**

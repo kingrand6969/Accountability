@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "webdist",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "accountability-app/dist", "-s", "-l", "8123"],
+      "port": 8123,
+      "autoPort": false
+    }
+  ]
+}
