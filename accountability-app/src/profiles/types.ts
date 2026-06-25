@@ -13,6 +13,7 @@ export type SexualOrientation =
   | 'female'
   | 'gay'
   | 'lesbian'
+  | 'bisexual'
   | 'prefer_not_to_say';
 
 export type Profile = {
@@ -37,6 +38,7 @@ export type ProfileUpdate = Partial<
   Pick<
     Profile,
     | 'display_name'
+    | 'avatar_url'
     | 'bio'
     | 'birthday'
     | 'birthday_private'

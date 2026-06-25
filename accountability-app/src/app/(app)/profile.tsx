@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,10 +11,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { getMyProfile, updateMyProfile, touchLastActive } from '../../profiles/api';
 import { validateBirthday } from '../../profiles/validation';
+import { uploadAvatar } from '../../profiles/avatar';
 import { ChipSelector } from '../../profiles/ChipSelector';
 import type {
   Gender,
@@ -40,6 +43,7 @@ const ORIENTATION_OPTIONS: { value: SexualOrientation; label: string }[] = [
   { value: 'female', label: 'Female' },
   { value: 'gay', label: 'Gay' },
   { value: 'lesbian', label: 'Lesbian' },
+  { value: 'bisexual', label: 'Bisexual' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
@@ -48,7 +52,9 @@ export default function Profile() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [joinedAt, setJoinedAt] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState('');
   const [area, setArea] = useState('');
@@ -69,6 +75,7 @@ export default function Profile() {
         await touchLastActive();
         const p = await getMyProfile();
         if (!active || !p) return;
+        setAvatarUrl(p.avatar_url);
         setDisplayName(p.display_name ?? '');
         setArea(p.area ?? '');
         setBio(p.bio ?? '');
@@ -121,6 +128,38 @@ export default function Profile() {
     }
   }
 
+  async function onPickAvatar() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to set a profile picture.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.6,
+      base64: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Could not read image', 'Please try a different photo.');
+      return;
+    }
+    const ext = asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
+    setUploading(true);
+    try {
+      const url = await uploadAvatar(asset.base64, ext);
+      await updateMyProfile({ avatar_url: url });
+      setAvatarUrl(url);
+    } catch (e) {
+      Alert.alert('Upload failed', String((e as Error).message ?? e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function onSignOut() {
     const { error } = await supabase.auth.signOut();
     if (error) Alert.alert('Could not sign out', error.message);
@@ -136,6 +175,30 @@ export default function Profile() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.avatarBlock}>
+        <Pressable onPress={onPickAvatar} disabled={uploading} style={styles.avatarRing}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <Text style={styles.avatarInitial}>
+                {(session?.user.email ?? '?').charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          {uploading ? (
+            <View style={styles.avatarOverlay}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          ) : null}
+        </Pressable>
+        <Pressable onPress={onPickAvatar} disabled={uploading}>
+          <Text style={styles.changePhoto}>
+            {avatarUrl ? 'Change photo' : 'Add photo'}
+          </Text>
+        </Pressable>
+      </View>
+
       <Text style={styles.email}>{session?.user.email ?? 'Signed in'}</Text>
       {joinedAt ? (
         <Text style={styles.meta}>
@@ -233,6 +296,31 @@ export default function Profile() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   container: { padding: 20, gap: 8, paddingBottom: 48 },
+  avatarBlock: { alignItems: 'center', gap: 8, marginBottom: 8 },
+  avatarRing: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    overflow: 'hidden',
+  },
+  avatar: { width: 104, height: 104, borderRadius: 52 },
+  avatarPlaceholder: {
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: { color: '#fff', fontSize: 40, fontWeight: '700' },
+  avatarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  changePhoto: { color: '#2563eb', fontWeight: '600' },
   email: { fontSize: 18, fontWeight: '700' },
   meta: { color: '#666', marginBottom: 8 },
   sectionNote: { color: '#666', fontSize: 13, marginTop: 16, fontStyle: 'italic' },
