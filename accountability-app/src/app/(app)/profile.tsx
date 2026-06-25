@@ -14,11 +14,32 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { getMyProfile, updateMyProfile, touchLastActive } from '../../profiles/api';
 import { validateBirthday } from '../../profiles/validation';
-import type { RelationshipStatus } from '../../profiles/types';
+import { ChipSelector } from '../../profiles/ChipSelector';
+import type {
+  Gender,
+  RelationshipStatus,
+  SexualOrientation,
+} from '../../profiles/types';
 
 const RELATIONSHIP_OPTIONS: { value: RelationshipStatus; label: string }[] = [
   { value: 'single', label: 'Single' },
   { value: 'in_relationship', label: 'In a relationship' },
+  { value: 'married', label: 'Married' },
+  { value: 'divorced', label: 'Divorced' },
+  { value: 'separated', label: 'Separated' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+];
+
+const GENDER_OPTIONS: { value: Gender; label: string }[] = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+];
+
+const ORIENTATION_OPTIONS: { value: SexualOrientation; label: string }[] = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'gay', label: 'Gay' },
+  { value: 'lesbian', label: 'Lesbian' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
@@ -32,6 +53,10 @@ export default function Profile() {
   const [displayName, setDisplayName] = useState('');
   const [area, setArea] = useState('');
   const [bio, setBio] = useState('');
+  const [gender, setGender] = useState<Gender | null>(null);
+  const [genderPrivate, setGenderPrivate] = useState(true);
+  const [orientation, setOrientation] = useState<SexualOrientation | null>(null);
+  const [orientationPrivate, setOrientationPrivate] = useState(true);
   const [birthday, setBirthday] = useState('');
   const [birthdayPrivate, setBirthdayPrivate] = useState(true);
   const [relationship, setRelationship] = useState<RelationshipStatus | null>(null);
@@ -47,6 +72,10 @@ export default function Profile() {
         setDisplayName(p.display_name ?? '');
         setArea(p.area ?? '');
         setBio(p.bio ?? '');
+        setGender(p.gender);
+        setGenderPrivate(p.gender_private);
+        setOrientation(p.sexual_orientation);
+        setOrientationPrivate(p.sexual_orientation_private);
         setBirthday(p.birthday ?? '');
         setBirthdayPrivate(p.birthday_private);
         setRelationship(p.relationship_status);
@@ -75,6 +104,10 @@ export default function Profile() {
         display_name: displayName.trim() || null,
         area: area.trim() || null,
         bio: bio.trim() || null,
+        gender,
+        gender_private: genderPrivate,
+        sexual_orientation: orientation,
+        sexual_orientation_private: orientationPrivate,
         birthday: birthday.trim() || null,
         birthday_private: birthdayPrivate,
         relationship_status: relationship,
@@ -135,6 +168,28 @@ export default function Profile() {
         multiline
       />
 
+      <Text style={styles.sectionNote}>
+        The details below are optional and private by default — you choose what to show.
+      </Text>
+
+      <Text style={styles.label}>Gender</Text>
+      <ChipSelector options={GENDER_OPTIONS} value={gender} onChange={setGender} />
+      <View style={styles.switchRow}>
+        <Text style={styles.switchLabel}>Hide my gender</Text>
+        <Switch value={genderPrivate} onValueChange={setGenderPrivate} />
+      </View>
+
+      <Text style={styles.label}>Sexual orientation</Text>
+      <ChipSelector
+        options={ORIENTATION_OPTIONS}
+        value={orientation}
+        onChange={setOrientation}
+      />
+      <View style={styles.switchRow}>
+        <Text style={styles.switchLabel}>Hide my sexual orientation</Text>
+        <Switch value={orientationPrivate} onValueChange={setOrientationPrivate} />
+      </View>
+
       <Text style={styles.label}>Birthday</Text>
       <TextInput
         style={styles.input}
@@ -149,22 +204,11 @@ export default function Profile() {
       </View>
 
       <Text style={styles.label}>Relationship status</Text>
-      <View style={styles.options}>
-        {RELATIONSHIP_OPTIONS.map((opt) => {
-          const selected = relationship === opt.value;
-          return (
-            <Pressable
-              key={opt.value}
-              style={[styles.option, selected && styles.optionSelected]}
-              onPress={() => setRelationship(selected ? null : opt.value)}
-            >
-              <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <ChipSelector
+        options={RELATIONSHIP_OPTIONS}
+        value={relationship}
+        onChange={setRelationship}
+      />
 
       <View style={styles.switchRow}>
         <Text style={styles.switchLabel}>Show my last-active time</Text>
@@ -191,6 +235,7 @@ const styles = StyleSheet.create({
   container: { padding: 20, gap: 8, paddingBottom: 48 },
   email: { fontSize: 18, fontWeight: '700' },
   meta: { color: '#666', marginBottom: 8 },
+  sectionNote: { color: '#666', fontSize: 13, marginTop: 16, fontStyle: 'italic' },
   label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
   input: {
     borderWidth: 1,
@@ -207,17 +252,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   switchLabel: { fontSize: 15 },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  option: {
-    borderWidth: 1,
-    borderColor: '#2563eb',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  optionSelected: { backgroundColor: '#2563eb' },
-  optionText: { color: '#2563eb', fontWeight: '600' },
-  optionTextSelected: { color: '#fff' },
   saveButton: {
     backgroundColor: '#2563eb',
     borderRadius: 10,
