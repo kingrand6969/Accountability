@@ -1,0 +1,14 @@
+# Claude Code local, machine-specific settings (do not commit)
+.claude/settings.local.json
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+
+# Node / Expo (for when the app starts taking shape)
+node_modules/
+.expo/
+dist/
+*.log
+.env
+.env.local
