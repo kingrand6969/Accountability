@@ -40,17 +40,30 @@ export const EQUIPMENT_OPTIONS: { value: string; label: string }[] = [
   { value: 'bands', label: 'Bands' },
 ];
 
+export const PAGE_SIZE = 60;
+
 export type LibraryFilter = {
   muscle?: MuscleGroup | null;
   equipment?: string | null;
   search?: string;
+  offset?: number;
+  onlyIds?: string[] | null; // restrict to these exercise ids (e.g. favorites)
 };
 
 const LIST_COLUMNS = 'id,name,category,equipment,level,primary_muscles,images';
 
 export async function listExercises(filter: LibraryFilter): Promise<LibraryExercise[]> {
-  let q = supabase.from('exercises').select(LIST_COLUMNS).order('name').limit(80);
+  // Favorites filter with an empty set means "no results" — short-circuit.
+  if (filter.onlyIds && filter.onlyIds.length === 0) return [];
 
+  const offset = filter.offset ?? 0;
+  let q = supabase
+    .from('exercises')
+    .select(LIST_COLUMNS)
+    .order('name')
+    .range(offset, offset + PAGE_SIZE - 1);
+
+  if (filter.onlyIds) q = q.in('id', filter.onlyIds);
   if (filter.muscle) {
     const group = MUSCLE_GROUPS.find((g) => g.value === filter.muscle);
     if (group) q = q.overlaps('primary_muscles', group.muscles);
@@ -62,6 +75,37 @@ export async function listExercises(filter: LibraryFilter): Promise<LibraryExerc
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as LibraryExercise[];
+}
+
+export async function listFavoriteIds(): Promise<string[]> {
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u.user?.id;
+  if (!uid) return [];
+  const { data, error } = await supabase
+    .from('exercise_favorites')
+    .select('exercise_id')
+    .eq('user_id', uid);
+  if (error) throw error;
+  return (data ?? []).map((r: any) => r.exercise_id as string);
+}
+
+export async function setFavorite(exerciseId: string, fav: boolean): Promise<void> {
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u.user?.id;
+  if (!uid) throw new Error('Not signed in.');
+  if (fav) {
+    const { error } = await supabase
+      .from('exercise_favorites')
+      .insert({ user_id: uid, exercise_id: exerciseId });
+    if (error && error.code !== '23505') throw error;
+  } else {
+    const { error } = await supabase
+      .from('exercise_favorites')
+      .delete()
+      .eq('user_id', uid)
+      .eq('exercise_id', exerciseId);
+    if (error) throw error;
+  }
 }
 
 export async function getExercise(id: string): Promise<LibraryExercise | null> {

@@ -10,20 +10,31 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getExercise, prettyEquipment, type LibraryExercise } from '../../gym/library';
+import {
+  getExercise,
+  listFavoriteIds,
+  setFavorite,
+  prettyEquipment,
+  type LibraryExercise,
+} from '../../gym/library';
 import { createItem } from '../../timeline/api';
 
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [ex, setEx] = useState<LibraryExercise | null>(null);
+  const [fav, setFav] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        if (id) setEx(await getExercise(id));
+        if (!id) return;
+        const [exercise, favIds] = await Promise.all([getExercise(id), listFavoriteIds()]);
+        if (!active) return;
+        setEx(exercise);
+        setFav(favIds.includes(id));
       } catch (e) {
         Alert.alert('Could not load', String((e as Error).message ?? e));
       } finally {
@@ -34,6 +45,18 @@ export default function ExerciseDetail() {
       active = false;
     };
   }, [id]);
+
+  async function toggleFav() {
+    if (!id) return;
+    const next = !fav;
+    setFav(next);
+    try {
+      await setFavorite(id, next);
+    } catch (e) {
+      setFav(!next);
+      Alert.alert('Could not update favorite', String((e as Error).message ?? e));
+    }
+  }
 
   async function onLog() {
     if (!ex) return;
@@ -68,7 +91,12 @@ export default function ExerciseDetail() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.name}>{ex.name}</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.name}>{ex.name}</Text>
+        <Pressable onPress={toggleFav} hitSlop={8}>
+          <Text style={[styles.star, fav && styles.starOn]}>{fav ? '★' : '☆'}</Text>
+        </Pressable>
+      </View>
       <Text style={styles.meta}>
         {ex.primary_muscles.join(', ') || 'full body'} · {prettyEquipment(ex.equipment)}
         {ex.level ? ` · ${ex.level}` : ''}
@@ -76,7 +104,10 @@ export default function ExerciseDetail() {
 
       <View style={styles.images}>
         {ex.images.map((u, i) => (
-          <Image key={i} source={{ uri: u }} style={styles.image} resizeMode="cover" />
+          <View key={i} style={styles.imageWrap}>
+            <Image source={{ uri: u }} style={styles.image} resizeMode="cover" />
+            <Text style={styles.imageLabel}>{i === 0 ? 'Start' : 'Finish'}</Text>
+          </View>
         ))}
       </View>
 
@@ -98,10 +129,15 @@ export default function ExerciseDetail() {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   container: { padding: 20, gap: 10, paddingBottom: 48 },
-  name: { fontSize: 22, fontWeight: '800' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  name: { fontSize: 22, fontWeight: '800', flex: 1 },
+  star: { fontSize: 28, color: '#bbb' },
+  starOn: { color: '#f0b000' },
   meta: { color: '#666', textTransform: 'capitalize' },
   images: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  image: { flex: 1, height: 160, borderRadius: 12, backgroundColor: '#f0f0f3' },
+  imageWrap: { flex: 1, gap: 4 },
+  image: { width: '100%', height: 160, borderRadius: 12, backgroundColor: '#f0f0f3' },
+  imageLabel: { textAlign: 'center', color: '#888', fontSize: 12, fontWeight: '600' },
   heading: { fontSize: 16, fontWeight: '700', marginTop: 14 },
   step: { flexDirection: 'row', gap: 10, marginTop: 6 },
   stepNum: {
