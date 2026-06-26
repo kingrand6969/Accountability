@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,8 +11,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ChipSelector } from '../../profiles/ChipSelector';
+import { useIsPro } from '../../pro/ProProvider';
 import { createItem } from '../../timeline/api';
 import { TIMELINE_TYPES } from '../../timeline/format';
 import {
@@ -33,6 +34,13 @@ const TYPE_OPTIONS = TIMELINE_TYPES.map((t) => ({
   label: `${t.emoji} ${t.label}`,
 }));
 
+const OFFSET_OPTIONS = [
+  { m: 0, label: 'At time' },
+  { m: 10, label: '10 min before' },
+  { m: 30, label: '30 min before' },
+  { m: 60, label: '1 hour before' },
+];
+
 function nextHour(): string {
   const d = new Date();
   d.setHours(d.getHours() + 1, 0, 0, 0);
@@ -41,13 +49,22 @@ function nextHour(): string {
 
 export default function Add() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ date?: string; time?: string }>();
+  const { isPro } = useIsPro();
   const [type, setType] = useState<TimelineType | null>('task');
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [time, setTime] = useState(() => nextHour());
   const [remind, setRemind] = useState(false);
+  const [offsetMin, setOffsetMin] = useState(0);
   const [saving, setSaving] = useState(false);
+
+  // Prefill date/time when opened from a tapped hour on the day grid.
+  useEffect(() => {
+    if (typeof params.date === 'string' && params.date) setDate(params.date);
+    if (typeof params.time === 'string' && params.time) setTime(params.time);
+  }, [params.date, params.time]);
 
   async function onSave() {
     if (!type) {
@@ -80,7 +97,11 @@ export default function Add() {
             'Enable notifications in settings to get alarms.',
           );
         } else {
-          const trigger = reminderTriggerDate(startsAt);
+          const effectiveOffset = isPro ? offsetMin : 0;
+          const remindIso = new Date(
+            new Date(startsAt).getTime() - effectiveOffset * 60000,
+          ).toISOString();
+          const trigger = reminderTriggerDate(remindIso);
           if (trigger) {
             reminderId = await scheduleReminder(
               title.trim(),
@@ -166,6 +187,31 @@ export default function Add() {
         <Switch value={remind} onValueChange={setRemind} />
       </View>
 
+      {remind && isPro ? (
+        <View style={styles.offsetRow}>
+          {OFFSET_OPTIONS.map((o) => {
+            const selected = offsetMin === o.m;
+            return (
+              <Pressable
+                key={o.m}
+                style={[styles.offsetChip, selected && styles.offsetChipSel]}
+                onPress={() => setOffsetMin(o.m)}
+              >
+                <Text style={[styles.offsetText, selected && styles.offsetTextSel]}>
+                  {o.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : remind ? (
+        <Pressable style={styles.proHint} onPress={() => router.push('/paywall')}>
+          <Text style={styles.proHintText}>
+            ⭐ Pro: get reminded earlier (10 min, 1 hour before…)
+          </Text>
+        </Pressable>
+      ) : null}
+
       <Pressable style={styles.button} onPress={onSave} disabled={saving}>
         {saving ? (
           <ActivityIndicator color="#fff" />
@@ -200,6 +246,26 @@ const styles = StyleSheet.create({
   },
   remindTitle: { fontSize: 15, fontWeight: '700' },
   remindSub: { color: '#666', fontSize: 13, marginTop: 2 },
+  offsetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  offsetChip: {
+    borderWidth: 1,
+    borderColor: '#2563eb',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  offsetChipSel: { backgroundColor: '#2563eb' },
+  offsetText: { color: '#2563eb', fontWeight: '600', fontSize: 13 },
+  offsetTextSel: { color: '#fff' },
+  proHint: {
+    marginTop: 10,
+    backgroundColor: '#fffbe6',
+    borderColor: '#f0c000',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+  },
+  proHintText: { color: '#b58900', fontWeight: '600', fontSize: 13 },
   button: {
     backgroundColor: '#2563eb',
     borderRadius: 10,

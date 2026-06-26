@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { listItemsForDay, deleteItem } from '../../timeline/api';
-import { typeMeta, formatTime } from '../../timeline/format';
 import { cancelReminder } from '../../notifications/api';
+import { TimelineCard } from '../../timeline/TimelineCard';
+import { HourGrid } from '../../timeline/HourGrid';
+import { toLocalDateString } from '../../timeline/datetime';
 import { AdBanner } from '../../pro/AdBanner';
 import type { TimelineItem } from '../../timeline/types';
 
@@ -38,6 +40,7 @@ export default function Today() {
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = useState<'list' | 'hours'>('list');
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +78,16 @@ export default function Today() {
     }
   }
 
+  function openAddAtHour(hour: number) {
+    router.push({
+      pathname: '/add',
+      params: {
+        date: toLocalDateString(day),
+        time: `${hour.toString().padStart(2, '0')}:00`,
+      },
+    });
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -89,10 +102,26 @@ export default function Today() {
         </Pressable>
       </View>
 
+      <View style={styles.toggle}>
+        {(['list', 'hours'] as const).map((v) => (
+          <Pressable
+            key={v}
+            style={[styles.toggleBtn, view === v && styles.toggleActive]}
+            onPress={() => setView(v)}
+          >
+            <Text style={[styles.toggleText, view === v && styles.toggleTextActive]}>
+              {v === 'list' ? 'List' : 'Hours'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" />
         </View>
+      ) : view === 'hours' ? (
+        <HourGrid items={items} onPressHour={openAddAtHour} onDelete={onDelete} />
       ) : (
         <FlatList
           data={items}
@@ -117,25 +146,7 @@ export default function Today() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => {
-            const meta = typeMeta(item.type);
-            return (
-              <View style={styles.card}>
-                <Text style={styles.time}>{formatTime(item.starts_at)}</Text>
-                <Text style={styles.emoji}>{meta.emoji}</Text>
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle}>
-                    {item.title}
-                    {item.reminder_id ? <Text style={styles.bell}> 🔔</Text> : null}
-                  </Text>
-                  {item.note ? <Text style={styles.cardNote}>{item.note}</Text> : null}
-                </View>
-                <Pressable onPress={() => onDelete(item)} hitSlop={8}>
-                  <Text style={styles.delete}>✕</Text>
-                </Pressable>
-              </View>
-            );
-          }}
+          renderItem={({ item }) => <TimelineCard item={item} onDelete={onDelete} />}
         />
       )}
 
@@ -156,32 +167,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ddd',
   },
   navBtn: { padding: 8 },
   navText: { fontSize: 18, color: '#2563eb' },
   dayTitle: { fontSize: 20, fontWeight: '700' },
+  toggle: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 8,
+  },
+  toggleBtn: { paddingVertical: 6, paddingHorizontal: 22, borderRadius: 8 },
+  toggleActive: { backgroundColor: '#fff' },
+  toggleText: { color: '#666', fontWeight: '600' },
+  toggleTextActive: { color: '#2563eb' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   emptyWrap: { flexGrow: 1 },
   listContent: { padding: 16, gap: 10 },
   emptyTitle: { fontSize: 18, fontWeight: '600' },
   emptySub: { color: '#666', marginTop: 6, textAlign: 'center' },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
-    padding: 14,
-  },
-  time: { fontSize: 14, fontWeight: '700', color: '#2563eb', width: 46 },
-  emoji: { fontSize: 22 },
-  cardBody: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: '600' },
-  bell: { fontSize: 13 },
-  cardNote: { color: '#666', marginTop: 2 },
-  delete: { color: '#999', fontSize: 18, paddingHorizontal: 4 },
   fab: {
     position: 'absolute',
     right: 20,

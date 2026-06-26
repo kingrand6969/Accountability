@@ -24,3 +24,10 @@ export function formatTime(iso: string): string {
   const mm = d.getMinutes().toString().padStart(2, '0');
   return `${hh}:${mm}`;
 }
+
+/** A 0-23 hour as a friendly label, e.g. 0 -> '12 AM', 13 -> '1 PM'. */
+export function formatHourLabel(hour: number): string {
+  const h12 = ((hour + 11) % 12) + 1;
+  const ampm = hour < 12 ? 'AM' : 'PM';
+  return `${h12} ${ampm}`;
+}
