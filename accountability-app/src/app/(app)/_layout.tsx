@@ -6,7 +6,7 @@ export default function AppLayout() {
       <Tabs.Screen name="index" options={{ title: 'Today' }} />
       <Tabs.Screen name="feed" options={{ title: 'Feed' }} />
       <Tabs.Screen name="add" options={{ title: 'Add' }} />
-      <Tabs.Screen name="activity" options={{ title: 'Activity' }} />
+      <Tabs.Screen name="activity" options={{ title: 'Track' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );

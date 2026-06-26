@@ -21,6 +21,7 @@ function RootNavigator() {
         <Stack.Screen name="(app)" />
         <Stack.Screen name="post/[id]" options={{ headerShown: true, title: 'Post' }} />
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
+        <Stack.Screen name="gym" options={{ headerShown: true, title: 'Gym Assist' }} />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />

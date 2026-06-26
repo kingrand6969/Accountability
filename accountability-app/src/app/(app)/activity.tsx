@@ -1,16 +1,83 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Pressable, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
-export default function Activity() {
+const PILLARS = [
+  {
+    key: 'gym',
+    emoji: '🏋️',
+    title: 'Gym Assist',
+    sub: 'Pick a focus, get a workout',
+    route: '/gym' as const,
+    ready: true,
+  },
+  {
+    key: 'diet',
+    emoji: '🥗',
+    title: 'Diet & Calories',
+    sub: 'Track meals, calories & macros',
+    route: null,
+    ready: false,
+  },
+  {
+    key: 'money',
+    emoji: '💸',
+    title: 'Money',
+    sub: 'Income, expenses & budgets',
+    route: null,
+    ready: false,
+  },
+  {
+    key: 'activity',
+    emoji: '🏃',
+    title: 'Activity',
+    sub: 'GPS runs, rides & walks',
+    route: null,
+    ready: false,
+  },
+];
+
+export default function Track() {
+  const router = useRouter();
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>Activity</Text>
-      <Text style={styles.sub}>GPS runs, rides, and walks will live here.</Text>
-    </View>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.intro}>Your tracking tools. More coming each update.</Text>
+      {PILLARS.map((p) => (
+        <Pressable
+          key={p.key}
+          style={[styles.card, !p.ready && styles.cardDisabled]}
+          onPress={() => {
+            if (p.ready && p.route) router.push(p.route);
+          }}
+        >
+          <Text style={styles.emoji}>{p.emoji}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>{p.title}</Text>
+            <Text style={styles.sub}>{p.sub}</Text>
+          </View>
+          <Text style={[styles.badge, p.ready && styles.badgeReady]}>
+            {p.ready ? '›' : 'Soon'}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontSize: 24, fontWeight: '700' },
-  sub: { color: '#666', marginTop: 8, textAlign: 'center' },
+  container: { padding: 16, gap: 12 },
+  intro: { color: '#666', marginBottom: 4 },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#f7f7f9',
+    borderRadius: 14,
+    padding: 18,
+  },
+  cardDisabled: { opacity: 0.55 },
+  emoji: { fontSize: 30 },
+  title: { fontSize: 17, fontWeight: '700' },
+  sub: { color: '#666', marginTop: 2 },
+  badge: { color: '#999', fontWeight: '700' },
+  badgeReady: { color: '#2563eb', fontSize: 22 },
 });
