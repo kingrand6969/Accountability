@@ -1,183 +1,252 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { createItem } from '../timeline/api';
-import { FOCUSES, GOALS, focusLabel, type Focus, type Goal } from '../gym/exercises';
-import { buildSession, sessionSummary, type SessionExercise } from '../gym/session';
+import {
+  listExercises,
+  prettyEquipment,
+  MUSCLE_GROUPS,
+  EQUIPMENT_OPTIONS,
+  type LibraryExercise,
+  type MuscleGroup,
+} from '../gym/library';
 
 export default function Gym() {
   const router = useRouter();
-  const [focus, setFocus] = useState<Focus | null>(null);
-  const [goal, setGoal] = useState<Goal>('muscle');
-  const [session, setSession] = useState<SessionExercise[] | null>(null);
-  const [logging, setLogging] = useState(false);
+  const [muscle, setMuscle] = useState<MuscleGroup | null>(null);
+  const [equipment, setEquipment] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<LibraryExercise[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Record<string, string>>({});
 
-  function pickFocus(f: Focus) {
-    setFocus(f);
-    setSession(null);
-  }
-  function pickGoal(g: Goal) {
-    setGoal(g);
-    setSession(null);
-  }
-  function onGenerate() {
-    if (!focus) {
-      Alert.alert('Pick a focus', 'Choose what you want to train today.');
-      return;
-    }
-    setSession(buildSession(focus, goal));
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const data = await listExercises({ muscle, equipment, search });
+        if (active) setResults(data);
+      } catch (e) {
+        if (active) Alert.alert('Could not load exercises', String((e as Error).message ?? e));
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [muscle, equipment, search]);
+
+  function toggleSelect(ex: LibraryExercise) {
+    setSelected((s) => {
+      const next = { ...s };
+      if (next[ex.id]) delete next[ex.id];
+      else next[ex.id] = ex.name;
+      return next;
+    });
   }
 
-  async function onLog() {
-    if (!focus || !session) return;
-    setLogging(true);
+  const selectedNames = Object.values(selected);
+
+  async function onLogWorkout() {
+    if (selectedNames.length === 0) return;
     try {
       await createItem({
         type: 'workout',
-        title: `${focusLabel(focus)} workout`,
-        note: sessionSummary(session),
+        title: 'Workout',
+        note: selectedNames.join(', '),
         starts_at: new Date().toISOString(),
       });
+      setSelected({});
       Alert.alert('Logged 💪', 'Your workout is on your timeline.');
       router.navigate('/');
     } catch (e) {
       Alert.alert('Could not log', String((e as Error).message ?? e));
-    } finally {
-      setLogging(false);
     }
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.heading}>What are we training?</Text>
-      <View style={styles.chips}>
-        {FOCUSES.map((f) => {
-          const selected = focus === f.value;
+    <View style={styles.screen}>
+      <FlatList
+        data={results}
+        keyExtractor={(e) => e.id}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View style={styles.filters}>
+            <TextInput
+              style={styles.search}
+              placeholder="Search exercises…"
+              autoCapitalize="none"
+              value={search}
+              onChangeText={setSearch}
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              <FilterChip label="All" active={muscle === null} onPress={() => setMuscle(null)} />
+              {MUSCLE_GROUPS.map((g) => (
+                <FilterChip
+                  key={g.value}
+                  label={g.label}
+                  active={muscle === g.value}
+                  onPress={() => setMuscle(g.value)}
+                />
+              ))}
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              <FilterChip label="Any gear" active={equipment === null} onPress={() => setEquipment(null)} small />
+              {EQUIPMENT_OPTIONS.map((eq) => (
+                <FilterChip
+                  key={eq.value}
+                  label={eq.label}
+                  active={equipment === eq.value}
+                  onPress={() => setEquipment(eq.value)}
+                  small
+                />
+              ))}
+            </ScrollView>
+          </View>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+          ) : (
+            <Text style={styles.empty}>No exercises match those filters.</Text>
+          )
+        }
+        renderItem={({ item }) => {
+          const picked = !!selected[item.id];
           return (
             <Pressable
-              key={f.value}
-              style={[styles.chip, selected && styles.chipSelected]}
-              onPress={() => pickFocus(f.value)}
+              style={styles.row}
+              onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: item.id } })}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                {f.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <Text style={styles.heading}>Goal</Text>
-      <View style={styles.chips}>
-        {GOALS.map((g) => {
-          const selected = goal === g.value;
-          return (
-            <Pressable
-              key={g.value}
-              style={[styles.chip, selected && styles.chipSelected]}
-              onPress={() => pickGoal(g.value)}
-            >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                {g.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <Pressable style={styles.generate} onPress={onGenerate}>
-        <Text style={styles.generateText}>Generate session</Text>
-      </Pressable>
-
-      {session ? (
-        <View style={styles.session}>
-          {session.map((ex, i) => (
-            <View key={`${ex.name}-${i}`} style={styles.exercise}>
-              <Image
-                source={{ uri: ex.image }}
-                style={styles.exImage}
-                resizeMode="cover"
-              />
+              <Image source={{ uri: item.images[0] }} style={styles.thumb} resizeMode="cover" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.exName}>
-                  {ex.emoji} {ex.name}
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.meta}>
+                  {(item.primary_muscles[0] ?? 'full body')} · {prettyEquipment(item.equipment)}
                 </Text>
-                <Text style={styles.exMeta}>
-                  {ex.sets} × {ex.reps} · {ex.restSec}s rest
-                </Text>
-                <Text style={styles.exCue}>{ex.cue}</Text>
               </View>
-            </View>
-          ))}
+              <Pressable
+                style={[styles.addBtn, picked && styles.addBtnOn]}
+                onPress={() => toggleSelect(item)}
+                hitSlop={8}
+              >
+                <Text style={[styles.addText, picked && styles.addTextOn]}>
+                  {picked ? '✓' : '+'}
+                </Text>
+              </Pressable>
+            </Pressable>
+          );
+        }}
+      />
 
-          <Pressable style={styles.log} onPress={onLog} disabled={logging}>
-            {logging ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.logText}>Log workout 💪</Text>
-            )}
-          </Pressable>
-        </View>
+      {selectedNames.length > 0 ? (
+        <Pressable style={styles.logBar} onPress={onLogWorkout}>
+          <Text style={styles.logText}>
+            Log workout ({selectedNames.length}) 💪
+          </Text>
+        </Pressable>
       ) : null}
-    </ScrollView>
+    </View>
+  );
+}
+
+function FilterChip({
+  label,
+  active,
+  onPress,
+  small,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  small?: boolean;
+}) {
+  return (
+    <Pressable
+      style={[styles.chip, small && styles.chipSmall, active && styles.chipActive]}
+      onPress={onPress}
+    >
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 10, paddingBottom: 48 },
-  heading: { fontSize: 16, fontWeight: '700', marginTop: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  screen: { flex: 1 },
+  listContent: { padding: 14, gap: 10, paddingBottom: 90 },
+  filters: { gap: 10, marginBottom: 4 },
+  search: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+  },
+  chipRow: { gap: 8, paddingRight: 8 },
   chip: {
     borderWidth: 1,
     borderColor: '#2563eb',
-    borderRadius: 20,
-    paddingVertical: 8,
+    borderRadius: 18,
+    paddingVertical: 7,
     paddingHorizontal: 14,
   },
-  chipSelected: { backgroundColor: '#2563eb' },
+  chipSmall: { paddingVertical: 6, paddingHorizontal: 12, borderColor: '#999' },
+  chipActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
   chipText: { color: '#2563eb', fontWeight: '600' },
-  chipTextSelected: { color: '#fff' },
-  generate: {
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  generateText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  session: { gap: 10, marginTop: 16 },
-  exercise: {
+  chipTextActive: { color: '#fff' },
+  empty: { textAlign: 'center', color: '#888', marginTop: 40 },
+  row: {
     flexDirection: 'row',
-    gap: 12,
     alignItems: 'center',
+    gap: 12,
     backgroundColor: '#f7f7f9',
     borderRadius: 12,
-    padding: 14,
+    padding: 10,
   },
-  exImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 10,
-    backgroundColor: '#fff',
+  thumb: { width: 56, height: 56, borderRadius: 8, backgroundColor: '#fff' },
+  name: { fontSize: 15, fontWeight: '700' },
+  meta: { color: '#666', marginTop: 2, fontSize: 13, textTransform: 'capitalize' },
+  addBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  exName: { fontSize: 16, fontWeight: '700' },
-  exMeta: { color: '#2563eb', fontWeight: '600', marginTop: 2 },
-  exCue: { color: '#666', marginTop: 4, fontSize: 13 },
-  log: {
+  addBtnOn: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
+  addText: { color: '#2563eb', fontSize: 20, fontWeight: '700' },
+  addTextOn: { color: '#fff' },
+  logBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 20,
     backgroundColor: '#16a34a',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     alignItems: 'center',
-    marginTop: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   logText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

@@ -5,8 +5,8 @@ const PILLARS = [
   {
     key: 'gym',
     emoji: '🏋️',
-    title: 'Gym Assist',
-    sub: 'Pick a focus, get a workout',
+    title: 'Exercise Library',
+    sub: 'Browse 800+ exercises, filter & log',
     route: '/gym' as const,
     ready: true,
   },
