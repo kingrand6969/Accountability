@@ -13,6 +13,7 @@ export type TimelineItem = {
   title: string;
   note: string | null;
   starts_at: string; // ISO timestamp
+  reminder_id: string | null;
   created_at: string;
 };
 
@@ -21,4 +22,5 @@ export type NewTimelineItem = {
   title: string;
   note?: string | null;
   starts_at: string; // ISO timestamp
+  reminder_id?: string | null;
 };

@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { ProProvider } from '../pro/ProProvider';
+import '../notifications/handler';
 
 function RootNavigator() {
   const { session, loading } = useAuth();

@@ -12,6 +12,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { listItemsForDay, deleteItem } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
+import { cancelReminder } from '../../notifications/api';
 import { AdBanner } from '../../pro/AdBanner';
 import type { TimelineItem } from '../../timeline/types';
 
@@ -66,6 +67,7 @@ export default function Today() {
 
   async function onDelete(item: TimelineItem) {
     try {
+      await cancelReminder(item.reminder_id);
       await deleteItem(item.id);
       setItems((cur) => cur.filter((i) => i.id !== item.id));
     } catch (e) {
@@ -122,7 +124,10 @@ export default function Today() {
                 <Text style={styles.time}>{formatTime(item.starts_at)}</Text>
                 <Text style={styles.emoji}>{meta.emoji}</Text>
                 <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={styles.cardTitle}>
+                    {item.title}
+                    {item.reminder_id ? <Text style={styles.bell}> 🔔</Text> : null}
+                  </Text>
                   {item.note ? <Text style={styles.cardNote}>{item.note}</Text> : null}
                 </View>
                 <Pressable onPress={() => onDelete(item)} hitSlop={8}>
@@ -174,6 +179,7 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 22 },
   cardBody: { flex: 1 },
   cardTitle: { fontSize: 16, fontWeight: '600' },
+  bell: { fontSize: 13 },
   cardNote: { color: '#666', marginTop: 2 },
   delete: { color: '#999', fontSize: 18, paddingHorizontal: 4 },
   fab: {

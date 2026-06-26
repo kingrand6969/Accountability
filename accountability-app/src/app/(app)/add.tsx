@@ -2,9 +2,11 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -19,6 +21,11 @@ import {
   toIsoFromLocal,
   toLocalDateString,
 } from '../../timeline/datetime';
+import {
+  ensureNotificationPermission,
+  scheduleReminder,
+} from '../../notifications/api';
+import { reminderTriggerDate } from '../../notifications/trigger';
 import type { TimelineType } from '../../timeline/types';
 
 const TYPE_OPTIONS = TIMELINE_TYPES.map((t) => ({
@@ -39,6 +46,7 @@ export default function Add() {
   const [note, setNote] = useState('');
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [time, setTime] = useState(() => nextHour());
+  const [remind, setRemind] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function onSave() {
@@ -62,14 +70,41 @@ export default function Add() {
     }
     setSaving(true);
     try {
+      const startsAt = toIsoFromLocal(date, time);
+      let reminderId: string | null = null;
+      if (remind) {
+        const granted = await ensureNotificationPermission();
+        if (!granted && Platform.OS !== 'web') {
+          Alert.alert(
+            'Reminders need permission',
+            'Enable notifications in settings to get alarms.',
+          );
+        } else {
+          const trigger = reminderTriggerDate(startsAt);
+          if (trigger) {
+            reminderId = await scheduleReminder(
+              title.trim(),
+              note.trim() || 'Time for this!',
+              trigger,
+            );
+          } else if (Platform.OS !== 'web') {
+            Alert.alert(
+              'No alarm set',
+              'That time is in the past, so no reminder was scheduled.',
+            );
+          }
+        }
+      }
       await createItem({
         type,
         title: title.trim(),
         note: note.trim() || null,
-        starts_at: toIsoFromLocal(date, time),
+        starts_at: startsAt,
+        reminder_id: reminderId,
       });
       setTitle('');
       setNote('');
+      setRemind(false);
       router.navigate('/');
     } catch (e) {
       Alert.alert('Could not save', String((e as Error).message ?? e));
@@ -123,6 +158,14 @@ export default function Add() {
         </View>
       </View>
 
+      <View style={styles.remindRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.remindTitle}>🔔 Remind me</Text>
+          <Text style={styles.remindSub}>Get an alarm at this time</Text>
+        </View>
+        <Switch value={remind} onValueChange={setRemind} />
+      </View>
+
       <Pressable style={styles.button} onPress={onSave} disabled={saving}>
         {saving ? (
           <ActivityIndicator color="#fff" />
@@ -147,6 +190,16 @@ const styles = StyleSheet.create({
   multiline: { minHeight: 70, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: 12 },
   col: { flex: 1 },
+  remindRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    backgroundColor: '#f7f7f9',
+    borderRadius: 12,
+    padding: 14,
+  },
+  remindTitle: { fontSize: 15, fontWeight: '700' },
+  remindSub: { color: '#666', fontSize: 13, marginTop: 2 },
   button: {
     backgroundColor: '#2563eb',
     borderRadius: 10,
