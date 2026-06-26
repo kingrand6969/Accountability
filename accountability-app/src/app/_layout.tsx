@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
+import { ProProvider } from '../pro/ProProvider';
 
 function RootNavigator() {
   const { session, loading } = useAuth();
@@ -18,6 +19,7 @@ function RootNavigator() {
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="(app)" />
         <Stack.Screen name="post/[id]" options={{ headerShown: true, title: 'Post' }} />
+        <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />
@@ -30,7 +32,9 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootNavigator />
+      <ProProvider>
+        <RootNavigator />
+      </ProProvider>
     </AuthProvider>
   );
 }

@@ -12,8 +12,10 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
+import { useIsPro } from '../../pro/ProProvider';
 import { getMyProfile, updateMyProfile, touchLastActive } from '../../profiles/api';
 import { validateBirthday } from '../../profiles/validation';
 import { uploadAvatar } from '../../profiles/avatar';
@@ -49,6 +51,8 @@ const ORIENTATION_OPTIONS: { value: SexualOrientation; label: string }[] = [
 
 export default function Profile() {
   const { session } = useAuth();
+  const { isPro } = useIsPro();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -206,6 +210,18 @@ export default function Profile() {
         </Text>
       ) : null}
 
+      <Pressable
+        style={[styles.proRow, isPro && styles.proRowActive]}
+        onPress={() => router.push('/paywall')}
+      >
+        <Text style={[styles.proRowText, isPro && styles.proRowTextActive]}>
+          {isPro ? '⭐ Accountability Pro' : 'Upgrade to Pro'}
+        </Text>
+        <Text style={[styles.proRowText, isPro && styles.proRowTextActive]}>
+          {isPro ? 'Manage' : '›'}
+        </Text>
+      </Pressable>
+
       <Text style={styles.label}>Display name</Text>
       <TextInput
         style={styles.input}
@@ -323,6 +339,19 @@ const styles = StyleSheet.create({
   changePhoto: { color: '#2563eb', fontWeight: '600' },
   email: { fontSize: 18, fontWeight: '700' },
   meta: { color: '#666', marginBottom: 8 },
+  proRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#2563eb',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  proRowActive: { backgroundColor: '#fffbe6', borderWidth: 1, borderColor: '#f0c000' },
+  proRowText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  proRowTextActive: { color: '#b58900' },
   sectionNote: { color: '#666', fontSize: 13, marginTop: 16, fontStyle: 'italic' },
   label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
   input: {

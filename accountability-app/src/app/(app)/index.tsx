@@ -12,6 +12,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { listItemsForDay, deleteItem } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
+import { AdBanner } from '../../pro/AdBanner';
 import type { TimelineItem } from '../../timeline/types';
 
 function dayLabel(day: Date): string {
@@ -136,6 +137,8 @@ export default function Today() {
       <Pressable style={styles.fab} onPress={() => router.push('/add')}>
         <Text style={styles.fabText}>＋ Add</Text>
       </Pressable>
+
+      <AdBanner />
     </View>
   );
 }
@@ -176,7 +179,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 24,
+    bottom: 66,
     backgroundColor: '#2563eb',
     borderRadius: 28,
     paddingVertical: 14,
