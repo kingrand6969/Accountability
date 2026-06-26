@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -101,9 +102,15 @@ export default function Gym() {
         <View style={styles.session}>
           {session.map((ex, i) => (
             <View key={`${ex.name}-${i}`} style={styles.exercise}>
-              <Text style={styles.exEmoji}>{ex.emoji}</Text>
+              <Image
+                source={{ uri: ex.image }}
+                style={styles.exImage}
+                resizeMode="cover"
+              />
               <View style={{ flex: 1 }}>
-                <Text style={styles.exName}>{ex.name}</Text>
+                <Text style={styles.exName}>
+                  {ex.emoji} {ex.name}
+                </Text>
                 <Text style={styles.exMeta}>
                   {ex.sets} × {ex.reps} · {ex.restSec}s rest
                 </Text>
@@ -151,11 +158,17 @@ const styles = StyleSheet.create({
   exercise: {
     flexDirection: 'row',
     gap: 12,
+    alignItems: 'center',
     backgroundColor: '#f7f7f9',
     borderRadius: 12,
     padding: 14,
   },
-  exEmoji: { fontSize: 28 },
+  exImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
   exName: { fontSize: 16, fontWeight: '700' },
   exMeta: { color: '#2563eb', fontWeight: '600', marginTop: 2 },
   exCue: { color: '#666', marginTop: 4, fontSize: 13 },

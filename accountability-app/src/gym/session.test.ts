@@ -1,14 +1,16 @@
 import { describe, it, expect } from '@jest/globals';
 import { buildSession, sessionSummary } from './session';
+import { EXERCISES } from './exercises';
 
 describe('buildSession', () => {
   it('applies the strength goal (5x5, 120s rest) to every exercise', () => {
-    const s = buildSession('arms_chest', 'strength');
+    const s = buildSession('push', 'strength');
     expect(s.length).toBeGreaterThan(0);
     for (const ex of s) {
       expect(ex.sets).toBe(5);
       expect(ex.reps).toBe('5');
       expect(ex.restSec).toBe(120);
+      expect(ex.image).toMatch(/^https:\/\//);
     }
   });
 
@@ -18,15 +20,15 @@ describe('buildSession', () => {
     expect(s[0].reps).toBe('8–12');
   });
 
-  it('keeps the focus’s exercises in order', () => {
-    const s = buildSession('back', 'endurance');
-    expect(s[0].name).toBe('Pull-ups');
+  it('keeps the focus’s exercises in catalog order', () => {
+    const s = buildSession('pull', 'endurance');
+    expect(s[0].name).toBe(EXERCISES.pull[0].name);
   });
 });
 
 describe('sessionSummary', () => {
   it('summarises sets x reps per exercise', () => {
-    const s = buildSession('arms_chest', 'strength');
-    expect(sessionSummary(s)).toContain('Bench Press 5×5');
+    const s = buildSession('push', 'strength');
+    expect(sessionSummary(s)).toContain('5×5');
   });
 });

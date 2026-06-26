@@ -4,6 +4,8 @@ export type SessionExercise = {
   name: string;
   emoji: string;
   cue: string;
+  image: string;
+  image2: string | null;
   sets: number;
   reps: string;
   restSec: number;
@@ -16,6 +18,8 @@ export function buildSession(focus: Focus, goal: Goal): SessionExercise[] {
     name: e.name,
     emoji: e.emoji,
     cue: e.cue,
+    image: e.image,
+    image2: e.image2,
     sets: g.sets,
     reps: g.reps,
     restSec: g.restSec,
