@@ -14,6 +14,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ChipSelector } from '../../profiles/ChipSelector';
 import { useIsPro } from '../../pro/ProProvider';
+import { parseVoiceCommand } from '../../voice/parse';
 import { createItem } from '../../timeline/api';
 import { TIMELINE_TYPES } from '../../timeline/format';
 import {
@@ -58,7 +59,18 @@ export default function Add() {
   const [time, setTime] = useState(() => nextHour());
   const [remind, setRemind] = useState(false);
   const [offsetMin, setOffsetMin] = useState(0);
+  const [phrase, setPhrase] = useState('');
   const [saving, setSaving] = useState(false);
+
+  function onAutoFill() {
+    if (!phrase.trim()) return;
+    const r = parseVoiceCommand(phrase);
+    setType(r.type);
+    setTitle(r.title);
+    setDate(r.date);
+    setTime(r.time);
+    setRemind(r.remind);
+  }
 
   // Prefill date/time when opened from a tapped hour on the day grid.
   useEffect(() => {
@@ -136,6 +148,31 @@ export default function Add() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {isPro ? (
+        <View style={styles.quickBox}>
+          <Text style={styles.quickTitle}>🎤 Quick add</Text>
+          <Text style={styles.quickHint}>
+            Type, or tap the 🎤 on your keyboard and speak — then “Auto-fill”.
+          </Text>
+          <TextInput
+            style={[styles.input, styles.quickInput]}
+            placeholder="e.g. Remind me to buy medicine tomorrow at 5pm"
+            value={phrase}
+            onChangeText={setPhrase}
+            multiline
+          />
+          <Pressable style={styles.quickBtn} onPress={onAutoFill}>
+            <Text style={styles.quickBtnText}>Auto-fill ↓</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable style={styles.proHint} onPress={() => router.push('/paywall')}>
+          <Text style={styles.proHintText}>
+            ⭐ Pro: Quick add by voice — say “remind me to…” and we fill it in.
+          </Text>
+        </Pressable>
+      )}
+
       <Text style={styles.label}>What is it?</Text>
       <ChipSelector options={TYPE_OPTIONS} value={type} onChange={setType} />
 
@@ -225,6 +262,23 @@ export default function Add() {
 
 const styles = StyleSheet.create({
   container: { padding: 20, gap: 8, paddingBottom: 40 },
+  quickBox: {
+    backgroundColor: '#eef4ff',
+    borderRadius: 12,
+    padding: 14,
+    gap: 8,
+  },
+  quickTitle: { fontSize: 15, fontWeight: '700' },
+  quickHint: { color: '#555', fontSize: 12 },
+  quickInput: { backgroundColor: '#fff', minHeight: 44 },
+  quickBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2563eb',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  quickBtnText: { color: '#fff', fontWeight: '700' },
   label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
   input: {
     borderWidth: 1,
