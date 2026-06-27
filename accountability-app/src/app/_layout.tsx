@@ -25,6 +25,8 @@ function RootNavigator() {
         <Stack.Screen name="exercise/[id]" options={{ headerShown: true, title: 'Exercise' }} />
         <Stack.Screen name="diet" options={{ headerShown: true, title: 'Diet' }} />
         <Stack.Screen name="food-search" options={{ headerShown: true, title: 'Add Food' }} />
+        <Stack.Screen name="money" options={{ headerShown: true, title: 'Money' }} />
+        <Stack.Screen name="money-add" options={{ headerShown: true, title: 'Add Transaction' }} />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />

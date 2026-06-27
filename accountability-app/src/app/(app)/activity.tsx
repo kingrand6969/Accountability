@@ -23,8 +23,8 @@ const PILLARS = [
     emoji: '💸',
     title: 'Money',
     sub: 'Income, expenses & budgets',
-    route: null,
-    ready: false,
+    route: '/money' as const,
+    ready: true,
   },
   {
     key: 'activity',
