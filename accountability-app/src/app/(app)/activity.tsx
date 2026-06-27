@@ -15,8 +15,8 @@ const PILLARS = [
     emoji: '🥗',
     title: 'Diet & Calories',
     sub: 'Track meals, calories & macros',
-    route: null,
-    ready: false,
+    route: '/diet' as const,
+    ready: true,
   },
   {
     key: 'money',

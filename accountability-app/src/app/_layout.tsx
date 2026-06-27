@@ -23,6 +23,8 @@ function RootNavigator() {
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
         <Stack.Screen name="gym" options={{ headerShown: true, title: 'Exercise Library' }} />
         <Stack.Screen name="exercise/[id]" options={{ headerShown: true, title: 'Exercise' }} />
+        <Stack.Screen name="diet" options={{ headerShown: true, title: 'Diet' }} />
+        <Stack.Screen name="food-search" options={{ headerShown: true, title: 'Add Food' }} />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />
