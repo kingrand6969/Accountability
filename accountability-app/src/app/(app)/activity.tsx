@@ -31,8 +31,8 @@ const PILLARS = [
     emoji: '🏃',
     title: 'Activity',
     sub: 'GPS runs, rides & walks',
-    route: null,
-    ready: false,
+    route: '/activity-track' as const,
+    ready: true,
   },
 ];
 
