@@ -22,15 +22,19 @@ export async function searchFoods(query: string): Promise<FoodHit[]> {
   }
   const json = await res.json();
   const products = Array.isArray(json.products) ? json.products : [];
+  const num = (x: unknown) => {
+    const n = Number(x);
+    return Number.isFinite(n) ? n : 0;
+  };
   return products
     .map((p: any): FoodHit => ({
       name: (p.product_name || '').trim(),
       brand: (p.brands || '').trim() || null,
       per100: {
-        kcal: Math.round(Number(p.nutriments?.['energy-kcal_100g'] ?? 0)),
-        protein: Number(p.nutriments?.['proteins_100g'] ?? 0),
-        carbs: Number(p.nutriments?.['carbohydrates_100g'] ?? 0),
-        fat: Number(p.nutriments?.['fat_100g'] ?? 0),
+        kcal: Math.round(num(p.nutriments?.['energy-kcal_100g'])),
+        protein: num(p.nutriments?.['proteins_100g']),
+        carbs: num(p.nutriments?.['carbohydrates_100g']),
+        fat: num(p.nutriments?.['fat_100g']),
       },
     }))
     .filter((f: FoodHit) => f.name.length > 0 && f.per100.kcal > 0)

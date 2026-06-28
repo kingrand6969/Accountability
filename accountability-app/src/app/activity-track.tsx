@@ -37,6 +37,7 @@ export default function ActivityTrack() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pointsRef = useRef<Pt[]>([]);
   const startedAtRef = useRef<string>('');
+  const startMsRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -55,6 +56,7 @@ export default function ActivityTrack() {
     setDistance(0);
     setElapsed(0);
     startedAtRef.current = new Date().toISOString();
+    startMsRef.current = Date.now();
     setTracking(true);
 
     subRef.current = await Location.watchPositionAsync(
@@ -66,7 +68,10 @@ export default function ActivityTrack() {
         if (prev) setDistance((d) => d + haversineMeters(prev, p));
       },
     );
-    timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+    timerRef.current = setInterval(
+      () => setElapsed(Math.round((Date.now() - startMsRef.current) / 1000)),
+      1000,
+    );
   }
 
   async function onStop() {
@@ -76,7 +81,11 @@ export default function ActivityTrack() {
     timerRef.current = null;
     setTracking(false);
 
-    if (elapsed < 3 && distance < 5) {
+    // Trust the wall clock, not the tick counter (which drifts when suspended).
+    const finalElapsed = Math.round((Date.now() - startMsRef.current) / 1000);
+    setElapsed(finalElapsed);
+
+    if (finalElapsed < 3 && distance < 5) {
       Alert.alert('Too short', 'That activity was too short to save.');
       return;
     }
@@ -87,17 +96,17 @@ export default function ActivityTrack() {
       await saveActivity({
         type,
         distance_m: distance,
-        duration_s: elapsed,
+        duration_s: finalElapsed,
         route: pointsRef.current,
         started_at: startedAtRef.current,
       });
       await createItem({
         type: 'activity',
         title: `${meta.label} · ${formatKm(distance)} km`,
-        note: `${formatDuration(elapsed)} · ${formatPace(distance, elapsed)} /km`,
+        note: `${formatDuration(finalElapsed)} · ${formatPace(distance, finalElapsed)} /km`,
         starts_at: startedAtRef.current,
       });
-      Alert.alert('Activity saved 🏃', `${formatKm(distance)} km in ${formatDuration(elapsed)}`);
+      Alert.alert('Activity saved 🏃', `${formatKm(distance)} km in ${formatDuration(finalElapsed)}`);
       router.navigate('/');
     } catch (e) {
       Alert.alert('Could not save', String((e as Error).message ?? e));

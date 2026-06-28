@@ -22,7 +22,7 @@ import {
 
 export default function Diet() {
   const router = useRouter();
-  const { isPro } = useIsPro();
+  const { isPro, loading: proLoading } = useIsPro();
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [target, setTarget] = useState(2000);
   const [targetText, setTargetText] = useState('2000');
@@ -43,13 +43,14 @@ export default function Diet() {
 
   useFocusEffect(
     useCallback(() => {
+      if (proLoading) return; // wait until Pro status is known
       if (!isPro) {
         setLoading(false);
         return;
       }
       setLoading(true);
       load();
-    }, [isPro, load]),
+    }, [isPro, proLoading, load]),
   );
 
   async function onSaveTarget() {
@@ -73,6 +74,14 @@ export default function Diet() {
     } catch (e) {
       Alert.alert('Could not delete', String((e as Error).message ?? e));
     }
+  }
+
+  if (proLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
   }
 
   if (!isPro) {

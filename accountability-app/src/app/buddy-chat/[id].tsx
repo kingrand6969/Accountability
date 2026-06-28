@@ -54,6 +54,9 @@ export default function BuddyChat() {
   useFocusEffect(
     useCallback(() => {
       load();
+      // Poll so incoming messages appear without leaving the screen.
+      const t = setInterval(load, 4000);
+      return () => clearInterval(t);
     }, [load]),
   );
 
