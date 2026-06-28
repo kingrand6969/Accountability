@@ -28,6 +28,8 @@ function RootNavigator() {
         <Stack.Screen name="money" options={{ headerShown: true, title: 'Money' }} />
         <Stack.Screen name="money-add" options={{ headerShown: true, title: 'Add Transaction' }} />
         <Stack.Screen name="activity-track" options={{ headerShown: true, title: 'Track Activity' }} />
+        <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
+        <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />

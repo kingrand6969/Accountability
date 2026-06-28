@@ -222,6 +222,11 @@ export default function Profile() {
         </Text>
       </Pressable>
 
+      <Pressable style={styles.buddyRow} onPress={() => router.push('/buddy')}>
+        <Text style={styles.buddyText}>🤝 Accountability Buddies</Text>
+        <Text style={styles.buddyText}>›</Text>
+      </Pressable>
+
       <Text style={styles.label}>Display name</Text>
       <TextInput
         style={styles.input}
@@ -352,6 +357,17 @@ const styles = StyleSheet.create({
   proRowActive: { backgroundColor: '#fffbe6', borderWidth: 1, borderColor: '#f0c000' },
   proRowText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   proRowTextActive: { color: '#b58900' },
+  buddyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f7f7f9',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  buddyText: { fontSize: 15, fontWeight: '700' },
   sectionNote: { color: '#666', fontSize: 13, marginTop: 16, fontStyle: 'italic' },
   label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
   input: {
