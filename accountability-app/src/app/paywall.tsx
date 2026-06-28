@@ -1,16 +1,5 @@
-import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useIsPro } from '../pro/ProProvider';
-import { setProDev } from '../pro/api';
 
 const BENEFITS = [
   'No ads',
@@ -23,24 +12,13 @@ const BENEFITS = [
 ];
 
 export default function Paywall() {
-  const router = useRouter();
-  const { isPro, refresh } = useIsPro();
-  const [busy, setBusy] = useState(false);
+  const { isPro } = useIsPro();
 
-  async function simulate(value: boolean) {
-    setBusy(true);
-    try {
-      await setProDev(value);
-      await refresh();
-      if (value) {
-        Alert.alert('Welcome to Pro! ⭐', 'All Pro features are unlocked.');
-        router.back();
-      }
-    } catch (e) {
-      Alert.alert('Something went wrong', String((e as Error).message ?? e));
-    } finally {
-      setBusy(false);
-    }
+  function onUpgrade() {
+    Alert.alert(
+      'Subscriptions coming soon',
+      'In-app purchases launch with the store release — this is where checkout will open.',
+    );
   }
 
   return (
@@ -75,24 +53,14 @@ export default function Paywall() {
           <Text style={styles.proActiveText}>⭐ You&apos;re on Pro</Text>
         </View>
       ) : (
-        <Pressable style={styles.cta} onPress={() => simulate(true)} disabled={busy}>
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.ctaText}>Upgrade to Pro</Text>
-          )}
+        <Pressable style={styles.cta} onPress={onUpgrade}>
+          <Text style={styles.ctaText}>Upgrade to Pro</Text>
         </Pressable>
       )}
 
       <Text style={styles.devNote}>
-        Dev build: this simulates a subscription. Real billing (App Store / Play
-        via RevenueCat) gets wired once store accounts exist.
+        Subscriptions launch with the store release — checkout opens here.
       </Text>
-      {isPro ? (
-        <Pressable onPress={() => simulate(false)} disabled={busy}>
-          <Text style={styles.downgrade}>Simulate downgrade (dev)</Text>
-        </Pressable>
-      ) : null}
     </ScrollView>
   );
 }

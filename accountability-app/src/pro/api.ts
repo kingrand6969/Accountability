@@ -17,17 +17,6 @@ export async function fetchProStatus(): Promise<boolean> {
   return !!data?.is_pro;
 }
 
-/**
- * DEV ONLY — simulate a subscription change so we can test Pro gating before
- * real billing exists. In production, is_pro is set by the RevenueCat webhook
- * (service role), never by the client. See migration 0006 notes.
- */
-export async function setProDev(isPro: boolean): Promise<void> {
-  const uid = await currentUserId();
-  if (!uid) throw new Error('Not signed in.');
-  const { error } = await supabase
-    .from('profiles')
-    .update({ is_pro: isPro, pro_until: null })
-    .eq('id', uid);
-  if (error) throw error;
-}
+// Pro is granted server-side only (RevenueCat webhook via the service role).
+// The client can read is_pro (fetchProStatus) but can no longer write it —
+// migration 0015 revokes UPDATE on is_pro/pro_until from the client role.
