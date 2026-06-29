@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getPublicProfiles } from '../profiles/publicProfiles';
 
 export type Candidate = {
   id: string;
@@ -53,7 +54,7 @@ export async function listCandidates(): Promise<Candidate[]> {
   const area = meRow?.area ?? null;
 
   let q = supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('id,display_name,avatar_url,area')
     .eq('buddy_opt_in', true)
     .neq('id', uid)
@@ -89,16 +90,18 @@ export async function listIncoming(): Promise<IncomingRequest[]> {
   if (!uid) return [];
   const { data, error } = await supabase
     .from('buddy_requests')
-    .select('id,from_user,profiles!buddy_requests_from_user_fkey(display_name,avatar_url)')
+    .select('id,from_user')
     .eq('to_user', uid)
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((r: any) => ({
+  const rows = data ?? [];
+  const authors = await getPublicProfiles(rows.map((r: any) => r.from_user));
+  return rows.map((r: any) => ({
     id: r.id,
     from_user: r.from_user,
-    name: r.profiles?.display_name ?? null,
-    avatar: r.profiles?.avatar_url ?? null,
+    name: authors.get(r.from_user)?.display_name ?? null,
+    avatar: authors.get(r.from_user)?.avatar_url ?? null,
   }));
 }
 
@@ -125,7 +128,7 @@ export async function listBuddies(): Promise<Buddy[]> {
   const otherIds = (links ?? []).map((l: any) => (l.user_a === uid ? l.user_b : l.user_a));
   if (otherIds.length === 0) return [];
   const { data: profs } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('id,display_name,avatar_url')
     .in('id', otherIds);
   return (profs ?? []).map((p: any) => ({
@@ -139,7 +142,7 @@ export async function getProfileBrief(
   id: string,
 ): Promise<{ name: string | null; avatar: string | null }> {
   const { data } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('display_name,avatar_url')
     .eq('id', id)
     .maybeSingle();

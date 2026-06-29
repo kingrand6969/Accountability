@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getPublicProfiles } from '../profiles/publicProfiles';
 import type { FeedPost, PostComment } from './types';
 
 async function currentUserId(): Promise<string | null> {
@@ -6,19 +7,21 @@ async function currentUserId(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
-// Disambiguate the author join: posts links to profiles both directly
-// (author) and indirectly (via likes), so name the exact foreign key.
-const POST_SELECT =
-  'id,body,created_at,user_id,profiles!posts_user_id_fkey(display_name,avatar_url),post_likes(count),post_comments(count)';
+const POST_SELECT = 'id,body,created_at,user_id,post_likes(count),post_comments(count)';
 
-function mapPost(row: any, likedSet: Set<string>): FeedPost {
+function mapPost(
+  row: any,
+  likedSet: Set<string>,
+  authors: Map<string, { display_name: string | null; avatar_url: string | null }>,
+): FeedPost {
+  const author = authors.get(row.user_id);
   return {
     id: row.id,
     body: row.body,
     created_at: row.created_at,
     user_id: row.user_id,
-    author_name: row.profiles?.display_name ?? null,
-    author_avatar: row.profiles?.avatar_url ?? null,
+    author_name: author?.display_name ?? null,
+    author_avatar: author?.avatar_url ?? null,
     like_count: row.post_likes?.[0]?.count ?? 0,
     comment_count: row.post_comments?.[0]?.count ?? 0,
     liked_by_me: likedSet.has(row.id),
@@ -42,8 +45,12 @@ export async function listFeed(): Promise<FeedPost[]> {
     .order('created_at', { ascending: false })
     .limit(50);
   if (error) throw error;
-  const likedSet = await myLikedSet(me);
-  return (data ?? []).map((r: any) => mapPost(r, likedSet));
+  const rows = data ?? [];
+  const [likedSet, authors] = await Promise.all([
+    myLikedSet(me),
+    getPublicProfiles(rows.map((r: any) => r.user_id)),
+  ]);
+  return rows.map((r: any) => mapPost(r, likedSet, authors));
 }
 
 export async function getPost(id: string): Promise<FeedPost | null> {
@@ -55,8 +62,11 @@ export async function getPost(id: string): Promise<FeedPost | null> {
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const likedSet = await myLikedSet(me);
-  return mapPost(data, likedSet);
+  const [likedSet, authors] = await Promise.all([
+    myLikedSet(me),
+    getPublicProfiles([(data as any).user_id]),
+  ]);
+  return mapPost(data, likedSet, authors);
 }
 
 export async function createPost(body: string): Promise<void> {
@@ -73,7 +83,6 @@ export async function setLiked(postId: string, liked: boolean): Promise<void> {
     const { error } = await supabase
       .from('post_likes')
       .insert({ post_id: postId, user_id: me });
-    // Ignore "already liked" (unique violation) for idempotency.
     if (error && error.code !== '23505') throw error;
   } else {
     const { error } = await supabase
@@ -88,17 +97,19 @@ export async function setLiked(postId: string, liked: boolean): Promise<void> {
 export async function listComments(postId: string): Promise<PostComment[]> {
   const { data, error } = await supabase
     .from('post_comments')
-    .select('id,body,created_at,user_id,profiles!post_comments_user_id_fkey(display_name,avatar_url)')
+    .select('id,body,created_at,user_id')
     .eq('post_id', postId)
     .order('created_at', { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((r: any) => ({
+  const rows = data ?? [];
+  const authors = await getPublicProfiles(rows.map((r: any) => r.user_id));
+  return rows.map((r: any) => ({
     id: r.id,
     body: r.body,
     created_at: r.created_at,
     user_id: r.user_id,
-    author_name: r.profiles?.display_name ?? null,
-    author_avatar: r.profiles?.avatar_url ?? null,
+    author_name: authors.get(r.user_id)?.display_name ?? null,
+    author_avatar: authors.get(r.user_id)?.avatar_url ?? null,
   }));
 }
 
