@@ -16,6 +16,7 @@ import { TimelineCard } from '../../timeline/TimelineCard';
 import { HourGrid } from '../../timeline/HourGrid';
 import { toLocalDateString } from '../../timeline/datetime';
 import { AdBanner } from '../../pro/AdBanner';
+import { HomeHeader } from '../../home/HomeHeader';
 import type { TimelineItem } from '../../timeline/types';
 
 function dayLabel(day: Date): string {
@@ -90,6 +91,7 @@ export default function Today() {
 
   return (
     <View style={styles.screen}>
+      <HomeHeader />
       <View style={styles.header}>
         <Pressable onPress={() => shiftDay(-1)} style={styles.navBtn} hitSlop={8}>
           <Text style={styles.navText}>◀</Text>
