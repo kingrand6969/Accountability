@@ -8,7 +8,10 @@
     "scheme": "accountabilityapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "UIBackgroundModes": ["location"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -33,6 +36,15 @@
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
           }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "Accountability App uses your location to track your runs, rides and walks — even with the screen off.",
+          "locationWhenInUsePermission": "Accountability App uses your location to track your runs, rides and walks."
         }
       ]
     ],

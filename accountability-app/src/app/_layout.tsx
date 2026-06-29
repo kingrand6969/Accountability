@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { ProProvider } from '../pro/ProProvider';
 import '../notifications/handler';
+import '../activity/locationTask';
 
 function RootNavigator() {
   const { session, loading } = useAuth();

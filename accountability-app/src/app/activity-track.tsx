@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,12 +11,16 @@ import {
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import {
-  haversineMeters,
+  totalDistanceMeters,
   formatKm,
   formatDuration,
   formatPace,
-  type Pt,
 } from '../activity/geo';
+import {
+  LOCATION_TASK_NAME,
+  resetTrackPoints,
+  readTrackPoints,
+} from '../activity/locationTask';
 import { saveActivity, type ActivityType } from '../activity/api';
 import { createItem } from '../timeline/api';
 
@@ -25,6 +30,17 @@ const TYPES: { value: ActivityType; label: string; emoji: string }[] = [
   { value: 'ride', label: 'Ride', emoji: '🚴' },
 ];
 
+async function stopUpdatesIfRunning() {
+  if (Platform.OS === 'web') return;
+  try {
+    if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    }
+  } catch {
+    // not running — nothing to stop
+  }
+}
+
 export default function ActivityTrack() {
   const router = useRouter();
   const [type, setType] = useState<ActivityType>('run');
@@ -33,60 +49,79 @@ export default function ActivityTrack() {
   const [elapsed, setElapsed] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  const subRef = useRef<Location.LocationSubscription | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pointsRef = useRef<Pt[]>([]);
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
-      subRef.current?.remove();
       if (timerRef.current) clearInterval(timerRef.current);
+      stopUpdatesIfRunning();
     };
   }, []);
 
   async function onStart() {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
+    if (Platform.OS === 'web') {
+      Alert.alert('Use the mobile app', 'GPS tracking runs on your phone.');
+      return;
+    }
+    const fg = await Location.requestForegroundPermissionsAsync();
+    if (fg.status !== 'granted') {
       Alert.alert('Location needed', 'Allow location access to track your activity.');
       return;
     }
-    pointsRef.current = [];
+    // Background is best-effort: tracking still works in foreground if declined.
+    await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
+
+    await resetTrackPoints();
     setDistance(0);
     setElapsed(0);
     startedAtRef.current = new Date().toISOString();
     startMsRef.current = Date.now();
-    setTracking(true);
 
-    subRef.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, distanceInterval: 5, timeInterval: 2000 },
-      (loc) => {
-        const p: Pt = { lat: loc.coords.latitude, lon: loc.coords.longitude };
-        const prev = pointsRef.current[pointsRef.current.length - 1];
-        pointsRef.current.push(p);
-        if (prev) setDistance((d) => d + haversineMeters(prev, p));
-      },
-    );
-    timerRef.current = setInterval(
-      () => setElapsed(Math.round((Date.now() - startMsRef.current) / 1000)),
-      1000,
-    );
+    try {
+      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+        accuracy: Location.Accuracy.High,
+        distanceInterval: 5,
+        pausesUpdatesAutomatically: false,
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: 'Tracking your activity',
+          notificationBody: 'Recording distance & pace — tap to return.',
+          notificationColor: '#2563eb',
+        },
+      });
+    } catch (e) {
+      Alert.alert('Could not start tracking', String((e as Error).message ?? e));
+      return;
+    }
+
+    setTracking(true);
+    timerRef.current = setInterval(async () => {
+      setElapsed(Math.round((Date.now() - startMsRef.current) / 1000));
+      try {
+        setDistance(totalDistanceMeters(await readTrackPoints()));
+      } catch {
+        // keep last value
+      }
+    }, 1000);
   }
 
   async function onStop() {
-    subRef.current?.remove();
-    subRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+    await stopUpdatesIfRunning();
     setTracking(false);
 
-    // Trust the wall clock, not the tick counter (which drifts when suspended).
     const finalElapsed = Math.round((Date.now() - startMsRef.current) / 1000);
+    const points = await readTrackPoints();
+    const finalDistance = totalDistanceMeters(points);
     setElapsed(finalElapsed);
+    setDistance(finalDistance);
 
-    if (finalElapsed < 3 && distance < 5) {
+    if (finalElapsed < 3 && finalDistance < 5) {
       Alert.alert('Too short', 'That activity was too short to save.');
+      await resetTrackPoints();
       return;
     }
 
@@ -95,18 +130,19 @@ export default function ActivityTrack() {
       const meta = TYPES.find((t) => t.value === type)!;
       await saveActivity({
         type,
-        distance_m: distance,
+        distance_m: finalDistance,
         duration_s: finalElapsed,
-        route: pointsRef.current,
+        route: points,
         started_at: startedAtRef.current,
       });
       await createItem({
         type: 'activity',
-        title: `${meta.label} · ${formatKm(distance)} km`,
-        note: `${formatDuration(finalElapsed)} · ${formatPace(distance, finalElapsed)} /km`,
+        title: `${meta.label} · ${formatKm(finalDistance)} km`,
+        note: `${formatDuration(finalElapsed)} · ${formatPace(finalDistance, finalElapsed)} /km`,
         starts_at: startedAtRef.current,
       });
-      Alert.alert('Activity saved 🏃', `${formatKm(distance)} km in ${formatDuration(finalElapsed)}`);
+      await resetTrackPoints();
+      Alert.alert('Activity saved 🏃', `${formatKm(finalDistance)} km in ${formatDuration(finalElapsed)}`);
       router.navigate('/');
     } catch (e) {
       Alert.alert('Could not save', String((e as Error).message ?? e));
@@ -161,8 +197,8 @@ export default function ActivityTrack() {
       )}
 
       <Text style={styles.hint}>
-        Keep the app open while tracking. GPS needs a real device and location
-        permission — distance updates as you move.
+        Tracking keeps running with the screen off (a notification shows while
+        active). Needs a real device + location permission.
       </Text>
     </View>
   );
