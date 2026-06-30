@@ -1,7 +1,9 @@
-import type { ComponentProps } from 'react';
-import type { ColorValue } from 'react-native';
-import { Tabs } from 'expo-router';
+import { type ComponentProps, useEffect, useState } from 'react';
+import { type ColorValue, View } from 'react-native';
+import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ONBOARDED_KEY } from '../onboarding';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -12,6 +14,17 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
 }
 
 export default function AppLayout() {
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(ONBOARDED_KEY)
+      .then((v) => setOnboarded(v === '1'))
+      .catch(() => setOnboarded(true));
+  }, []);
+
+  if (onboarded === null) return <View style={{ flex: 1 }} />;
+  if (!onboarded) return <Redirect href="/onboarding" />;
+
   return (
     <Tabs screenOptions={{ headerShown: true, tabBarActiveTintColor: '#2563eb' }}>
       <Tabs.Screen
