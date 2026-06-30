@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -10,7 +11,9 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { listFeed, createPost, setLiked } from '../../feed/api';
+import { uploadPostImage } from '../../feed/uploadPostImage';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
@@ -21,6 +24,9 @@ export default function Feed() {
   const [loading, setLoading] = useState(true);
   const [body, setBody] = useState('');
   const [posting, setPosting] = useState(false);
+  const [pickedBase64, setPickedBase64] = useState<string | null>(null);
+  const [pickedExt, setPickedExt] = useState('jpg');
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -39,12 +45,44 @@ export default function Feed() {
     }, [load]),
   );
 
+  async function onPickPhoto() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to attach an image.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.6,
+      base64: true,
+    });
+    if (res.canceled) return;
+    const asset = res.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Could not read image', 'Please try a different photo.');
+      return;
+    }
+    setPickedBase64(asset.base64);
+    setPickedExt(asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg');
+    setPreviewUri(asset.uri);
+  }
+
+  function clearPhoto() {
+    setPickedBase64(null);
+    setPreviewUri(null);
+  }
+
+  const canPost = (body.trim().length > 0 || !!pickedBase64) && !posting;
+
   async function onPost() {
-    if (!body.trim()) return;
+    if (!body.trim() && !pickedBase64) return;
     setPosting(true);
     try {
-      await createPost(body.trim());
+      let imageUrl: string | null = null;
+      if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
+      await createPost(body.trim(), imageUrl);
       setBody('');
+      clearPhoto();
       await load();
     } catch (e) {
       Alert.alert('Could not post', String((e as Error).message ?? e));
@@ -86,17 +124,30 @@ export default function Feed() {
           onChangeText={setBody}
           multiline
         />
-        <Pressable
-          style={[styles.postBtn, (!body.trim() || posting) && styles.postBtnDisabled]}
-          onPress={onPost}
-          disabled={!body.trim() || posting}
-        >
-          {posting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.postBtnText}>Post</Text>
-          )}
-        </Pressable>
+        {previewUri ? (
+          <View style={styles.previewWrap}>
+            <Image source={{ uri: previewUri }} style={styles.preview} resizeMode="cover" />
+            <Pressable style={styles.previewRemove} onPress={clearPhoto} hitSlop={8}>
+              <Text style={styles.previewRemoveText}>✕</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={styles.composerActions}>
+          <Pressable style={styles.photoBtn} onPress={onPickPhoto}>
+            <Text style={styles.photoBtnText}>📷 Photo</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.postBtn, !canPost && styles.postBtnDisabled]}
+            onPress={onPost}
+            disabled={!canPost}
+          >
+            {posting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.postBtnText}>Post</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
@@ -123,7 +174,10 @@ export default function Feed() {
                   <Text style={styles.time}>{timeAgo(item.created_at)}</Text>
                 </View>
               </View>
-              <Text style={styles.body}>{item.body}</Text>
+              {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+              ) : null}
               <View style={styles.actions}>
                 <Pressable style={styles.action} onPress={() => onToggleLike(item)} hitSlop={8}>
                   <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
@@ -162,8 +216,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 48,
   },
+  previewWrap: { alignSelf: 'flex-start' },
+  preview: { width: 110, height: 110, borderRadius: 10, backgroundColor: '#eee' },
+  previewRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#000',
+    borderRadius: 11,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewRemoveText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  composerActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  photoBtn: { paddingVertical: 8, paddingHorizontal: 6 },
+  photoBtnText: { color: '#2563eb', fontWeight: '700' },
   postBtn: {
-    alignSelf: 'flex-end',
     backgroundColor: '#2563eb',
     borderRadius: 10,
     paddingVertical: 10,
@@ -176,16 +246,12 @@ const styles = StyleSheet.create({
   list: { padding: 14, gap: 12 },
   emptyTitle: { fontSize: 18, fontWeight: '600' },
   emptySub: { color: '#666', marginTop: 6, textAlign: 'center' },
-  card: {
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-  },
+  card: { backgroundColor: '#f7f7f9', borderRadius: 12, padding: 14, gap: 8 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   author: { fontSize: 15, fontWeight: '700' },
   time: { color: '#888', fontSize: 12 },
   body: { fontSize: 15, lineHeight: 21 },
+  postImage: { width: '100%', height: 220, borderRadius: 10, backgroundColor: '#eee' },
   actions: { flexDirection: 'row', gap: 22, marginTop: 2 },
   action: { paddingVertical: 4 },
   actionText: { fontSize: 15, color: '#444' },

@@ -1,6 +1,7 @@
 export type FeedPost = {
   id: string;
   body: string;
+  image_url: string | null;
   created_at: string;
   user_id: string;
   author_name: string | null;

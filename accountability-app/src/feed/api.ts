@@ -7,7 +7,8 @@ async function currentUserId(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
-const POST_SELECT = 'id,body,created_at,user_id,post_likes(count),post_comments(count)';
+const POST_SELECT =
+  'id,body,image_url,created_at,user_id,post_likes(count),post_comments(count)';
 
 function mapPost(
   row: any,
@@ -18,6 +19,7 @@ function mapPost(
   return {
     id: row.id,
     body: row.body,
+    image_url: row.image_url ?? null,
     created_at: row.created_at,
     user_id: row.user_id,
     author_name: author?.display_name ?? null,
@@ -69,10 +71,15 @@ export async function getPost(id: string): Promise<FeedPost | null> {
   return mapPost(data, likedSet, authors);
 }
 
-export async function createPost(body: string): Promise<void> {
+export async function createPost(
+  body: string,
+  imageUrl: string | null = null,
+): Promise<void> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
-  const { error } = await supabase.from('posts').insert({ user_id: me, body });
+  const { error } = await supabase
+    .from('posts')
+    .insert({ user_id: me, body, image_url: imageUrl });
   if (error) throw error;
 }
 

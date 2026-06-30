@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -99,7 +100,10 @@ export default function PostDetail() {
                 <Text style={styles.time}>{timeAgo(post.created_at)}</Text>
               </View>
             </View>
-            <Text style={styles.body}>{post.body}</Text>
+            {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
+            {post.image_url ? (
+              <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" />
+            ) : null}
             <Pressable onPress={onToggleLike} hitSlop={8} style={styles.likeRow}>
               <Text style={[styles.like, post.liked_by_me && styles.liked]}>
                 {post.liked_by_me ? '♥' : '♡'} {post.like_count}
@@ -157,6 +161,7 @@ const styles = StyleSheet.create({
   author: { fontSize: 16, fontWeight: '700' },
   time: { color: '#888', fontSize: 12 },
   body: { fontSize: 16, lineHeight: 23 },
+  postImage: { width: '100%', height: 240, borderRadius: 12, backgroundColor: '#eee' },
   likeRow: { paddingVertical: 4 },
   like: { fontSize: 16, color: '#444' },
   liked: { color: '#ef4444', fontWeight: '700' },
