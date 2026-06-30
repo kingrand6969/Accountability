@@ -16,6 +16,11 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { useIsPro } from '../../pro/ProProvider';
+import {
+  isStreakReminderOn,
+  enableStreakReminder,
+  disableStreakReminder,
+} from '../../notifications/streakReminder';
 import { getMyProfile, updateMyProfile, touchLastActive } from '../../profiles/api';
 import { validateBirthday } from '../../profiles/validation';
 import { uploadAvatar } from '../../profiles/avatar';
@@ -71,6 +76,29 @@ export default function Profile() {
   const [birthdayPrivate, setBirthdayPrivate] = useState(true);
   const [relationship, setRelationship] = useState<RelationshipStatus | null>(null);
   const [showLastActive, setShowLastActive] = useState(true);
+  const [remindOn, setRemindOn] = useState(false);
+
+  useEffect(() => {
+    isStreakReminderOn().then(setRemindOn).catch(() => {});
+  }, []);
+
+  async function onToggleReminder(value: boolean) {
+    setRemindOn(value);
+    try {
+      if (value) {
+        const ok = await enableStreakReminder();
+        if (!ok) {
+          setRemindOn(false);
+          Alert.alert('Notifications off', 'Enable notifications to get reminders.');
+        }
+      } else {
+        await disableStreakReminder();
+      }
+    } catch (e) {
+      setRemindOn(!value);
+      Alert.alert('Could not update reminder', String((e as Error).message ?? e));
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -297,6 +325,11 @@ export default function Profile() {
       <View style={styles.switchRow}>
         <Text style={styles.switchLabel}>Show my last-active time</Text>
         <Switch value={showLastActive} onValueChange={setShowLastActive} />
+      </View>
+
+      <View style={styles.switchRow}>
+        <Text style={styles.switchLabel}>🔥 Daily streak reminder</Text>
+        <Switch value={remindOn} onValueChange={onToggleReminder} />
       </View>
 
       <Pressable style={styles.saveButton} onPress={onSave} disabled={saving}>
