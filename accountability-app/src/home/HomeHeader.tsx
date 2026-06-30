@@ -32,12 +32,12 @@ export function HomeHeader() {
   return (
     <View style={styles.card}>
       <View style={styles.topRow}>
-        <View style={styles.streak}>
+        <Pressable style={styles.streak} onPress={() => router.push('/win-card')}>
           <Text style={styles.streakNum}>🔥 {stats.streak}</Text>
           <Text style={styles.streakLabel}>
-            day{stats.streak === 1 ? '' : 's'} streak
+            day{stats.streak === 1 ? '' : 's'} streak · share
           </Text>
-        </View>
+        </Pressable>
         <Pressable style={styles.buddy} onPress={() => router.push('/buddy')}>
           <Text style={styles.buddyText}>🤝 {stats.buddyCount}</Text>
           {stats.buddyRequests > 0 ? (

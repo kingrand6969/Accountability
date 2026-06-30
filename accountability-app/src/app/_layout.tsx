@@ -31,6 +31,7 @@ function RootNavigator() {
         <Stack.Screen name="activity-track" options={{ headerShown: true, title: 'Track Activity' }} />
         <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
+        <Stack.Screen name="win-card" options={{ headerShown: true, title: 'Share a win' }} />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />
