@@ -65,7 +65,7 @@ export async function listCandidates(): Promise<Candidate[]> {
 
   const [{ data: blocks }, { data: links }, { data: reqs }] = await Promise.all([
     supabase.from('buddy_blocks').select('blocked').eq('blocker', uid),
-    supabase.from('buddy_links').select('user_a,user_b'),
+    supabase.from('buddy_links').select('user_a,user_b').or(`user_a.eq.${uid},user_b.eq.${uid}`),
     supabase.from('buddy_requests').select('to_user').eq('from_user', uid),
   ]);
   const exclude = new Set<string>();
@@ -123,7 +123,8 @@ export async function listBuddies(): Promise<Buddy[]> {
   if (!uid) return [];
   const { data: links, error } = await supabase
     .from('buddy_links')
-    .select('user_a,user_b');
+    .select('user_a,user_b')
+    .or(`user_a.eq.${uid},user_b.eq.${uid}`);
   if (error) throw error;
   const otherIds = (links ?? []).map((l: any) => (l.user_a === uid ? l.user_b : l.user_a));
   if (otherIds.length === 0) return [];

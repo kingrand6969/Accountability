@@ -10,6 +10,7 @@ export const TIMELINE_TYPES: {
   { value: 'workout', label: 'Workout', emoji: '🏋️' },
   { value: 'meal', label: 'Meal', emoji: '🥗' },
   { value: 'expense', label: 'Expense', emoji: '💸' },
+  { value: 'income', label: 'Income', emoji: '💰' },
   { value: 'activity', label: 'Activity', emoji: '🏃' },
 ];
 

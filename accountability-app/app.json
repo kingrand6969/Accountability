@@ -46,7 +46,8 @@
           "locationAlwaysAndWhenInUsePermission": "Accountability App uses your location to track your runs, rides and walks — even with the screen off.",
           "locationWhenInUsePermission": "Accountability App uses your location to track your runs, rides and walks."
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

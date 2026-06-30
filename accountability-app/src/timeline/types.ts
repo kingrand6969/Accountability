@@ -4,6 +4,7 @@ export type TimelineType =
   | 'workout'
   | 'meal'
   | 'expense'
+  | 'income'
   | 'activity';
 
 export type TimelineItem = {

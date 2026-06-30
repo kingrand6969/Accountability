@@ -1,6 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { toLocalDateString } from '../timeline/datetime';
+import { createItem } from '../timeline/api';
 import { monthRange } from './compute';
+import { categoryMeta, formatAmount } from './categories';
 import type { NewTransaction, Transaction } from './types';
 
 async function currentUserId(): Promise<string | null> {
@@ -35,6 +37,13 @@ export async function addTransaction(tx: NewTransaction): Promise<void> {
     .from('money_transactions')
     .insert({ ...tx, user_id: uid });
   if (error) throw error;
+  // Mirror onto the timeline so income/expense count toward today + streak.
+  await createItem({
+    type: tx.kind,
+    title: tx.note?.trim() || categoryMeta(tx.category).label,
+    note: formatAmount(tx.amount),
+    starts_at: new Date(`${tx.tx_date}T12:00:00`).toISOString(),
+  });
 }
 
 export async function deleteTransaction(id: string): Promise<void> {

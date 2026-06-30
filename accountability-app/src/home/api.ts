@@ -30,7 +30,7 @@ export async function getHomeStats(): Promise<HomeStats> {
   const now = new Date();
   const todayStr = toLocalDateString(now);
   const since = new Date(now);
-  since.setDate(since.getDate() - 40);
+  since.setDate(since.getDate() - 400);
   const weekStart = new Date(now);
   weekStart.setDate(weekStart.getDate() - 6);
   weekStart.setHours(0, 0, 0, 0);
@@ -51,7 +51,10 @@ export async function getHomeStats(): Promise<HomeStats> {
       .select('id')
       .eq('to_user', uid)
       .eq('status', 'pending'),
-    supabase.from('buddy_links').select('user_a'),
+    supabase
+      .from('buddy_links')
+      .select('user_a')
+      .or(`user_a.eq.${uid},user_b.eq.${uid}`),
   ]);
 
   const items = itemsRes.data ?? [];
