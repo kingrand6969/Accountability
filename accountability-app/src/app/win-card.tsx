@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { getHomeStats, type HomeStats } from '../home/api';
@@ -42,7 +43,6 @@ export default function WinCard() {
       ? `🔥 ${stats.streak}-day streak on Accountability! Showing up every day. 💪`
       : `Building better habits with Accountability 💪 — ${stats.weekWorkouts} workouts this week!`;
 
-  // Capture the card View as an image. Native only; returns null on web/failure.
   async function captureCard(result: 'base64' | 'tmpfile'): Promise<string | null> {
     if (Platform.OS === 'web' || !cardRef.current) return null;
     try {
@@ -61,7 +61,7 @@ export default function WinCard() {
         try {
           imageUrl = await uploadPostImage(base64, 'png');
         } catch {
-          imageUrl = null; // fall back to a text post
+          imageUrl = null;
         }
       }
       await createPost(message, imageUrl);
@@ -88,12 +88,12 @@ export default function WinCard() {
             return;
           }
         } catch {
-          // fall through to text share
+          // fall through
         }
       }
       await Share.share({ message: `${message}\n\n#accountability` });
     } catch {
-      // user dismissed
+      // dismissed
     } finally {
       setSharing(false);
     }
@@ -101,23 +101,33 @@ export default function WinCard() {
 
   return (
     <View style={styles.screen}>
-      {/* The shareable card (captured to an image) */}
-      <View ref={cardRef} collapsable={false} style={styles.card}>
-        <Text style={styles.flame}>🔥</Text>
-        <Text style={styles.streakNum}>{stats.streak}</Text>
-        <Text style={styles.streakLabel}>DAY STREAK</Text>
-        <View style={styles.divider} />
-        <View style={styles.weekRow}>
-          <View style={styles.weekStat}>
-            <Text style={styles.weekValue}>{stats.weekWorkouts}</Text>
-            <Text style={styles.weekLabel}>workouts</Text>
+      <View ref={cardRef} collapsable={false} style={styles.cardWrap}>
+        <LinearGradient
+          colors={['#7c3aed', '#db2777', '#fb923c']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.card}
+        >
+          <Text style={styles.brandTop}>ACCOUNTABILITY</Text>
+
+          <View style={styles.flameWrap}>
+            <Text style={styles.flame}>🔥</Text>
           </View>
-          <View style={styles.weekStat}>
-            <Text style={styles.weekValue}>{stats.weekActivities}</Text>
-            <Text style={styles.weekLabel}>activities</Text>
+
+          <Text style={styles.streakNum}>{stats.streak}</Text>
+          <Text style={styles.streakLabel}>DAY STREAK</Text>
+
+          <View style={styles.pills}>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>🏋️ {stats.weekWorkouts} workouts</Text>
+            </View>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>🏃 {stats.weekActivities} activities</Text>
+            </View>
           </View>
-        </View>
-        <Text style={styles.brand}>Accountability</Text>
+
+          <Text style={styles.tagline}>Showing up every day 💪</Text>
+        </LinearGradient>
       </View>
 
       <Pressable style={styles.primary} onPress={onShareToFeed} disabled={posting || sharing}>
@@ -143,33 +153,63 @@ export default function WinCard() {
 const styles = StyleSheet.create({
   screen: { flex: 1, padding: 24, gap: 14, justifyContent: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  card: {
-    backgroundColor: '#1d4ed8',
-    borderRadius: 24,
-    paddingVertical: 36,
+  cardWrap: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#7c3aed',
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  card: { paddingVertical: 44, paddingHorizontal: 24, alignItems: 'center' },
+  brandTop: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 4,
+    marginBottom: 18,
+  },
+  flameWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
-    gap: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    justifyContent: 'center',
   },
-  flame: { fontSize: 44 },
-  streakNum: { color: '#fff', fontSize: 88, fontWeight: '900', lineHeight: 92 },
-  streakLabel: { color: '#bfdbfe', fontSize: 16, fontWeight: '800', letterSpacing: 2 },
-  divider: {
-    height: 1,
-    alignSelf: 'stretch',
-    marginHorizontal: 40,
-    marginVertical: 18,
-    backgroundColor: 'rgba(255,255,255,0.25)',
+  flame: { fontSize: 48 },
+  streakNum: {
+    color: '#fff',
+    fontSize: 100,
+    fontWeight: '900',
+    lineHeight: 104,
+    marginTop: 10,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 8,
   },
-  weekRow: { flexDirection: 'row', gap: 40 },
-  weekStat: { alignItems: 'center' },
-  weekValue: { color: '#fff', fontSize: 26, fontWeight: '800' },
-  weekLabel: { color: '#bfdbfe', fontSize: 12 },
-  brand: { color: '#fff', fontSize: 16, fontWeight: '800', marginTop: 20 },
+  streakLabel: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 4,
+    marginTop: -2,
+  },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 24, justifyContent: 'center' },
+  pill: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 22,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+  },
+  pillText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  tagline: {
+    color: 'rgba(255,255,255,0.95)',
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 24,
+  },
   primary: {
     backgroundColor: '#16a34a',
     borderRadius: 14,
