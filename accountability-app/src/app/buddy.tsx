@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -16,6 +17,7 @@ import {
   getBuddyOptIn,
   setBuddyOptIn,
   listCandidates,
+  searchBuddies,
   sendRequest,
   listIncoming,
   acceptRequest,
@@ -41,6 +43,9 @@ export default function BuddyHub() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [buddies, setBuddies] = useState<Buddy[]>([]);
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<Candidate[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -84,11 +89,29 @@ export default function BuddyHub() {
 
   async function onConnect(c: Candidate) {
     setCandidates((cur) => cur.filter((x) => x.id !== c.id));
+    setResults((cur) => (cur ? cur.filter((x) => x.id !== c.id) : cur));
     try {
       await sendRequest(c.id);
       showToast(`Request sent to ${authorLabel(c.display_name)}`);
     } catch (e) {
       Alert.alert('Could not send', String((e as Error).message ?? e));
+    }
+  }
+
+  async function onSearch(text: string) {
+    setSearch(text);
+    const q = text.trim();
+    if (q.length < 2) {
+      setResults(null); // back to nearby suggestions
+      return;
+    }
+    setSearching(true);
+    try {
+      setResults(await searchBuddies(q));
+    } catch {
+      // keep previous results — user can retype
+    } finally {
+      setSearching(false);
     }
   }
 
@@ -191,15 +214,45 @@ export default function BuddyHub() {
 
       {tab === 'discover' ? (
         <FlatList
-          data={candidates}
+          data={results ?? candidates}
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            <View style={styles.searchWrap}>
+              <Ionicons name="search" size={17} color={colors.textFaint} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name — add a buddy you know"
+                placeholderTextColor={colors.textFaint}
+                value={search}
+                onChangeText={onSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searching ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : search.length > 0 ? (
+                <Pressable onPress={() => onSearch('')} hitSlop={8} accessibilityLabel="Clear search">
+                  <Ionicons name="close-circle" size={18} color={colors.textFaint} />
+                </Pressable>
+              ) : null}
+            </View>
+          }
           ListEmptyComponent={
-            <EmptyState
-              icon="search-outline"
-              title="No one new in your area yet"
-              subtitle="Set your area on your profile so others can find you — and check back soon."
-            />
+            results ? (
+              <EmptyState
+                icon="person-outline"
+                title="No one found"
+                subtitle="They may not be on AccountAbility yet — or they keep buddy matching off (their choice is respected)."
+              />
+            ) : (
+              <EmptyState
+                icon="search-outline"
+                title="No one new in your area yet"
+                subtitle="Search a name above, or set your area on your profile so others can find you."
+              />
+            )
           }
           renderItem={({ item }) => (
             <View style={styles.row}>
@@ -332,6 +385,25 @@ const styles = StyleSheet.create({
   },
   gateSmall: { color: colors.textFaint, fontFamily: font.medium, fontSize: 12 },
   gateBtn: { marginTop: spacing.sm, minWidth: 240 },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    minHeight: 46,
+    marginBottom: spacing.xs,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: font.regular,
+    color: colors.text,
+    paddingVertical: 10,
+  },
   tabs: { flexDirection: 'row', padding: spacing.sm, gap: spacing.sm },
   tab: {
     flex: 1,

@@ -63,6 +63,12 @@ export async function listCandidates(): Promise<Candidate[]> {
   const { data, error } = await q;
   if (error) throw error;
 
+  const exclude = await excludedIds(uid);
+  return ((data ?? []) as Candidate[]).filter((c) => !exclude.has(c.id));
+}
+
+/** People I've blocked, already linked with, or already requested. */
+async function excludedIds(uid: string): Promise<Set<string>> {
   const [{ data: blocks }, { data: links }, { data: reqs }] = await Promise.all([
     supabase.from('buddy_blocks').select('blocked').eq('blocker', uid),
     supabase.from('buddy_links').select('user_a,user_b').or(`user_a.eq.${uid},user_b.eq.${uid}`),
@@ -72,7 +78,26 @@ export async function listCandidates(): Promise<Candidate[]> {
   (blocks ?? []).forEach((b: any) => exclude.add(b.blocked));
   (links ?? []).forEach((l: any) => exclude.add(l.user_a === uid ? l.user_b : l.user_a));
   (reqs ?? []).forEach((r: any) => exclude.add(r.to_user));
+  return exclude;
+}
 
+/**
+ * Find a specific person by name (any area). ONLY searches people who have
+ * buddy matching turned on — opting out keeps you unfindable, as promised.
+ */
+export async function searchBuddies(query: string): Promise<Candidate[]> {
+  const uid = await me();
+  const q = query.trim();
+  if (!uid || q.length < 2) return [];
+  const { data, error } = await supabase
+    .from('public_profiles')
+    .select('id,display_name,avatar_url,area')
+    .eq('buddy_opt_in', true)
+    .neq('id', uid)
+    .ilike('display_name', `%${q.replace(/[%_]/g, '')}%`)
+    .limit(20);
+  if (error) throw error;
+  const exclude = await excludedIds(uid);
   return ((data ?? []) as Candidate[]).filter((c) => !exclude.has(c.id));
 }
 
