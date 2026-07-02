@@ -1,21 +1,22 @@
 import type { TxKind } from './types';
 
-export type Category = { value: string; label: string; emoji: string };
+/** icon = Ionicons name; emoji kept for text-only contexts. */
+export type Category = { value: string; label: string; emoji: string; icon: string };
 
 export const EXPENSE_CATEGORIES: Category[] = [
-  { value: 'food', label: 'Food', emoji: '🍔' },
-  { value: 'transport', label: 'Transport', emoji: '🚗' },
-  { value: 'bills', label: 'Bills', emoji: '🧾' },
-  { value: 'shopping', label: 'Shopping', emoji: '🛍️' },
-  { value: 'health', label: 'Health', emoji: '💊' },
-  { value: 'fun', label: 'Fun', emoji: '🎉' },
-  { value: 'other', label: 'Other', emoji: '📦' },
+  { value: 'food', label: 'Food', emoji: '🍔', icon: 'fast-food-outline' },
+  { value: 'transport', label: 'Transport', emoji: '🚗', icon: 'car-outline' },
+  { value: 'bills', label: 'Bills', emoji: '🧾', icon: 'receipt-outline' },
+  { value: 'shopping', label: 'Shopping', emoji: '🛍️', icon: 'bag-outline' },
+  { value: 'health', label: 'Health', emoji: '💊', icon: 'medkit-outline' },
+  { value: 'fun', label: 'Fun', emoji: '🎉', icon: 'sparkles-outline' },
+  { value: 'other', label: 'Other', emoji: '📦', icon: 'cube-outline' },
 ];
 
 export const INCOME_CATEGORIES: Category[] = [
-  { value: 'salary', label: 'Salary', emoji: '💰' },
-  { value: 'gift', label: 'Gift', emoji: '🎁' },
-  { value: 'other', label: 'Other', emoji: '📦' },
+  { value: 'salary', label: 'Salary', emoji: '💰', icon: 'cash-outline' },
+  { value: 'gift', label: 'Gift', emoji: '🎁', icon: 'gift-outline' },
+  { value: 'other', label: 'Other', emoji: '📦', icon: 'cube-outline' },
 ];
 
 export function categoriesFor(kind: TxKind): Category[] {
@@ -28,6 +29,7 @@ export function categoryMeta(value: string): Category {
       value,
       label: value,
       emoji: '📦',
+      icon: 'cube-outline',
     }
   );
 }

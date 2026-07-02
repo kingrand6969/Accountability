@@ -11,10 +11,13 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { getPost, listComments, addComment, setLiked } from '../../feed/api';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost, PostComment } from '../../feed/types';
+import { EmptyState } from '../../ui/EmptyState';
+import { colors, font, radius, spacing } from '../../ui/theme';
 
 export default function PostDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -82,14 +85,14 @@ export default function PostDetail() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
   if (!post) {
     return (
       <View style={styles.center}>
-        <Text>Post not found.</Text>
+        <Text style={styles.notFound}>Post not found.</Text>
       </View>
     );
   }
@@ -113,16 +116,28 @@ export default function PostDetail() {
             {post.image_url ? (
               <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" />
             ) : null}
-            <Pressable onPress={onToggleLike} hitSlop={8} style={styles.likeRow}>
-              <Text style={[styles.like, post.liked_by_me && styles.liked]}>
-                {post.liked_by_me ? '♥' : '♡'} {post.like_count}
-              </Text>
+            <Pressable
+              onPress={onToggleLike}
+              hitSlop={8}
+              style={({ pressed }) => [styles.likeRow, pressed && styles.pressed]}
+              accessibilityLabel={post.liked_by_me ? 'Unlike' : 'Like'}
+            >
+              <Ionicons
+                name={post.liked_by_me ? 'heart' : 'heart-outline'}
+                size={20}
+                color={post.liked_by_me ? colors.danger : colors.textMuted}
+              />
+              <Text style={[styles.like, post.liked_by_me && styles.liked]}>{post.like_count}</Text>
             </Pressable>
             <Text style={styles.commentsHeading}>Comments</Text>
           </View>
         }
         ListEmptyComponent={
-          <Text style={styles.noComments}>No comments yet. Say something supportive!</Text>
+          <EmptyState
+            icon="chatbubble-ellipses-outline"
+            title="No comments yet"
+            subtitle="Say something supportive!"
+          />
         }
         renderItem={({ item }) => (
           <View style={styles.comment}>
@@ -141,6 +156,7 @@ export default function PostDetail() {
         <TextInput
           style={styles.input}
           placeholder="Add a comment…"
+          placeholderTextColor={colors.textFaint}
           value={text}
           onChangeText={setText}
           multiline
@@ -148,10 +164,15 @@ export default function PostDetail() {
         <Pressable
           onPress={onSend}
           disabled={!text.trim() || sending}
-          style={[styles.sendBtn, (!text.trim() || sending) && styles.sendDisabled]}
+          style={({ pressed }) => [
+            styles.sendBtn,
+            (!text.trim() || sending) && styles.sendDisabled,
+            pressed && !(!text.trim() || sending) && styles.pressed,
+          ]}
+          accessibilityLabel="Send comment"
         >
           {sending ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.onPrimary} />
           ) : (
             <Text style={styles.sendText}>Send</Text>
           )}
@@ -162,57 +183,82 @@ export default function PostDetail() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  list: { padding: 16, gap: 12 },
-  post: { gap: 10, marginBottom: 8 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xxl,
+    backgroundColor: colors.background,
+  },
+  notFound: { fontFamily: font.regular, color: colors.textMuted },
+  list: { padding: spacing.lg, gap: spacing.md },
+  post: { gap: 10, marginBottom: spacing.sm },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  author: { fontSize: 16, fontWeight: '700' },
-  time: { color: '#888', fontSize: 12 },
-  body: { fontSize: 16, lineHeight: 23 },
-  postImage: { width: '100%', height: 240, borderRadius: 12, backgroundColor: '#eee' },
-  likeRow: { paddingVertical: 4 },
-  like: { fontSize: 16, color: '#444' },
-  liked: { color: '#ef4444', fontWeight: '700' },
+  author: { fontSize: 16, fontFamily: font.bold, color: colors.text },
+  time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
+  body: { fontSize: 16, lineHeight: 23, fontFamily: font.regular, color: colors.text },
+  postImage: {
+    width: '100%',
+    height: 240,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+  },
+  likeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: spacing.xs,
+    minHeight: 44,
+    alignSelf: 'flex-start',
+  },
+  like: { fontSize: 15, color: colors.textMuted, fontFamily: font.semibold },
+  liked: { color: colors.danger },
+  pressed: { opacity: 0.7 },
   commentsHeading: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#666',
-    marginTop: 8,
+    fontFamily: font.bold,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ddd',
-    paddingTop: 12,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
   },
-  noComments: { color: '#888', fontStyle: 'italic' },
   comment: { flexDirection: 'row', gap: 10 },
   commentBody: { flex: 1 },
-  commentAuthor: { fontWeight: '600' },
-  commentTime: { color: '#999', fontWeight: '400', fontSize: 12 },
-  commentText: { marginTop: 2, lineHeight: 20 },
+  commentAuthor: { fontFamily: font.semibold, color: colors.text },
+  commentTime: { color: colors.textFaint, fontFamily: font.regular, fontSize: 12 },
+  commentText: { marginTop: 2, lineHeight: 20, fontFamily: font.regular, color: colors.text },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 8,
-    padding: 12,
+    gap: spacing.sm,
+    padding: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ddd',
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: colors.border,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
     maxHeight: 100,
     fontSize: 15,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
   },
   sendBtn: {
-    backgroundColor: '#2563eb',
+    backgroundColor: colors.primary,
     borderRadius: 20,
     paddingVertical: 10,
     paddingHorizontal: 18,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   sendDisabled: { opacity: 0.5 },
-  sendText: { color: '#fff', fontWeight: '700' },
+  sendText: { color: colors.onPrimary, fontFamily: font.bold },
 });

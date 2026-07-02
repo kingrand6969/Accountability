@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useIsPro } from '../pro/ProProvider';
 import {
   listFoodLogs,
@@ -19,6 +20,10 @@ import {
   todayString,
   type FoodLog,
 } from '../diet/api';
+import { Button } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
+import { showToast } from '../ui/Toast';
+import { colors, font, radius, spacing } from '../ui/theme';
 
 export default function Diet() {
   const router = useRouter();
@@ -62,6 +67,7 @@ export default function Diet() {
     setTarget(n);
     try {
       await setCalorieTarget(n);
+      showToast('Daily target saved');
     } catch (e) {
       Alert.alert('Could not save target', String((e as Error).message ?? e));
     }
@@ -88,7 +94,7 @@ export default function Diet() {
   if (proLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -96,14 +102,18 @@ export default function Diet() {
   if (!isPro) {
     return (
       <View style={styles.upsell}>
-        <Text style={styles.upsellEmoji}>🥗</Text>
+        <View style={styles.upsellIconCircle}>
+          <Ionicons name="nutrition-outline" size={48} color={colors.pro} />
+        </View>
         <Text style={styles.upsellTitle}>Diet & Calorie Tracker</Text>
         <Text style={styles.upsellText}>
           Track meals, calories and macros against a daily target — a Pro feature.
         </Text>
-        <Pressable style={styles.upsellBtn} onPress={() => router.push('/paywall')}>
-          <Text style={styles.upsellBtnText}>Upgrade to Pro</Text>
-        </Pressable>
+        <Button
+          title="Upgrade to Pro"
+          onPress={() => router.push('/paywall')}
+          style={styles.upsellBtn}
+        />
       </View>
     );
   }
@@ -117,7 +127,7 @@ export default function Diet() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -148,6 +158,7 @@ export default function Diet() {
               <TextInput
                 style={styles.targetInput}
                 keyboardType="number-pad"
+                placeholderTextColor={colors.textFaint}
                 value={targetText}
                 onChangeText={setTargetText}
                 onEndEditing={onSaveTarget}
@@ -159,7 +170,13 @@ export default function Diet() {
           </View>
         }
         ListEmptyComponent={
-          <Text style={styles.empty}>No food logged yet. Tap ＋ Add food.</Text>
+          <EmptyState
+            icon="nutrition-outline"
+            title="No food logged yet"
+            subtitle="Search a food or add one manually to start tracking."
+            actionTitle="Add food"
+            onAction={() => router.push('/food-search')}
+          />
         }
         renderItem={({ item }) => (
           <View style={styles.foodRow}>
@@ -170,15 +187,26 @@ export default function Diet() {
                 {Math.round(item.calories)} kcal
               </Text>
             </View>
-            <Pressable onPress={() => onDelete(item)} hitSlop={8}>
-              <Text style={styles.delete}>✕</Text>
+            <Pressable
+              onPress={() => onDelete(item)}
+              hitSlop={8}
+              accessibilityLabel={`Remove ${item.name}`}
+              style={({ pressed }) => [styles.delete, pressed && styles.pressed]}
+            >
+              <Ionicons name="close" size={20} color={colors.textFaint} />
             </Pressable>
           </View>
         )}
       />
 
-      <Pressable style={styles.fab} onPress={() => router.push('/food-search')}>
-        <Text style={styles.fabText}>＋ Add food</Text>
+      <Pressable
+        style={({ pressed }) => [styles.fab, pressed && styles.pressed]}
+        onPress={() => router.push('/food-search')}
+        accessibilityRole="button"
+        accessibilityLabel="Add food"
+      >
+        <Ionicons name="add" size={20} color={colors.onPrimary} />
+        <Text style={styles.fabText}>Add food</Text>
       </Pressable>
     </View>
   );
@@ -194,75 +222,111 @@ function Macro({ label, value }: { label: string; value: number }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { padding: 16, gap: 8, paddingBottom: 90 },
-  summary: { alignItems: 'center', paddingVertical: 12 },
-  consumed: { fontSize: 44, fontWeight: '800', color: '#16a34a' },
-  ofTarget: { color: '#666', marginTop: -2 },
-  remaining: { marginTop: 4, fontWeight: '700', color: '#2563eb' },
-  over: { color: '#ef4444' },
+  screen: { flex: 1, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  pressed: { opacity: 0.7 },
+  listContent: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 90 },
+  summary: { alignItems: 'center', paddingVertical: spacing.md },
+  consumed: { fontSize: 44, fontFamily: font.extrabold, color: colors.success },
+  ofTarget: { color: colors.textMuted, fontFamily: font.regular, marginTop: -2 },
+  remaining: { marginTop: spacing.xs, fontFamily: font.bold, color: colors.primary },
+  over: { color: colors.danger },
   macros: { flexDirection: 'row', gap: 28, marginTop: 14 },
   macro: { alignItems: 'center' },
-  macroValue: { fontSize: 16, fontWeight: '700' },
-  macroLabel: { color: '#888', fontSize: 12 },
+  macroValue: { fontSize: 16, fontFamily: font.bold, color: colors.text },
+  macroLabel: { color: colors.textFaint, fontFamily: font.medium, fontSize: 12 },
   targetRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     padding: 14,
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
-  targetLabel: { fontWeight: '600' },
+  targetLabel: { fontFamily: font.semibold, color: colors.text },
   targetInput: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.sm,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     minWidth: 80,
+    minHeight: 44,
     textAlign: 'right',
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
   },
-  todayHeading: { fontSize: 16, fontWeight: '700', marginTop: 16, marginBottom: 4 },
-  empty: { color: '#888', textAlign: 'center', marginTop: 16 },
+  todayHeading: {
+    fontSize: 16,
+    fontFamily: font.bold,
+    color: colors.text,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+  },
   foodRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     padding: 14,
   },
-  foodName: { fontSize: 15, fontWeight: '600' },
-  foodMeta: { color: '#666', marginTop: 2, fontSize: 13 },
-  delete: { color: '#999', fontSize: 18, paddingHorizontal: 4 },
+  foodName: { fontSize: 15, fontFamily: font.semibold, color: colors.text },
+  foodMeta: { color: colors.textMuted, fontFamily: font.regular, marginTop: 2, fontSize: 13 },
+  delete: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: 24,
-    backgroundColor: '#16a34a',
+    right: spacing.xl,
+    bottom: spacing.xxl,
+    backgroundColor: colors.success,
     borderRadius: 28,
+    minHeight: 48,
     paddingVertical: 14,
     paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
-  fabText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  upsell: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 },
-  upsellEmoji: { fontSize: 48 },
-  upsellTitle: { fontSize: 22, fontWeight: '800' },
-  upsellText: { color: '#666', textAlign: 'center' },
-  upsellBtn: {
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    marginTop: 8,
+  fabText: { color: colors.onPrimary, fontSize: 16, fontFamily: font.bold },
+  upsell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 10,
+    backgroundColor: colors.background,
   },
-  upsellBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  upsellIconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.proSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  upsellTitle: { fontSize: 22, fontFamily: font.extrabold, color: colors.text },
+  upsellText: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
+  upsellBtn: { marginTop: spacing.sm, minWidth: 200 },
 });

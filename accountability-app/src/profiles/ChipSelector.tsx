@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, font, radius, spacing } from '../ui/theme';
 
 type Option<T extends string> = { value: T; label: string };
 
@@ -20,8 +21,14 @@ export function ChipSelector<T extends string>({ options, value, onChange }: Pro
         return (
           <Pressable
             key={opt.value}
-            style={[styles.chip, selected && styles.chipSelected]}
+            style={({ pressed }) => [
+              styles.chip,
+              selected && styles.chipSelected,
+              pressed && styles.pressed,
+            ]}
             onPress={() => onChange(selected ? null : opt.value)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
           >
             <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
               {opt.label}
@@ -34,15 +41,19 @@ export function ChipSelector<T extends string>({ options, value, onChange }: Pro
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
   chip: {
     borderWidth: 1,
-    borderColor: '#2563eb',
-    borderRadius: 20,
+    borderColor: colors.primary,
+    borderRadius: radius.pill,
     paddingVertical: 8,
     paddingHorizontal: 14,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipSelected: { backgroundColor: '#2563eb' },
-  chipText: { color: '#2563eb', fontWeight: '600' },
-  chipTextSelected: { color: '#fff' },
+  chipSelected: { backgroundColor: colors.primary },
+  chipText: { color: colors.primary, fontFamily: font.semibold },
+  chipTextSelected: { color: colors.onPrimary },
+  pressed: { opacity: 0.7 },
 });

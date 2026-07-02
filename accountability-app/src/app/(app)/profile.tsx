@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { useIsPro } from '../../pro/ProProvider';
@@ -25,6 +26,9 @@ import { getMyProfile, updateMyProfile, touchLastActive } from '../../profiles/a
 import { validateBirthday } from '../../profiles/validation';
 import { uploadAvatar } from '../../profiles/avatar';
 import { ChipSelector } from '../../profiles/ChipSelector';
+import { Button } from '../../ui/Button';
+import { showToast } from '../../ui/Toast';
+import { colors, font, radius, shadow, spacing } from '../../ui/theme';
 import type {
   Gender,
   RelationshipStatus,
@@ -53,6 +57,15 @@ const ORIENTATION_OPTIONS: { value: SexualOrientation; label: string }[] = [
   { value: 'bisexual', label: 'Bisexual' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionCard}>{children}</View>
+    </View>
+  );
+}
 
 export default function Profile() {
   const { session } = useAuth();
@@ -152,7 +165,7 @@ export default function Profile() {
         relationship_status: relationship,
         show_last_active: showLastActive,
       });
-      Alert.alert('Saved', 'Your profile has been updated.');
+      showToast('Profile saved');
     } catch (e) {
       Alert.alert('Could not save', String((e as Error).message ?? e));
     } finally {
@@ -185,6 +198,7 @@ export default function Profile() {
       const url = await uploadAvatar(asset.base64, ext);
       await updateMyProfile({ avatar_url: url });
       setAvatarUrl(url);
+      showToast('Photo updated');
     } catch (e) {
       Alert.alert('Upload failed', String((e as Error).message ?? e));
     } finally {
@@ -193,28 +207,43 @@ export default function Profile() {
   }
 
   async function onSignOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) Alert.alert('Could not sign out', error.message);
+    Alert.alert('Sign out?', 'You can sign back in any time.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.auth.signOut();
+          if (error) Alert.alert('Could not sign out', error.message);
+        },
+      },
+    ]);
   }
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* identity header */}
       <View style={styles.avatarBlock}>
-        <Pressable onPress={onPickAvatar} disabled={uploading} style={styles.avatarRing}>
+        <Pressable
+          onPress={onPickAvatar}
+          disabled={uploading}
+          style={styles.avatarRing}
+          accessibilityLabel="Change profile photo"
+        >
           {avatarUrl ? (
             <Image source={{ uri: avatarUrl }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
               <Text style={styles.avatarInitial}>
-                {(session?.user.email ?? '?').charAt(0).toUpperCase()}
+                {(displayName || session?.user.email || '?').charAt(0).toUpperCase()}
               </Text>
             </View>
           )}
@@ -222,125 +251,150 @@ export default function Profile() {
             <View style={styles.avatarOverlay}>
               <ActivityIndicator color="#fff" />
             </View>
-          ) : null}
+          ) : (
+            <View style={styles.avatarEdit}>
+              <Ionicons name="camera" size={13} color="#fff" />
+            </View>
+          )}
         </Pressable>
-        <Pressable onPress={onPickAvatar} disabled={uploading}>
-          <Text style={styles.changePhoto}>
-            {avatarUrl ? 'Change photo' : 'Add photo'}
+        <Text style={styles.email}>{displayName || session?.user.email || 'Signed in'}</Text>
+        {joinedAt ? (
+          <Text style={styles.meta}>
+            Joined {new Date(joinedAt).toLocaleDateString()}
           </Text>
-        </Pressable>
+        ) : null}
       </View>
 
-      <Text style={styles.email}>{session?.user.email ?? 'Signed in'}</Text>
-      {joinedAt ? (
-        <Text style={styles.meta}>
-          Joined {new Date(joinedAt).toLocaleDateString()}
-        </Text>
-      ) : null}
-
+      {/* quick links */}
       <Pressable
-        style={[styles.proRow, isPro && styles.proRowActive]}
+        style={({ pressed }) => [
+          styles.linkRow,
+          isPro ? styles.proRowActive : styles.proRow,
+          pressed && styles.pressed,
+        ]}
         onPress={() => router.push('/paywall')}
       >
-        <Text style={[styles.proRowText, isPro && styles.proRowTextActive]}>
-          {isPro ? '⭐ Accountability Pro' : 'Upgrade to Pro'}
+        <View style={styles.linkLeft}>
+          <Ionicons name="star" size={17} color={isPro ? colors.pro : '#fff'} />
+          <Text style={[styles.linkText, { color: isPro ? colors.pro : '#fff' }]}>
+            {isPro ? 'Accountability Pro' : 'Upgrade to Pro'}
+          </Text>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={isPro ? colors.pro : '#fff'}
+        />
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [styles.linkRow, styles.buddyRow, pressed && styles.pressed]}
+        onPress={() => router.push('/buddy')}
+      >
+        <View style={styles.linkLeft}>
+          <Ionicons name="people-outline" size={18} color={colors.text} />
+          <Text style={[styles.linkText, { color: colors.text }]}>
+            Accountability Buddies
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      </Pressable>
+
+      <Section title="About you">
+        <Text style={styles.label}>Display name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Your name"
+          placeholderTextColor={colors.textFaint}
+          value={displayName}
+          onChangeText={setDisplayName}
+        />
+        <Text style={styles.label}>Area</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="City or region (no exact address)"
+          placeholderTextColor={colors.textFaint}
+          value={area}
+          onChangeText={setArea}
+        />
+        <Text style={styles.label}>Bio</Text>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          placeholder="A short intro"
+          placeholderTextColor={colors.textFaint}
+          value={bio}
+          onChangeText={setBio}
+          multiline
+        />
+      </Section>
+
+      <Section title="Private details">
+        <Text style={styles.sectionNote}>
+          Optional and private by default — you choose what to show.
         </Text>
-        <Text style={[styles.proRowText, isPro && styles.proRowTextActive]}>
-          {isPro ? 'Manage' : '›'}
-        </Text>
-      </Pressable>
+        <Text style={styles.label}>Gender</Text>
+        <ChipSelector options={GENDER_OPTIONS} value={gender} onChange={setGender} />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Hide my gender</Text>
+          <Switch value={genderPrivate} onValueChange={setGenderPrivate} />
+        </View>
 
-      <Pressable style={styles.buddyRow} onPress={() => router.push('/buddy')}>
-        <Text style={styles.buddyText}>🤝 Accountability Buddies</Text>
-        <Text style={styles.buddyText}>›</Text>
-      </Pressable>
+        <Text style={styles.label}>Sexual orientation</Text>
+        <ChipSelector
+          options={ORIENTATION_OPTIONS}
+          value={orientation}
+          onChange={setOrientation}
+        />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Hide my sexual orientation</Text>
+          <Switch value={orientationPrivate} onValueChange={setOrientationPrivate} />
+        </View>
 
-      <Text style={styles.label}>Display name</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Your name"
-        value={displayName}
-        onChangeText={setDisplayName}
-      />
+        <Text style={styles.label}>Birthday</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={colors.textFaint}
+          autoCapitalize="none"
+          value={birthday}
+          onChangeText={setBirthday}
+        />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Keep birthday private</Text>
+          <Switch value={birthdayPrivate} onValueChange={setBirthdayPrivate} />
+        </View>
 
-      <Text style={styles.label}>Area</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="City or region (no exact address)"
-        value={area}
-        onChangeText={setArea}
-      />
+        <Text style={styles.label}>Relationship status</Text>
+        <ChipSelector
+          options={RELATIONSHIP_OPTIONS}
+          value={relationship}
+          onChange={setRelationship}
+        />
+      </Section>
 
-      <Text style={styles.label}>Bio</Text>
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        placeholder="A short intro"
-        value={bio}
-        onChangeText={setBio}
-        multiline
-      />
+      <Section title="Preferences">
+        <View style={styles.switchRow}>
+          <View style={styles.switchLeft}>
+            <Ionicons name="time-outline" size={17} color={colors.textMuted} />
+            <Text style={styles.switchLabel}>Show my last-active time</Text>
+          </View>
+          <Switch value={showLastActive} onValueChange={setShowLastActive} />
+        </View>
+        <View style={styles.switchRow}>
+          <View style={styles.switchLeft}>
+            <Ionicons name="flame" size={17} color={colors.accent} />
+            <Text style={styles.switchLabel}>Daily streak reminder</Text>
+          </View>
+          <Switch value={remindOn} onValueChange={onToggleReminder} />
+        </View>
+      </Section>
 
-      <Text style={styles.sectionNote}>
-        The details below are optional and private by default — you choose what to show.
-      </Text>
+      <Button title="Save profile" onPress={onSave} loading={saving} style={styles.save} />
 
-      <Text style={styles.label}>Gender</Text>
-      <ChipSelector options={GENDER_OPTIONS} value={gender} onChange={setGender} />
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>Hide my gender</Text>
-        <Switch value={genderPrivate} onValueChange={setGenderPrivate} />
-      </View>
-
-      <Text style={styles.label}>Sexual orientation</Text>
-      <ChipSelector
-        options={ORIENTATION_OPTIONS}
-        value={orientation}
-        onChange={setOrientation}
-      />
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>Hide my sexual orientation</Text>
-        <Switch value={orientationPrivate} onValueChange={setOrientationPrivate} />
-      </View>
-
-      <Text style={styles.label}>Birthday</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="YYYY-MM-DD"
-        autoCapitalize="none"
-        value={birthday}
-        onChangeText={setBirthday}
-      />
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>Keep birthday private</Text>
-        <Switch value={birthdayPrivate} onValueChange={setBirthdayPrivate} />
-      </View>
-
-      <Text style={styles.label}>Relationship status</Text>
-      <ChipSelector
-        options={RELATIONSHIP_OPTIONS}
-        value={relationship}
-        onChange={setRelationship}
-      />
-
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>Show my last-active time</Text>
-        <Switch value={showLastActive} onValueChange={setShowLastActive} />
-      </View>
-
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>🔥 Daily streak reminder</Text>
-        <Switch value={remindOn} onValueChange={onToggleReminder} />
-      </View>
-
-      <Pressable style={styles.saveButton} onPress={onSave} disabled={saving}>
-        {saving ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.saveButtonText}>Save profile</Text>
-        )}
-      </Pressable>
-
-      <Pressable style={styles.signOutButton} onPress={onSignOut}>
+      <Pressable
+        style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
+        onPress={onSignOut}
+      >
         <Text style={styles.signOutText}>Sign out</Text>
       </Pressable>
     </ScrollView>
@@ -349,88 +403,128 @@ export default function Profile() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  container: { padding: 20, gap: 8, paddingBottom: 48 },
-  avatarBlock: { alignItems: 'center', gap: 8, marginBottom: 8 },
-  avatarRing: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    overflow: 'hidden',
+  container: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+    paddingBottom: 48,
+    backgroundColor: colors.background,
   },
+  pressed: { opacity: 0.8 },
+  avatarBlock: { alignItems: 'center', gap: 4, marginBottom: spacing.xs },
+  avatarRing: { width: 104, height: 104, borderRadius: 52 },
   avatar: { width: 104, height: 104, borderRadius: 52 },
   avatarPlaceholder: {
-    backgroundColor: '#2563eb',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: { color: '#fff', fontSize: 40, fontWeight: '700' },
+  avatarInitial: { color: '#fff', fontSize: 40, fontFamily: font.bold },
   avatarOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    borderRadius: 52,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  changePhoto: { color: '#2563eb', fontWeight: '600' },
-  email: { fontSize: 18, fontWeight: '700' },
-  meta: { color: '#666', marginBottom: 8 },
-  proRow: {
+  avatarEdit: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  email: { fontSize: 18, fontFamily: font.bold, color: colors.text, marginTop: 4 },
+  meta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13 },
+  linkRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
+    borderRadius: radius.md,
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginTop: 8,
+    paddingHorizontal: spacing.lg,
+    minHeight: 50,
   },
-  proRowActive: { backgroundColor: '#fffbe6', borderWidth: 1, borderColor: '#f0c000' },
-  proRowText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  proRowTextActive: { color: '#b58900' },
+  linkLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  linkText: { fontSize: 15, fontFamily: font.bold },
+  proRow: { backgroundColor: colors.pro },
+  proRowActive: {
+    backgroundColor: colors.proSoft,
+    borderWidth: 1,
+    borderColor: colors.pro,
+  },
   buddyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginTop: 8,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow.card,
   },
-  buddyText: { fontSize: 15, fontWeight: '700' },
-  sectionNote: { color: '#666', fontSize: 13, marginTop: 16, fontStyle: 'italic' },
-  label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
+  section: { marginTop: spacing.md, gap: 6 },
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginLeft: 4,
+  },
+  sectionCard: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: 6,
+    ...shadow.card,
+  },
+  sectionNote: {
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  label: {
+    fontSize: 13.5,
+    fontFamily: font.semibold,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    padding: 12,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: spacing.sm,
+    minHeight: 36,
   },
-  switchLabel: { fontSize: 15 },
-  saveButton: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  switchLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  switchLabel: { fontSize: 15, fontFamily: font.medium, color: colors.text },
+  save: { marginTop: spacing.xl },
   signOutButton: {
-    borderRadius: 10,
+    borderRadius: radius.sm,
     padding: 14,
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: spacing.sm,
+    minHeight: 44,
   },
-  signOutText: { color: '#ef4444', fontSize: 15, fontWeight: '600' },
+  signOutText: { color: colors.danger, fontSize: 15, fontFamily: font.semibold },
 });

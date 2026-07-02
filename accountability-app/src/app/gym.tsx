@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { createItem } from '../timeline/api';
 import {
   listExercises,
@@ -24,6 +25,9 @@ import {
   type LibraryExercise,
   type MuscleGroup,
 } from '../gym/library';
+import { EmptyState } from '../ui/EmptyState';
+import { showToast } from '../ui/Toast';
+import { colors, font, radius, spacing } from '../ui/theme';
 
 export default function Gym() {
   const router = useRouter();
@@ -136,7 +140,7 @@ export default function Gym() {
         starts_at: new Date().toISOString(),
       });
       setSelected({});
-      Alert.alert('Logged 💪', 'Your workout is on your timeline.');
+      showToast('Workout logged 💪');
       router.navigate('/');
     } catch (e) {
       Alert.alert('Could not log', String((e as Error).message ?? e));
@@ -157,13 +161,14 @@ export default function Gym() {
             <TextInput
               style={styles.search}
               placeholder="Search exercises…"
+              placeholderTextColor={colors.textFaint}
               autoCapitalize="none"
               value={search}
               onChangeText={setSearch}
             />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               <FilterChip
-                label="★ Favorites"
+                label="Favorites"
                 active={showFavorites}
                 onPress={() => setShowFavorites((v) => !v)}
                 star
@@ -200,22 +205,32 @@ export default function Gym() {
         }
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+            <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+          ) : showFavorites ? (
+            <EmptyState
+              icon="star-outline"
+              title="No favorites yet"
+              subtitle="Tap the star on an exercise to save it here."
+            />
           ) : (
-            <Text style={styles.empty}>
-              {showFavorites ? 'No favorites yet — tap ☆ on an exercise.' : 'No exercises match those filters.'}
-            </Text>
+            <EmptyState
+              icon="search-outline"
+              title="No exercises found"
+              subtitle="No exercises match those filters."
+            />
           )
         }
         ListFooterComponent={
-          loadingMore ? <ActivityIndicator style={{ marginVertical: 16 }} /> : null
+          loadingMore ? (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
+          ) : null
         }
         renderItem={({ item }) => {
           const picked = !!selected[item.id];
           const fav = favIds.has(item.id);
           return (
             <Pressable
-              style={styles.row}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
               onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: item.id } })}
             >
               <Image source={{ uri: item.images[0] }} style={styles.thumb} resizeMode="cover" />
@@ -225,15 +240,35 @@ export default function Gym() {
                   {(item.primary_muscles[0] ?? 'full body')} · {prettyEquipment(item.equipment)}
                 </Text>
               </View>
-              <Pressable onPress={() => toggleFav(item.id)} hitSlop={8} style={styles.starBtn}>
-                <Text style={[styles.star, fav && styles.starOn]}>{fav ? '★' : '☆'}</Text>
+              <Pressable
+                onPress={() => toggleFav(item.id)}
+                hitSlop={8}
+                style={({ pressed }) => [styles.starBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={fav ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <Ionicons
+                  name={fav ? 'star' : 'star-outline'}
+                  size={22}
+                  color={fav ? colors.accent : colors.textFaint}
+                />
               </Pressable>
               <Pressable
-                style={[styles.addBtn, picked && styles.addBtnOn]}
+                style={({ pressed }) => [
+                  styles.addBtn,
+                  picked && styles.addBtnOn,
+                  pressed && styles.pressed,
+                ]}
                 onPress={() => toggleSelect(item)}
                 hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={picked ? `Remove ${item.name} from workout` : `Add ${item.name} to workout`}
               >
-                <Text style={[styles.addText, picked && styles.addTextOn]}>{picked ? '✓' : '+'}</Text>
+                <Ionicons
+                  name={picked ? 'checkmark' : 'add'}
+                  size={22}
+                  color={picked ? colors.onPrimary : colors.primary}
+                />
               </Pressable>
             </Pressable>
           );
@@ -241,7 +276,11 @@ export default function Gym() {
       />
 
       {selectedNames.length > 0 ? (
-        <Pressable style={styles.logBar} onPress={onLogWorkout}>
+        <Pressable
+          style={({ pressed }) => [styles.logBar, pressed && styles.pressed]}
+          onPress={onLogWorkout}
+          accessibilityRole="button"
+        >
           <Text style={styles.logText}>Log workout ({selectedNames.length}) 💪</Text>
         </Pressable>
       ) : null}
@@ -264,15 +303,30 @@ function FilterChip({
 }) {
   return (
     <Pressable
-      style={[
+      style={({ pressed }) => [
         styles.chip,
         small && styles.chipSmall,
         star && styles.chipStar,
         active && (star ? styles.chipStarActive : styles.chipActive),
+        pressed && styles.pressed,
       ]}
       onPress={onPress}
+      accessibilityRole="button"
     >
-      <Text style={[styles.chipText, active && styles.chipTextActive, star && !active && styles.chipStarText]}>
+      {star ? (
+        <Ionicons
+          name={active ? 'star' : 'star-outline'}
+          size={14}
+          color={active ? colors.text : colors.accent}
+        />
+      ) : null}
+      <Text
+        style={[
+          styles.chipText,
+          active && styles.chipTextActive,
+          star && (active ? styles.chipStarTextActive : styles.chipStarText),
+        ]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -280,73 +334,95 @@ function FilterChip({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  pressed: { opacity: 0.7 },
   listContent: { padding: 14, gap: 10, paddingBottom: 90 },
-  filters: { gap: 10, marginBottom: 4 },
+  filters: { gap: 10, marginBottom: spacing.xs },
   search: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    padding: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.sm,
+    padding: spacing.md,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    minHeight: 48,
   },
-  chipRow: { gap: 8, paddingRight: 8 },
+  chipRow: { gap: spacing.sm, paddingRight: spacing.sm },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
     borderWidth: 1,
-    borderColor: '#2563eb',
-    borderRadius: 18,
+    borderColor: colors.primary,
+    borderRadius: radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 14,
+    minHeight: 44,
   },
-  chipSmall: { paddingVertical: 6, paddingHorizontal: 12, borderColor: '#999' },
-  chipStar: { borderColor: '#f0b000' },
-  chipActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
-  chipStarActive: { backgroundColor: '#f0b000', borderColor: '#f0b000' },
-  chipText: { color: '#2563eb', fontWeight: '600' },
-  chipTextActive: { color: '#fff' },
-  chipStarText: { color: '#b58900' },
-  count: { color: '#888', fontSize: 13, marginTop: 2 },
-  empty: { textAlign: 'center', color: '#888', marginTop: 40 },
+  chipSmall: { paddingVertical: 6, paddingHorizontal: spacing.md, borderColor: colors.textFaint },
+  chipStar: { borderColor: colors.accent },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipStarActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { color: colors.primary, fontFamily: font.semibold },
+  chipTextActive: { color: colors.onPrimary },
+  chipStarText: { color: colors.textSecondary },
+  chipStarTextActive: { color: colors.text },
+  count: { color: colors.textFaint, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
-    padding: 10,
-  },
-  thumb: { width: 56, height: 56, borderRadius: 8, backgroundColor: '#fff' },
-  name: { fontSize: 15, fontWeight: '700' },
-  meta: { color: '#666', marginTop: 2, fontSize: 13, textTransform: 'capitalize' },
-  starBtn: { padding: 4 },
-  star: { fontSize: 22, color: '#bbb' },
-  starOn: { color: '#f0b000' },
-  addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#2563eb',
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: 10,
+    minHeight: 44,
+  },
+  thumb: { width: 56, height: 56, borderRadius: radius.sm - 2, backgroundColor: colors.card },
+  name: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  meta: {
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    marginTop: 2,
+    fontSize: 13,
+    textTransform: 'capitalize',
+  },
+  starBtn: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addBtnOn: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
-  addText: { color: '#2563eb', fontSize: 20, fontWeight: '700' },
-  addTextOn: { color: '#fff' },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtnOn: { backgroundColor: colors.success, borderColor: colors.success },
   logBar: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 20,
-    backgroundColor: '#16a34a',
-    borderRadius: 14,
-    padding: 16,
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.xl,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    minHeight: 48,
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
-  logText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  logText: { color: colors.onPrimary, fontSize: 16, fontFamily: font.bold },
 });

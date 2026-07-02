@@ -17,12 +17,6 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { useFonts, Anton_400Regular } from '@expo-google-fonts/anton';
-import {
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_800ExtraBold,
-} from '@expo-google-fonts/inter';
 import { getHomeStats, type HomeStats } from '../home/api';
 import { createPost } from '../feed/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
@@ -36,12 +30,7 @@ export default function WinCard() {
   const [posting, setPosting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const cardRef = useRef<View>(null);
-  const [fontsLoaded] = useFonts({
-    Anton_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_800ExtraBold,
-  });
+  // Fonts (Inter + Anton) are loaded globally in the root layout.
 
   useFocusEffect(
     useCallback(() => {
@@ -49,7 +38,7 @@ export default function WinCard() {
     }, []),
   );
 
-  if (!stats || !fontsLoaded) {
+  if (!stats) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />

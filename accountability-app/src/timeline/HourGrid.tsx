@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, Pressable, Text, View } from 'react-native';
 import { TimelineCard } from './TimelineCard';
 import { formatHourLabel } from './format';
 import type { TimelineItem } from './types';
+import { colors, font, spacing } from '../ui/theme';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
@@ -25,7 +26,12 @@ export function HourGrid({
       {HOURS.map((h) => {
         const hourItems = byHour[h] ?? [];
         return (
-          <Pressable key={h} style={styles.row} onPress={() => onPressHour(h)}>
+          <Pressable
+            key={h}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            onPress={() => onPressHour(h)}
+            accessibilityLabel={`Add at ${formatHourLabel(h)}`}
+          >
             <Text style={styles.hour}>{formatHourLabel(h)}</Text>
             <View style={styles.body}>
               {hourItems.length === 0 ? (
@@ -46,20 +52,21 @@ export function HourGrid({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 12, paddingBottom: 120 },
+  content: { padding: spacing.md, paddingBottom: 120 },
   row: { flexDirection: 'row', gap: 10, minHeight: 48, paddingVertical: 4 },
+  pressed: { opacity: 0.7 },
   hour: {
     width: 56,
-    color: '#888',
+    color: colors.textFaint,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: font.semibold,
     paddingTop: 6,
   },
   body: { flex: 1, justifyContent: 'center' },
   emptyLine: {
     height: 1,
-    backgroundColor: '#eee',
+    backgroundColor: colors.surface,
     marginVertical: 16,
   },
-  items: { gap: 8 },
+  items: { gap: spacing.sm },
 });

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import {
   getExercise,
   listFavoriteIds,
@@ -18,6 +19,10 @@ import {
   type LibraryExercise,
 } from '../../gym/library';
 import { createItem } from '../../timeline/api';
+import { Button } from '../../ui/Button';
+import { EmptyState } from '../../ui/EmptyState';
+import { showToast } from '../../ui/Toast';
+import { colors, font, radius, spacing } from '../../ui/theme';
 
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -67,7 +72,7 @@ export default function ExerciseDetail() {
         note: null,
         starts_at: new Date().toISOString(),
       });
-      Alert.alert('Logged 💪', `${ex.name} is on your timeline.`);
+      showToast(`${ex.name} logged 💪`);
       router.navigate('/');
     } catch (e) {
       Alert.alert('Could not log', String((e as Error).message ?? e));
@@ -77,24 +82,34 @@ export default function ExerciseDetail() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
   if (!ex) {
     return (
       <View style={styles.center}>
-        <Text>Exercise not found.</Text>
+        <EmptyState icon="barbell-outline" title="Exercise not found" />
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.titleRow}>
         <Text style={styles.name}>{ex.name}</Text>
-        <Pressable onPress={toggleFav} hitSlop={8}>
-          <Text style={[styles.star, fav && styles.starOn]}>{fav ? '★' : '☆'}</Text>
+        <Pressable
+          onPress={toggleFav}
+          hitSlop={8}
+          style={({ pressed }) => [styles.starBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={fav ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Ionicons
+            name={fav ? 'star' : 'star-outline'}
+            size={26}
+            color={fav ? colors.accent : colors.textFaint}
+          />
         </Pressable>
       </View>
       <Text style={styles.meta}>
@@ -119,46 +134,48 @@ export default function ExerciseDetail() {
         </View>
       ))}
 
-      <Pressable style={styles.log} onPress={onLog}>
-        <Text style={styles.logText}>Log this exercise 💪</Text>
-      </Pressable>
+      <Button title="Log this exercise 💪" onPress={onLog} style={styles.log} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  container: { padding: 20, gap: 10, paddingBottom: 48 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  pressed: { opacity: 0.7 },
+  container: { padding: spacing.xl, gap: 10, paddingBottom: 48 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  name: { fontSize: 22, fontWeight: '800', flex: 1 },
-  star: { fontSize: 28, color: '#bbb' },
-  starOn: { color: '#f0b000' },
-  meta: { color: '#666', textTransform: 'capitalize' },
+  name: { fontSize: 22, fontFamily: font.extrabold, color: colors.text, flex: 1 },
+  starBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  meta: { color: colors.textMuted, fontFamily: font.regular, textTransform: 'capitalize' },
   images: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  imageWrap: { flex: 1, gap: 4 },
-  image: { width: '100%', height: 160, borderRadius: 12, backgroundColor: '#f0f0f3' },
-  imageLabel: { textAlign: 'center', color: '#888', fontSize: 12, fontWeight: '600' },
-  heading: { fontSize: 16, fontWeight: '700', marginTop: 14 },
+  imageWrap: { flex: 1, gap: spacing.xs },
+  image: { width: '100%', height: 160, borderRadius: radius.md, backgroundColor: colors.surface },
+  imageLabel: { textAlign: 'center', color: colors.textFaint, fontSize: 12, fontFamily: font.semibold },
+  heading: { fontSize: 16, fontFamily: font.bold, color: colors.text, marginTop: 14 },
   step: { flexDirection: 'row', gap: 10, marginTop: 6 },
   stepNum: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#2563eb',
-    color: '#fff',
+    backgroundColor: colors.primary,
+    color: colors.onPrimary,
     textAlign: 'center',
-    fontWeight: '700',
+    fontFamily: font.bold,
     fontSize: 12,
     lineHeight: 22,
     overflow: 'hidden',
   },
-  stepText: { flex: 1, lineHeight: 21 },
-  log: {
-    backgroundColor: '#16a34a',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  logText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  stepText: { flex: 1, lineHeight: 21, fontFamily: font.regular, color: colors.text },
+  log: { marginTop: spacing.xl },
 });

@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '../feed/Avatar';
 import { authorLabel } from '../feed/format';
 import {
@@ -25,6 +26,10 @@ import {
   type IncomingRequest,
   type Buddy,
 } from '../buddy/api';
+import { Button } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
+import { showToast } from '../ui/Toast';
+import { colors, font, radius, spacing, shadow } from '../ui/theme';
 
 type Tab = 'discover' | 'requests' | 'buddies';
 
@@ -81,19 +86,28 @@ export default function BuddyHub() {
     setCandidates((cur) => cur.filter((x) => x.id !== c.id));
     try {
       await sendRequest(c.id);
-      Alert.alert('Request sent', `We'll link you up if ${authorLabel(c.display_name)} accepts.`);
+      showToast(`Request sent to ${authorLabel(c.display_name)}`);
     } catch (e) {
       Alert.alert('Could not send', String((e as Error).message ?? e));
     }
   }
 
-  async function onBlock(id: string) {
-    setCandidates((cur) => cur.filter((x) => x.id !== id));
-    try {
-      await blockUser(id);
-    } catch (e) {
-      Alert.alert('Could not block', String((e as Error).message ?? e));
-    }
+  function onBlock(id: string) {
+    Alert.alert('Block this person?', 'They won’t appear again or be able to contact you.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          setCandidates((cur) => cur.filter((x) => x.id !== id));
+          try {
+            await blockUser(id);
+          } catch (e) {
+            Alert.alert('Could not block', String((e as Error).message ?? e));
+          }
+        },
+      },
+    ]);
   }
 
   async function onAccept(r: IncomingRequest) {
@@ -101,7 +115,8 @@ export default function BuddyHub() {
     try {
       await acceptRequest(r.id);
       await loadAll();
-      Alert.alert('Linked! 🤝', `You and ${authorLabel(r.name)} are now buddies — say hi!`);
+      setTab('buddies');
+      showToast(`Linked with ${authorLabel(r.name)} 🤝 — say hi!`);
     } catch (e) {
       Alert.alert('Could not accept', String((e as Error).message ?? e));
     }
@@ -119,7 +134,7 @@ export default function BuddyHub() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -127,19 +142,25 @@ export default function BuddyHub() {
   if (!optIn) {
     return (
       <View style={styles.gate}>
-        <Text style={styles.gateEmoji}>🤝</Text>
+        <View style={styles.gateIcon}>
+          <Ionicons name="people" size={44} color={colors.primary} />
+        </View>
         <Text style={styles.gateTitle}>Find an Accountability Buddy</Text>
         <Text style={styles.gateText}>
           Get matched with someone in your area to train with and keep each other
           on track. You only connect if you both say yes, and you can chat once
           you&apos;re linked.
         </Text>
-        <Text style={styles.gateSmall}>
-          Off by default · approximate area only · block & report anytime · 18+.
-        </Text>
-        <Pressable style={styles.gateBtn} onPress={turnOn}>
-          <Text style={styles.gateBtnText}>Turn on buddy matching</Text>
-        </Pressable>
+        <View style={styles.gateBadges}>
+          <Text style={styles.gateSmall}>Off by default</Text>
+          <Text style={styles.gateSmall}>·</Text>
+          <Text style={styles.gateSmall}>Approximate area only</Text>
+          <Text style={styles.gateSmall}>·</Text>
+          <Text style={styles.gateSmall}>Block & report anytime</Text>
+          <Text style={styles.gateSmall}>·</Text>
+          <Text style={styles.gateSmall}>18+</Text>
+        </View>
+        <Button title="Turn on buddy matching" onPress={turnOn} style={styles.gateBtn} />
       </View>
     );
   }
@@ -150,11 +171,19 @@ export default function BuddyHub() {
         {(['discover', 'requests', 'buddies'] as const).map((t) => (
           <Pressable
             key={t}
-            style={[styles.tab, tab === t && styles.tabActive]}
+            style={({ pressed }) => [
+              styles.tab,
+              tab === t && styles.tabActive,
+              pressed && styles.pressed,
+            ]}
             onPress={() => setTab(t)}
           >
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'discover' ? 'Discover' : t === 'requests' ? `Requests (${requests.length})` : 'Buddies'}
+              {t === 'discover'
+                ? 'Discover'
+                : t === 'requests'
+                  ? `Requests${requests.length ? ` (${requests.length})` : ''}`
+                  : 'Buddies'}
             </Text>
           </Pressable>
         ))}
@@ -165,7 +194,13 @@ export default function BuddyHub() {
           data={candidates}
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.empty}>No one new in your area yet. Check back soon!</Text>}
+          ListEmptyComponent={
+            <EmptyState
+              icon="search-outline"
+              title="No one new in your area yet"
+              subtitle="Set your area on your profile so others can find you — and check back soon."
+            />
+          }
           renderItem={({ item }) => (
             <View style={styles.row}>
               <Avatar url={item.avatar_url} name={item.display_name} size={44} />
@@ -173,11 +208,19 @@ export default function BuddyHub() {
                 <Text style={styles.name}>{authorLabel(item.display_name)}</Text>
                 {item.area ? <Text style={styles.meta}>{item.area}</Text> : null}
               </View>
-              <Pressable style={styles.connectBtn} onPress={() => onConnect(item)}>
+              <Pressable
+                style={({ pressed }) => [styles.connectBtn, pressed && styles.pressed]}
+                onPress={() => onConnect(item)}
+              >
                 <Text style={styles.connectText}>Connect</Text>
               </Pressable>
-              <Pressable onPress={() => onBlock(item.id)} hitSlop={8} style={styles.blockBtn}>
-                <Text style={styles.blockText}>Block</Text>
+              <Pressable
+                onPress={() => onBlock(item.id)}
+                hitSlop={8}
+                style={({ pressed }) => [styles.blockBtn, pressed && styles.pressed]}
+                accessibilityLabel={`Block ${authorLabel(item.display_name)}`}
+              >
+                <Ionicons name="ban-outline" size={18} color={colors.danger} />
               </Pressable>
             </View>
           )}
@@ -187,16 +230,30 @@ export default function BuddyHub() {
           data={requests}
           keyExtractor={(r) => r.id}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.empty}>No pending requests.</Text>}
+          ListEmptyComponent={
+            <EmptyState
+              icon="mail-open-outline"
+              title="No pending requests"
+              subtitle="When someone wants to team up, it shows here."
+            />
+          }
           renderItem={({ item }) => (
             <View style={styles.row}>
               <Avatar url={item.avatar} name={item.name} size={44} />
               <Text style={[styles.name, { flex: 1 }]}>{authorLabel(item.name)}</Text>
-              <Pressable style={styles.connectBtn} onPress={() => onAccept(item)}>
+              <Pressable
+                style={({ pressed }) => [styles.connectBtn, pressed && styles.pressed]}
+                onPress={() => onAccept(item)}
+              >
                 <Text style={styles.connectText}>Accept</Text>
               </Pressable>
-              <Pressable onPress={() => onDecline(item)} hitSlop={8} style={styles.blockBtn}>
-                <Text style={styles.blockText}>Decline</Text>
+              <Pressable
+                onPress={() => onDecline(item)}
+                hitSlop={8}
+                style={({ pressed }) => [styles.blockBtn, pressed && styles.pressed]}
+                accessibilityLabel={`Decline ${authorLabel(item.name)}`}
+              >
+                <Ionicons name="close" size={20} color={colors.textFaint} />
               </Pressable>
             </View>
           )}
@@ -206,15 +263,27 @@ export default function BuddyHub() {
           data={buddies}
           keyExtractor={(b) => b.id}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.empty}>No buddies yet. Connect in Discover!</Text>}
+          ListEmptyComponent={
+            <EmptyState
+              icon="people-outline"
+              title="No buddies yet"
+              subtitle="Connect with someone in Discover — once you both say yes, you can chat."
+              actionTitle="Go to Discover"
+              onAction={() => setTab('discover')}
+            />
+          }
           renderItem={({ item }) => (
             <Pressable
-              style={styles.row}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
               onPress={() => router.push({ pathname: '/buddy-chat/[id]', params: { id: item.id } })}
+              accessibilityLabel={`Chat with ${authorLabel(item.name)}`}
             >
               <Avatar url={item.avatar} name={item.name} size={44} />
               <Text style={[styles.name, { flex: 1 }]}>{authorLabel(item.name)}</Text>
-              <Text style={styles.chatHint}>Chat ›</Text>
+              <View style={styles.chatHintWrap}>
+                <Ionicons name="chatbubble-outline" size={15} color={colors.primary} />
+                <Text style={styles.chatHint}>Chat</Text>
+              </View>
             </Pressable>
           )}
         />
@@ -224,35 +293,87 @@ export default function BuddyHub() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  gate: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
-  gateEmoji: { fontSize: 52 },
-  gateTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  gateText: { color: '#444', textAlign: 'center', lineHeight: 21 },
-  gateSmall: { color: '#888', fontSize: 12, textAlign: 'center' },
-  gateBtn: { backgroundColor: '#2563eb', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 24, marginTop: 8 },
-  gateBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  tabs: { flexDirection: 'row', padding: 10, gap: 8 },
-  tab: { flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: '#eee', alignItems: 'center' },
-  tabActive: { backgroundColor: '#2563eb' },
-  tabText: { color: '#444', fontWeight: '600', fontSize: 13 },
+  pressed: { opacity: 0.75 },
+  gate: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: spacing.md,
+    backgroundColor: colors.background,
+  },
+  gateIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gateTitle: {
+    fontSize: 22,
+    fontFamily: font.extrabold,
+    textAlign: 'center',
+    color: colors.text,
+  },
+  gateText: {
+    color: colors.textSecondary,
+    fontFamily: font.regular,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  gateBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  gateSmall: { color: colors.textFaint, fontFamily: font.medium, fontSize: 12 },
+  gateBtn: { marginTop: spacing.sm, minWidth: 240 },
+  tabs: { flexDirection: 'row', padding: spacing.sm, gap: spacing.sm },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    minHeight: 40,
+  },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 13 },
   tabTextActive: { color: '#fff' },
-  list: { padding: 12, gap: 10 },
-  empty: { textAlign: 'center', color: '#888', marginTop: 30 },
+  list: { padding: spacing.md, gap: 10, flexGrow: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 64,
+    ...shadow.card,
   },
-  name: { fontSize: 15, fontWeight: '700' },
-  meta: { color: '#666', fontSize: 13, marginTop: 2 },
-  connectBtn: { backgroundColor: '#16a34a', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 },
-  connectText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  blockBtn: { paddingVertical: 8, paddingHorizontal: 6 },
-  blockText: { color: '#ef4444', fontWeight: '600', fontSize: 13 },
-  chatHint: { color: '#2563eb', fontWeight: '700' },
+  name: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  meta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
+  connectBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  connectText: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
+  blockBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatHintWrap: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  chatHint: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
 });

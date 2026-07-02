@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Platform,
   Pressable,
@@ -12,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { ChipSelector } from '../../profiles/ChipSelector';
 import { useIsPro } from '../../pro/ProProvider';
 import { parseVoiceCommand } from '../../voice/parse';
@@ -29,6 +29,9 @@ import {
   cancelReminder,
 } from '../../notifications/api';
 import { reminderTriggerDate } from '../../notifications/trigger';
+import { Button } from '../../ui/Button';
+import { showToast } from '../../ui/Toast';
+import { colors, font, radius, spacing } from '../../ui/theme';
 import type { TimelineType } from '../../timeline/types';
 
 const TYPE_OPTIONS = TIMELINE_TYPES.map((t) => ({
@@ -47,6 +50,47 @@ function nextHour(): string {
   const d = new Date();
   d.setHours(d.getHours() + 1, 0, 0, 0);
   return `${d.getHours().toString().padStart(2, '0')}:00`;
+}
+
+function dayString(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return toLocalDateString(d);
+}
+
+const DATE_PRESETS = [
+  { label: 'Today', get: () => dayString(0) },
+  { label: 'Tomorrow', get: () => dayString(1) },
+];
+
+const TIME_PRESETS = [
+  { label: 'Morning', value: '08:00' },
+  { label: 'Noon', value: '12:00' },
+  { label: 'Evening', value: '18:00' },
+  { label: 'Next hour', get: nextHour },
+];
+
+function PresetChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.presetChip,
+        selected && styles.presetChipSel,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.presetText, selected && styles.presetTextSel]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export default function Add() {
@@ -139,6 +183,7 @@ export default function Add() {
       setTitle('');
       setNote('');
       setRemind(false);
+      showToast('Added to your day ✓');
       router.navigate('/');
     } catch (e) {
       // Don't leave an alarm ringing for an item that was never saved.
@@ -153,25 +198,37 @@ export default function Add() {
     <ScrollView contentContainerStyle={styles.container}>
       {isPro ? (
         <View style={styles.quickBox}>
-          <Text style={styles.quickTitle}>🎤 Quick add</Text>
+          <View style={styles.quickTitleRow}>
+            <Ionicons name="mic-outline" size={17} color={colors.primary} />
+            <Text style={styles.quickTitle}>Quick add</Text>
+          </View>
           <Text style={styles.quickHint}>
-            Type, or tap the 🎤 on your keyboard and speak — then “Auto-fill”.
+            Type, or tap the mic on your keyboard and speak — then “Auto-fill”.
           </Text>
           <TextInput
             style={[styles.input, styles.quickInput]}
             placeholder="e.g. Remind me to buy medicine tomorrow at 5pm"
+            placeholderTextColor={colors.textFaint}
             value={phrase}
             onChangeText={setPhrase}
             multiline
           />
-          <Pressable style={styles.quickBtn} onPress={onAutoFill}>
-            <Text style={styles.quickBtnText}>Auto-fill ↓</Text>
+          <Pressable
+            style={({ pressed }) => [styles.quickBtn, pressed && styles.pressed]}
+            onPress={onAutoFill}
+          >
+            <Ionicons name="arrow-down" size={15} color="#fff" />
+            <Text style={styles.quickBtnText}>Auto-fill</Text>
           </Pressable>
         </View>
       ) : (
-        <Pressable style={styles.proHint} onPress={() => router.push('/paywall')}>
+        <Pressable
+          style={({ pressed }) => [styles.proHint, pressed && styles.pressed]}
+          onPress={() => router.push('/paywall')}
+        >
+          <Ionicons name="star" size={15} color={colors.pro} />
           <Text style={styles.proHintText}>
-            ⭐ Pro: Quick add by voice — say “remind me to…” and we fill it in.
+            Pro: Quick add by voice — say “remind me to…” and we fill it in.
           </Text>
         </Pressable>
       )}
@@ -183,6 +240,7 @@ export default function Add() {
       <TextInput
         style={styles.input}
         placeholder="e.g. Buy medicine"
+        placeholderTextColor={colors.textFaint}
         value={title}
         onChangeText={setTitle}
       />
@@ -191,144 +249,193 @@ export default function Add() {
       <TextInput
         style={[styles.input, styles.multiline]}
         placeholder="Details"
+        placeholderTextColor={colors.textFaint}
         value={note}
         onChangeText={setNote}
         multiline
       />
 
+      <Text style={styles.label}>When?</Text>
+      <View style={styles.presetRow}>
+        {DATE_PRESETS.map((p) => (
+          <PresetChip
+            key={p.label}
+            label={p.label}
+            selected={date === p.get()}
+            onPress={() => setDate(p.get())}
+          />
+        ))}
+      </View>
       <View style={styles.row}>
         <View style={styles.col}>
-          <Text style={styles.label}>Date</Text>
           <TextInput
             style={styles.input}
             placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             value={date}
             onChangeText={setDate}
           />
         </View>
         <View style={styles.col}>
-          <Text style={styles.label}>Time</Text>
           <TextInput
             style={styles.input}
             placeholder="HH:MM"
+            placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             value={time}
             onChangeText={setTime}
           />
         </View>
       </View>
+      <View style={styles.presetRow}>
+        {TIME_PRESETS.map((p) => {
+          const v = 'value' in p && p.value ? p.value : p.get!();
+          return (
+            <PresetChip
+              key={p.label}
+              label={p.label}
+              selected={time === v}
+              onPress={() => setTime(v)}
+            />
+          );
+        })}
+      </View>
 
       <View style={styles.remindRow}>
+        <Ionicons name="notifications-outline" size={20} color={colors.primary} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.remindTitle}>🔔 Remind me</Text>
+          <Text style={styles.remindTitle}>Remind me</Text>
           <Text style={styles.remindSub}>Get an alarm at this time</Text>
         </View>
         <Switch value={remind} onValueChange={setRemind} />
       </View>
 
       {remind && isPro ? (
-        <View style={styles.offsetRow}>
-          {OFFSET_OPTIONS.map((o) => {
-            const selected = offsetMin === o.m;
-            return (
-              <Pressable
-                key={o.m}
-                style={[styles.offsetChip, selected && styles.offsetChipSel]}
-                onPress={() => setOffsetMin(o.m)}
-              >
-                <Text style={[styles.offsetText, selected && styles.offsetTextSel]}>
-                  {o.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.presetRow}>
+          {OFFSET_OPTIONS.map((o) => (
+            <PresetChip
+              key={o.m}
+              label={o.label}
+              selected={offsetMin === o.m}
+              onPress={() => setOffsetMin(o.m)}
+            />
+          ))}
         </View>
       ) : remind ? (
-        <Pressable style={styles.proHint} onPress={() => router.push('/paywall')}>
+        <Pressable
+          style={({ pressed }) => [styles.proHint, pressed && styles.pressed]}
+          onPress={() => router.push('/paywall')}
+        >
+          <Ionicons name="star" size={15} color={colors.pro} />
           <Text style={styles.proHintText}>
-            ⭐ Pro: get reminded earlier (10 min, 1 hour before…)
+            Pro: get reminded earlier (10 min, 1 hour before…)
           </Text>
         </Pressable>
       ) : null}
 
-      <Pressable style={styles.button} onPress={onSave} disabled={saving}>
-        {saving ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Add to my day</Text>
-        )}
-      </Pressable>
+      <Button
+        title="Add to my day"
+        onPress={onSave}
+        loading={saving}
+        style={styles.save}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 8, paddingBottom: 40 },
-  quickBox: {
-    backgroundColor: '#eef4ff',
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
+  container: {
+    padding: spacing.xl,
+    gap: spacing.sm,
+    paddingBottom: 40,
+    backgroundColor: colors.background,
   },
-  quickTitle: { fontSize: 15, fontWeight: '700' },
-  quickHint: { color: '#555', fontSize: 12 },
-  quickInput: { backgroundColor: '#fff', minHeight: 44 },
+  pressed: { opacity: 0.7 },
+  quickBox: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  quickTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  quickTitle: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  quickHint: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12.5 },
+  quickInput: { backgroundColor: colors.card, minHeight: 44 },
   quickBtn: {
     alignSelf: 'flex-start',
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    minHeight: 40,
   },
-  quickBtnText: { color: '#fff', fontWeight: '700' },
-  label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
+  quickBtnText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  label: {
+    fontSize: 14,
+    fontFamily: font.semibold,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    padding: 12,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
   },
   multiline: { minHeight: 70, textAlignVertical: 'top' },
-  row: { flexDirection: 'row', gap: 12 },
+  row: { flexDirection: 'row', gap: spacing.md, marginTop: 6 },
   col: { flex: 1 },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 6 },
+  presetChip: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  presetChipSel: { backgroundColor: colors.primary },
+  presetText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13 },
+  presetTextSel: { color: '#fff' },
   remindRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    backgroundColor: '#f7f7f9',
-    borderRadius: 12,
-    padding: 14,
-  },
-  remindTitle: { fontSize: 15, fontWeight: '700' },
-  remindSub: { color: '#666', fontSize: 13, marginTop: 2 },
-  offsetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  offsetChip: {
+    gap: spacing.md,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#2563eb',
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.lg,
   },
-  offsetChipSel: { backgroundColor: '#2563eb' },
-  offsetText: { color: '#2563eb', fontWeight: '600', fontSize: 13 },
-  offsetTextSel: { color: '#fff' },
+  remindTitle: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  remindSub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
   proHint: {
-    marginTop: 10,
-    backgroundColor: '#fffbe6',
-    borderColor: '#f0c000',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-  },
-  proHintText: { color: '#b58900', fontWeight: '600', fontSize: 13 },
-  button: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    padding: 16,
+    marginTop: spacing.sm,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 24,
+    gap: 8,
+    backgroundColor: colors.proSoft,
+    borderColor: colors.pro,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    minHeight: 44,
   },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  proHintText: {
+    color: colors.pro,
+    fontFamily: font.semibold,
+    fontSize: 13,
+    flexShrink: 1,
+  },
+  save: { marginTop: spacing.xl },
 });

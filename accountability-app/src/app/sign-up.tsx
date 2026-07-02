@@ -1,16 +1,11 @@
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { validateEmail, validatePassword } from '../auth/validation';
+import { Button } from '../ui/Button';
+import { showToast } from '../ui/Toast';
+import { colors, font, radius, spacing } from '../ui/theme';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
@@ -33,10 +28,7 @@ export default function SignUp() {
     if (error) {
       Alert.alert('Could not sign up', error.message);
     } else {
-      Alert.alert(
-        'Check your email',
-        'Confirm your email address to finish signing up, then log in.',
-      );
+      showToast('Check your email to confirm your account, then log in.');
     }
   }
 
@@ -46,6 +38,7 @@ export default function SignUp() {
       <TextInput
         style={styles.input}
         placeholder="Email"
+        placeholderTextColor={colors.textFaint}
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
@@ -54,17 +47,12 @@ export default function SignUp() {
       <TextInput
         style={styles.input}
         placeholder="Password (8+ characters)"
+        placeholderTextColor={colors.textFaint}
         secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
-      <Pressable style={styles.button} onPress={onSignUp} disabled={busy}>
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Sign up</Text>
-        )}
-      </Pressable>
+      <Button title="Sign up" onPress={onSignUp} loading={busy} style={styles.button} />
       <Link href="/sign-in" style={styles.link}>
         Already have an account? Log in
       </Link>
@@ -73,22 +61,29 @@ export default function SignUp() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
-  title: { fontSize: 28, fontWeight: '700', marginBottom: 12 },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.xxl,
+    gap: spacing.md,
+    backgroundColor: colors.background,
+  },
+  title: { fontSize: 28, fontFamily: font.bold, color: colors.text, marginBottom: spacing.md },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     padding: 14,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
   },
-  button: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 4,
+  button: { marginTop: spacing.xs },
+  link: {
+    textAlign: 'center',
+    color: colors.primary,
+    fontFamily: font.medium,
+    marginTop: spacing.sm,
   },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  link: { textAlign: 'center', color: '#2563eb', marginTop: 8 },
 });

@@ -10,9 +10,12 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { searchFoods, type FoodHit } from '../diet/openfoodfacts';
 import { scaleNutrient, scaleMacro } from '../diet/compute';
 import { addFoodLog, todayString } from '../diet/api';
+import { Button } from '../ui/Button';
+import { colors, font, radius, spacing } from '../ui/theme';
 
 export default function FoodSearch() {
   const router = useRouter();
@@ -89,19 +92,34 @@ export default function FoodSearch() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.searchRow}>
         <TextInput
           style={styles.input}
           placeholder="Search a food (e.g. banana)"
+          placeholderTextColor={colors.textFaint}
           autoCapitalize="none"
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={onSearch}
           returnKeyType="search"
         />
-        <Pressable style={styles.searchBtn} onPress={onSearch} disabled={searching}>
-          {searching ? <ActivityIndicator color="#fff" /> : <Text style={styles.searchBtnText}>Search</Text>}
+        <Pressable
+          style={({ pressed }) => [styles.searchBtn, pressed && !searching && styles.pressed]}
+          onPress={onSearch}
+          disabled={searching}
+          accessibilityRole="button"
+          accessibilityLabel="Search"
+        >
+          {searching ? (
+            <ActivityIndicator color={colors.onPrimary} />
+          ) : (
+            <Text style={styles.searchBtnText}>Search</Text>
+          )}
         </Pressable>
       </View>
 
@@ -110,7 +128,11 @@ export default function FoodSearch() {
         return (
           <Pressable
             key={`${hit.name}-${i}`}
-            style={[styles.result, isSel && styles.resultSel]}
+            style={({ pressed }) => [
+              styles.result,
+              isSel && styles.resultSel,
+              pressed && styles.pressed,
+            ]}
             onPress={() => {
               setSelected(hit);
               setGrams('100');
@@ -123,7 +145,9 @@ export default function FoodSearch() {
                 {hit.per100.kcal} kcal / 100g
               </Text>
             </View>
-            {isSel ? <Text style={styles.check}>✓</Text> : null}
+            {isSel ? (
+              <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+            ) : null}
           </Pressable>
         );
       })}
@@ -136,14 +160,18 @@ export default function FoodSearch() {
             <TextInput
               style={styles.gramsInput}
               keyboardType="number-pad"
+              placeholderTextColor={colors.textFaint}
               value={grams}
               onChangeText={setGrams}
             />
           </View>
           <Text style={styles.preview}>= {previewKcal} kcal</Text>
-          <Pressable style={styles.addBtn} onPress={onAddSelected} disabled={saving}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.addText}>Add to today</Text>}
-          </Pressable>
+          <Button
+            title="Add to today"
+            variant="success"
+            onPress={onAddSelected}
+            loading={saving}
+          />
         </View>
       ) : null}
 
@@ -152,90 +180,96 @@ export default function FoodSearch() {
         <TextInput
           style={styles.input}
           placeholder="Food name"
+          placeholderTextColor={colors.textFaint}
           value={manualName}
           onChangeText={setManualName}
         />
         <TextInput
           style={styles.input}
           placeholder="Calories"
+          placeholderTextColor={colors.textFaint}
           keyboardType="number-pad"
           value={manualKcal}
           onChangeText={setManualKcal}
         />
-        <Pressable style={[styles.addBtn, styles.manualBtn]} onPress={onAddManual} disabled={saving}>
-          <Text style={styles.addText}>Add manually</Text>
-        </Pressable>
+        <Button title="Add manually" onPress={onAddManual} disabled={saving} />
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 10, paddingBottom: 48 },
-  searchRow: { flexDirection: 'row', gap: 8 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  container: { padding: spacing.lg, gap: 10, paddingBottom: 48 },
+  pressed: { opacity: 0.7 },
+  searchRow: { flexDirection: 'row', gap: spacing.sm },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    padding: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.sm,
+    padding: spacing.md,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
     flex: 1,
+    minHeight: 48,
   },
   searchBtn: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
     paddingHorizontal: 18,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  searchBtnText: { color: '#fff', fontWeight: '700' },
+  searchBtnText: { color: colors.onPrimary, fontFamily: font.bold },
   result: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#f7f7f9',
-    borderRadius: 10,
-    padding: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    minHeight: 44,
   },
-  resultSel: { borderWidth: 2, borderColor: '#16a34a' },
-  resultName: { fontWeight: '600' },
-  resultMeta: { color: '#666', fontSize: 13, marginTop: 2 },
-  check: { color: '#16a34a', fontSize: 18, fontWeight: '800' },
+  resultSel: { borderWidth: 2, borderColor: colors.success },
+  resultName: { fontFamily: font.semibold, color: colors.text },
+  resultMeta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
   panel: {
-    backgroundColor: '#eefcef',
-    borderRadius: 12,
+    backgroundColor: colors.successSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     padding: 14,
-    gap: 8,
+    gap: spacing.sm,
   },
-  panelTitle: { fontWeight: '700', fontSize: 16 },
-  panelLabel: { fontWeight: '600' },
+  panelTitle: { fontFamily: font.bold, fontSize: 16, color: colors.text },
+  panelLabel: { fontFamily: font.semibold, color: colors.text },
   gramsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   gramsInput: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.sm,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     minWidth: 90,
+    minHeight: 44,
     textAlign: 'right',
     fontSize: 16,
-    backgroundColor: '#fff',
+    fontFamily: font.regular,
+    color: colors.text,
   },
-  preview: { fontSize: 18, fontWeight: '800', color: '#16a34a' },
-  addBtn: {
-    backgroundColor: '#16a34a',
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-  },
-  addText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  preview: { fontSize: 18, fontFamily: font.extrabold, color: colors.success },
   manual: {
-    gap: 8,
+    gap: spacing.sm,
     marginTop: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ddd',
+    borderTopColor: colors.border,
     paddingTop: 14,
   },
-  manualHeading: { fontWeight: '700', color: '#666' },
-  manualBtn: { backgroundColor: '#2563eb' },
+  manualHeading: { fontFamily: font.bold, color: colors.textMuted },
 });

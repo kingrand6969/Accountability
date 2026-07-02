@@ -1,18 +1,25 @@
+import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useIsPro } from '../pro/ProProvider';
+import { Button } from '../ui/Button';
+import { colors, font, radius, shadow, spacing } from '../ui/theme';
 
 const BENEFITS = [
-  'No ads',
-  'Unlimited history + advanced insights',
-  'Smart reminders & voice commands',
-  'Gym Assist workout generator',
-  'Diet & calorie tracker',
-  'Accountability circles & challenges',
-  'Data export (PDF / CSV)',
+  { icon: 'remove-circle-outline' as const, text: 'No ads' },
+  { icon: 'trending-up-outline' as const, text: 'Unlimited history + advanced insights' },
+  { icon: 'mic-outline' as const, text: 'Smart reminders & voice commands' },
+  { icon: 'barbell-outline' as const, text: 'Full exercise library tools' },
+  { icon: 'nutrition-outline' as const, text: 'Diet & calorie tracker' },
+  { icon: 'people-outline' as const, text: 'Accountability circles & challenges' },
+  { icon: 'download-outline' as const, text: 'Data export (PDF / CSV)' },
 ];
+
+type Plan = 'yearly' | 'monthly';
 
 export default function Paywall() {
   const { isPro } = useIsPro();
+  const [plan, setPlan] = useState<Plan>('yearly');
 
   function onUpgrade() {
     Alert.alert(
@@ -23,93 +30,148 @@ export default function Paywall() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Accountability Pro</Text>
-      <Text style={styles.subtitle}>Get more out of every day.</Text>
+      <View style={styles.hero}>
+        <View style={styles.heroIcon}>
+          <Ionicons name="star" size={34} color={colors.pro} />
+        </View>
+        <Text style={styles.title}>Accountability Pro</Text>
+        <Text style={styles.subtitle}>Get more out of every day.</Text>
+      </View>
 
       <View style={styles.card}>
         {BENEFITS.map((b) => (
-          <View key={b} style={styles.benefitRow}>
-            <Text style={styles.check}>✓</Text>
-            <Text style={styles.benefit}>{b}</Text>
+          <View key={b.text} style={styles.benefitRow}>
+            <Ionicons name={b.icon} size={18} color={colors.pro} />
+            <Text style={styles.benefit}>{b.text}</Text>
+            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
           </View>
         ))}
       </View>
 
       <View style={styles.prices}>
-        <View style={[styles.price, styles.priceHighlight]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.price,
+            plan === 'yearly' && styles.priceSelected,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => setPlan('yearly')}
+        >
+          <View style={styles.bestBadge}>
+            <Text style={styles.bestBadgeText}>BEST VALUE</Text>
+          </View>
           <Text style={styles.priceLabel}>Yearly</Text>
           <Text style={styles.priceValue}>$29.99</Text>
-          <Text style={styles.priceNote}>best value · $2.50/mo</Text>
-        </View>
-        <View style={styles.price}>
+          <Text style={styles.priceNote}>only $2.50/mo</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.price,
+            plan === 'monthly' && styles.priceSelected,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => setPlan('monthly')}
+        >
           <Text style={styles.priceLabel}>Monthly</Text>
           <Text style={styles.priceValue}>$3.99</Text>
           <Text style={styles.priceNote}>per month</Text>
-        </View>
+        </Pressable>
       </View>
 
       {isPro ? (
         <View style={styles.proActive}>
-          <Text style={styles.proActiveText}>⭐ You&apos;re on Pro</Text>
+          <Ionicons name="star" size={17} color={colors.pro} />
+          <Text style={styles.proActiveText}>You&apos;re on Pro</Text>
         </View>
       ) : (
-        <Pressable style={styles.cta} onPress={onUpgrade}>
-          <Text style={styles.ctaText}>Upgrade to Pro</Text>
-        </Pressable>
+        <Button
+          title={plan === 'yearly' ? 'Start Pro — $29.99/yr' : 'Start Pro — $3.99/mo'}
+          onPress={onUpgrade}
+          style={styles.cta}
+        />
       )}
 
       <Text style={styles.devNote}>
-        Subscriptions launch with the store release — checkout opens here.
+        Subscriptions launch with the store release — checkout opens here. Cancel anytime.
       </Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, gap: 12 },
-  title: { fontSize: 28, fontWeight: '800' },
-  subtitle: { color: '#666', fontSize: 16, marginBottom: 8 },
-  card: {
-    backgroundColor: '#f7f7f9',
-    borderRadius: 14,
-    padding: 18,
-    gap: 10,
+  container: {
+    padding: spacing.xxl,
+    gap: spacing.md,
+    backgroundColor: colors.background,
   },
-  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  check: { color: '#16a34a', fontSize: 16, fontWeight: '800' },
-  benefit: { fontSize: 15, flex: 1 },
-  prices: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  pressed: { opacity: 0.8 },
+  hero: { alignItems: 'center', gap: 4, marginBottom: spacing.xs },
+  heroIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.proSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  title: { fontSize: 26, fontFamily: font.extrabold, color: colors.text },
+  subtitle: { color: colors.textMuted, fontFamily: font.regular, fontSize: 15 },
+  card: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.md,
+    ...shadow.card,
+  },
+  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  benefit: { fontSize: 15, fontFamily: font.medium, color: colors.text, flex: 1 },
+  prices: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   price: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 14,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    paddingTop: 18,
     alignItems: 'center',
     gap: 2,
+    backgroundColor: colors.card,
   },
-  priceHighlight: { borderColor: '#2563eb', borderWidth: 2 },
-  priceLabel: { fontWeight: '700' },
-  priceValue: { fontSize: 22, fontWeight: '800' },
-  priceNote: { color: '#888', fontSize: 12 },
-  cta: {
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
+  priceSelected: { borderColor: colors.pro, backgroundColor: colors.proSoft },
+  bestBadge: {
+    position: 'absolute',
+    top: -10,
+    backgroundColor: colors.pro,
+    borderRadius: radius.pill,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
   },
-  ctaText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  bestBadgeText: { color: '#fff', fontSize: 10, fontFamily: font.extrabold, letterSpacing: 0.6 },
+  priceLabel: { fontFamily: font.bold, color: colors.text },
+  priceValue: { fontSize: 24, fontFamily: font.extrabold, color: colors.text },
+  priceNote: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12 },
+  cta: { marginTop: spacing.sm, backgroundColor: colors.pro },
   proActive: {
-    backgroundColor: '#fffbe6',
-    borderColor: '#f0c000',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.proSoft,
+    borderColor: colors.pro,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: radius.md,
+    padding: spacing.lg,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
-  proActiveText: { fontSize: 16, fontWeight: '700', color: '#b58900' },
-  devNote: { color: '#999', fontSize: 12, marginTop: 12, textAlign: 'center' },
-  downgrade: { color: '#ef4444', textAlign: 'center', marginTop: 4 },
+  proActiveText: { fontSize: 16, fontFamily: font.bold, color: colors.pro },
+  devNote: {
+    color: colors.textFaint,
+    fontFamily: font.regular,
+    fontSize: 12,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
 });

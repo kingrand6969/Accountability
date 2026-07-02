@@ -10,6 +10,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { ProProvider } from '../pro/ProProvider';
+import { ToastHost } from '../ui/Toast';
 import '../notifications/handler';
 import '../activity/locationTask';
 
@@ -63,6 +64,7 @@ export default function RootLayout() {
     <AuthProvider>
       <ProProvider>
         <RootNavigator />
+        <ToastHost />
       </ProProvider>
     </AuthProvider>
   );

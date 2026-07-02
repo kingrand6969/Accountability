@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useIsPro } from './ProProvider';
+import { colors, font } from '../ui/theme';
 
 /**
  * Placeholder ad banner. Free users see it; Pro users don't. Swap the inner
@@ -19,11 +20,11 @@ export function AdBanner() {
 const styles = StyleSheet.create({
   banner: {
     height: 50,
-    backgroundColor: '#e8e8ee',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ccc',
+    borderTopColor: colors.border,
   },
-  text: { color: '#888', fontSize: 13 },
+  text: { color: colors.textFaint, fontFamily: font.medium, fontSize: 13 },
 });

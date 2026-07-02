@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -10,10 +9,13 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { addTransaction, todayDate } from '../money/api';
 import { categoriesFor } from '../money/categories';
 import { validateDateString } from '../timeline/datetime';
 import type { TxKind } from '../money/types';
+import { Button } from '../ui/Button';
+import { colors, font, radius, spacing } from '../ui/theme';
 
 export default function MoneyAdd() {
   const router = useRouter();
@@ -59,12 +61,16 @@ export default function MoneyAdd() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.kindRow}>
         {(['expense', 'income'] as const).map((k) => (
           <Pressable
             key={k}
-            style={[styles.kindBtn, kind === k && (k === 'income' ? styles.kindIncome : styles.kindExpense)]}
+            style={({ pressed }) => [
+              styles.kindBtn,
+              kind === k && (k === 'income' ? styles.kindIncome : styles.kindExpense),
+              pressed && styles.pressed,
+            ]}
             onPress={() => {
               setKind(k);
               setCategory(null);
@@ -81,6 +87,7 @@ export default function MoneyAdd() {
       <TextInput
         style={styles.amountInput}
         placeholder="0.00"
+        placeholderTextColor={colors.textFaint}
         keyboardType="decimal-pad"
         value={amount}
         onChangeText={setAmount}
@@ -93,12 +100,21 @@ export default function MoneyAdd() {
           return (
             <Pressable
               key={c.value}
-              style={[styles.chip, selected && styles.chipSelected]}
+              style={({ pressed }) => [
+                styles.chip,
+                selected && styles.chipSelected,
+                pressed && styles.pressed,
+              ]}
               onPress={() => setCategory(c.value)}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                {c.emoji} {c.label}
-              </Text>
+              <View style={[styles.chipIconCircle, selected && styles.chipIconCircleSelected]}>
+                <Ionicons
+                  name={c.icon as any}
+                  size={16}
+                  color={selected ? colors.onPrimary : colors.primary}
+                />
+              </View>
+              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{c.label}</Text>
             </Pressable>
           );
         })}
@@ -108,6 +124,7 @@ export default function MoneyAdd() {
       <TextInput
         style={styles.input}
         placeholder="e.g. Lunch with team"
+        placeholderTextColor={colors.textFaint}
         value={note}
         onChangeText={setNote}
       />
@@ -116,67 +133,88 @@ export default function MoneyAdd() {
       <TextInput
         style={styles.input}
         placeholder="YYYY-MM-DD"
+        placeholderTextColor={colors.textFaint}
         autoCapitalize="none"
         value={date}
         onChangeText={setDate}
       />
 
-      <Pressable style={styles.save} onPress={onSave} disabled={saving}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save</Text>}
-      </Pressable>
+      <Button
+        title="Save"
+        onPress={onSave}
+        loading={saving}
+        variant={kind === 'income' ? 'success' : 'primary'}
+        style={styles.save}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 8, paddingBottom: 40 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  container: { padding: spacing.xl, gap: spacing.sm, paddingBottom: 40 },
   kindRow: { flexDirection: 'row', gap: 10 },
   kindBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    backgroundColor: colors.surfaceAlt,
   },
-  kindExpense: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
-  kindIncome: { backgroundColor: '#16a34a', borderColor: '#16a34a' },
-  kindText: { fontWeight: '700', color: '#444' },
-  kindTextActive: { color: '#fff' },
-  label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
+  kindExpense: { backgroundColor: colors.danger, borderColor: colors.danger },
+  kindIncome: { backgroundColor: colors.success, borderColor: colors.success },
+  kindText: { fontFamily: font.bold, color: colors.textSecondary },
+  kindTextActive: { color: colors.onPrimary },
+  pressed: { opacity: 0.7 },
+  label: { fontSize: 14, fontFamily: font.semibold, color: colors.textSecondary, marginTop: spacing.md },
   amountInput: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     padding: 14,
     fontSize: 28,
-    fontWeight: '800',
+    fontFamily: font.extrabold,
+    color: colors.text,
     textAlign: 'center',
+    backgroundColor: colors.surfaceAlt,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    padding: 12,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
   },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderWidth: 1,
-    borderColor: '#2563eb',
-    borderRadius: 18,
+    borderColor: colors.primary,
+    borderRadius: radius.pill,
     paddingVertical: 8,
     paddingHorizontal: 14,
+    minHeight: 44,
   },
-  chipSelected: { backgroundColor: '#2563eb' },
-  chipText: { color: '#2563eb', fontWeight: '600' },
-  chipTextSelected: { color: '#fff' },
-  save: {
-    backgroundColor: '#2563eb',
+  chipSelected: { backgroundColor: colors.primary },
+  chipIconCircle: {
+    width: 24,
+    height: 24,
     borderRadius: 12,
-    padding: 16,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
-    marginTop: 24,
+    justifyContent: 'center',
   },
-  saveText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  chipIconCircleSelected: { backgroundColor: 'rgba(255, 255, 255, 0.25)' },
+  chipText: { color: colors.primary, fontFamily: font.semibold },
+  chipTextSelected: { color: colors.onPrimary },
+  save: { marginTop: spacing.xxl },
 });
