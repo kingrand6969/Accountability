@@ -352,9 +352,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...shadow.card,
   },
-  cover: { width: '100%', height: 120, backgroundColor: colors.surface },
+  cover: { width: '100%', height: 180, backgroundColor: colors.surface },
   avatarWrap: {
-    marginTop: -(AVATAR_SIZE / 2),
+    // avatar sits fully on the cover — cover reaches its bottom edge
+    marginTop: -(AVATAR_SIZE + 8),
     marginLeft: spacing.lg,
     width: AVATAR_SIZE + 8,
     height: AVATAR_SIZE + 8,
