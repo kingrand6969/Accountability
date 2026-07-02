@@ -65,11 +65,12 @@ export default function AppLayout() {
         name="activity"
         options={{ title: 'Track', tabBarIcon: tabIcon('barbell', 'barbell-outline') }}
       />
+      {/* Profile lives in the ☰ Menu now — hidden from the tab bar but the
+          /profile route stays reachable */}
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: tabIcon('person', 'person-outline'),
+          href: null,
           headerShown: false, // cover photo runs edge-to-edge, FB-style
         }}
       />
