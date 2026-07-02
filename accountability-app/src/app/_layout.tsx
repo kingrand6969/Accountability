@@ -49,6 +49,11 @@ function RootNavigator() {
         <Stack.Screen name="activity-track" options={{ headerShown: true, title: 'Track Activity' }} />
         <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
+        <Stack.Screen name="buddy-card/[id]" options={{ headerShown: true, title: 'Buddy' }} />
+        <Stack.Screen
+          name="buddy-card-edit"
+          options={{ headerShown: true, title: 'Your Buddy Card' }}
+        />
         <Stack.Screen name="win-card" options={{ headerShown: true, title: 'Share a win' }} />
         <Stack.Screen name="insights" options={{ headerShown: true, title: 'Progress' }} />
         <Stack.Screen name="books" options={{ headerShown: true, title: 'Daily Reads' }} />

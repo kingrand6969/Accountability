@@ -213,6 +213,15 @@ export default function BuddyHub() {
         ))}
       </View>
 
+      <Pressable
+        onPress={() => router.push('/buddy-card-edit' as never)}
+        style={({ pressed }) => [styles.customizeRow, pressed && styles.pressed]}
+        accessibilityLabel="Customize your buddy card"
+      >
+        <Ionicons name="color-palette-outline" size={15} color={colors.primary} />
+        <Text style={styles.customizeText}>Customize how others see your buddy card</Text>
+      </Pressable>
+
       {tab === 'discover' ? (
         <FlatList
           data={results ?? candidates}
@@ -268,7 +277,13 @@ export default function BuddyHub() {
             )
           }
           renderItem={({ item }) => (
-            <View style={styles.row}>
+            <Pressable
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+              onPress={() =>
+                router.push({ pathname: '/buddy-card/[id]', params: { id: item.id } } as never)
+              }
+              accessibilityLabel={`View ${authorLabel(item.display_name)}'s buddy card`}
+            >
               <Avatar url={item.avatar_url} name={item.display_name} size={44} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{authorLabel(item.display_name)}</Text>
@@ -288,7 +303,7 @@ export default function BuddyHub() {
               >
                 <Ionicons name="ban-outline" size={18} color={colors.danger} />
               </Pressable>
-            </View>
+            </Pressable>
           )}
         />
       ) : tab === 'requests' ? (
@@ -433,6 +448,15 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tabs: { flexDirection: 'row', padding: spacing.sm, gap: spacing.sm },
+  customizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingBottom: spacing.xs,
+    minHeight: 32,
+  },
+  customizeText: { color: colors.primary, fontFamily: font.semibold, fontSize: 12.5 },
   tab: {
     flex: 1,
     paddingVertical: 10,
