@@ -12,7 +12,7 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/diet' | '/money' | '/activity-track' | '/insights';
+  route: '/gym' | '/diet' | '/money' | '/activity-track' | '/insights' | '/books';
 }[] = [
   {
     key: 'insights',
@@ -53,6 +53,14 @@ const PILLARS: {
     title: 'Activity',
     sub: 'GPS runs, rides & walks',
     route: '/activity-track',
+  },
+  {
+    key: 'books',
+    icon: 'book-outline',
+    tint: '#0d9488',
+    title: 'Daily Reads',
+    sub: 'A free e-book for your interests · Pro',
+    route: '/books',
   },
 ];
 

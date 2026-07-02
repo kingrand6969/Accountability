@@ -51,6 +51,7 @@ function RootNavigator() {
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
         <Stack.Screen name="win-card" options={{ headerShown: true, title: 'Share a win' }} />
         <Stack.Screen name="insights" options={{ headerShown: true, title: 'Progress' }} />
+        <Stack.Screen name="books" options={{ headerShown: true, title: 'Daily Reads' }} />
         <Stack.Screen name="groups" options={{ headerShown: true, title: 'Groups' }} />
         <Stack.Screen name="group/[id]" options={{ headerShown: true, title: 'Group' }} />
         <Stack.Screen name="group-new" options={{ headerShown: true, title: 'New Group' }} />
