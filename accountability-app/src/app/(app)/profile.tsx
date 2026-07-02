@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.8 },
   coverWrap: {
     marginHorizontal: -spacing.lg, // full-bleed banner
-    height: 148,
+    height: 222, // 148 + 50%
   },
   cover: { width: '100%', height: '100%' },
   coverBtn: {
@@ -487,7 +487,9 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   coverBtnText: { color: '#fff', fontFamily: font.semibold, fontSize: 12 },
-  avatarBlock: { alignItems: 'center', gap: 4, marginTop: -52, marginBottom: spacing.xs },
+  // avatar sits almost fully on the cover — its bottom edge (camera badge)
+  // lines up with the cover's bottom edge
+  avatarBlock: { alignItems: 'center', gap: 4, marginTop: -96, marginBottom: spacing.xs },
   avatarRing: {
     width: 104,
     height: 104,
