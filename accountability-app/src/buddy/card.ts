@@ -2,12 +2,13 @@ import { supabase } from '../lib/supabase';
 
 /** Background themes a user can pick for their buddy card. */
 export const CARD_BACKGROUNDS: { key: string; label: string; colors: [string, string] }[] = [
-  { key: 'ocean', label: 'Ocean', colors: ['#3b82f6', '#1e40af'] },
-  { key: 'violet', label: 'Violet', colors: ['#7c3aed', '#312e81'] },
-  { key: 'sunset', label: 'Sunset', colors: ['#db2777', '#7c3aed'] },
-  { key: 'ember', label: 'Ember', colors: ['#f59e0b', '#dc2626'] },
-  { key: 'forest', label: 'Forest', colors: ['#16a34a', '#064e3b'] },
-  { key: 'slate', label: 'Slate', colors: ['#475569', '#0f172a'] },
+  // single-hue ramps — calm, no clashing families
+  { key: 'ocean', label: 'Ocean', colors: ['#60a5fa', '#1d4ed8'] },
+  { key: 'violet', label: 'Violet', colors: ['#a78bfa', '#5b21b6'] },
+  { key: 'sunset', label: 'Sunset', colors: ['#fb923c', '#db2777'] },
+  { key: 'ember', label: 'Ember', colors: ['#fbbf24', '#b91c1c'] },
+  { key: 'forest', label: 'Forest', colors: ['#34d399', '#065f46'] },
+  { key: 'slate', label: 'Slate', colors: ['#64748b', '#0f172a'] },
 ];
 
 export function cardBackground(key?: string | null): [string, string] {

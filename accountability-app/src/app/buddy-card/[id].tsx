@@ -74,7 +74,6 @@ export default function BuddyCardScreen() {
 
   return (
     <View style={styles.screen}>
-      <LinearGradient colors={bg} start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 1 }} style={StyleSheet.absoluteFill} />
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* framed card like the reference */}
         <View style={styles.card}>
@@ -145,7 +144,7 @@ export default function BuddyCardScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   missing: { fontFamily: font.regular, color: colors.textMuted },
   scroll: { padding: spacing.lg, paddingBottom: 40 },
@@ -172,7 +171,7 @@ const styles = StyleSheet.create({
     maxWidth: 130,
     flexDirection: 'row',
     gap: 5,
-    backgroundColor: 'rgba(15,23,42,0.45)',
+    backgroundColor: 'rgba(15,23,42,0.62)',
     borderRadius: radius.md,
     padding: 8,
   },
@@ -219,7 +218,7 @@ const styles = StyleSheet.create({
   aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: colors.textSecondary },
   connect: { marginTop: spacing.lg },
   hint: {
-    color: 'rgba(255,255,255,0.85)',
+    color: colors.textMuted,
     fontFamily: font.medium,
     fontSize: 12.5,
     textAlign: 'center',
