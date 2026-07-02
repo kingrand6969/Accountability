@@ -62,8 +62,12 @@ export function HomeHeader() {
 
       <Text style={styles.today}>{todayLine}</Text>
 
-      <View style={styles.weekRow}>
-        <Text style={styles.weekLabel}>This week</Text>
+      <Pressable
+        style={({ pressed }) => [styles.weekRow, pressed && styles.pressed]}
+        onPress={() => router.push('/insights')}
+        accessibilityLabel="See your full progress"
+      >
+        <Text style={styles.weekLabel}>This week · see progress</Text>
         <View style={styles.weekStat}>
           <Ionicons name="barbell-outline" size={15} color="#fff" />
           <Text style={styles.weekStatText}>{stats.weekWorkouts}</Text>
@@ -76,7 +80,8 @@ export function HomeHeader() {
           <Ionicons name="cash-outline" size={15} color="#fff" />
           <Text style={styles.weekStatText}>{formatAmount(stats.weekSpend)}</Text>
         </View>
-      </View>
+        <Ionicons name="chevron-forward" size={14} color="#dbeafe" />
+      </Pressable>
     </View>
   );
 }

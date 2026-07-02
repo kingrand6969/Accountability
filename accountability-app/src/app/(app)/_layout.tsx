@@ -1,7 +1,8 @@
 import { type ComponentProps, useEffect, useState } from 'react';
-import { type ColorValue, View } from 'react-native';
-import { Redirect, Tabs } from 'expo-router';
+import { type ColorValue, Pressable, Text, View } from 'react-native';
+import { Link, Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { font } from '../../ui/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onboardedKey } from '../onboarding';
 import { useAuth } from '../../auth/AuthProvider';
@@ -39,7 +40,35 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="feed"
-        options={{ title: 'Feed', tabBarIcon: tabIcon('people', 'people-outline') }}
+        options={{
+          title: 'Feed',
+          tabBarIcon: tabIcon('people', 'people-outline'),
+          headerTitle: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="flame" size={20} color="#fbbf24" />
+              <Text style={{ fontFamily: font.extrabold, fontSize: 18, letterSpacing: 0.3 }}>
+                Accountability
+              </Text>
+            </View>
+          ),
+          headerRight: () => (
+            <Link href="/groups" asChild>
+              <Pressable
+                style={({ pressed }) => ({
+                  marginRight: 16,
+                  minWidth: 44,
+                  minHeight: 44,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.6 : 1,
+                })}
+                accessibilityLabel="Groups"
+              >
+                <Ionicons name="people-circle-outline" size={26} color={colors.primary} />
+              </Pressable>
+            </Link>
+          ),
+        }}
       />
       <Tabs.Screen
         name="add"

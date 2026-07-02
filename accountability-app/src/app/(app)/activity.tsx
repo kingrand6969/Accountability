@@ -12,8 +12,16 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/diet' | '/money' | '/activity-track';
+  route: '/gym' | '/diet' | '/money' | '/activity-track' | '/insights';
 }[] = [
+  {
+    key: 'insights',
+    icon: 'stats-chart-outline',
+    tint: '#2563eb',
+    title: 'Progress & Insights',
+    sub: 'Your day, week & month at a glance',
+    route: '/insights',
+  },
   {
     key: 'gym',
     icon: 'barbell-outline',

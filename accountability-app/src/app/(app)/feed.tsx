@@ -18,6 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { uploadPostImage } from '../../feed/uploadPostImage';
 import { promptCrossShare } from '../../feed/crossShare';
+import { StoryRail } from '../../stories/StoryRail';
+import { PhotoEditor, type EditedPhoto } from '../../media/PhotoEditor';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
@@ -36,6 +38,7 @@ export default function Feed() {
   const [pickedBase64, setPickedBase64] = useState<string | null>(null);
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [editorUri, setEditorUri] = useState<string | null>(null);
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
 
@@ -101,9 +104,22 @@ export default function Feed() {
       Alert.alert('Could not read image', 'Please try a different photo.');
       return;
     }
-    setPickedBase64(asset.base64);
-    setPickedExt(asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg');
-    setPreviewUri(asset.uri);
+    if (Platform.OS === 'web') {
+      // no view-shot on web — use the raw photo
+      setPickedBase64(asset.base64);
+      setPickedExt(asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg');
+      setPreviewUri(asset.uri);
+      return;
+    }
+    // native: filters + brand watermark get baked in by the editor
+    setEditorUri(asset.uri);
+  }
+
+  function onEdited(photo: EditedPhoto) {
+    setPickedBase64(photo.base64);
+    setPickedExt('jpg');
+    setPreviewUri(photo.uri);
+    setEditorUri(null);
   }
 
   function clearPhoto() {
@@ -167,6 +183,12 @@ export default function Feed() {
 
   return (
     <View style={styles.screen}>
+      {editorUri ? (
+        <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
+      ) : null}
+      <View style={styles.storyStrip}>
+        <StoryRail />
+      </View>
       <View style={styles.composer}>
         <TextInput
           style={styles.composerInput}
@@ -291,6 +313,10 @@ export default function Feed() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  storyStrip: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
   composer: {
     padding: spacing.lg,
     gap: spacing.sm,
