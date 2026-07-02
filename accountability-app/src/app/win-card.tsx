@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getHomeStats, type HomeStats } from '../home/api';
 import { createPost } from '../feed/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
+import { promptCrossShare } from '../feed/crossShare';
 
 const ACCENT = '#fbbf24'; // amber flame accent
 
@@ -98,10 +99,16 @@ export default function WinCard() {
         }
       }
       await createPost(message, imageUrl);
-      Alert.alert(
-        'Shared to your feed 🎉',
-        imageUrl ? 'Your win card is on your feed.' : 'Your win is on your feed.',
-      );
+      if (Platform.OS === 'web') {
+        Alert.alert(
+          'Shared to your feed 🎉',
+          imageUrl ? 'Your win card is on your feed.' : 'Your win is on your feed.',
+        );
+      } else {
+        // Offer to push the same card to Facebook/Instagram while it's hot.
+        const tmpUri = await captureCard('tmpfile');
+        promptCrossShare(message, tmpUri);
+      }
       router.back();
     } catch (e) {
       Alert.alert('Could not share', String((e as Error).message ?? e));

@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -16,6 +17,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { uploadPostImage } from '../../feed/uploadPostImage';
+import { promptCrossShare } from '../../feed/crossShare';
+import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
@@ -113,13 +116,21 @@ export default function Feed() {
   async function onPost() {
     if (!body.trim() && !pickedBase64) return;
     setPosting(true);
+    const postedText = body.trim();
+    const postedImageUri = previewUri; // local file — shareable to FB/IG
     try {
       let imageUrl: string | null = null;
       if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
-      await createPost(body.trim(), imageUrl);
+      await createPost(postedText, imageUrl);
       setBody('');
       clearPhoto();
       await load();
+      // Growth loop: offer to cross-share to Facebook/Instagram (native only).
+      if (Platform.OS === 'web') {
+        showToast('Posted to your feed 🎉');
+      } else {
+        promptCrossShare(postedText, postedImageUri);
+      }
     } catch (e) {
       Alert.alert('Could not post', String((e as Error).message ?? e));
     } finally {
