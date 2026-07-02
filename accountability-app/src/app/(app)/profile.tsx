@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { useIsPro } from '../../pro/ProProvider';
@@ -72,6 +73,7 @@ export default function Profile() {
   const { session } = useAuth();
   const { isPro } = useIsPro();
   const router = useRouter();
+  const insets = useSafeAreaInsets(); // cover runs under the status bar
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -258,8 +260,8 @@ export default function Profile() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* cover photo (brand gradient until one is set) */}
-      <View style={styles.coverWrap}>
+      {/* cover photo (brand gradient until one is set) — full-bleed, no header */}
+      <View style={[styles.coverWrap, { height: 222 + insets.top }]}>
         {coverUrl ? (
           <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
         ) : (

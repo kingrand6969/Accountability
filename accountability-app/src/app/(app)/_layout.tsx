@@ -80,7 +80,11 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: 'Profile', tabBarIcon: tabIcon('person', 'person-outline') }}
+        options={{
+          title: 'Profile',
+          tabBarIcon: tabIcon('person', 'person-outline'),
+          headerShown: false, // cover photo runs edge-to-edge, FB-style
+        }}
       />
     </Tabs>
   );
