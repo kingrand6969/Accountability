@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { listItemsForDay, deleteItem } from '../../timeline/api';
 import { cancelReminder } from '../../notifications/api';
@@ -41,11 +41,19 @@ function dayLabel(day: Date): string {
 export default function Today() {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const params = useLocalSearchParams<{ date?: string }>();
   const [day, setDay] = useState(() => new Date());
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState<'list' | 'hours'>('list');
+
+  // Jump to a specific day (e.g. tapped on the Track hub's weekday strip).
+  useEffect(() => {
+    if (typeof params.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
+      setDay(new Date(`${params.date}T12:00:00`));
+    }
+  }, [params.date]);
 
   const load = useCallback(async () => {
     try {

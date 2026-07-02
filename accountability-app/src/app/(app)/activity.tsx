@@ -10,10 +10,12 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile } from '../../profiles/api';
 import { getHomeStats, type HomeStats } from '../../home/api';
 import { getInsights } from '../../insights/api';
+import { toLocalDateString } from '../../timeline/datetime';
 import { colors, font, radius, shadow, spacing } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -76,7 +78,13 @@ const PILLARS: {
   },
 ];
 
-type WeekDay = { label: string; active: boolean; isToday: boolean };
+type WeekDay = { label: string; active: boolean; isToday: boolean; date: string };
+
+function weekDayDate(index: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - (6 - index));
+  return toLocalDateString(d);
+}
 
 export default function Track() {
   const router = useRouter();
@@ -107,6 +115,7 @@ export default function Track() {
               label: c.label,
               active: c.items > 0,
               isToday: i === ins.chart.length - 1,
+              date: weekDayDate(i),
             })),
           );
         })
@@ -166,14 +175,29 @@ export default function Track() {
           </Pressable>
         </View>
 
-        {/* glassy consistency dial */}
+        {/* glass consistency dial */}
         <Pressable
           style={({ pressed }) => [styles.dialWrap, pressed && styles.pressed]}
           onPress={() => router.push('/insights')}
           accessibilityLabel="Open your progress"
         >
+          {/* faint halo ring extending past the dial */}
+          <View style={styles.dialHalo} pointerEvents="none" />
           <View style={styles.dialOuter}>
-            <View style={styles.dialInner}>
+            {/* real glass: blur what's behind + a diagonal light sheen */}
+            <BlurView intensity={26} tint="light" style={StyleSheet.absoluteFill} />
+            <LinearGradient
+              colors={[
+                'rgba(255,255,255,0.42)',
+                'rgba(255,255,255,0.06)',
+                'rgba(255,255,255,0.18)',
+              ]}
+              start={{ x: 0.15, y: 0 }}
+              end={{ x: 0.9, y: 1 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <View style={styles.dialInnerRing}>
               <Ionicons name="flame" size={22} color="#fde68a" />
               <Text style={styles.dialTitle}>{scoreLine}</Text>
               <Text style={styles.dialScore}>{score ?? '–'}</Text>
@@ -183,34 +207,41 @@ export default function Track() {
           </View>
         </Pressable>
 
-        {/* weekday strip */}
+        {/* weekday strip — tap a day to open it on the timeline */}
         <View style={styles.weekRow}>
-          {week.length > 0
-            ? week.map((d, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.day,
-                    d.active && styles.dayActive,
-                    d.isToday && styles.dayToday,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dayText,
-                      d.active && styles.dayTextActive,
-                      d.isToday && styles.dayTextToday,
-                    ]}
-                  >
-                    {d.label}
-                  </Text>
-                </View>
-              ))
-            : ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => (
-                <View key={i} style={styles.day}>
-                  <Text style={styles.dayText}>{l}</Text>
-                </View>
-              ))}
+          {(week.length > 0
+            ? week
+            : ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => ({
+                label: l,
+                active: false,
+                isToday: false,
+                date: weekDayDate(i),
+              }))
+          ).map((d, i) => (
+            <Pressable
+              key={i}
+              onPress={() =>
+                router.push({ pathname: '/today', params: { date: d.date } } as never)
+              }
+              accessibilityLabel={`Open ${d.isToday ? 'today' : d.date} on your timeline`}
+              style={({ pressed }) => [
+                styles.day,
+                d.active && styles.dayActive,
+                d.isToday && styles.dayToday,
+                pressed && styles.dayPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.dayText,
+                  d.active && styles.dayTextActive,
+                  d.isToday && styles.dayTextToday,
+                ]}
+              >
+                {d.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
 
         {/* white sheet */}
@@ -288,22 +319,36 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: 37, height: 37, borderRadius: 18.5 },
-  dialWrap: { alignItems: 'center', marginVertical: spacing.md },
+  dialWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: spacing.md,
+    height: DIAL + 28,
+  },
+  dialHalo: {
+    position: 'absolute',
+    width: DIAL + 28,
+    height: DIAL + 28,
+    borderRadius: (DIAL + 28) / 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
   dialOuter: {
     width: DIAL,
     height: DIAL,
     borderRadius: DIAL / 2,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden', // clips the blur + sheen into the circle
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: 'rgba(255,255,255,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dialInner: {
+  dialInnerRing: {
     width: DIAL - 26,
     height: DIAL - 26,
     borderRadius: (DIAL - 26) / 2,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
@@ -311,12 +356,16 @@ const styles = StyleSheet.create({
   },
   dialDot: {
     position: 'absolute',
-    left: 10,
+    left: 8,
     top: DIAL / 2 - 5,
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: '#fff',
+    shadowColor: '#fff',
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
   },
   dialTitle: {
     color: '#fff',
@@ -350,6 +399,7 @@ const styles = StyleSheet.create({
   },
   dayActive: { backgroundColor: 'rgba(255,255,255,0.25)', borderColor: 'transparent' },
   dayToday: { backgroundColor: '#fff', borderColor: '#fff' },
+  dayPressed: { opacity: 0.7, transform: [{ scale: 0.94 }] },
   dayText: { color: 'rgba(255,255,255,0.7)', fontFamily: font.bold, fontSize: 13 },
   dayTextActive: { color: '#fff' },
   dayTextToday: { color: colors.primary },
