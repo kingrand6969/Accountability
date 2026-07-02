@@ -141,7 +141,7 @@ export default function Gym() {
       });
       setSelected({});
       showToast('Workout logged 💪');
-      router.navigate('/');
+      router.navigate('/today' as never);
     } catch (e) {
       Alert.alert('Could not log', String((e as Error).message ?? e));
     }

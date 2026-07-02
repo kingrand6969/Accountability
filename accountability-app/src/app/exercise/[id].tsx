@@ -73,7 +73,7 @@ export default function ExerciseDetail() {
         starts_at: new Date().toISOString(),
       });
       showToast(`${ex.name} logged 💪`);
-      router.navigate('/');
+      router.navigate('/today' as never);
     } catch (e) {
       Alert.alert('Could not log', String((e as Error).message ?? e));
     }

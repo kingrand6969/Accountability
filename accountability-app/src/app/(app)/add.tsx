@@ -184,7 +184,7 @@ export default function Add() {
       setNote('');
       setRemind(false);
       showToast('Added to your day ✓');
-      router.navigate('/');
+      router.navigate('/today' as never);
     } catch (e) {
       // Don't leave an alarm ringing for an item that was never saved.
       if (reminderId) cancelReminder(reminderId).catch(() => {});

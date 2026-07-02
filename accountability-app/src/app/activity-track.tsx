@@ -130,7 +130,7 @@ export default function ActivityTrack() {
         'Activity saved 🏃',
         `${formatKm(p.distance)} km in ${formatDuration(p.elapsed)}`,
       );
-      router.navigate('/');
+      router.navigate('/today' as never);
     } catch (e) {
       // KEEP the recording — the user can retry (e.g. once back online).
       setPending(p);

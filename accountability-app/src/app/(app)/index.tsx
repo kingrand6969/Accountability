@@ -1,62 +1,150 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { listItemsForDay, deleteItem } from '../../timeline/api';
-import { cancelReminder } from '../../notifications/api';
-import { TimelineCard } from '../../timeline/TimelineCard';
-import { HourGrid } from '../../timeline/HourGrid';
-import { toLocalDateString } from '../../timeline/datetime';
-import { AdBanner } from '../../pro/AdBanner';
-import { HomeHeader } from '../../home/HomeHeader';
-import { useIsPro } from '../../pro/ProProvider';
-import type { TimelineItem } from '../../timeline/types';
-import { colors, font, radius, spacing } from '../../ui/theme';
+import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
+import { uploadPostImage } from '../../feed/uploadPostImage';
+import { promptCrossShare } from '../../feed/crossShare';
+import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
+import { PhotoEditor, type EditedPhoto } from '../../media/PhotoEditor';
+import { showToast } from '../../ui/Toast';
+import { timeAgo, authorLabel } from '../../feed/format';
+import { Avatar } from '../../feed/Avatar';
+import type { FeedPost } from '../../feed/types';
+import { colors, font, radius, spacing, shadow } from '../../ui/theme';
 
-function dayLabel(day: Date): string {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(day);
-  d.setHours(0, 0, 0, 0);
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Tomorrow';
-  if (diff === -1) return 'Yesterday';
-  return d.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  });
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+function HeaderIcon({
+  icon,
+  size = 24,
+  label,
+  onPress,
+}: {
+  icon: IoniconName;
+  size?: number;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={label}
+      style={({ pressed }) => ({
+        minWidth: 42,
+        minHeight: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Ionicons name={icon} size={size} color={colors.primary} />
+    </Pressable>
+  );
 }
 
-export default function Today() {
+export default function Feed() {
   const router = useRouter();
-  const { isPro } = useIsPro();
-  const [day, setDay] = useState(() => new Date());
-  const [items, setItems] = useState<TimelineItem[]>([]);
+  const navigation = useNavigation();
+  const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [view, setView] = useState<'list' | 'hours'>('list');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [endReached, setEndReached] = useState(false);
+  const [body, setBody] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [pickedBase64, setPickedBase64] = useState<string | null>(null);
+  const [pickedExt, setPickedExt] = useState('jpg');
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [editorUri, setEditorUri] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  // posts with a like request in flight — blocks double-taps from racing
+  const likesInFlight = useRef<Set<string>>(new Set());
+  const storyRailRef = useRef<StoryRailHandle>(null);
+  const composerRef = useRef<TextInput>(null);
+
+  // header: ☰ menu left; ＋ create, pages, groups right
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <View style={{ marginLeft: 8 }}>
+          <HeaderIcon icon="menu-outline" size={26} label="Menu" onPress={() => router.push('/menu' as never)} />
+        </View>
+      ),
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', marginRight: 8 }}>
+          <HeaderIcon icon="add-circle-outline" size={25} label="Create" onPress={() => setCreateOpen(true)} />
+          <HeaderIcon icon="storefront-outline" size={22} label="Business pages" onPress={() => router.push('/pages' as never)} />
+          <HeaderIcon icon="people-circle-outline" size={25} label="Groups" onPress={() => router.push('/groups')} />
+        </View>
+      ),
+    });
+  }, [navigation, router]);
+
+  const CREATE_ITEMS: { icon: IoniconName; tint: string; title: string; sub: string; action: () => void }[] = [
+    {
+      icon: 'create-outline',
+      tint: colors.primary,
+      title: 'Post',
+      sub: 'Share a win or an update',
+      action: () => composerRef.current?.focus(),
+    },
+    {
+      icon: 'add-circle-outline',
+      tint: '#db2777',
+      title: 'Story',
+      sub: 'A photo that lasts 24 hours',
+      action: () => storyRailRef.current?.openPicker(),
+    },
+    {
+      icon: 'flame-outline',
+      tint: '#f59e0b',
+      title: 'Win card',
+      sub: 'Share your streak as an image',
+      action: () => router.push('/win-card'),
+    },
+    {
+      icon: 'people-outline',
+      tint: '#16a34a',
+      title: 'Group',
+      sub: 'Start a community',
+      action: () => router.push('/group-new' as never),
+    },
+    {
+      icon: 'storefront-outline',
+      tint: '#0d9488',
+      title: 'Page',
+      sub: 'For your gym, coaching or brand',
+      action: () => router.push('/page-new' as never),
+    },
+  ];
 
   const load = useCallback(async () => {
     try {
-      setItems(await listItemsForDay(day));
+      const page = await listFeed();
+      setPosts(page);
+      setEndReached(page.length < FEED_PAGE_SIZE);
     } catch (e) {
-      Alert.alert('Could not load your day', String((e as Error).message ?? e));
+      Alert.alert('Could not load the feed', String((e as Error).message ?? e));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [day]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,191 +153,421 @@ export default function Today() {
     }, [load]),
   );
 
-  function shiftDay(delta: number) {
-    setDay((prev) => {
-      const n = new Date(prev);
-      n.setDate(n.getDate() + delta);
-      return n;
-    });
+  async function onRefresh() {
+    setRefreshing(true);
+    await load();
   }
 
-  function onDelete(item: TimelineItem) {
-    Alert.alert('Delete this?', `“${item.title}” will be removed from your day.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await cancelReminder(item.reminder_id);
-            await deleteItem(item.id);
-            setItems((cur) => cur.filter((i) => i.id !== item.id));
-          } catch (e) {
-            Alert.alert('Could not delete', String((e as Error).message ?? e));
-          }
-        },
-      },
-    ]);
+  async function onLoadMore() {
+    if (loadingMore || endReached || loading || posts.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const oldest = posts[posts.length - 1].created_at;
+      const page = await listFeed(oldest);
+      if (page.length < FEED_PAGE_SIZE) setEndReached(true);
+      if (page.length > 0) {
+        setPosts((cur) => {
+          const seen = new Set(cur.map((p) => p.id));
+          return [...cur, ...page.filter((p) => !seen.has(p.id))];
+        });
+      }
+    } catch {
+      // silent — user can scroll again to retry
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
-  function openAddAtHour(hour: number) {
-    router.push({
-      pathname: '/add',
-      params: {
-        date: toLocalDateString(day),
-        time: `${hour.toString().padStart(2, '0')}:00`,
-      },
+  async function onPickPhoto() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to attach an image.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.6,
+      base64: true,
     });
+    if (res.canceled) return;
+    const asset = res.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Could not read image', 'Please try a different photo.');
+      return;
+    }
+    if (Platform.OS === 'web') {
+      // no view-shot on web — use the raw photo
+      setPickedBase64(asset.base64);
+      setPickedExt(asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg');
+      setPreviewUri(asset.uri);
+      return;
+    }
+    // native: filters + brand watermark get baked in by the editor
+    setEditorUri(asset.uri);
+  }
+
+  function onEdited(photo: EditedPhoto) {
+    setPickedBase64(photo.base64);
+    setPickedExt('jpg');
+    setPreviewUri(photo.uri);
+    setEditorUri(null);
+  }
+
+  function clearPhoto() {
+    setPickedBase64(null);
+    setPreviewUri(null);
+  }
+
+  const canPost = (body.trim().length > 0 || !!pickedBase64) && !posting;
+
+  async function onPost() {
+    if (!body.trim() && !pickedBase64) return;
+    setPosting(true);
+    const postedText = body.trim();
+    const postedImageUri = previewUri; // local file — shareable to FB/IG
+    try {
+      let imageUrl: string | null = null;
+      if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
+      await createPost(postedText, imageUrl);
+      setBody('');
+      clearPhoto();
+      await load();
+      // Growth loop: offer to cross-share to Facebook/Instagram (native only).
+      if (Platform.OS === 'web') {
+        showToast('Posted to your feed 🎉');
+      } else {
+        promptCrossShare(postedText, postedImageUri);
+      }
+    } catch (e) {
+      Alert.alert('Could not post', String((e as Error).message ?? e));
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  async function onToggleLike(post: FeedPost) {
+    if (likesInFlight.current.has(post.id)) return; // one request per post at a time
+    likesInFlight.current.add(post.id);
+    const liked = !post.liked_by_me;
+    setPosts((cur) =>
+      cur.map((p) =>
+        p.id === post.id
+          ? { ...p, liked_by_me: liked, like_count: Math.max(0, p.like_count + (liked ? 1 : -1)) }
+          : p,
+      ),
+    );
+    try {
+      await setLiked(post.id, liked);
+    } catch (e) {
+      setPosts((cur) =>
+        cur.map((p) =>
+          p.id === post.id
+            ? { ...p, liked_by_me: !liked, like_count: Math.max(0, p.like_count + (liked ? -1 : 1)) }
+            : p,
+        ),
+      );
+      Alert.alert('Could not update like', String((e as Error).message ?? e));
+    } finally {
+      likesInFlight.current.delete(post.id);
+    }
   }
 
   return (
     <View style={styles.screen}>
-      <HomeHeader />
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => shiftDay(-1)}
-          style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
-          hitSlop={8}
-          accessibilityLabel="Previous day"
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.primary} />
-        </Pressable>
-        <Pressable onPress={() => setDay(new Date())} accessibilityLabel="Jump to today">
-          <Text style={styles.dayTitle}>{dayLabel(day)}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => shiftDay(1)}
-          style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
-          hitSlop={8}
-          accessibilityLabel="Next day"
-        >
-          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
-        </Pressable>
-      </View>
+      {editorUri ? (
+        <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
+      ) : null}
 
-      <View style={styles.toggle}>
-        {(['list', 'hours'] as const).map((v) => (
-          <Pressable
-            key={v}
-            style={({ pressed }) => [
-              styles.toggleBtn,
-              view === v && styles.toggleActive,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => setView(v)}
-          >
-            <Text style={[styles.toggleText, view === v && styles.toggleTextActive]}>
-              {v === 'list' ? 'List' : 'Hours'}
-            </Text>
+      {/* ＋ create sheet */}
+      <Modal
+        visible={createOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCreateOpen(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sheetTitle}>Create</Text>
+            {CREATE_ITEMS.map((item) => (
+              <Pressable
+                key={item.title}
+                style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
+                onPress={() => {
+                  setCreateOpen(false);
+                  setTimeout(item.action, 250); // let the sheet close first
+                }}
+              >
+                <View style={[styles.sheetIcon, { backgroundColor: `${item.tint}15` }]}>
+                  <Ionicons name={item.icon} size={20} color={item.tint} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sheetRowTitle}>{item.title}</Text>
+                  <Text style={styles.sheetRowSub}>{item.sub}</Text>
+                </View>
+              </Pressable>
+            ))}
           </Pressable>
-        ))}
+        </Pressable>
+      </Modal>
+
+      <View style={styles.storyStrip}>
+        <StoryRail ref={storyRailRef} />
+      </View>
+      <View style={styles.composer}>
+        <TextInput
+          ref={composerRef}
+          style={styles.composerInput}
+          placeholder="Share a win or what you're up to…"
+          placeholderTextColor={colors.textFaint}
+          value={body}
+          onChangeText={setBody}
+          multiline
+        />
+        {previewUri ? (
+          <View style={styles.previewWrap}>
+            <Image source={{ uri: previewUri }} style={styles.preview} resizeMode="cover" />
+            <Pressable
+              style={styles.previewRemove}
+              onPress={clearPhoto}
+              hitSlop={8}
+              accessibilityLabel="Remove photo"
+            >
+              <Ionicons name="close" size={14} color="#fff" />
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={styles.composerActions}>
+          <Pressable
+            style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
+            onPress={onPickPhoto}
+            accessibilityLabel="Attach a photo"
+          >
+            <Ionicons name="camera-outline" size={18} color={colors.primary} />
+            <Text style={styles.photoBtnText}>Photo</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.postBtn,
+              !canPost && styles.postBtnDisabled,
+              pressed && canPost && styles.pressed,
+            ]}
+            onPress={onPost}
+            disabled={!canPost}
+          >
+            {posting ? (
+              <ActivityIndicator color={colors.onPrimary} />
+            ) : (
+              <Text style={styles.postBtnText}>Post</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : view === 'hours' ? (
-        <HourGrid items={items} onPressHour={openAddAtHour} onDelete={onDelete} />
       ) : (
         <FlatList
-          data={items}
-          keyExtractor={(i) => i.id}
-          contentContainerStyle={
-            items.length === 0 ? styles.emptyWrap : styles.listContent
-          }
+          data={posts}
+          keyExtractor={(p) => p.id}
+          contentContainerStyle={posts.length === 0 ? styles.emptyWrap : styles.list}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                load();
-              }}
-              tintColor={colors.primary}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+          onEndReached={onLoadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator style={styles.footerSpinner} color={colors.primary} />
+            ) : null
           }
           ListEmptyComponent={
             <View style={styles.center}>
-              <Ionicons name="sunny-outline" size={40} color={colors.textFaint} />
-              <Text style={styles.emptyTitle}>Nothing planned</Text>
-              <Text style={styles.emptySub}>
-                Tap Add to put something on your day.
-              </Text>
+              <Ionicons name="people-outline" size={40} color={colors.textFaint} />
+              <Text style={styles.emptyTitle}>No posts yet</Text>
+              <Text style={styles.emptySub}>Be the first to share something.</Text>
             </View>
           }
-          renderItem={({ item }) => <TimelineCard item={item} onDelete={onDelete} />}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Avatar url={item.author_avatar} name={item.author_name} size={40} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.author}>{authorLabel(item.author_name)}</Text>
+                  <Text style={styles.time}>{timeAgo(item.created_at)}</Text>
+                </View>
+              </View>
+              {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+              ) : null}
+              <View style={styles.actions}>
+                <Pressable
+                  style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                  onPress={() => onToggleLike(item)}
+                  hitSlop={8}
+                  accessibilityLabel={item.liked_by_me ? 'Unlike' : 'Like'}
+                >
+                  <Ionicons
+                    name={item.liked_by_me ? 'heart' : 'heart-outline'}
+                    size={19}
+                    color={item.liked_by_me ? colors.danger : colors.textMuted}
+                  />
+                  <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
+                    {item.like_count}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                  onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
+                  hitSlop={8}
+                  accessibilityLabel="View comments"
+                >
+                  <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
+                  <Text style={styles.actionText}>{item.comment_count}</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
         />
       )}
-
-      <Pressable
-        style={({ pressed }) => [
-          styles.fab,
-          // sit above the ad banner only when one is showing
-          { bottom: isPro ? 20 : 66 },
-          pressed && styles.fabPressed,
-        ]}
-        onPress={() => router.push('/add')}
-        accessibilityLabel="Add to your day"
-      >
-        <Ionicons name="add" size={20} color="#fff" />
-        <Text style={styles.fabText}>Add</Text>
-      </Pressable>
-
-      <AdBanner />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  pressed: { opacity: 0.7 },
-  header: {
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-start',
+    paddingTop: 64,
+    alignItems: 'flex-end',
+    paddingRight: spacing.md,
+  },
+  sheet: {
+    width: 280,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.sm,
+    gap: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  sheetTitle: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: 4,
+  },
+  sheetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.sm,
+    minHeight: 56,
   },
-  navBtn: {
-    minWidth: 44,
-    minHeight: 44,
+  sheetIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayTitle: { fontSize: 20, fontFamily: font.bold, color: colors.text },
-  toggle: {
-    flexDirection: 'row',
-    alignSelf: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-    padding: 3,
-    marginBottom: spacing.sm,
+  sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  storyStrip: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  toggleBtn: { paddingVertical: 7, paddingHorizontal: 22, borderRadius: 8 },
-  toggleActive: { backgroundColor: colors.card },
-  toggleText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 14 },
-  toggleTextActive: { color: colors.primary },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
-  emptyWrap: { flexGrow: 1 },
-  listContent: { padding: spacing.lg, gap: 10, paddingBottom: 96 },
-  emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
-  emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
-  fab: {
+  composer: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  composerInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    minHeight: 48,
+    backgroundColor: colors.surfaceAlt,
+  },
+  previewWrap: { alignSelf: 'flex-start' },
+  preview: { width: 110, height: 110, borderRadius: radius.sm, backgroundColor: colors.surface },
+  previewRemove: {
     position: 'absolute',
-    right: spacing.xl,
+    top: -6,
+    right: -6,
+    backgroundColor: colors.text,
+    borderRadius: 11,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  photoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    gap: 6,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    minHeight: 44,
   },
-  fabPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
-  fabText: { color: '#fff', fontSize: 16, fontFamily: font.bold },
+  photoBtnText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
+  postBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 11,
+    paddingHorizontal: 24,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  postBtnDisabled: { opacity: 0.5 },
+  postBtnText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  pressed: { opacity: 0.7 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
+  emptyWrap: { flexGrow: 1 },
+  list: { padding: spacing.lg, gap: spacing.md },
+  footerSpinner: { paddingVertical: spacing.lg },
+  emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
+  emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow.card,
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  author: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
+  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: colors.text },
+  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: colors.surface },
+  actions: { flexDirection: 'row', gap: spacing.xl, marginTop: 2 },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: spacing.xs,
+    minHeight: 32,
+  },
+  actionText: { fontSize: 14, color: colors.textMuted, fontFamily: font.semibold },
+  liked: { color: colors.danger },
 });

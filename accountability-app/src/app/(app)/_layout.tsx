@@ -34,12 +34,9 @@ export default function AppLayout() {
 
   return (
     <Tabs screenOptions={{ headerShown: true, tabBarActiveTintColor: colors.primary }}>
+      {/* Feed is the home tab — the app opens social-first, like Facebook */}
       <Tabs.Screen
         name="index"
-        options={{ title: 'Today', tabBarIcon: tabIcon('today', 'today-outline') }}
-      />
-      <Tabs.Screen
-        name="feed"
         options={{
           title: 'Feed',
           tabBarIcon: tabIcon('people', 'people-outline'),
@@ -55,6 +52,10 @@ export default function AppLayout() {
           // headerLeft/right (menu, create, pages, groups) are set by the
           // Feed screen itself via navigation.setOptions — it needs screen state.
         }}
+      />
+      <Tabs.Screen
+        name="today"
+        options={{ title: 'Today', tabBarIcon: tabIcon('today', 'today-outline') }}
       />
       <Tabs.Screen
         name="add"
