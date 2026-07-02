@@ -46,11 +46,13 @@ export const FEED_PAGE_SIZE = 20;
 
 /**
  * Newest-first page; pass the oldest loaded created_at to fetch the next page.
- * groupId scopes to one group's feed; otherwise only public (non-group) posts.
+ * groupId scopes to one group's feed, pageId to one business page's feed;
+ * otherwise the main feed shows only personal posts (no group/page posts).
  */
 export async function listFeed(
   beforeCreatedAt?: string,
   groupId?: string,
+  pageId?: string,
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
   let query = supabase
@@ -58,7 +60,13 @@ export async function listFeed(
     .select(POST_SELECT)
     .order('created_at', { ascending: false })
     .limit(FEED_PAGE_SIZE);
-  query = groupId ? query.eq('group_id', groupId) : query.is('group_id', null);
+  if (groupId) {
+    query = query.eq('group_id', groupId);
+  } else if (pageId) {
+    query = query.eq('page_id', pageId);
+  } else {
+    query = query.is('group_id', null).is('page_id', null);
+  }
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
   const { data, error } = await query;
   if (error) throw error;
@@ -90,12 +98,13 @@ export async function createPost(
   body: string,
   imageUrl: string | null = null,
   groupId: string | null = null,
+  pageId: string | null = null,
 ): Promise<void> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
   const { error } = await supabase
     .from('posts')
-    .insert({ user_id: me, body, image_url: imageUrl, group_id: groupId });
+    .insert({ user_id: me, body, image_url: imageUrl, group_id: groupId, page_id: pageId });
   if (error) throw error;
 }
 

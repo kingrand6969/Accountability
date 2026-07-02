@@ -53,21 +53,36 @@ export default function AppLayout() {
             </View>
           ),
           headerRight: () => (
-            <Link href="/groups" asChild>
-              <Pressable
-                style={({ pressed }) => ({
-                  marginRight: 16,
-                  minWidth: 44,
-                  minHeight: 44,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.6 : 1,
-                })}
-                accessibilityLabel="Groups"
-              >
-                <Ionicons name="people-circle-outline" size={26} color={colors.primary} />
-              </Pressable>
-            </Link>
+            <View style={{ flexDirection: 'row', marginRight: 8 }}>
+              <Link href={'/pages' as never} asChild>
+                <Pressable
+                  style={({ pressed }) => ({
+                    minWidth: 44,
+                    minHeight: 44,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                  accessibilityLabel="Business pages"
+                >
+                  <Ionicons name="storefront-outline" size={23} color={colors.primary} />
+                </Pressable>
+              </Link>
+              <Link href="/groups" asChild>
+                <Pressable
+                  style={({ pressed }) => ({
+                    minWidth: 44,
+                    minHeight: 44,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                  accessibilityLabel="Groups"
+                >
+                  <Ionicons name="people-circle-outline" size={26} color={colors.primary} />
+                </Pressable>
+              </Link>
+            </View>
           ),
         }}
       />
