@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getMyProfile } from '../profiles/api';
 import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
+import { inviteFriends } from '../social/invite';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -91,6 +92,22 @@ export default function Menu() {
           <Text style={styles.profileSub}>View your profile</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      </Pressable>
+
+      {/* invite friends — the growth loop lives one tap from everywhere */}
+      <Pressable
+        style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
+        onPress={inviteFriends}
+        accessibilityLabel="Invite friends to AccountAbility"
+      >
+        <View style={styles.inviteIcon}>
+          <Ionicons name="paper-plane" size={19} color="#fff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.inviteTitle}>Invite friends</Text>
+          <Text style={styles.inviteSub}>Share via Messenger, WhatsApp, TikTok…</Text>
+        </View>
+        <Ionicons name="share-social-outline" size={18} color={colors.primary} />
       </Pressable>
 
       {/* shortcuts */}
@@ -174,6 +191,27 @@ const styles = StyleSheet.create({
   },
   profileName: { fontFamily: font.bold, fontSize: 16, color: colors.text },
   profileSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 60,
+  },
+  inviteIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  inviteSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,

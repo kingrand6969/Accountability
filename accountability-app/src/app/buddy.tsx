@@ -28,6 +28,7 @@ import {
   type IncomingRequest,
   type Buddy,
 } from '../buddy/api';
+import { inviteFriends } from '../social/invite';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
@@ -239,6 +240,18 @@ export default function BuddyHub() {
               ) : null}
             </View>
           }
+          ListFooterComponent={
+            <Pressable
+              style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
+              onPress={inviteFriends}
+              accessibilityLabel="Invite friends to AccountAbility"
+            >
+              <Ionicons name="paper-plane-outline" size={17} color={colors.primary} />
+              <Text style={styles.inviteText}>
+                Friend not here yet? Invite them via Messenger, WhatsApp…
+              </Text>
+            </Pressable>
+          }
           ListEmptyComponent={
             results ? (
               <EmptyState
@@ -403,6 +416,21 @@ const styles = StyleSheet.create({
     fontFamily: font.regular,
     color: colors.text,
     paddingVertical: 10,
+  },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: spacing.md,
+    minHeight: 48,
+    marginTop: spacing.xs,
+  },
+  inviteText: {
+    color: colors.primary,
+    fontFamily: font.semibold,
+    fontSize: 13.5,
+    flexShrink: 1,
   },
   tabs: { flexDirection: 'row', padding: spacing.sm, gap: spacing.sm },
   tab: {
