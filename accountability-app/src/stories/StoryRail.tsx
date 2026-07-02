@@ -1,5 +1,11 @@
-import { useCallback, useState } from 'react';
 import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useState,
+} from 'react';
+import {
+  ActivityIndicator,
   Alert,
   Image,
   Platform,
@@ -17,12 +23,12 @@ import { listStoryGroups, addStory, type StoryGroup } from './api';
 import { authorLabel } from '../feed/format';
 import { PhotoEditor, type EditedPhoto } from '../media/PhotoEditor';
 import { showToast } from '../ui/Toast';
-import { colors, font, spacing } from '../ui/theme';
+import { colors, font, radius, spacing } from '../ui/theme';
 
-const RING = ['#7c3aed', '#db2777', '#fb923c'] as const; // brand story ring
+export type StoryRailHandle = { openPicker: () => void };
 
-/** Facebook-style horizontal story circles above the feed. */
-export function StoryRail() {
+/** Facebook-style story cards: tall image tiles, "Create story" first. */
+export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, ref) {
   const router = useRouter();
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [posting, setPosting] = useState(false);
@@ -63,6 +69,8 @@ export function StoryRail() {
     await postStory(asset.base64, ext);
   }
 
+  useImperativeHandle(ref, () => ({ openPicker: onAddStory }));
+
   async function postStory(base64: string, ext: string) {
     setPosting(true);
     try {
@@ -82,6 +90,7 @@ export function StoryRail() {
   }
 
   const mine = groups.find((g) => g.isMe);
+  const others = groups.filter((g) => !g.isMe);
 
   return (
     <ScrollView
@@ -92,105 +101,181 @@ export function StoryRail() {
       {editorUri ? (
         <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
       ) : null}
-      {/* your story: add, or view + ring when you have one */}
+
+      {/* create tile — shows your latest story as background once you have one */}
       <Pressable
-        style={({ pressed }) => [styles.item, pressed && styles.pressed]}
-        onPress={
-          mine
-            ? () => router.push({ pathname: '/story/[userId]', params: { userId: mine.user_id } })
-            : onAddStory
-        }
-        onLongPress={mine ? onAddStory : undefined}
-        accessibilityLabel={mine ? 'View your story (hold to add another)' : 'Add to your story'}
+        style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+        onPress={onAddStory}
+        accessibilityLabel="Create a story"
       >
         {mine ? (
-          <Ring>
-            <Image source={{ uri: mine.stories[mine.stories.length - 1].image_url }} style={styles.thumb} />
-          </Ring>
+          <Image
+            source={{ uri: mine.stories[mine.stories.length - 1].image_url }}
+            style={styles.tileImage}
+            resizeMode="cover"
+          />
         ) : (
-          <View style={styles.addCircle}>
-            <Ionicons name={posting ? 'hourglass-outline' : 'add'} size={26} color={colors.primary} />
-          </View>
+          <LinearGradient
+            colors={['#312e81', '#7c3aed', '#db2777']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.tileImage}
+          />
         )}
-        <Text style={styles.name} numberOfLines={1}>
-          Your story
-        </Text>
+        <View style={styles.createBottom}>
+          <View style={styles.createPlus}>
+            {posting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="add" size={20} color="#fff" />
+            )}
+          </View>
+          <Text style={styles.createLabel}>Create{'\n'}story</Text>
+        </View>
       </Pressable>
 
-      {groups
-        .filter((g) => !g.isMe)
-        .map((g) => (
-          <Pressable
-            key={g.user_id}
-            style={({ pressed }) => [styles.item, pressed && styles.pressed]}
-            onPress={() =>
-              router.push({ pathname: '/story/[userId]', params: { userId: g.user_id } })
-            }
-            accessibilityLabel={`View ${authorLabel(g.name)}'s story`}
-          >
-            <Ring>
-              <Image source={{ uri: g.stories[g.stories.length - 1].image_url }} style={styles.thumb} />
-            </Ring>
-            <Text style={styles.name} numberOfLines={1}>
-              {authorLabel(g.name)}
-            </Text>
-          </Pressable>
-        ))}
+      {/* my story as a viewable tile */}
+      {mine ? (
+        <StoryTile
+          image={mine.stories[mine.stories.length - 1].image_url}
+          avatar={mine.avatar}
+          name="Your story"
+          onPress={() =>
+            router.push({ pathname: '/story/[userId]', params: { userId: mine.user_id } })
+          }
+        />
+      ) : null}
+
+      {others.map((g) => (
+        <StoryTile
+          key={g.user_id}
+          image={g.stories[g.stories.length - 1].image_url}
+          avatar={g.avatar}
+          name={authorLabel(g.name)}
+          onPress={() =>
+            router.push({ pathname: '/story/[userId]', params: { userId: g.user_id } })
+          }
+        />
+      ))}
     </ScrollView>
   );
-}
+});
 
-function Ring({ children }: { children: React.ReactNode }) {
+function StoryTile({
+  image,
+  avatar,
+  name,
+  onPress,
+}: {
+  image: string;
+  avatar: string | null;
+  name: string;
+  onPress: () => void;
+}) {
   return (
-    <LinearGradient colors={[...RING]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ring}>
-      <View style={styles.ringInner}>{children}</View>
-    </LinearGradient>
+    <Pressable
+      style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+      onPress={onPress}
+      accessibilityLabel={`View ${name}`}
+    >
+      <Image source={{ uri: image }} style={styles.tileImage} resizeMode="cover" />
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.65)']}
+        style={styles.tileScrim}
+        pointerEvents="none"
+      />
+      <View style={styles.tileAvatarRing}>
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.tileAvatar} />
+        ) : (
+          <View style={[styles.tileAvatar, styles.tileAvatarFallback]}>
+            <Ionicons name="person" size={13} color="#fff" />
+          </View>
+        )}
+      </View>
+      <Text style={styles.tileName} numberOfLines={2}>
+        {name}
+      </Text>
+    </Pressable>
   );
 }
 
-const SIZE = 64;
+const TILE_W = 104;
+const TILE_H = 156;
 
 const styles = StyleSheet.create({
   rail: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  item: { alignItems: 'center', gap: 4, width: SIZE + 8 },
-  pressed: { opacity: 0.75 },
-  ring: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+  pressed: { opacity: 0.85 },
+  tile: {
+    width: TILE_W,
+    height: TILE_H,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
   },
-  ringInner: {
-    width: SIZE - 6,
-    height: SIZE - 6,
-    borderRadius: (SIZE - 6) / 2,
+  tileImage: { width: '100%', height: '100%' },
+  tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 64 },
+  tileAvatarRing: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  thumb: { width: SIZE - 10, height: SIZE - 10, borderRadius: (SIZE - 10) / 2 },
-  addCircle: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    borderStyle: 'dashed',
+  tileAvatar: { width: 29, height: 29, borderRadius: 14.5 },
+  tileAvatarFallback: {
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  name: {
-    fontSize: 11.5,
-    fontFamily: font.medium,
-    color: colors.textSecondary,
-    maxWidth: SIZE + 8,
+  tileName: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    color: '#fff',
+    fontFamily: font.bold,
+    fontSize: 12.5,
+    lineHeight: 16,
+  },
+  createBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    paddingBottom: 8,
+    paddingTop: 18,
+  },
+  createPlus: {
+    position: 'absolute',
+    top: -16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    borderWidth: 3,
+    borderColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createLabel: {
+    color: colors.text,
+    fontFamily: font.bold,
+    fontSize: 12,
     textAlign: 'center',
+    lineHeight: 15,
   },
 });

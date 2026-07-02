@@ -1,0 +1,221 @@
+import { useCallback, useState, type ComponentProps } from 'react';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { getMyProfile } from '../profiles/api';
+import { listGroups, type Group } from '../groups/api';
+import { listPages, type Page } from '../pages/api';
+import { colors, font, radius, shadow, spacing } from '../ui/theme';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+const GRID: { icon: IoniconName; tint: string; title: string; route: string }[] = [
+  { icon: 'people-outline', tint: '#2563eb', title: 'Groups', route: '/groups' },
+  { icon: 'storefront-outline', tint: '#0d9488', title: 'Pages', route: '/pages' },
+  { icon: 'person-add-outline', tint: '#db2777', title: 'Buddies', route: '/buddy' },
+  { icon: 'stats-chart-outline', tint: '#ea580c', title: 'Progress', route: '/insights' },
+  { icon: 'flame-outline', tint: '#f59e0b', title: 'Share a win', route: '/win-card' },
+  { icon: 'book-outline', tint: '#0d9488', title: 'Daily Reads', route: '/books' },
+  { icon: 'barbell-outline', tint: '#7c3aed', title: 'Exercises', route: '/gym' },
+  { icon: 'nutrition-outline', tint: '#16a34a', title: 'Diet', route: '/diet' },
+  { icon: 'wallet-outline', tint: '#dc2626', title: 'Money', route: '/money' },
+  { icon: 'walk-outline', tint: '#ea580c', title: 'Activity', route: '/activity-track' },
+  { icon: 'star-outline', tint: '#7c3aed', title: 'Go Pro', route: '/paywall' },
+];
+
+export default function Menu() {
+  const router = useRouter();
+  const [name, setName] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [myGroups, setMyGroups] = useState<Group[]>([]);
+  const [myPages, setMyPages] = useState<Page[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getMyProfile()
+        .then((p) => {
+          setName(p?.display_name ?? null);
+          setAvatar(p?.avatar_url ?? null);
+        })
+        .catch(() => {});
+      listGroups()
+        .then((gs) => setMyGroups(gs.filter((g) => g.is_member).slice(0, 8)))
+        .catch(() => {});
+      listPages()
+        .then((ps) => setMyPages(ps.filter((p) => p.is_owner || p.is_following).slice(0, 8)))
+        .catch(() => {});
+    }, []),
+  );
+
+  const shortcuts = [
+    ...myPages.map((p) => ({
+      key: `p-${p.id}`,
+      title: p.name,
+      image: p.avatar_url,
+      icon: 'storefront-outline' as IoniconName,
+      route: `/page/${p.id}`,
+    })),
+    ...myGroups.map((g) => ({
+      key: `g-${g.id}`,
+      title: g.name,
+      image: null as string | null,
+      icon: 'people' as IoniconName,
+      route: `/group/${g.id}`,
+    })),
+  ];
+
+  return (
+    <ScrollView contentContainerStyle={styles.container}>
+      {/* profile row */}
+      <Pressable
+        style={({ pressed }) => [styles.profileRow, pressed && styles.pressed]}
+        onPress={() => router.push('/profile')}
+        accessibilityLabel="View your profile"
+      >
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.profileAvatar} />
+        ) : (
+          <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
+            <Ionicons name="person" size={22} color="#fff" />
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
+          <Text style={styles.profileSub}>View your profile</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      </Pressable>
+
+      {/* shortcuts */}
+      {shortcuts.length > 0 ? (
+        <>
+          <Text style={styles.sectionTitle}>Your shortcuts</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.shortcuts}
+          >
+            {shortcuts.map((s) => (
+              <Pressable
+                key={s.key}
+                style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
+                onPress={() => router.push(s.route as never)}
+                accessibilityLabel={s.title}
+              >
+                {s.image ? (
+                  <Image source={{ uri: s.image }} style={styles.shortcutImage} />
+                ) : (
+                  <View style={[styles.shortcutImage, styles.shortcutFallback]}>
+                    <Ionicons name={s.icon} size={22} color={colors.primary} />
+                  </View>
+                )}
+                <Text style={styles.shortcutName} numberOfLines={2}>
+                  {s.title}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      ) : null}
+
+      {/* everything grid */}
+      <Text style={styles.sectionTitle}>All of AccountAbility</Text>
+      <View style={styles.grid}>
+        {GRID.map((item) => (
+          <Pressable
+            key={item.title}
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => router.push(item.route as never)}
+            accessibilityLabel={item.title}
+          >
+            <View style={[styles.cardIcon, { backgroundColor: `${item.tint}15` }]}>
+              <Ionicons name={item.icon} size={22} color={item.tint} />
+            </View>
+            <Text style={styles.cardTitle}>{item.title}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+    backgroundColor: colors.background,
+    paddingBottom: 40,
+  },
+  pressed: { opacity: 0.75 },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 68,
+    ...shadow.card,
+  },
+  profileAvatar: { width: 46, height: 46, borderRadius: 23 },
+  profileAvatarFallback: {
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileName: { fontFamily: font.bold, fontSize: 16, color: colors.text },
+  profileSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: font.bold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: spacing.md,
+  },
+  shortcuts: { gap: spacing.md, paddingVertical: 2 },
+  shortcut: { alignItems: 'center', gap: 5, width: 72 },
+  shortcutImage: { width: 60, height: 60, borderRadius: radius.md },
+  shortcutFallback: {
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutName: {
+    fontFamily: font.medium,
+    fontSize: 11.5,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  card: {
+    width: '48.4%',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: 8,
+    minHeight: 84,
+    ...shadow.card,
+  },
+  cardPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
+  cardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: { fontFamily: font.bold, fontSize: 14.5, color: colors.text },
+});

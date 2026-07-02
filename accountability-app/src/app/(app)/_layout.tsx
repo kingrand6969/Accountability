@@ -1,6 +1,6 @@
 import { type ComponentProps, useEffect, useState } from 'react';
-import { type ColorValue, Pressable, Text, View } from 'react-native';
-import { Link, Redirect, Tabs } from 'expo-router';
+import { type ColorValue, Text, View } from 'react-native';
+import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { font } from '../../ui/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -52,38 +52,8 @@ export default function AppLayout() {
               </Text>
             </View>
           ),
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', marginRight: 8 }}>
-              <Link href={'/pages' as never} asChild>
-                <Pressable
-                  style={({ pressed }) => ({
-                    minWidth: 44,
-                    minHeight: 44,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: pressed ? 0.6 : 1,
-                  })}
-                  accessibilityLabel="Business pages"
-                >
-                  <Ionicons name="storefront-outline" size={23} color={colors.primary} />
-                </Pressable>
-              </Link>
-              <Link href="/groups" asChild>
-                <Pressable
-                  style={({ pressed }) => ({
-                    minWidth: 44,
-                    minHeight: 44,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: pressed ? 0.6 : 1,
-                  })}
-                  accessibilityLabel="Groups"
-                >
-                  <Ionicons name="people-circle-outline" size={26} color={colors.primary} />
-                </Pressable>
-              </Link>
-            </View>
-          ),
+          // headerLeft/right (menu, create, pages, groups) are set by the
+          // Feed screen itself via navigation.setOptions — it needs screen state.
         }}
       />
       <Tabs.Screen

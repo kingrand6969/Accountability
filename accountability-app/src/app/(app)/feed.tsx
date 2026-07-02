@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -12,13 +13,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { uploadPostImage } from '../../feed/uploadPostImage';
 import { promptCrossShare } from '../../feed/crossShare';
-import { StoryRail } from '../../stories/StoryRail';
+import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
 import { PhotoEditor, type EditedPhoto } from '../../media/PhotoEditor';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
@@ -26,8 +27,39 @@ import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
 import { colors, font, radius, spacing, shadow } from '../../ui/theme';
 
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+function HeaderIcon({
+  icon,
+  size = 24,
+  label,
+  onPress,
+}: {
+  icon: IoniconName;
+  size?: number;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel={label}
+      style={({ pressed }) => ({
+        minWidth: 42,
+        minHeight: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Ionicons name={icon} size={size} color={colors.primary} />
+    </Pressable>
+  );
+}
+
 export default function Feed() {
   const router = useRouter();
+  const navigation = useNavigation();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,8 +71,67 @@ export default function Feed() {
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [editorUri, setEditorUri] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
+  const storyRailRef = useRef<StoryRailHandle>(null);
+  const composerRef = useRef<TextInput>(null);
+
+  // header: ☰ menu left; ＋ create, pages, groups right
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <View style={{ marginLeft: 8 }}>
+          <HeaderIcon icon="menu-outline" size={26} label="Menu" onPress={() => router.push('/menu' as never)} />
+        </View>
+      ),
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', marginRight: 8 }}>
+          <HeaderIcon icon="add-circle-outline" size={25} label="Create" onPress={() => setCreateOpen(true)} />
+          <HeaderIcon icon="storefront-outline" size={22} label="Business pages" onPress={() => router.push('/pages' as never)} />
+          <HeaderIcon icon="people-circle-outline" size={25} label="Groups" onPress={() => router.push('/groups')} />
+        </View>
+      ),
+    });
+  }, [navigation, router]);
+
+  const CREATE_ITEMS: { icon: IoniconName; tint: string; title: string; sub: string; action: () => void }[] = [
+    {
+      icon: 'create-outline',
+      tint: colors.primary,
+      title: 'Post',
+      sub: 'Share a win or an update',
+      action: () => composerRef.current?.focus(),
+    },
+    {
+      icon: 'add-circle-outline',
+      tint: '#db2777',
+      title: 'Story',
+      sub: 'A photo that lasts 24 hours',
+      action: () => storyRailRef.current?.openPicker(),
+    },
+    {
+      icon: 'flame-outline',
+      tint: '#f59e0b',
+      title: 'Win card',
+      sub: 'Share your streak as an image',
+      action: () => router.push('/win-card'),
+    },
+    {
+      icon: 'people-outline',
+      tint: '#16a34a',
+      title: 'Group',
+      sub: 'Start a community',
+      action: () => router.push('/group-new' as never),
+    },
+    {
+      icon: 'storefront-outline',
+      tint: '#0d9488',
+      title: 'Page',
+      sub: 'For your gym, coaching or brand',
+      action: () => router.push('/page-new' as never),
+    },
+  ];
 
   const load = useCallback(async () => {
     try {
@@ -186,11 +277,45 @@ export default function Feed() {
       {editorUri ? (
         <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
       ) : null}
+
+      {/* ＋ create sheet */}
+      <Modal
+        visible={createOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCreateOpen(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sheetTitle}>Create</Text>
+            {CREATE_ITEMS.map((item) => (
+              <Pressable
+                key={item.title}
+                style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
+                onPress={() => {
+                  setCreateOpen(false);
+                  setTimeout(item.action, 250); // let the sheet close first
+                }}
+              >
+                <View style={[styles.sheetIcon, { backgroundColor: `${item.tint}15` }]}>
+                  <Ionicons name={item.icon} size={20} color={item.tint} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sheetRowTitle}>{item.title}</Text>
+                  <Text style={styles.sheetRowSub}>{item.sub}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View style={styles.storyStrip}>
-        <StoryRail />
+        <StoryRail ref={storyRailRef} />
       </View>
       <View style={styles.composer}>
         <TextInput
+          ref={composerRef}
           style={styles.composerInput}
           placeholder="Share a win or what you're up to…"
           placeholderTextColor={colors.textFaint}
@@ -313,6 +438,53 @@ export default function Feed() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-start',
+    paddingTop: 64,
+    alignItems: 'flex-end',
+    paddingRight: spacing.md,
+  },
+  sheet: {
+    width: 280,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.sm,
+    gap: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  sheetTitle: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: 4,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.sm,
+    minHeight: 56,
+  },
+  sheetIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
   storyStrip: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
