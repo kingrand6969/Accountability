@@ -1,7 +1,19 @@
-import type { ComponentProps } from 'react';
-import { ScrollView, StyleSheet, Pressable, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useCallback, useState, type ComponentProps } from 'react';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getMyProfile } from '../../profiles/api';
+import { getHomeStats, type HomeStats } from '../../home/api';
+import { getInsights } from '../../insights/api';
 import { colors, font, radius, shadow, spacing } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -64,35 +76,320 @@ const PILLARS: {
   },
 ];
 
+type WeekDay = { label: string; active: boolean; isToday: boolean };
+
 export default function Track() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [stats, setStats] = useState<HomeStats | null>(null);
+  const [week, setWeek] = useState<WeekDay[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+      getMyProfile()
+        .then((p) => {
+          if (!live) return;
+          setFirstName(p?.display_name?.split(' ')[0] ?? null);
+          setAvatar(p?.avatar_url ?? null);
+        })
+        .catch(() => {});
+      getHomeStats()
+        .then((s) => live && setStats(s))
+        .catch(() => {});
+      getInsights('week')
+        .then((ins) => {
+          if (!live) return;
+          setWeek(
+            ins.chart.map((c, i) => ({
+              label: c.label,
+              active: c.items > 0,
+              isToday: i === ins.chart.length - 1,
+            })),
+          );
+        })
+        .catch(() => {});
+      return () => {
+        live = false;
+      };
+    }, []),
+  );
+
+  const daysActive = week.filter((d) => d.active).length;
+  // consistency score: how many of the last 7 days you showed up
+  const score = week.length > 0 ? Math.round((daysActive / 7) * 100) : null;
+  const scoreLine =
+    score === null
+      ? '…'
+      : score >= 80
+        ? 'Crushing it — keep going'
+        : score >= 40
+          ? 'Building momentum'
+          : 'Show up today';
+
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+  });
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.intro}>Your tracking tools. More coming each update.</Text>
-      {PILLARS.map((p) => (
-        <Pressable
-          key={p.key}
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={() => router.push(p.route)}
-          accessibilityLabel={p.title}
-        >
-          <View style={[styles.iconBadge, { backgroundColor: `${p.tint}15` }]}>
-            <Ionicons name={p.icon} size={26} color={p.tint} />
-          </View>
+    <View style={styles.screen}>
+      <LinearGradient
+        colors={['#3b82f6', '#2563eb', '#1e40af']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.4, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + spacing.xl }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* greeting */}
+        <View style={styles.greetingRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{p.title}</Text>
-            <Text style={styles.sub}>{p.sub}</Text>
+            <Text style={styles.hello}>Hello{firstName ? `, ${firstName}` : ''}</Text>
+            <Text style={styles.helloSub}>You&apos;re on track to…</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+          <Pressable
+            onPress={() => router.push('/profile')}
+            style={({ pressed }) => [styles.avatarBtn, pressed && styles.pressed]}
+            accessibilityLabel="Your profile"
+          >
+            {avatar ? (
+              <Image source={{ uri: avatar }} style={styles.avatarImg} />
+            ) : (
+              <Ionicons name="person" size={16} color="#fff" />
+            )}
+          </Pressable>
+        </View>
+
+        {/* glassy consistency dial */}
+        <Pressable
+          style={({ pressed }) => [styles.dialWrap, pressed && styles.pressed]}
+          onPress={() => router.push('/insights')}
+          accessibilityLabel="Open your progress"
+        >
+          <View style={styles.dialOuter}>
+            <View style={styles.dialInner}>
+              <Ionicons name="flame" size={22} color="#fde68a" />
+              <Text style={styles.dialTitle}>{scoreLine}</Text>
+              <Text style={styles.dialScore}>{score ?? '–'}</Text>
+              <Text style={styles.dialLabel}>Consistency level</Text>
+            </View>
+            <View style={styles.dialDot} />
+          </View>
         </Pressable>
-      ))}
-    </ScrollView>
+
+        {/* weekday strip */}
+        <View style={styles.weekRow}>
+          {week.length > 0
+            ? week.map((d, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.day,
+                    d.active && styles.dayActive,
+                    d.isToday && styles.dayToday,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      d.active && styles.dayTextActive,
+                      d.isToday && styles.dayTextToday,
+                    ]}
+                  >
+                    {d.label}
+                  </Text>
+                </View>
+              ))
+            : ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => (
+                <View key={i} style={styles.day}>
+                  <Text style={styles.dayText}>{l}</Text>
+                </View>
+              ))}
+        </View>
+
+        {/* white sheet */}
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sheetTitle}>Today, {today}</Text>
+              <Text style={styles.sheetMeta}>
+                {stats
+                  ? `${stats.todayCount} logged today · ${stats.streak}-day streak`
+                  : ' '}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => router.push('/today')}
+              style={({ pressed }) => [styles.calendarBtn, pressed && styles.pressed]}
+              accessibilityLabel="Open your day"
+            >
+              <Ionicons name="calendar-outline" size={19} color={colors.primary} />
+            </Pressable>
+          </View>
+
+          {PILLARS.map((p) => (
+            <Pressable
+              key={p.key}
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              onPress={() => router.push(p.route)}
+              accessibilityLabel={p.title}
+            >
+              <View style={[styles.iconBadge, { backgroundColor: `${p.tint}15` }]}>
+                <Ionicons name={p.icon} size={24} color={p.tint} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>{p.title}</Text>
+                <Text style={styles.cardSub}>{p.sub}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
+const DIAL = 218;
+
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
-  intro: { color: colors.textMuted, fontFamily: font.regular, marginBottom: 4 },
+  screen: { flex: 1, backgroundColor: '#1e40af' },
+  scroll: { paddingBottom: 24 },
+  pressed: { opacity: 0.85 },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  hello: { color: '#fff', fontFamily: font.extrabold, fontSize: 26 },
+  helloSub: {
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: font.medium,
+    fontSize: 14,
+    marginTop: 2,
+  },
+  avatarBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: { width: 37, height: 37, borderRadius: 18.5 },
+  dialWrap: { alignItems: 'center', marginVertical: spacing.md },
+  dialOuter: {
+    width: DIAL,
+    height: DIAL,
+    borderRadius: DIAL / 2,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialInner: {
+    width: DIAL - 26,
+    height: DIAL - 26,
+    borderRadius: (DIAL - 26) / 2,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: 18,
+  },
+  dialDot: {
+    position: 'absolute',
+    left: 10,
+    top: DIAL / 2 - 5,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#fff',
+  },
+  dialTitle: {
+    color: '#fff',
+    fontFamily: font.semibold,
+    fontSize: 14.5,
+    textAlign: 'center',
+  },
+  dialScore: {
+    color: '#fff',
+    fontFamily: font.display,
+    fontSize: 64,
+    lineHeight: 68,
+    includeFontPadding: false,
+  },
+  dialLabel: { color: 'rgba(255,255,255,0.75)', fontFamily: font.medium, fontSize: 12.5 },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  day: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayActive: { backgroundColor: 'rgba(255,255,255,0.25)', borderColor: 'transparent' },
+  dayToday: { backgroundColor: '#fff', borderColor: '#fff' },
+  dayText: { color: 'rgba(255,255,255,0.7)', fontFamily: font.bold, fontSize: 13 },
+  dayTextActive: { color: '#fff' },
+  dayTextToday: { color: colors.primary },
+  sheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    minHeight: 420,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  sheetTitle: { fontFamily: font.extrabold, fontSize: 18, color: colors.text },
+  sheetMeta: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  calendarBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -100,19 +397,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.lg,
     minHeight: 76,
+    marginBottom: spacing.sm,
     ...shadow.card,
   },
-  cardPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
+  cardPressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
   iconBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontSize: 17, fontFamily: font.bold, color: colors.text },
-  sub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13.5, marginTop: 2 },
+  cardTitle: { fontSize: 16, fontFamily: font.bold, color: colors.text },
+  cardSub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
 });

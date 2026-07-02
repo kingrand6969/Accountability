@@ -63,7 +63,11 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="activity"
-        options={{ title: 'Track', tabBarIcon: tabIcon('barbell', 'barbell-outline') }}
+        options={{
+          title: 'Track',
+          tabBarIcon: tabIcon('barbell', 'barbell-outline'),
+          headerShown: false, // gradient hero runs edge-to-edge
+        }}
       />
       {/* Profile lives in the ☰ Menu now — hidden from the tab bar but the
           /profile route stays reachable */}
