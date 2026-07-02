@@ -20,6 +20,7 @@ export type Profile = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  cover_url: string | null;
   bio: string | null;
   birthday: string | null; // 'YYYY-MM-DD'
   birthday_private: boolean;
@@ -39,6 +40,7 @@ export type ProfileUpdate = Partial<
     Profile,
     | 'display_name'
     | 'avatar_url'
+    | 'cover_url'
     | 'bio'
     | 'birthday'
     | 'birthday_private'

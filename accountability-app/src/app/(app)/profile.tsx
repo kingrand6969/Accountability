@@ -14,6 +14,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
 import { useIsPro } from '../../pro/ProProvider';
@@ -24,7 +25,7 @@ import {
 } from '../../notifications/streakReminder';
 import { getMyProfile, updateMyProfile, touchLastActive } from '../../profiles/api';
 import { validateBirthday } from '../../profiles/validation';
-import { uploadAvatar } from '../../profiles/avatar';
+import { uploadAvatar, uploadCover } from '../../profiles/avatar';
 import { ChipSelector } from '../../profiles/ChipSelector';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
@@ -77,6 +78,8 @@ export default function Profile() {
   const [uploading, setUploading] = useState(false);
   const [joinedAt, setJoinedAt] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
   const [area, setArea] = useState('');
@@ -121,6 +124,7 @@ export default function Profile() {
         const p = await getMyProfile();
         if (!active || !p) return;
         setAvatarUrl(p.avatar_url);
+        setCoverUrl(p.cover_url);
         setDisplayName(p.display_name ?? '');
         setArea(p.area ?? '');
         setBio(p.bio ?? '');
@@ -173,29 +177,37 @@ export default function Profile() {
     }
   }
 
-  async function onPickAvatar() {
+  async function pickImage(aspect: [number, number]) {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to set a profile picture.');
-      return;
+      Alert.alert('Permission needed', 'Allow photo access to set a photo.');
+      return null;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [1, 1],
+      aspect,
       quality: 0.6,
       base64: true,
     });
-    if (result.canceled) return;
+    if (result.canceled) return null;
     const asset = result.assets[0];
     if (!asset.base64) {
       Alert.alert('Could not read image', 'Please try a different photo.');
-      return;
+      return null;
     }
-    const ext = asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
+    return {
+      base64: asset.base64,
+      ext: asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg',
+    };
+  }
+
+  async function onPickAvatar() {
+    const img = await pickImage([1, 1]);
+    if (!img) return;
     setUploading(true);
     try {
-      const url = await uploadAvatar(asset.base64, ext);
+      const url = await uploadAvatar(img.base64, img.ext);
       await updateMyProfile({ avatar_url: url });
       setAvatarUrl(url);
       showToast('Photo updated');
@@ -203,6 +215,22 @@ export default function Profile() {
       Alert.alert('Upload failed', String((e as Error).message ?? e));
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function onPickCover() {
+    const img = await pickImage([3, 1]);
+    if (!img) return;
+    setUploadingCover(true);
+    try {
+      const url = await uploadCover(img.base64, img.ext);
+      await updateMyProfile({ cover_url: url });
+      setCoverUrl(url);
+      showToast('Cover updated');
+    } catch (e) {
+      Alert.alert('Upload failed', String((e as Error).message ?? e));
+    } finally {
+      setUploadingCover(false);
     }
   }
 
@@ -230,6 +258,35 @@ export default function Profile() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* cover photo (brand gradient until one is set) */}
+      <View style={styles.coverWrap}>
+        {coverUrl ? (
+          <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
+        ) : (
+          <LinearGradient
+            colors={['#312e81', '#7c3aed', '#db2777']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.cover}
+          />
+        )}
+        <Pressable
+          onPress={onPickCover}
+          disabled={uploadingCover}
+          style={({ pressed }) => [styles.coverBtn, pressed && styles.pressed]}
+          accessibilityLabel="Change cover photo"
+        >
+          {uploadingCover ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Ionicons name="camera" size={14} color="#fff" />
+              <Text style={styles.coverBtnText}>{coverUrl ? 'Edit cover' : 'Add cover'}</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
+
       {/* identity header */}
       <View style={styles.avatarBlock}>
         <Pressable
@@ -405,14 +462,41 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   container: {
     padding: spacing.lg,
+    paddingTop: 0,
     gap: spacing.sm,
     paddingBottom: 48,
     backgroundColor: colors.background,
   },
   pressed: { opacity: 0.8 },
-  avatarBlock: { alignItems: 'center', gap: 4, marginBottom: spacing.xs },
-  avatarRing: { width: 104, height: 104, borderRadius: 52 },
-  avatar: { width: 104, height: 104, borderRadius: 52 },
+  coverWrap: {
+    marginHorizontal: -spacing.lg, // full-bleed banner
+    height: 148,
+  },
+  cover: { width: '100%', height: '100%' },
+  coverBtn: {
+    position: 'absolute',
+    right: spacing.md,
+    bottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    borderRadius: radius.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    minHeight: 32,
+  },
+  coverBtnText: { color: '#fff', fontFamily: font.semibold, fontSize: 12 },
+  avatarBlock: { alignItems: 'center', gap: 4, marginTop: -52, marginBottom: spacing.xs },
+  avatarRing: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 4,
+    borderColor: colors.card,
+    backgroundColor: colors.card,
+  },
+  avatar: { width: 96, height: 96, borderRadius: 48 },
   avatarPlaceholder: {
     backgroundColor: colors.primary,
     alignItems: 'center',
