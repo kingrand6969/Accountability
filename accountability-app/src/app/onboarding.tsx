@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -11,28 +10,49 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 import { updateMyProfile } from '../profiles/api';
 import { setCalorieTarget } from '../diet/api';
+import { useAuth } from '../auth/AuthProvider';
+import { Button } from '../ui/Button';
+import { colors, font, radius, spacing } from '../ui/theme';
 
-export const ONBOARDED_KEY = 'onboarded';
+/** Per-user flag — a second account on the same device gets its own onboarding. */
+export function onboardedKey(userId: string): string {
+  return `onboarded:${userId}`;
+}
 
 export default function Onboarding() {
   const router = useRouter();
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   const [name, setName] = useState('');
   const [area, setArea] = useState('');
   const [target, setTarget] = useState('2000');
   const [saving, setSaving] = useState(false);
 
+  async function markDone() {
+    if (userId) {
+      try {
+        await AsyncStorage.setItem(onboardedKey(userId), '1');
+      } catch {
+        // storage failure shouldn't trap the user on this screen
+      }
+    }
+  }
+
   async function finish() {
     setSaving(true);
     try {
-      await updateMyProfile({
-        display_name: name.trim() || null,
-        area: area.trim() || null,
-      });
+      // Only send what the user actually typed — never blank out an existing
+      // profile (e.g. same user onboarding on a second device).
+      const updates: { display_name?: string; area?: string } = {};
+      if (name.trim()) updates.display_name = name.trim();
+      if (area.trim()) updates.area = area.trim();
+      if (Object.keys(updates).length > 0) await updateMyProfile(updates);
       const kcal = parseInt(target, 10);
       if (Number.isFinite(kcal) && kcal > 0) await setCalorieTarget(kcal);
-      await AsyncStorage.setItem(ONBOARDED_KEY, '1');
+      await markDone();
       router.replace('/');
     } catch (e) {
       Alert.alert('Could not save', String((e as Error).message ?? e));
@@ -42,13 +62,15 @@ export default function Onboarding() {
   }
 
   async function skip() {
-    await AsyncStorage.setItem(ONBOARDED_KEY, '1');
+    await markDone();
     router.replace('/');
   }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.emoji}>💪</Text>
+      <View style={styles.hero}>
+        <Ionicons name="flame" size={44} color={colors.accent} />
+      </View>
       <Text style={styles.title}>Welcome to Accountability</Text>
       <Text style={styles.subtitle}>
         Plan your day, track workouts, food, money and runs — and keep your
@@ -59,6 +81,7 @@ export default function Onboarding() {
       <TextInput
         style={styles.input}
         placeholder="Your name"
+        placeholderTextColor={colors.textFaint}
         value={name}
         onChangeText={setName}
       />
@@ -67,6 +90,7 @@ export default function Onboarding() {
       <TextInput
         style={styles.input}
         placeholder="City or region (for finding workout buddies)"
+        placeholderTextColor={colors.textFaint}
         value={area}
         onChangeText={setArea}
       />
@@ -75,19 +99,23 @@ export default function Onboarding() {
       <TextInput
         style={styles.input}
         placeholder="2000"
+        placeholderTextColor={colors.textFaint}
         keyboardType="number-pad"
         value={target}
         onChangeText={setTarget}
       />
 
-      <Pressable style={styles.cta} onPress={finish} disabled={saving}>
-        {saving ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.ctaText}>Get started</Text>
-        )}
-      </Pressable>
-      <Pressable onPress={skip} disabled={saving}>
+      <Button
+        title="Get started"
+        onPress={finish}
+        loading={saving}
+        style={styles.cta}
+      />
+      <Pressable
+        onPress={skip}
+        disabled={saving}
+        style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.6 }]}
+      >
         <Text style={styles.skip}>Skip for now</Text>
       </Pressable>
     </ScrollView>
@@ -95,25 +123,42 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 28, gap: 10, flexGrow: 1, justifyContent: 'center' },
-  emoji: { fontSize: 52, textAlign: 'center' },
-  title: { fontSize: 26, fontWeight: '800', textAlign: 'center' },
-  subtitle: { color: '#666', textAlign: 'center', lineHeight: 21, marginBottom: 10 },
-  label: { fontSize: 14, fontWeight: '600', marginTop: 10 },
+  container: { padding: spacing.xxl, gap: 10, flexGrow: 1, justifyContent: 'center' },
+  hero: {
+    alignSelf: 'center',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  title: {
+    fontSize: 26,
+    fontFamily: font.extrabold,
+    textAlign: 'center',
+    color: colors.text,
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: spacing.sm,
+  },
+  label: { fontSize: 14, fontFamily: font.semibold, color: colors.textSecondary, marginTop: 10 },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     padding: 13,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
   },
-  cta: {
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  ctaText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  skip: { color: '#888', textAlign: 'center', marginTop: 12 },
+  cta: { marginTop: spacing.xl },
+  skipBtn: { minHeight: 44, justifyContent: 'center' },
+  skip: { color: colors.textMuted, fontFamily: font.medium, textAlign: 'center' },
 });

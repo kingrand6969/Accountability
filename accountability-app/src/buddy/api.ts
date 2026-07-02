@@ -150,7 +150,17 @@ export async function getProfileBrief(
   return { name: data?.display_name ?? null, avatar: data?.avatar_url ?? null };
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** IDs reach us via deep-link route params — never trust them inside a
+ *  PostgREST filter string. */
+function assertUuid(id: string): void {
+  if (!UUID_RE.test(id)) throw new Error('Invalid user id.');
+}
+
 export async function listMessages(otherId: string): Promise<Message[]> {
+  assertUuid(otherId);
   const uid = await me();
   if (!uid) return [];
   const { data, error } = await supabase
@@ -165,6 +175,7 @@ export async function listMessages(otherId: string): Promise<Message[]> {
 }
 
 export async function sendMessage(otherId: string, body: string): Promise<void> {
+  assertUuid(otherId);
   const uid = await me();
   if (!uid) throw new Error('Not signed in.');
   const { error } = await supabase

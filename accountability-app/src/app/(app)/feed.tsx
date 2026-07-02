@@ -1,10 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -12,29 +13,39 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { listFeed, createPost, setLiked } from '../../feed/api';
+import { Ionicons } from '@expo/vector-icons';
+import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { uploadPostImage } from '../../feed/uploadPostImage';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
+import { colors, font, radius, spacing, shadow } from '../../ui/theme';
 
 export default function Feed() {
   const router = useRouter();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [endReached, setEndReached] = useState(false);
   const [body, setBody] = useState('');
   const [posting, setPosting] = useState(false);
   const [pickedBase64, setPickedBase64] = useState<string | null>(null);
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  // posts with a like request in flight — blocks double-taps from racing
+  const likesInFlight = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
-      setPosts(await listFeed());
+      const page = await listFeed();
+      setPosts(page);
+      setEndReached(page.length < FEED_PAGE_SIZE);
     } catch (e) {
       Alert.alert('Could not load the feed', String((e as Error).message ?? e));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -44,6 +55,31 @@ export default function Feed() {
       load();
     }, [load]),
   );
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await load();
+  }
+
+  async function onLoadMore() {
+    if (loadingMore || endReached || loading || posts.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const oldest = posts[posts.length - 1].created_at;
+      const page = await listFeed(oldest);
+      if (page.length < FEED_PAGE_SIZE) setEndReached(true);
+      if (page.length > 0) {
+        setPosts((cur) => {
+          const seen = new Set(cur.map((p) => p.id));
+          return [...cur, ...page.filter((p) => !seen.has(p.id))];
+        });
+      }
+    } catch {
+      // silent — user can scroll again to retry
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function onPickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -92,11 +128,13 @@ export default function Feed() {
   }
 
   async function onToggleLike(post: FeedPost) {
+    if (likesInFlight.current.has(post.id)) return; // one request per post at a time
+    likesInFlight.current.add(post.id);
     const liked = !post.liked_by_me;
     setPosts((cur) =>
       cur.map((p) =>
         p.id === post.id
-          ? { ...p, liked_by_me: liked, like_count: p.like_count + (liked ? 1 : -1) }
+          ? { ...p, liked_by_me: liked, like_count: Math.max(0, p.like_count + (liked ? 1 : -1)) }
           : p,
       ),
     );
@@ -106,11 +144,13 @@ export default function Feed() {
       setPosts((cur) =>
         cur.map((p) =>
           p.id === post.id
-            ? { ...p, liked_by_me: !liked, like_count: p.like_count + (liked ? -1 : 1) }
+            ? { ...p, liked_by_me: !liked, like_count: Math.max(0, p.like_count + (liked ? -1 : 1)) }
             : p,
         ),
       );
       Alert.alert('Could not update like', String((e as Error).message ?? e));
+    } finally {
+      likesInFlight.current.delete(post.id);
     }
   }
 
@@ -120,6 +160,7 @@ export default function Feed() {
         <TextInput
           style={styles.composerInput}
           placeholder="Share a win or what you're up to…"
+          placeholderTextColor={colors.textFaint}
           value={body}
           onChangeText={setBody}
           multiline
@@ -127,22 +168,36 @@ export default function Feed() {
         {previewUri ? (
           <View style={styles.previewWrap}>
             <Image source={{ uri: previewUri }} style={styles.preview} resizeMode="cover" />
-            <Pressable style={styles.previewRemove} onPress={clearPhoto} hitSlop={8}>
-              <Text style={styles.previewRemoveText}>✕</Text>
+            <Pressable
+              style={styles.previewRemove}
+              onPress={clearPhoto}
+              hitSlop={8}
+              accessibilityLabel="Remove photo"
+            >
+              <Ionicons name="close" size={14} color="#fff" />
             </Pressable>
           </View>
         ) : null}
         <View style={styles.composerActions}>
-          <Pressable style={styles.photoBtn} onPress={onPickPhoto}>
-            <Text style={styles.photoBtnText}>📷 Photo</Text>
+          <Pressable
+            style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
+            onPress={onPickPhoto}
+            accessibilityLabel="Attach a photo"
+          >
+            <Ionicons name="camera-outline" size={18} color={colors.primary} />
+            <Text style={styles.photoBtnText}>Photo</Text>
           </Pressable>
           <Pressable
-            style={[styles.postBtn, !canPost && styles.postBtnDisabled]}
+            style={({ pressed }) => [
+              styles.postBtn,
+              !canPost && styles.postBtnDisabled,
+              pressed && canPost && styles.pressed,
+            ]}
             onPress={onPost}
             disabled={!canPost}
           >
             {posting ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.onPrimary} />
             ) : (
               <Text style={styles.postBtnText}>Post</Text>
             )}
@@ -152,15 +207,26 @@ export default function Feed() {
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
           data={posts}
           keyExtractor={(p) => p.id}
           contentContainerStyle={posts.length === 0 ? styles.emptyWrap : styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+          onEndReached={onLoadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator style={styles.footerSpinner} color={colors.primary} />
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.center}>
+              <Ionicons name="people-outline" size={40} color={colors.textFaint} />
               <Text style={styles.emptyTitle}>No posts yet</Text>
               <Text style={styles.emptySub}>Be the first to share something.</Text>
             </View>
@@ -179,17 +245,29 @@ export default function Feed() {
                 <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
               ) : null}
               <View style={styles.actions}>
-                <Pressable style={styles.action} onPress={() => onToggleLike(item)} hitSlop={8}>
+                <Pressable
+                  style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                  onPress={() => onToggleLike(item)}
+                  hitSlop={8}
+                  accessibilityLabel={item.liked_by_me ? 'Unlike' : 'Like'}
+                >
+                  <Ionicons
+                    name={item.liked_by_me ? 'heart' : 'heart-outline'}
+                    size={19}
+                    color={item.liked_by_me ? colors.danger : colors.textMuted}
+                  />
                   <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
-                    {item.liked_by_me ? '♥' : '♡'} {item.like_count}
+                    {item.like_count}
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={styles.action}
+                  style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                   onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
                   hitSlop={8}
+                  accessibilityLabel="View comments"
                 >
-                  <Text style={styles.actionText}>💬 {item.comment_count}</Text>
+                  <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
+                  <Text style={styles.actionText}>{item.comment_count}</Text>
                 </Pressable>
               </View>
             </View>
@@ -201,59 +279,86 @@ export default function Feed() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.background },
   composer: {
-    padding: 14,
-    gap: 8,
+    padding: spacing.lg,
+    gap: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ddd',
+    borderBottomColor: colors.border,
   },
   composerInput: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    padding: 12,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
     fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
     minHeight: 48,
+    backgroundColor: colors.surfaceAlt,
   },
   previewWrap: { alignSelf: 'flex-start' },
-  preview: { width: 110, height: 110, borderRadius: 10, backgroundColor: '#eee' },
+  preview: { width: 110, height: 110, borderRadius: radius.sm, backgroundColor: colors.surface },
   previewRemove: {
     position: 'absolute',
     top: -6,
     right: -6,
-    backgroundColor: '#000',
+    backgroundColor: colors.text,
     borderRadius: 11,
     width: 22,
     height: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  previewRemoveText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   composerActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  photoBtn: { paddingVertical: 8, paddingHorizontal: 6 },
-  photoBtnText: { color: '#2563eb', fontWeight: '700' },
+  photoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    minHeight: 44,
+  },
+  photoBtnText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
   postBtn: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 22,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: 11,
+    paddingHorizontal: 24,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   postBtnDisabled: { opacity: 0.5 },
-  postBtnText: { color: '#fff', fontWeight: '700' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  postBtnText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  pressed: { opacity: 0.7 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
   emptyWrap: { flexGrow: 1 },
-  list: { padding: 14, gap: 12 },
-  emptyTitle: { fontSize: 18, fontWeight: '600' },
-  emptySub: { color: '#666', marginTop: 6, textAlign: 'center' },
-  card: { backgroundColor: '#f7f7f9', borderRadius: 12, padding: 14, gap: 8 },
+  list: { padding: spacing.lg, gap: spacing.md },
+  footerSpinner: { paddingVertical: spacing.lg },
+  emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
+  emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow.card,
+  },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  author: { fontSize: 15, fontWeight: '700' },
-  time: { color: '#888', fontSize: 12 },
-  body: { fontSize: 15, lineHeight: 21 },
-  postImage: { width: '100%', height: 220, borderRadius: 10, backgroundColor: '#eee' },
-  actions: { flexDirection: 'row', gap: 22, marginTop: 2 },
-  action: { paddingVertical: 4 },
-  actionText: { fontSize: 15, color: '#444' },
-  liked: { color: '#ef4444', fontWeight: '700' },
+  author: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
+  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: colors.text },
+  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: colors.surface },
+  actions: { flexDirection: 'row', gap: spacing.xl, marginTop: 2 },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: spacing.xs,
+    minHeight: 32,
+  },
+  actionText: { fontSize: 14, color: colors.textMuted, fontFamily: font.semibold },
+  liked: { color: colors.danger },
 });

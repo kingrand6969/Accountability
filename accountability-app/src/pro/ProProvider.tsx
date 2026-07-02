@@ -25,9 +25,10 @@ export function ProProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const [isPro, setIsPro] = useState(false);
   const [loading, setLoading] = useState(true);
+  const userId = session?.user.id ?? null;
 
   const refresh = useCallback(async () => {
-    if (!session) {
+    if (!userId) {
       setIsPro(false);
       setLoading(false);
       return;
@@ -35,16 +36,18 @@ export function ProProvider({ children }: { children: ReactNode }) {
     try {
       setIsPro(await fetchProStatus());
     } catch {
-      // Keep the previous value on transient errors.
+      // Keep the previous value on transient errors (same user only).
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [userId]);
 
   useEffect(() => {
+    // New user (or sign-out) — never carry Pro status across accounts.
+    setIsPro(false);
     setLoading(true);
     refresh();
-  }, [refresh]);
+  }, [userId, refresh]);
 
   return (
     <ProContext.Provider value={{ isPro, loading, refresh }}>

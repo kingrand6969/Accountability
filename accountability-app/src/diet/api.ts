@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase';
 import { toLocalDateString } from '../timeline/datetime';
-import { createItem } from '../timeline/api';
 
 export type FoodLog = {
   id: string;
@@ -52,13 +51,8 @@ export async function addFoodLog(entry: NewFoodLog): Promise<void> {
   if (!uid) throw new Error('Not signed in.');
   const { error } = await supabase.from('food_logs').insert({ ...entry, user_id: uid });
   if (error) throw error;
-  // Also drop a meal card on the timeline so it counts toward today + streak.
-  await createItem({
-    type: 'meal',
-    title: entry.name,
-    note: `${Math.round(entry.calories)} kcal`,
-    starts_at: new Date().toISOString(),
-  });
+  // A DB trigger (migration 0021) mirrors this onto the timeline atomically
+  // (and removes the mirror on delete) — no client-side second insert.
 }
 
 export async function deleteFoodLog(id: string): Promise<void> {

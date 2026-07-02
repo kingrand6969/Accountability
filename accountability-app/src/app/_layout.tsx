@@ -1,5 +1,13 @@
 import { Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
+import { useFonts, Anton_400Regular } from '@expo-google-fonts/anton';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+} from '@expo-google-fonts/inter';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { ProProvider } from '../pro/ProProvider';
 import '../notifications/handler';
@@ -7,8 +15,16 @@ import '../activity/locationTask';
 
 function RootNavigator() {
   const { session, loading } = useAuth();
+  const [fontsLoaded] = useFonts({
+    Anton_400Regular,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+  });
 
-  if (loading) {
+  if (loading || !fontsLoaded) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" />

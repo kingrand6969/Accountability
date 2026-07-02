@@ -3,7 +3,9 @@ import { type ColorValue, View } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ONBOARDED_KEY } from '../onboarding';
+import { onboardedKey } from '../onboarding';
+import { useAuth } from '../../auth/AuthProvider';
+import { colors } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -14,19 +16,23 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
 }
 
 export default function AppLayout() {
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDED_KEY)
+    if (!userId) return; // route guard in the root layout handles signed-out
+    setOnboarded(null);
+    AsyncStorage.getItem(onboardedKey(userId))
       .then((v) => setOnboarded(v === '1'))
       .catch(() => setOnboarded(true));
-  }, []);
+  }, [userId]);
 
   if (onboarded === null) return <View style={{ flex: 1 }} />;
   if (!onboarded) return <Redirect href="/onboarding" />;
 
   return (
-    <Tabs screenOptions={{ headerShown: true, tabBarActiveTintColor: '#2563eb' }}>
+    <Tabs screenOptions={{ headerShown: true, tabBarActiveTintColor: colors.primary }}>
       <Tabs.Screen
         name="index"
         options={{ title: 'Today', tabBarIcon: tabIcon('today', 'today-outline') }}

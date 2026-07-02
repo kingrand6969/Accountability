@@ -67,13 +67,22 @@ export default function Diet() {
     }
   }
 
-  async function onDelete(item: FoodLog) {
-    try {
-      await deleteFoodLog(item.id);
-      setLogs((cur) => cur.filter((l) => l.id !== item.id));
-    } catch (e) {
-      Alert.alert('Could not delete', String((e as Error).message ?? e));
-    }
+  function onDelete(item: FoodLog) {
+    Alert.alert('Remove this food?', `${item.name} · ${Math.round(item.calories)} kcal`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteFoodLog(item.id);
+            setLogs((cur) => cur.filter((l) => l.id !== item.id));
+          } catch (e) {
+            Alert.alert('Could not delete', String((e as Error).message ?? e));
+          }
+        },
+      },
+    ]);
   }
 
   if (proLoading) {

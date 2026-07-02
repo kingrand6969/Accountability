@@ -1,17 +1,20 @@
 import type { TimelineType } from './types';
 
+/** icon = Ionicons name; tint = per-type accent for the icon badge. */
 export const TIMELINE_TYPES: {
   value: TimelineType;
   label: string;
   emoji: string;
+  icon: string;
+  tint: string;
 }[] = [
-  { value: 'event', label: 'Event', emoji: '📅' },
-  { value: 'task', label: 'Task', emoji: '✅' },
-  { value: 'workout', label: 'Workout', emoji: '🏋️' },
-  { value: 'meal', label: 'Meal', emoji: '🥗' },
-  { value: 'expense', label: 'Expense', emoji: '💸' },
-  { value: 'income', label: 'Income', emoji: '💰' },
-  { value: 'activity', label: 'Activity', emoji: '🏃' },
+  { value: 'event', label: 'Event', emoji: '📅', icon: 'calendar-outline', tint: '#2563eb' },
+  { value: 'task', label: 'Task', emoji: '✅', icon: 'checkmark-circle-outline', tint: '#16a34a' },
+  { value: 'workout', label: 'Workout', emoji: '🏋️', icon: 'barbell-outline', tint: '#7c3aed' },
+  { value: 'meal', label: 'Meal', emoji: '🥗', icon: 'nutrition-outline', tint: '#16a34a' },
+  { value: 'expense', label: 'Expense', emoji: '💸', icon: 'cash-outline', tint: '#dc2626' },
+  { value: 'income', label: 'Income', emoji: '💰', icon: 'wallet-outline', tint: '#16a34a' },
+  { value: 'activity', label: 'Activity', emoji: '🏃', icon: 'walk-outline', tint: '#ea580c' },
 ];
 
 export function typeMeta(type: TimelineType) {

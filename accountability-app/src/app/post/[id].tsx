@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -44,15 +44,24 @@ export default function PostDetail() {
     }, [load]),
   );
 
+  const likeInFlight = useRef(false);
+
   async function onToggleLike() {
-    if (!post) return;
+    if (!post || likeInFlight.current) return; // one request at a time
+    likeInFlight.current = true;
     const liked = !post.liked_by_me;
-    setPost({ ...post, liked_by_me: liked, like_count: post.like_count + (liked ? 1 : -1) });
+    setPost((cur) =>
+      cur
+        ? { ...cur, liked_by_me: liked, like_count: Math.max(0, cur.like_count + (liked ? 1 : -1)) }
+        : cur,
+    );
     try {
       await setLiked(post.id, liked);
     } catch (e) {
       Alert.alert('Could not update like', String((e as Error).message ?? e));
       load();
+    } finally {
+      likeInFlight.current = false;
     }
   }
 

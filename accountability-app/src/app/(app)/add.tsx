@@ -26,6 +26,7 @@ import {
 import {
   ensureNotificationPermission,
   scheduleReminder,
+  cancelReminder,
 } from '../../notifications/api';
 import { reminderTriggerDate } from '../../notifications/trigger';
 import type { TimelineType } from '../../timeline/types';
@@ -98,9 +99,9 @@ export default function Add() {
       return;
     }
     setSaving(true);
+    let reminderId: string | null = null;
     try {
       const startsAt = toIsoFromLocal(date, time);
-      let reminderId: string | null = null;
       if (remind) {
         const granted = await ensureNotificationPermission();
         if (!granted && Platform.OS !== 'web') {
@@ -140,6 +141,8 @@ export default function Add() {
       setRemind(false);
       router.navigate('/');
     } catch (e) {
+      // Don't leave an alarm ringing for an item that was never saved.
+      if (reminderId) cancelReminder(reminderId).catch(() => {});
       Alert.alert('Could not save', String((e as Error).message ?? e));
     } finally {
       setSaving(false);

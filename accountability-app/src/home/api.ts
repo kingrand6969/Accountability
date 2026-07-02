@@ -36,11 +36,16 @@ export async function getHomeStats(): Promise<HomeStats> {
   weekStart.setHours(0, 0, 0, 0);
 
   const [itemsRes, txRes, reqRes, linkRes] = await Promise.all([
+    // Newest-first + explicit limit: PostgREST caps at 1000 rows, so without
+    // an order the *recent* days could be the ones silently dropped and the
+    // streak would collapse for very active users.
     supabase
       .from('timeline_items')
       .select('type,starts_at')
       .eq('user_id', uid)
-      .gte('starts_at', since.toISOString()),
+      .gte('starts_at', since.toISOString())
+      .order('starts_at', { ascending: false })
+      .limit(1000),
     supabase
       .from('money_transactions')
       .select('amount,kind,tx_date')
@@ -56,6 +61,11 @@ export async function getHomeStats(): Promise<HomeStats> {
       .select('user_a')
       .or(`user_a.eq.${uid},user_b.eq.${uid}`),
   ]);
+
+  // Surface failures instead of rendering zeroed stats (a false "streak lost"
+  // signal is the worst thing an accountability app can show).
+  const failed = [itemsRes, txRes, reqRes, linkRes].find((r) => r.error);
+  if (failed?.error) throw failed.error;
 
   const items = itemsRes.data ?? [];
   const daySet = new Set(items.map((r: any) => toLocalDateString(new Date(r.starts_at))));

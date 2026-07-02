@@ -30,26 +30,34 @@ function mapPost(
   };
 }
 
-async function myLikedSet(me: string | null): Promise<Set<string>> {
-  if (!me) return new Set();
+async function myLikedSet(me: string | null, postIds: string[]): Promise<Set<string>> {
+  if (!me || postIds.length === 0) return new Set();
+  // Scoped to the visible posts — an all-time like history is unbounded and
+  // gets truncated at PostgREST's 1000-row cap.
   const { data } = await supabase
     .from('post_likes')
     .select('post_id')
-    .eq('user_id', me);
+    .eq('user_id', me)
+    .in('post_id', postIds);
   return new Set((data ?? []).map((l: any) => l.post_id as string));
 }
 
-export async function listFeed(): Promise<FeedPost[]> {
+export const FEED_PAGE_SIZE = 20;
+
+/** Newest-first page; pass the oldest loaded created_at to fetch the next page. */
+export async function listFeed(beforeCreatedAt?: string): Promise<FeedPost[]> {
   const me = await currentUserId();
-  const { data, error } = await supabase
+  let query = supabase
     .from('posts')
     .select(POST_SELECT)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(FEED_PAGE_SIZE);
+  if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
+  const { data, error } = await query;
   if (error) throw error;
   const rows = data ?? [];
   const [likedSet, authors] = await Promise.all([
-    myLikedSet(me),
+    myLikedSet(me, rows.map((r: any) => r.id)),
     getPublicProfiles(rows.map((r: any) => r.user_id)),
   ]);
   return rows.map((r: any) => mapPost(r, likedSet, authors));
@@ -65,7 +73,7 @@ export async function getPost(id: string): Promise<FeedPost | null> {
   if (error) throw error;
   if (!data) return null;
   const [likedSet, authors] = await Promise.all([
-    myLikedSet(me),
+    myLikedSet(me, [(data as any).id]),
     getPublicProfiles([(data as any).user_id]),
   ]);
   return mapPost(data, likedSet, authors);

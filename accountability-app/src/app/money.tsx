@@ -38,13 +38,26 @@ export default function Money() {
     }, [load]),
   );
 
-  async function onDelete(item: Transaction) {
-    try {
-      await deleteTransaction(item.id);
-      setTxns((cur) => cur.filter((t) => t.id !== item.id));
-    } catch (e) {
-      Alert.alert('Could not delete', String((e as Error).message ?? e));
-    }
+  function onDelete(item: Transaction) {
+    Alert.alert(
+      'Delete this transaction?',
+      `${categoryMeta(item.category).label} · ${formatAmount(item.amount)}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTransaction(item.id);
+              setTxns((cur) => cur.filter((t) => t.id !== item.id));
+            } catch (e) {
+              Alert.alert('Could not delete', String((e as Error).message ?? e));
+            }
+          },
+        },
+      ],
+    );
   }
 
   if (loading) {

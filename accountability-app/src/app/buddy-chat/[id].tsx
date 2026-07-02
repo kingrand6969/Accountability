@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import {
   listMessages,
@@ -22,6 +23,7 @@ import {
   type Message,
 } from '../../buddy/api';
 import { authorLabel } from '../../feed/format';
+import { colors, font, radius, spacing } from '../../ui/theme';
 
 export default function BuddyChat() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,6 +32,7 @@ export default function BuddyChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
@@ -54,22 +57,54 @@ export default function BuddyChat() {
   useFocusEffect(
     useCallback(() => {
       load();
-      // Poll so incoming messages appear without leaving the screen.
-      const t = setInterval(load, 4000);
-      return () => clearInterval(t);
-    }, [load]),
+      if (!id || !myId) return;
+
+      // Realtime: new messages addressed to me appear instantly.
+      const channel = supabase
+        .channel(`chat-${id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'buddy_messages',
+            filter: `recipient=eq.${myId}`,
+          },
+          (payload) => {
+            const m = payload.new as Message & { recipient: string };
+            if (m.sender !== id) return; // a different conversation
+            setMessages((cur) =>
+              cur.some((x) => x.id === m.id)
+                ? cur
+                : [...cur, { id: m.id, sender: m.sender, body: m.body, created_at: m.created_at }],
+            );
+          },
+        )
+        .subscribe();
+
+      // Slow safety-net poll in case the realtime socket drops.
+      const t = setInterval(load, 20000);
+      return () => {
+        clearInterval(t);
+        supabase.removeChannel(channel);
+      };
+    }, [load, id, myId]),
   );
 
   async function onSend() {
-    if (!id || !text.trim()) return;
+    if (!id || !text.trim() || sending) return;
     const body = text.trim();
     setText('');
+    setSending(true);
     try {
       await sendMessage(id, body);
       await load();
       listRef.current?.scrollToEnd({ animated: true });
     } catch (e) {
+      setText(body); // give their words back so nothing is lost
       Alert.alert('Could not send', String((e as Error).message ?? e));
+    } finally {
+      setSending(false);
     }
   }
 
@@ -97,18 +132,24 @@ export default function BuddyChat() {
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       <View style={styles.topBar}>
         <Text style={styles.topName}>{authorLabel(name)}</Text>
-        <Pressable onPress={onReport} hitSlop={8}>
-          <Text style={styles.report}>⚠ Report</Text>
+        <Pressable
+          onPress={onReport}
+          hitSlop={8}
+          style={({ pressed }) => [styles.reportBtn, pressed && styles.pressed]}
+          accessibilityLabel="Report or block this user"
+        >
+          <Ionicons name="flag-outline" size={15} color={colors.danger} />
+          <Text style={styles.report}>Report</Text>
         </Pressable>
       </View>
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -135,16 +176,26 @@ export default function BuddyChat() {
         <TextInput
           style={styles.input}
           placeholder="Message…"
+          placeholderTextColor={colors.textFaint}
           value={text}
           onChangeText={setText}
           multiline
         />
         <Pressable
-          style={[styles.sendBtn, !text.trim() && styles.sendDisabled]}
+          style={({ pressed }) => [
+            styles.sendBtn,
+            (!text.trim() || sending) && styles.sendDisabled,
+            pressed && text.trim() && styles.pressed,
+          ]}
           onPress={onSend}
-          disabled={!text.trim()}
+          disabled={!text.trim() || sending}
+          accessibilityLabel="Send message"
         >
-          <Text style={styles.sendText}>Send</Text>
+          {sending ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Ionicons name="send" size={18} color="#fff" />
+          )}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -152,45 +203,67 @@ export default function BuddyChat() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  pressed: { opacity: 0.7 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ddd',
+    borderBottomColor: colors.border,
   },
-  topName: { fontWeight: '700', fontSize: 15 },
-  report: { color: '#ef4444', fontWeight: '600', fontSize: 13 },
-  list: { padding: 14, gap: 8 },
-  empty: { textAlign: 'center', color: '#888', marginTop: 30 },
-  bubble: { maxWidth: '80%', borderRadius: 16, paddingVertical: 9, paddingHorizontal: 13 },
-  mine: { alignSelf: 'flex-end', backgroundColor: '#2563eb' },
-  theirs: { alignSelf: 'flex-start', backgroundColor: '#eee' },
-  bubbleText: { fontSize: 15, lineHeight: 20 },
+  topName: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  reportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: spacing.xs,
+  },
+  report: { color: colors.danger, fontFamily: font.semibold, fontSize: 13 },
+  list: { padding: spacing.lg, gap: spacing.sm },
+  empty: { textAlign: 'center', color: colors.textMuted, fontFamily: font.regular, marginTop: 30 },
+  bubble: {
+    maxWidth: '80%',
+    borderRadius: radius.lg,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+  },
+  mine: { alignSelf: 'flex-end', backgroundColor: colors.primary },
+  theirs: { alignSelf: 'flex-start', backgroundColor: colors.surface },
+  bubbleText: { fontSize: 15, lineHeight: 21, fontFamily: font.regular, color: colors.text },
   mineText: { color: '#fff' },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 8,
-    padding: 10,
+    gap: spacing.sm,
+    padding: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ddd',
+    borderTopColor: colors.border,
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 20,
+    borderColor: colors.border,
+    borderRadius: radius.xl,
     paddingHorizontal: 14,
     paddingVertical: 10,
     maxHeight: 100,
     fontSize: 15,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
   },
-  sendBtn: { backgroundColor: '#2563eb', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 18 },
+  sendBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sendDisabled: { opacity: 0.5 },
-  sendText: { color: '#fff', fontWeight: '700' },
 });

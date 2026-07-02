@@ -1,38 +1,50 @@
+import type { ComponentProps } from 'react';
 import { ScrollView, StyleSheet, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, font, radius, shadow, spacing } from '../../ui/theme';
 
-const PILLARS = [
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+const PILLARS: {
+  key: string;
+  icon: IoniconName;
+  tint: string;
+  title: string;
+  sub: string;
+  route: '/gym' | '/diet' | '/money' | '/activity-track';
+}[] = [
   {
     key: 'gym',
-    emoji: '🏋️',
+    icon: 'barbell-outline',
+    tint: '#7c3aed',
     title: 'Exercise Library',
     sub: 'Browse 800+ exercises, filter & log',
-    route: '/gym' as const,
-    ready: true,
+    route: '/gym',
   },
   {
     key: 'diet',
-    emoji: '🥗',
+    icon: 'nutrition-outline',
+    tint: '#16a34a',
     title: 'Diet & Calories',
     sub: 'Track meals, calories & macros',
-    route: '/diet' as const,
-    ready: true,
+    route: '/diet',
   },
   {
     key: 'money',
-    emoji: '💸',
+    icon: 'wallet-outline',
+    tint: '#dc2626',
     title: 'Money',
     sub: 'Income, expenses & budgets',
-    route: '/money' as const,
-    ready: true,
+    route: '/money',
   },
   {
     key: 'activity',
-    emoji: '🏃',
+    icon: 'walk-outline',
+    tint: '#ea580c',
     title: 'Activity',
     sub: 'GPS runs, rides & walks',
-    route: '/activity-track' as const,
-    ready: true,
+    route: '/activity-track',
   },
 ];
 
@@ -44,19 +56,18 @@ export default function Track() {
       {PILLARS.map((p) => (
         <Pressable
           key={p.key}
-          style={[styles.card, !p.ready && styles.cardDisabled]}
-          onPress={() => {
-            if (p.ready && p.route) router.push(p.route);
-          }}
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+          onPress={() => router.push(p.route)}
+          accessibilityLabel={p.title}
         >
-          <Text style={styles.emoji}>{p.emoji}</Text>
+          <View style={[styles.iconBadge, { backgroundColor: `${p.tint}15` }]}>
+            <Ionicons name={p.icon} size={26} color={p.tint} />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{p.title}</Text>
             <Text style={styles.sub}>{p.sub}</Text>
           </View>
-          <Text style={[styles.badge, p.ready && styles.badgeReady]}>
-            {p.ready ? '›' : 'Soon'}
-          </Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
         </Pressable>
       ))}
     </ScrollView>
@@ -64,20 +75,28 @@ export default function Track() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  intro: { color: '#666', marginBottom: 4 },
+  container: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
+  intro: { color: colors.textMuted, fontFamily: font.regular, marginBottom: 4 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: '#f7f7f9',
-    borderRadius: 14,
-    padding: 18,
+    gap: spacing.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    minHeight: 76,
+    ...shadow.card,
   },
-  cardDisabled: { opacity: 0.55 },
-  emoji: { fontSize: 30 },
-  title: { fontSize: 17, fontWeight: '700' },
-  sub: { color: '#666', marginTop: 2 },
-  badge: { color: '#999', fontWeight: '700' },
-  badgeReady: { color: '#2563eb', fontSize: 22 },
+  cardPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
+  iconBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { fontSize: 17, fontFamily: font.bold, color: colors.text },
+  sub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13.5, marginTop: 2 },
 });
