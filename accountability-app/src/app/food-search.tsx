@@ -194,6 +194,11 @@ export default function FoodSearch() {
         />
         <Button title="Add manually" onPress={onAddManual} disabled={saving} />
       </View>
+
+      {/* ODbL license requires attribution for the food database */}
+      <Text style={styles.attribution}>
+        Food data © Open Food Facts contributors (ODbL)
+      </Text>
     </ScrollView>
   );
 }
@@ -201,6 +206,13 @@ export default function FoodSearch() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: spacing.lg, gap: 10, paddingBottom: 48 },
+  attribution: {
+    color: colors.textFaint,
+    fontFamily: font.regular,
+    fontSize: 11.5,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
   pressed: { opacity: 0.7 },
   searchRow: { flexDirection: 'row', gap: spacing.sm },
   input: {
