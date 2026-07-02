@@ -71,7 +71,7 @@ export default function Onboarding() {
       <View style={styles.hero}>
         <Ionicons name="flame" size={44} color={colors.accent} />
       </View>
-      <Text style={styles.title}>Welcome to Accountability</Text>
+      <Text style={styles.title}>Welcome to AccountAbility</Text>
       <Text style={styles.subtitle}>
         Plan your day, track workouts, food, money and runs — and keep your
         streak alive. Let&apos;s set you up.

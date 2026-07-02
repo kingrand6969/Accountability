@@ -110,7 +110,7 @@ export default function InsightsScreen() {
           <Text style={styles.proTitle}>Monthly insights are Pro</Text>
           <Text style={styles.proText}>
             See your full month — every km, workout and habit trend — with
-            Accountability Pro.
+            AccountAbility Pro.
           </Text>
           <Pressable
             style={({ pressed }) => [styles.proBtn, pressed && styles.pressed]}

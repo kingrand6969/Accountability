@@ -34,7 +34,7 @@ export default function Paywall() {
         <View style={styles.heroIcon}>
           <Ionicons name="star" size={34} color={colors.pro} />
         </View>
-        <Text style={styles.title}>Accountability Pro</Text>
+        <Text style={styles.title}>AccountAbility Pro</Text>
         <Text style={styles.subtitle}>Get more out of every day.</Text>
       </View>
 

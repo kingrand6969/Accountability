@@ -49,8 +49,8 @@ export default function WinCard() {
 
   const message =
     stats.streak > 0
-      ? `🔥 ${stats.streak}-day streak on Accountability! Showing up every day. 💪`
-      : `Building better habits with Accountability 💪 — ${stats.weekWorkouts} workouts this week!`;
+      ? `🔥 ${stats.streak}-day streak on AccountAbility! Showing up every day. 💪`
+      : `Building better habits with AccountAbility 💪 — ${stats.weekWorkouts} workouts this week!`;
 
   async function pickPhoto(fromCamera: boolean) {
     try {
@@ -158,7 +158,9 @@ export default function WinCard() {
       <View style={styles.cardContent}>
         <View style={styles.brandRow}>
           <Ionicons name="flame" size={16} color={ACCENT} />
-          <Text style={styles.brandTop}>ACCOUNTABILITY</Text>
+          <Text style={styles.brandTop}>
+            Account<Text style={styles.brandAbility}>Ability</Text>
+          </Text>
         </View>
 
         <View style={styles.bottomBlock}>
@@ -278,9 +280,10 @@ const styles = StyleSheet.create({
   brandTop: {
     color: 'rgba(255,255,255,0.95)',
     fontFamily: 'Inter_800ExtraBold',
-    fontSize: 13,
-    letterSpacing: 3.5,
+    fontSize: 14,
+    letterSpacing: 1,
   },
+  brandAbility: { color: '#fbbf24' },
   bottomBlock: { gap: 14 },
   streakRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
   streakNum: {

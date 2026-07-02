@@ -47,7 +47,8 @@ export default function AppLayout() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="flame" size={20} color="#fbbf24" />
               <Text style={{ fontFamily: font.extrabold, fontSize: 18, letterSpacing: 0.3 }}>
-                Accountability
+                Account
+                <Text style={{ color: '#2563eb' }}>Ability</Text>
               </Text>
             </View>
           ),

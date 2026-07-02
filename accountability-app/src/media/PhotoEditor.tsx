@@ -107,7 +107,7 @@ export function PhotoEditor({
             {/* brand watermark — always on shared photos */}
             <View style={styles.watermark} pointerEvents="none">
               <Ionicons name="flame" size={13} color={colors.accent} />
-              <Text style={styles.watermarkText}>ACCOUNTABILITY</Text>
+              <Text style={styles.watermarkText}>AccountAbility</Text>
             </View>
           </View>
         </View>
