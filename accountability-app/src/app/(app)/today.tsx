@@ -19,6 +19,7 @@ import { toLocalDateString } from '../../timeline/datetime';
 import { AdBanner } from '../../pro/AdBanner';
 import { HomeHeader } from '../../home/HomeHeader';
 import { useIsPro } from '../../pro/ProProvider';
+import { confirmDestructive } from '../../ui/confirm';
 import type { TimelineItem } from '../../timeline/types';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
 
@@ -82,22 +83,20 @@ export default function Today() {
   }
 
   function onDelete(item: TimelineItem) {
-    Alert.alert('Delete this?', `“${item.title}” will be removed from your day.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await cancelReminder(item.reminder_id);
-            await deleteItem(item.id);
-            setItems((cur) => cur.filter((i) => i.id !== item.id));
-          } catch (e) {
-            Alert.alert('Could not delete', String((e as Error).message ?? e));
-          }
-        },
+    confirmDestructive(
+      'Delete this?',
+      `“${item.title}” will be removed from your day.`,
+      'Delete',
+      async () => {
+        try {
+          await cancelReminder(item.reminder_id);
+          await deleteItem(item.id);
+          setItems((cur) => cur.filter((i) => i.id !== item.id));
+        } catch (e) {
+          Alert.alert('Could not delete', String((e as Error).message ?? e));
+        }
       },
-    ]);
+    );
   }
 
   function openAddAtHour(hour: number) {

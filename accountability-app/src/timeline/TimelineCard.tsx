@@ -21,41 +21,44 @@ export function TimelineCard({
   const hasList = checklist.length > 0;
   const doneCount = checklist.filter((c) => c.done).length;
 
-  // The card shows only the title + an indicator; tap opens note/checklist.
+  // The card shows only the title + an indicator. The body (tap = open) and
+  // the delete X are SEPARATE pressables so tapping X never opens the detail.
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })}
-      accessibilityLabel={`Open ${item.title}`}
-    >
-      <Text style={styles.time}>{formatTime(item.starts_at)}</Text>
-      <View style={[styles.iconBadge, { backgroundColor: `${meta.tint}18` }]}>
-        <Ionicons name={meta.icon as IoniconName} size={18} color={meta.tint} />
-      </View>
-      <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <View style={styles.indicators}>
-          {hasList ? (
-            <View style={styles.badge}>
-              <Ionicons name="checkbox-outline" size={12} color={colors.primary} />
-              <Text style={styles.badgeText}>
-                {doneCount}/{checklist.length}
-              </Text>
-            </View>
-          ) : item.note ? (
-            <View style={styles.badge}>
-              <Ionicons name="document-text-outline" size={12} color={colors.textMuted} />
-              <Text style={styles.badgeMuted}>Note</Text>
-            </View>
-          ) : null}
-          {item.reminder_id ? (
-            <Ionicons name="notifications-outline" size={13} color={colors.textMuted} />
-          ) : null}
+    <View style={styles.card}>
+      <Pressable
+        style={({ pressed }) => [styles.body, pressed && styles.cardPressed]}
+        onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })}
+        accessibilityLabel={`Open ${item.title}`}
+      >
+        <Text style={styles.time}>{formatTime(item.starts_at)}</Text>
+        <View style={[styles.iconBadge, { backgroundColor: `${meta.tint}18` }]}>
+          <Ionicons name={meta.icon as IoniconName} size={18} color={meta.tint} />
         </View>
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+        <View style={styles.bodyText}>
+          <Text style={styles.title} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <View style={styles.indicators}>
+            {hasList ? (
+              <View style={styles.badge}>
+                <Ionicons name="checkbox-outline" size={12} color={colors.primary} />
+                <Text style={styles.badgeText}>
+                  {doneCount}/{checklist.length}
+                </Text>
+              </View>
+            ) : item.note ? (
+              <View style={styles.badge}>
+                <Ionicons name="document-text-outline" size={12} color={colors.textMuted} />
+                <Text style={styles.badgeMuted}>Note</Text>
+              </View>
+            ) : null}
+            {item.reminder_id ? (
+              <Ionicons name="notifications-outline" size={13} color={colors.textMuted} />
+            ) : null}
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+      </Pressable>
       <Pressable
         onPress={() => onDelete(item)}
         hitSlop={8}
@@ -64,7 +67,7 @@ export function TimelineCard({
       >
         <Ionicons name="close" size={18} color={colors.textFaint} />
       </Pressable>
-    </Pressable>
+    </View>
   );
 }
 
@@ -72,14 +75,20 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: spacing.md,
+    paddingRight: spacing.xs,
   },
   cardPressed: { opacity: 0.7 },
+  body: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+  },
   time: { fontSize: 13, fontFamily: font.bold, color: colors.primary, width: 44 },
   iconBadge: {
     width: 36,
@@ -88,7 +97,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  body: { flex: 1, gap: 3 },
+  bodyText: { flex: 1, gap: 3 },
   title: { fontSize: 15.5, fontFamily: font.semibold, color: colors.text },
   indicators: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
