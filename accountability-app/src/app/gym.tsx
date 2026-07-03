@@ -25,6 +25,7 @@ import {
   type LibraryExercise,
   type MuscleGroup,
 } from '../gym/library';
+import { WorkoutTitleModal } from '../gym/WorkoutTitleModal';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
@@ -42,6 +43,8 @@ export default function Gym() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const [titling, setTitling] = useState(false);
+  const [savingWorkout, setSavingWorkout] = useState(false);
 
   const favKey = Array.from(favIds).sort().join(',');
   const favDep = showFavorites ? favKey : '';
@@ -130,21 +133,25 @@ export default function Gym() {
 
   const selectedNames = Object.values(selected);
 
-  async function onLogWorkout() {
+  async function onSaveWorkout(title: string) {
     if (selectedNames.length === 0) return;
+    setSavingWorkout(true);
     try {
+      // A named workout holding the chosen exercises as check-off items.
       await createItem({
         type: 'workout',
-        title: 'Workout',
-        // tick each exercise off as you do it
+        title,
         checklist: selectedNames.map((n) => ({ text: n, done: false })),
         starts_at: new Date().toISOString(),
       });
       setSelected({});
+      setTitling(false);
       showToast('Workout logged 💪');
       router.navigate('/today' as never);
     } catch (e) {
       Alert.alert('Could not log', String((e as Error).message ?? e));
+    } finally {
+      setSavingWorkout(false);
     }
   }
 
@@ -294,12 +301,20 @@ export default function Gym() {
       {selectedNames.length > 0 ? (
         <Pressable
           style={({ pressed }) => [styles.logBar, pressed && styles.pressed]}
-          onPress={onLogWorkout}
+          onPress={() => setTitling(true)}
           accessibilityRole="button"
         >
-          <Text style={styles.logText}>Log workout ({selectedNames.length}) 💪</Text>
+          <Text style={styles.logText}>Save workout ({selectedNames.length}) 💪</Text>
         </Pressable>
       ) : null}
+
+      <WorkoutTitleModal
+        visible={titling}
+        exercises={selectedNames}
+        saving={savingWorkout}
+        onCancel={() => setTitling(false)}
+        onSave={onSaveWorkout}
+      />
     </View>
   );
 }

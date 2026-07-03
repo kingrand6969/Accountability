@@ -19,6 +19,7 @@ import {
   type LibraryExercise,
 } from '../../gym/library';
 import { createItem } from '../../timeline/api';
+import { WorkoutTitleModal } from '../../gym/WorkoutTitleModal';
 import { Button } from '../../ui/Button';
 import { EmptyState } from '../../ui/EmptyState';
 import { showToast } from '../../ui/Toast';
@@ -55,6 +56,8 @@ export default function ExerciseDetail() {
   const [ex, setEx] = useState<LibraryExercise | null>(null);
   const [fav, setFav] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [titling, setTitling] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -88,19 +91,25 @@ export default function ExerciseDetail() {
     }
   }
 
-  async function onLog() {
+  async function onSaveWorkout(title: string) {
     if (!ex) return;
+    setSaving(true);
     try {
+      // A workout must have a title; the exercise lives inside it as a
+      // checklist item — never a lone exercise on the timeline.
       await createItem({
         type: 'workout',
-        title: ex.name,
-        note: null,
+        title,
+        checklist: [{ text: ex.name, done: false }],
         starts_at: new Date().toISOString(),
       });
-      showToast(`${ex.name} logged 💪`);
+      setTitling(false);
+      showToast('Workout saved 💪');
       router.navigate('/today' as never);
     } catch (e) {
-      Alert.alert('Could not log', String((e as Error).message ?? e));
+      Alert.alert('Could not save', String((e as Error).message ?? e));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -160,7 +169,19 @@ export default function ExerciseDetail() {
         </View>
       ))}
 
-      <Button title="Log this exercise 💪" onPress={onLog} style={styles.log} />
+      <Button
+        title="Add to a workout 💪"
+        onPress={() => setTitling(true)}
+        style={styles.log}
+      />
+
+      <WorkoutTitleModal
+        visible={titling}
+        exercises={[ex.name]}
+        saving={saving}
+        onCancel={() => setTitling(false)}
+        onSave={onSaveWorkout}
+      />
     </ScrollView>
   );
 }
