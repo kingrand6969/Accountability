@@ -9,10 +9,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getItem, updateItemChecklist, deleteItem } from '../../timeline/api';
-import { cancelReminder } from '../../notifications/api';
+import { getItem, updateItemChecklist } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
 import { EmptyState } from '../../ui/EmptyState';
 import { showToast } from '../../ui/Toast';
@@ -23,7 +22,6 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const [item, setItem] = useState<TimelineItem | null>(null);
   const [list, setList] = useState<ChecklistItem[]>([]);
   const [newText, setNewText] = useState('');
@@ -63,27 +61,6 @@ export default function ItemDetail() {
     if (!t) return;
     setNewText('');
     persist([...list, { text: t, done: false }]);
-  }
-
-  function onDelete() {
-    if (!item) return;
-    Alert.alert('Delete this?', `“${item.title}” will be removed.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await cancelReminder(item.reminder_id);
-            await deleteItem(item.id);
-            showToast('Deleted');
-            router.back();
-          } catch (e) {
-            Alert.alert('Could not delete', String((e as Error).message ?? e));
-          }
-        },
-      },
-    ]);
   }
 
   if (loading) {
@@ -180,14 +157,6 @@ export default function ItemDetail() {
           <Ionicons name="add" size={22} color="#fff" />
         </Pressable>
       </View>
-
-      <Pressable
-        onPress={onDelete}
-        style={({ pressed }) => [styles.deleteRow, pressed && styles.pressed]}
-      >
-        <Ionicons name="trash-outline" size={17} color={colors.danger} />
-        <Text style={styles.deleteText}>Delete this item</Text>
-      </Pressable>
     </ScrollView>
   );
 }
@@ -276,13 +245,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  deleteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: spacing.xl,
-    minHeight: 44,
-  },
-  deleteText: { color: colors.danger, fontFamily: font.semibold, fontSize: 14 },
 });
