@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,27 +12,84 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import {
-  CARD_BACKGROUNDS,
-  cardBackground,
+  CARD_BLUE,
   getMyBuddyCard,
   saveMyBuddyCard,
   type BuddyCard,
 } from '../buddy/card';
+import { uploadPostImage } from '../feed/uploadPostImage';
+import { getMyProfile } from '../profiles/api';
+import { authorLabel } from '../feed/format';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { colors, font, radius, shadow, spacing } from '../ui/theme';
 
 export default function BuddyCardEdit() {
   const router = useRouter();
   const [card, setCard] = useState<BuddyCard>({});
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [myName, setMyName] = useState<string | null>(null);
+  const [myAvatar, setMyAvatar] = useState<string | null>(null);
+  const [myArea, setMyArea] = useState<string | null>(null);
+  const [myBio, setMyBio] = useState<string | null>(null);
 
   useEffect(() => {
     getMyBuddyCard().then(setCard).catch(() => {});
+    getMyProfile()
+      .then((p) => {
+        setMyName(p?.display_name ?? null);
+        setMyAvatar(p?.avatar_url ?? null);
+        setMyArea(p?.area ?? null);
+        setMyBio(p?.bio ?? null);
+      })
+      .catch(() => {});
   }, []);
 
   const mode = card.mode ?? 'profile';
+  // exactly what a visitor will see (same logic as the card screen)
+  const headline =
+    mode === 'custom'
+      ? card.headline?.trim() || null
+      : myArea
+        ? `Trains around ${myArea}`
+        : null;
+  const about =
+    (mode === 'custom' ? card.about?.trim() : myBio) ||
+    'They haven’t written anything yet — say hi and find out!';
+
+  async function onPickBackground() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to set a background.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 10],
+      quality: 0.7,
+      base64: true,
+    });
+    if (res.canceled) return;
+    const asset = res.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Could not read image', 'Please try a different photo.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const ext = asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
+      const url = await uploadPostImage(asset.base64, ext);
+      setCard((c) => ({ ...c, bg_url: url }));
+    } catch (e) {
+      Alert.alert('Upload failed', String((e as Error).message ?? e));
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function onSave() {
     setSaving(true);
@@ -48,30 +106,26 @@ export default function BuddyCardEdit() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.sectionTitle}>Card background</Text>
-      <View style={styles.swatches}>
-        {CARD_BACKGROUNDS.map((b) => {
-          const selected = (card.bg ?? 'ocean') === b.key;
-          return (
-            <Pressable
-              key={b.key}
-              onPress={() => setCard((c) => ({ ...c, bg: b.key }))}
-              accessibilityLabel={`${b.label} background`}
-              style={({ pressed }) => [styles.swatchWrap, pressed && styles.pressed]}
-            >
-              <LinearGradient
-                colors={b.colors}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.swatch, selected && styles.swatchSelected]}
-              >
-                {selected ? <Ionicons name="checkmark" size={18} color="#fff" /> : null}
-              </LinearGradient>
-              <Text style={styles.swatchLabel}>{b.label}</Text>
-            </Pressable>
-          );
-        })}
+      <Text style={styles.sectionTitle}>Background</Text>
+      <View style={styles.bgRow}>
+        <Button
+          title={card.bg_url ? 'Change photo' : 'Add a photo'}
+          onPress={onPickBackground}
+          loading={uploading}
+          variant="outline"
+          icon={<Ionicons name="image-outline" size={17} color={colors.primary} />}
+          style={{ flex: 1 }}
+        />
+        {card.bg_url ? (
+          <Button
+            title="Use blue"
+            variant="ghost"
+            onPress={() => setCard((c) => ({ ...c, bg_url: null }))}
+            style={{ flex: 1 }}
+          />
+        ) : null}
       </View>
+      <Text style={styles.hint}>Blue by default — or use a photo of you doing your thing.</Text>
 
       <Text style={styles.sectionTitle}>Card info comes from</Text>
       <View style={styles.toggle}>
@@ -96,11 +150,6 @@ export default function BuddyCardEdit() {
           </Pressable>
         ))}
       </View>
-      <Text style={styles.hint}>
-        {mode === 'profile'
-          ? 'Your card shows your area and profile bio automatically.'
-          : 'Write exactly what buddy seekers should see.'}
-      </Text>
 
       {mode === 'custom' ? (
         <>
@@ -124,27 +173,51 @@ export default function BuddyCardEdit() {
             maxLength={400}
           />
         </>
-      ) : null}
+      ) : (
+        <Text style={styles.hint}>
+          Your card shows your area and profile bio automatically.
+        </Text>
+      )}
 
-      {/* mini preview */}
-      <Text style={styles.sectionTitle}>Preview</Text>
-      <LinearGradient
-        colors={cardBackground(card.bg)}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.preview}
-      >
-        <View style={styles.previewAvatar}>
-          <Ionicons name="person" size={22} color="#fff" />
-        </View>
-        {mode === 'custom' && card.headline?.trim() ? (
-          <View style={styles.previewChip}>
-            <Text style={styles.previewChipText} numberOfLines={2}>
-              {card.headline}
-            </Text>
+      {/* live preview — EXACTLY what a visitor sees */}
+      <Text style={styles.sectionTitle}>How visitors see you</Text>
+      <View style={styles.card}>
+        <View style={styles.photoFrame}>
+          {card.bg_url ? (
+            <Image source={{ uri: card.bg_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : (
+            <LinearGradient
+              colors={CARD_BLUE}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
+          {headline ? (
+            <View style={styles.focusChip}>
+              <Ionicons name="flame" size={12} color="#fde68a" />
+              <Text style={styles.focusText} numberOfLines={4}>
+                {headline}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.avatarRing}>
+            {myAvatar ? (
+              <Image source={{ uri: myAvatar }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Ionicons name="person" size={36} color="#fff" />
+              </View>
+            )}
           </View>
-        ) : null}
-      </LinearGradient>
+        </View>
+        <Text style={styles.name}>{authorLabel(myName)}</Text>
+        <Text style={styles.subtitle}>Accountability buddy</Text>
+        <View style={styles.aboutBox}>
+          <Text style={styles.aboutTitle}>Profile</Text>
+          <Text style={styles.aboutText}>{about}</Text>
+        </View>
+      </View>
 
       <Button title="Save my buddy card" onPress={onSave} loading={saving} style={styles.save} />
     </ScrollView>
@@ -152,7 +225,12 @@ export default function BuddyCardEdit() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background, paddingBottom: 40 },
+  container: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+    backgroundColor: colors.background,
+    paddingBottom: 40,
+  },
   pressed: { opacity: 0.75 },
   sectionTitle: {
     fontSize: 13,
@@ -162,17 +240,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginTop: spacing.md,
   },
-  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  swatchWrap: { alignItems: 'center', gap: 4 },
-  swatch: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  swatchSelected: { borderWidth: 3, borderColor: colors.text },
-  swatchLabel: { fontFamily: font.medium, fontSize: 11.5, color: colors.textMuted },
+  bgRow: { flexDirection: 'row', gap: spacing.sm },
   toggle: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
@@ -202,32 +270,71 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
   },
   multiline: { minHeight: 90, textAlignVertical: 'top' },
-  preview: {
-    borderRadius: radius.lg,
-    minHeight: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
+  card: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.xl,
     padding: spacing.md,
-  },
-  previewAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.85)',
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingBottom: spacing.lg,
     alignItems: 'center',
+    ...shadow.card,
+  },
+  photoFrame: {
+    width: '100%',
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+    minHeight: 170,
     justifyContent: 'center',
   },
-  previewChip: {
+  focusChip: {
     position: 'absolute',
-    top: spacing.sm,
-    right: spacing.sm,
-    maxWidth: 150,
-    backgroundColor: 'rgba(15,23,42,0.45)',
-    borderRadius: radius.sm,
-    padding: 7,
+    top: spacing.md,
+    right: spacing.md,
+    maxWidth: 130,
+    flexDirection: 'row',
+    gap: 5,
+    backgroundColor: 'rgba(15,23,42,0.62)',
+    borderRadius: radius.md,
+    padding: 8,
   },
-  previewChipText: { color: '#fff', fontFamily: font.semibold, fontSize: 10.5 },
+  focusText: {
+    color: '#fff',
+    fontFamily: font.semibold,
+    fontSize: 11,
+    flexShrink: 1,
+    lineHeight: 15,
+  },
+  avatarRing: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.85)',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  avatar: { width: 104, height: 104, borderRadius: 52 },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  name: { fontFamily: font.extrabold, fontSize: 18, color: colors.text, marginTop: spacing.md },
+  subtitle: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  aboutBox: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  aboutTitle: { fontFamily: font.bold, fontSize: 13.5, color: colors.text, marginBottom: 4 },
+  aboutText: {
+    fontFamily: font.regular,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: colors.textSecondary,
+  },
   save: { marginTop: spacing.lg },
 });

@@ -1,22 +1,10 @@
 import { supabase } from '../lib/supabase';
 
-/** Background themes a user can pick for their buddy card. */
-export const CARD_BACKGROUNDS: { key: string; label: string; colors: [string, string] }[] = [
-  // single-hue ramps — calm, no clashing families
-  { key: 'ocean', label: 'Ocean', colors: ['#60a5fa', '#1d4ed8'] },
-  { key: 'violet', label: 'Violet', colors: ['#a78bfa', '#5b21b6'] },
-  { key: 'sunset', label: 'Sunset', colors: ['#fb923c', '#db2777'] },
-  { key: 'ember', label: 'Ember', colors: ['#fbbf24', '#b91c1c'] },
-  { key: 'forest', label: 'Forest', colors: ['#34d399', '#065f46'] },
-  { key: 'slate', label: 'Slate', colors: ['#64748b', '#0f172a'] },
-];
-
-export function cardBackground(key?: string | null): [string, string] {
-  return (CARD_BACKGROUNDS.find((b) => b.key === key) ?? CARD_BACKGROUNDS[0]).colors;
-}
+/** Default card background — brand blue. Users can replace it with a photo. */
+export const CARD_BLUE: [string, string] = ['#60a5fa', '#1d4ed8'];
 
 export type BuddyCard = {
-  bg?: string;
+  bg_url?: string | null; // custom background photo (else the blue gradient)
   mode?: 'profile' | 'custom';
   headline?: string;
   about?: string;

@@ -11,7 +11,7 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getBuddyCard, cardBackground, cardText, type BuddyCardView } from '../../buddy/card';
+import { getBuddyCard, cardText, CARD_BLUE, type BuddyCardView } from '../../buddy/card';
 import { sendRequest } from '../../buddy/api';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
@@ -65,7 +65,6 @@ export default function BuddyCardScreen() {
     );
   }
 
-  const bg = cardBackground(view.card.bg);
   const { headline, about } = cardText(view);
   const joined = new Date(view.created_at).toLocaleDateString(undefined, {
     month: 'short',
@@ -78,7 +77,20 @@ export default function BuddyCardScreen() {
         {/* framed card like the reference */}
         <View style={styles.card}>
           <View style={styles.photoFrame}>
-            <LinearGradient colors={bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            {view.card.bg_url ? (
+              <Image
+                source={{ uri: view.card.bg_url }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+            ) : (
+              <LinearGradient
+                colors={CARD_BLUE}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+            )}
             {headline ? (
               <View style={styles.focusChip}>
                 <Ionicons name="flame" size={12} color="#fde68a" />
