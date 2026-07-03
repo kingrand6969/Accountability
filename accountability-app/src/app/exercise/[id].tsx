@@ -161,8 +161,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   meta: { color: colors.textMuted, fontFamily: font.regular, textTransform: 'capitalize' },
-  images: { gap: spacing.md, marginTop: 6 },
-  imageWrap: { gap: spacing.xs },
+  images: { flexDirection: 'row', gap: spacing.md, marginTop: 6 },
+  imageWrap: { flex: 1, gap: spacing.xs },
   image: {
     width: '100%',
     aspectRatio: 3 / 2,

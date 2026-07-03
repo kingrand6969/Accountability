@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { NewTimelineItem, TimelineItem } from './types';
+import type { ChecklistItem, NewTimelineItem, TimelineItem } from './types';
 
 async function currentUserId(): Promise<string | null> {
   const { data } = await supabase.auth.getUser();
@@ -34,6 +34,27 @@ export async function createItem(input: NewTimelineItem): Promise<void> {
   const { error } = await supabase
     .from('timeline_items')
     .insert({ ...input, user_id: uid });
+  if (error) throw error;
+}
+
+export async function getItem(itemId: string): Promise<TimelineItem | null> {
+  const { data, error } = await supabase
+    .from('timeline_items')
+    .select('*')
+    .eq('id', itemId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data ?? null) as TimelineItem | null;
+}
+
+export async function updateItemChecklist(
+  itemId: string,
+  checklist: ChecklistItem[],
+): Promise<void> {
+  const { error } = await supabase
+    .from('timeline_items')
+    .update({ checklist })
+    .eq('id', itemId);
   if (error) throw error;
 }
 

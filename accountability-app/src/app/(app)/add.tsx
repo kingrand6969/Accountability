@@ -100,6 +100,8 @@ export default function Add() {
   const [type, setType] = useState<TimelineType | null>('task');
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
+  const [checklist, setChecklist] = useState<string[]>([]);
+  const [checkText, setCheckText] = useState('');
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [time, setTime] = useState(() => nextHour());
   const [remind, setRemind] = useState(false);
@@ -177,11 +179,13 @@ export default function Add() {
         type,
         title: title.trim(),
         note: note.trim() || null,
+        checklist: checklist.length > 0 ? checklist.map((text) => ({ text, done: false })) : null,
         starts_at: startsAt,
         reminder_id: reminderId,
       });
       setTitle('');
       setNote('');
+      setChecklist([]);
       setRemind(false);
       showToast('Added to your day ✓');
       router.navigate('/today' as never);
@@ -254,6 +258,51 @@ export default function Add() {
         onChangeText={setNote}
         multiline
       />
+
+      <Text style={styles.label}>Checklist (optional)</Text>
+      {checklist.map((line, i) => (
+        <View key={i} style={styles.checkLine}>
+          <Ionicons name="ellipse-outline" size={16} color={colors.textFaint} />
+          <Text style={styles.checkLineText}>{line}</Text>
+          <Pressable
+            onPress={() => setChecklist((c) => c.filter((_, idx) => idx !== i))}
+            hitSlop={8}
+            accessibilityLabel={`Remove ${line}`}
+          >
+            <Ionicons name="close" size={16} color={colors.textFaint} />
+          </Pressable>
+        </View>
+      ))}
+      <View style={styles.checkAddRow}>
+        <TextInput
+          style={[styles.input, { flex: 1 }]}
+          placeholder="Add a checklist item…"
+          placeholderTextColor={colors.textFaint}
+          value={checkText}
+          onChangeText={setCheckText}
+          onSubmitEditing={() => {
+            const t = checkText.trim();
+            if (t) {
+              setChecklist((c) => [...c, t]);
+              setCheckText('');
+            }
+          }}
+          returnKeyType="done"
+        />
+        <Pressable
+          onPress={() => {
+            const t = checkText.trim();
+            if (t) {
+              setChecklist((c) => [...c, t]);
+              setCheckText('');
+            }
+          }}
+          style={({ pressed }) => [styles.checkAddBtn, pressed && styles.pressed]}
+          accessibilityLabel="Add checklist item"
+        >
+          <Ionicons name="add" size={22} color="#fff" />
+        </Pressable>
+      </View>
 
       <Text style={styles.label}>When?</Text>
       <View style={styles.presetRow}>
@@ -391,6 +440,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
   },
   multiline: { minHeight: 70, textAlignVertical: 'top' },
+  checkLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  checkLineText: { flex: 1, fontFamily: font.regular, fontSize: 14.5, color: colors.text },
+  checkAddRow: { flexDirection: 'row', gap: spacing.sm },
+  checkAddBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   row: { flexDirection: 'row', gap: spacing.md, marginTop: 6 },
   col: { flex: 1 },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 6 },
