@@ -158,6 +158,21 @@ export default function Gym() {
         onEndReachedThreshold={0.5}
         ListHeaderComponent={
           <View style={styles.filters}>
+            <Pressable
+              style={({ pressed }) => [styles.planCta, pressed && styles.pressed]}
+              onPress={() => router.push('/gym-plan' as never)}
+              accessibilityRole="button"
+              accessibilityLabel="Create a plan for me"
+            >
+              <View style={styles.planIcon}>
+                <Ionicons name="sparkles" size={18} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.planCtaTitle}>Create a plan for me</Text>
+                <Text style={styles.planCtaSub}>Pick your focus — we build the workout</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+            </Pressable>
             <TextInput
               style={styles.search}
               placeholder="Search exercises…"
@@ -338,6 +353,27 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   listContent: { padding: 14, gap: 10, paddingBottom: 90 },
   filters: { gap: 10, marginBottom: spacing.xs },
+  planCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 60,
+  },
+  planIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  planCtaTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  planCtaSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
   search: {
     borderWidth: 1,
     borderColor: colors.border,

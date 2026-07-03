@@ -42,6 +42,7 @@ function RootNavigator() {
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
         <Stack.Screen name="gym" options={{ headerShown: true, title: 'Exercise Library' }} />
         <Stack.Screen name="exercise/[id]" options={{ headerShown: true, title: 'Exercise' }} />
+        <Stack.Screen name="gym-plan" options={{ headerShown: true, title: 'Build my plan' }} />
         <Stack.Screen name="diet" options={{ headerShown: true, title: 'Diet' }} />
         <Stack.Screen name="food-search" options={{ headerShown: true, title: 'Add Food' }} />
         <Stack.Screen name="money" options={{ headerShown: true, title: 'Money' }} />
