@@ -248,7 +248,7 @@ export default function Gym() {
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
               onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: item.id } })}
             >
-              <Image source={{ uri: item.images[0] }} style={styles.thumb} resizeMode="cover" />
+              <Image source={{ uri: item.images[0] }} style={styles.thumb} resizeMode="contain" />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.name}</Text>
                 <Text style={styles.meta}>

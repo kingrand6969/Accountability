@@ -229,7 +229,7 @@ export default function GymPlan() {
               }
             >
               {item.exercise.images[0] ? (
-                <Image source={{ uri: item.exercise.images[0] }} style={styles.thumb} resizeMode="cover" />
+                <Image source={{ uri: item.exercise.images[0] }} style={styles.thumb} resizeMode="contain" />
               ) : (
                 <View style={[styles.thumb, styles.thumbFallback]}>
                   <Ionicons name="barbell-outline" size={22} color={colors.textFaint} />

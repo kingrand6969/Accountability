@@ -120,8 +120,11 @@ export default function ExerciseDetail() {
       <View style={styles.images}>
         {ex.images.map((u, i) => (
           <View key={i} style={styles.imageWrap}>
-            <Image source={{ uri: u }} style={styles.image} resizeMode="cover" />
-            <Text style={styles.imageLabel}>{i === 0 ? 'Start' : 'Finish'}</Text>
+            {/* contain so the whole movement is visible — never crop a form demo */}
+            <Image source={{ uri: u }} style={styles.image} resizeMode="contain" />
+            <Text style={styles.imageLabel}>
+              {ex.images.length === 1 ? 'Demo' : i === 0 ? 'Start' : 'Finish'}
+            </Text>
           </View>
         ))}
       </View>
@@ -158,9 +161,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   meta: { color: colors.textMuted, fontFamily: font.regular, textTransform: 'capitalize' },
-  images: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  imageWrap: { flex: 1, gap: spacing.xs },
-  image: { width: '100%', height: 160, borderRadius: radius.md, backgroundColor: colors.surface },
+  images: { gap: spacing.md, marginTop: 6 },
+  imageWrap: { gap: spacing.xs },
+  image: {
+    width: '100%',
+    aspectRatio: 3 / 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
   imageLabel: { textAlign: 'center', color: colors.textFaint, fontSize: 12, fontFamily: font.semibold },
   heading: { fontSize: 16, fontFamily: font.bold, color: colors.text, marginTop: 14 },
   step: { flexDirection: 'row', gap: 10, marginTop: 6 },
