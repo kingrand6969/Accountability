@@ -61,6 +61,7 @@ function RootNavigator() {
         <Stack.Screen name="group/[id]" options={{ headerShown: true, title: 'Group' }} />
         <Stack.Screen name="group-new" options={{ headerShown: true, title: 'New Group' }} />
         <Stack.Screen name="menu" options={{ headerShown: true, title: 'Menu' }} />
+        <Stack.Screen name="search" options={{ headerShown: true, title: 'Search' }} />
         <Stack.Screen name="pages" options={{ headerShown: true, title: 'Pages' }} />
         <Stack.Screen name="page/[id]" options={{ headerShown: true, title: 'Page' }} />
         <Stack.Screen name="page-new" options={{ headerShown: true, title: 'New Page' }} />

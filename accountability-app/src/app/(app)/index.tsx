@@ -87,6 +87,7 @@ export default function Feed() {
       ),
       headerRight: () => (
         <View style={{ flexDirection: 'row', marginRight: 8 }}>
+          <HeaderIcon icon="search-outline" size={24} label="Search" onPress={() => router.push('/search' as never)} />
           <HeaderIcon icon="add-circle-outline" size={25} label="Create" onPress={() => setCreateOpen(true)} />
           <HeaderIcon icon="storefront-outline" size={22} label="Business pages" onPress={() => router.push('/pages' as never)} />
           <HeaderIcon icon="people-circle-outline" size={25} label="Groups" onPress={() => router.push('/groups')} />
