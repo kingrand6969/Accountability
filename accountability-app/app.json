@@ -8,6 +8,7 @@
     "scheme": "accountabilityapp",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "supportsTablet": true,
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "UIBackgroundModes": [

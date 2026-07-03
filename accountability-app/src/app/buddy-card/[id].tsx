@@ -26,7 +26,7 @@ import { sendRequest } from '../../buddy/api';
 import { authorLabel } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
-import { colors, font, radius, shadow, spacing } from '../../ui/theme';
+import { colors, font, radius, shadow, spacing, contentMax } from '../../ui/theme';
 
 export default function BuddyCardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   missing: { fontFamily: font.regular, color: colors.textMuted },
-  scroll: { padding: spacing.lg, paddingBottom: 40 },
+  scroll: { padding: spacing.lg, paddingBottom: 40, ...contentMax },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.xl,

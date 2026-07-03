@@ -64,6 +64,13 @@ export const type = {
   caption: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted },
 } as const;
 
+/** Cap content width on tablets/wide screens — apply to scroll containers. */
+export const contentMax = {
+  width: '100%' as const,
+  maxWidth: 720,
+  alignSelf: 'center' as const,
+};
+
 export const shadow = {
   card: {
     shadowColor: '#0f172a',

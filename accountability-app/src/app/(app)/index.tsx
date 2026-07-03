@@ -25,7 +25,7 @@ import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
-import { colors, font, radius, spacing, shadow } from '../../ui/theme';
+import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -490,6 +490,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   composer: {
+    ...contentMax,
     padding: spacing.lg,
     gap: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -542,7 +543,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
   emptyWrap: { flexGrow: 1 },
-  list: { padding: spacing.lg, gap: spacing.md },
+  list: { padding: spacing.lg, gap: spacing.md, ...contentMax },
   footerSpinner: { paddingVertical: spacing.lg },
   emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
   emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },

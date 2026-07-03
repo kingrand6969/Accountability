@@ -13,7 +13,7 @@ import { getMyProfile } from '../profiles/api';
 import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
 import { inviteFriends } from '../social/invite';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import { colors, font, radius, shadow, spacing, contentMax } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -166,6 +166,7 @@ export default function Menu() {
 
 const styles = StyleSheet.create({
   container: {
+    ...contentMax,
     padding: spacing.lg,
     gap: spacing.sm,
     backgroundColor: colors.background,
