@@ -16,13 +16,12 @@ import { ChipSelector } from '../../profiles/ChipSelector';
 import { useIsPro } from '../../pro/ProProvider';
 import { parseVoiceCommand } from '../../voice/parse';
 import { createItem } from '../../timeline/api';
-import { TIMELINE_TYPES } from '../../timeline/format';
 import {
-  validateDateString,
   validateTimeString,
   toIsoFromLocal,
   toLocalDateString,
 } from '../../timeline/datetime';
+import { MonthCalendar } from '../../ui/MonthCalendar';
 import {
   ensureNotificationPermission,
   scheduleReminder,
@@ -34,10 +33,12 @@ import { showToast } from '../../ui/Toast';
 import { colors, font, radius, spacing } from '../../ui/theme';
 import type { TimelineType } from '../../timeline/types';
 
-const TYPE_OPTIONS = TIMELINE_TYPES.map((t) => ({
-  value: t.value,
-  label: `${t.emoji} ${t.label}`,
-}));
+// Add is for scheduling reminders only — events, meetings, errands, grocery.
+// Workouts/meals/money live in their own trackers (Track tab).
+const TYPE_OPTIONS: { value: TimelineType; label: string }[] = [
+  { value: 'event', label: '📅 Event' },
+  { value: 'task', label: '✅ Task / errand' },
+];
 
 const OFFSET_OPTIONS = [
   { m: 0, label: 'At time' },
@@ -51,17 +52,6 @@ function nextHour(): string {
   d.setHours(d.getHours() + 1, 0, 0, 0);
   return `${d.getHours().toString().padStart(2, '0')}:00`;
 }
-
-function dayString(offsetDays: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return toLocalDateString(d);
-}
-
-const DATE_PRESETS = [
-  { label: 'Today', get: () => dayString(0) },
-  { label: 'Tomorrow', get: () => dayString(1) },
-];
 
 const TIME_PRESETS = [
   { label: 'Morning', value: '08:00' },
@@ -97,7 +87,7 @@ export default function Add() {
   const router = useRouter();
   const params = useLocalSearchParams<{ date?: string; time?: string }>();
   const { isPro } = useIsPro();
-  const [type, setType] = useState<TimelineType | null>('task');
+  const [type, setType] = useState<TimelineType | null>('event');
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [checklist, setChecklist] = useState<string[]>([]);
@@ -112,7 +102,8 @@ export default function Add() {
   function onAutoFill() {
     if (!phrase.trim()) return;
     const r = parseVoiceCommand(phrase);
-    setType(r.type);
+    // Add only schedules events/tasks — clamp anything else to task.
+    setType(r.type === 'event' ? 'event' : 'task');
     setTitle(r.title);
     setDate(r.date);
     setTime(r.time);
@@ -132,11 +123,6 @@ export default function Add() {
     }
     if (!title.trim()) {
       Alert.alert('Add a title', 'Give it a short name.');
-      return;
-    }
-    const dateError = validateDateString(date);
-    if (dateError) {
-      Alert.alert('Check the date', dateError);
       return;
     }
     const timeError = validateTimeString(time);
@@ -304,39 +290,10 @@ export default function Add() {
         </Pressable>
       </View>
 
-      <Text style={styles.label}>When?</Text>
-      <View style={styles.presetRow}>
-        {DATE_PRESETS.map((p) => (
-          <PresetChip
-            key={p.label}
-            label={p.label}
-            selected={date === p.get()}
-            onPress={() => setDate(p.get())}
-          />
-        ))}
-      </View>
-      <View style={styles.row}>
-        <View style={styles.col}>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            value={date}
-            onChangeText={setDate}
-          />
-        </View>
-        <View style={styles.col}>
-          <TextInput
-            style={styles.input}
-            placeholder="HH:MM"
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            value={time}
-            onChangeText={setTime}
-          />
-        </View>
-      </View>
+      <Text style={styles.label}>Pick a date</Text>
+      <MonthCalendar value={date} onChange={setDate} />
+
+      <Text style={styles.label}>Time</Text>
       <View style={styles.presetRow}>
         {TIME_PRESETS.map((p) => {
           const v = 'value' in p && p.value ? p.value : p.get!();
@@ -349,6 +306,14 @@ export default function Add() {
             />
           );
         })}
+        <TextInput
+          style={styles.timeInput}
+          placeholder="HH:MM"
+          placeholderTextColor={colors.textFaint}
+          autoCapitalize="none"
+          value={time}
+          onChangeText={setTime}
+        />
       </View>
 
       <View style={styles.remindRow}>
@@ -474,6 +439,20 @@ const styles = StyleSheet.create({
   presetChipSel: { backgroundColor: colors.primary },
   presetText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13 },
   presetTextSel: { color: '#fff' },
+  timeInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    minHeight: 36,
+    width: 88,
+    fontFamily: font.semibold,
+    fontSize: 13,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
+    textAlign: 'center',
+  },
   remindRow: {
     flexDirection: 'row',
     alignItems: 'center',
