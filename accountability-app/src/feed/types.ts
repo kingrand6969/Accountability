@@ -9,6 +9,13 @@ export type FeedPost = {
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
+  event: {
+    id: string;
+    title: string;
+    starts_at: string;
+    location: string | null;
+    group_id: string;
+  } | null;
 };
 
 export type PostComment = {

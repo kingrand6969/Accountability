@@ -8,7 +8,7 @@ async function currentUserId(): Promise<string | null> {
 }
 
 const POST_SELECT =
-  'id,body,image_url,created_at,user_id,post_likes(count),post_comments(count)';
+  'id,body,image_url,created_at,user_id,post_likes(count),post_comments(count),event:events(id,title,starts_at,location,group_id)';
 
 function mapPost(
   row: any,
@@ -27,6 +27,7 @@ function mapPost(
     like_count: row.post_likes?.[0]?.count ?? 0,
     comment_count: row.post_comments?.[0]?.count ?? 0,
     liked_by_me: likedSet.has(row.id),
+    event: row.event ?? null,
   };
 }
 
@@ -99,12 +100,18 @@ export async function createPost(
   imageUrl: string | null = null,
   groupId: string | null = null,
   pageId: string | null = null,
+  eventId: string | null = null,
 ): Promise<void> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
-  const { error } = await supabase
-    .from('posts')
-    .insert({ user_id: me, body, image_url: imageUrl, group_id: groupId, page_id: pageId });
+  const { error } = await supabase.from('posts').insert({
+    user_id: me,
+    body,
+    image_url: imageUrl,
+    group_id: groupId,
+    page_id: pageId,
+    event_id: eventId,
+  });
   if (error) throw error;
 }
 

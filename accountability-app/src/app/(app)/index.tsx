@@ -17,6 +17,8 @@ import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
+import { createEvent, attendEvent } from '../../events/api';
+import { toIsoFromLocal, toLocalDateString } from '../../timeline/datetime';
 import { uploadPostImage } from '../../feed/uploadPostImage';
 import { promptCrossShare } from '../../feed/crossShare';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
@@ -72,6 +74,13 @@ export default function Feed() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [editorUri, setEditorUri] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // event announcement mini-form
+  const [eventOpen, setEventOpen] = useState(false);
+  const [evTitle, setEvTitle] = useState('');
+  const [evDate, setEvDate] = useState(() => toLocalDateString(new Date()));
+  const [evTime, setEvTime] = useState('18:00');
+  const [evLocation, setEvLocation] = useState('');
+  const [attending, setAttending] = useState<Set<string>>(new Set());
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
   const storyRailRef = useRef<StoryRailHandle>(null);
@@ -219,9 +228,50 @@ export default function Feed() {
     setPreviewUri(null);
   }
 
-  const canPost = (body.trim().length > 0 || !!pickedBase64) && !posting;
+  const canPost = eventOpen
+    ? evTitle.trim().length >= 3 && !posting
+    : (body.trim().length > 0 || !!pickedBase64) && !posting;
+
+  async function onAttend(post: FeedPost) {
+    if (!post.event || attending.has(post.event.group_id)) return;
+    setAttending((cur) => new Set(cur).add(post.event!.group_id));
+    try {
+      await attendEvent(post.event.group_id);
+      showToast(`You're in! Added to the "${post.event.title}" group 🎉`);
+    } catch (e) {
+      setAttending((cur) => {
+        const n = new Set(cur);
+        n.delete(post.event!.group_id);
+        return n;
+      });
+      Alert.alert('Could not join', String((e as Error).message ?? e));
+    }
+  }
 
   async function onPost() {
+    if (eventOpen) {
+      if (evTitle.trim().length < 3) return;
+      setPosting(true);
+      try {
+        await createEvent({
+          title: evTitle,
+          startsAtIso: toIsoFromLocal(evDate, evTime),
+          location: evLocation,
+          message: body.trim(),
+        });
+        setBody('');
+        setEvTitle('');
+        setEvLocation('');
+        setEventOpen(false);
+        await load();
+        showToast('Event announced — its group is ready 🎉');
+      } catch (e) {
+        Alert.alert('Could not announce event', String((e as Error).message ?? e));
+      } finally {
+        setPosting(false);
+      }
+      return;
+    }
     if (!body.trim() && !pickedBase64) return;
     setPosting(true);
     const postedText = body.trim();
@@ -337,6 +387,45 @@ export default function Feed() {
             </Pressable>
           </View>
         ) : null}
+        {eventOpen ? (
+          <View style={styles.eventForm}>
+            <TextInput
+              style={styles.eventInput}
+              placeholder="Event title (e.g. Saturday 5k group run)"
+              placeholderTextColor={colors.textFaint}
+              value={evTitle}
+              onChangeText={setEvTitle}
+            />
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <TextInput
+                style={[styles.eventInput, { flex: 1 }]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textFaint}
+                autoCapitalize="none"
+                value={evDate}
+                onChangeText={setEvDate}
+              />
+              <TextInput
+                style={[styles.eventInput, { flex: 1 }]}
+                placeholder="HH:MM"
+                placeholderTextColor={colors.textFaint}
+                autoCapitalize="none"
+                value={evTime}
+                onChangeText={setEvTime}
+              />
+            </View>
+            <TextInput
+              style={styles.eventInput}
+              placeholder="Location (park, gym, meet point…)"
+              placeholderTextColor={colors.textFaint}
+              value={evLocation}
+              onChangeText={setEvLocation}
+            />
+            <Text style={styles.eventHint}>
+              Announcing creates a group — everyone who taps Attend joins it automatically.
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.composerActions}>
           <Pressable
             style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
@@ -345,6 +434,28 @@ export default function Feed() {
           >
             <Ionicons name="camera-outline" size={18} color={colors.primary} />
             <Text style={styles.photoBtnText}>Photo</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
+            onPress={() =>
+              showToast('Live video arrives with the next update — stay tuned 🔴')
+            }
+            accessibilityLabel="Go live (coming soon)"
+          >
+            <Ionicons name="videocam-outline" size={18} color={colors.danger} />
+            <Text style={[styles.photoBtnText, { color: colors.danger }]}>Live</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
+            onPress={() => setEventOpen((v) => !v)}
+            accessibilityLabel="Announce an event"
+          >
+            <Ionicons
+              name={eventOpen ? 'calendar' : 'calendar-outline'}
+              size={18}
+              color={colors.success}
+            />
+            <Text style={[styles.photoBtnText, { color: colors.success }]}>Event</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [
@@ -400,6 +511,41 @@ export default function Feed() {
                 </View>
               </View>
               {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
+              {item.event ? (
+                <View style={styles.eventBox}>
+                  <View style={styles.eventIconWrap}>
+                    <Ionicons name="calendar" size={20} color={colors.success} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.eventTitle} numberOfLines={2}>
+                      {item.event.title}
+                    </Text>
+                    <Text style={styles.eventMeta}>
+                      {new Date(item.event.starts_at).toLocaleString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                      {item.event.location ? ` · ${item.event.location}` : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.attendBtn,
+                      attending.has(item.event!.group_id) && styles.attendDone,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => onAttend(item)}
+                    accessibilityLabel={`Attend ${item.event.title}`}
+                  >
+                    <Text style={styles.attendText}>
+                      {attending.has(item.event.group_id) ? 'Going ✓' : 'Attend'}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {item.image_url ? (
                 <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
               ) : null}
@@ -521,7 +667,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  composerActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  composerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  eventForm: { gap: spacing.sm },
+  eventInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    fontSize: 14.5,
+    fontFamily: font.regular,
+    color: colors.text,
+    backgroundColor: colors.surfaceAlt,
+  },
+  eventHint: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted },
+  eventBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.successSoft,
+    borderWidth: 1,
+    borderColor: colors.success,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  eventIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventTitle: { fontFamily: font.bold, fontSize: 14.5, color: colors.text },
+  eventMeta: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
+  attendBtn: {
+    backgroundColor: colors.success,
+    borderRadius: radius.pill,
+    paddingVertical: 9,
+    paddingHorizontal: 15,
+    minHeight: 38,
+    justifyContent: 'center',
+  },
+  attendDone: { backgroundColor: colors.textMuted },
+  attendText: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
   photoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -532,6 +720,7 @@ const styles = StyleSheet.create({
   },
   photoBtnText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
   postBtn: {
+    marginLeft: 'auto',
     backgroundColor: colors.primary,
     borderRadius: radius.sm,
     paddingVertical: 11,
