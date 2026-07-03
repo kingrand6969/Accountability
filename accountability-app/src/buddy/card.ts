@@ -8,7 +8,51 @@ export type BuddyCard = {
   mode?: 'profile' | 'custom';
   headline?: string;
   about?: string;
+  pr_weight?: string; // manual PR: max weight lifted (e.g. "120 kg")
 };
+
+export type BuddyStats = { buddies: number; km: number; stars: number };
+
+export async function getBuddyStats(id: string): Promise<BuddyStats> {
+  const { data, error } = await supabase.rpc('buddy_public_stats', { p_target: id });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    buddies: Number(row?.buddies ?? 0),
+    km: Number(row?.km ?? 0),
+    stars: Number(row?.stars ?? 0),
+  };
+}
+
+export async function haveIStarred(id: string): Promise<boolean> {
+  const uid = await me();
+  if (!uid) return false;
+  const { data } = await supabase
+    .from('buddy_stars')
+    .select('target')
+    .eq('target', id)
+    .eq('starrer', uid)
+    .maybeSingle();
+  return !!data;
+}
+
+export async function setStar(id: string, on: boolean): Promise<void> {
+  const uid = await me();
+  if (!uid) throw new Error('Not signed in.');
+  if (on) {
+    const { error } = await supabase
+      .from('buddy_stars')
+      .insert({ target: id, starrer: uid });
+    if (error && error.code !== '23505') throw error;
+  } else {
+    const { error } = await supabase
+      .from('buddy_stars')
+      .delete()
+      .eq('target', id)
+      .eq('starrer', uid);
+    if (error) throw error;
+  }
+}
 
 export type BuddyCardView = {
   id: string;

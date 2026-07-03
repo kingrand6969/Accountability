@@ -179,6 +179,16 @@ export default function BuddyCardEdit() {
         </Text>
       )}
 
+      <Text style={styles.label}>Your PR — max weight lifted (optional)</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="e.g. 120 kg squat"
+        placeholderTextColor={colors.textFaint}
+        value={card.pr_weight ?? ''}
+        onChangeText={(t) => setCard((c) => ({ ...c, pr_weight: t }))}
+        maxLength={30}
+      />
+
       {/* live preview — EXACTLY what a visitor sees */}
       <Text style={styles.sectionTitle}>How visitors see you</Text>
       <View style={styles.card}>
@@ -193,26 +203,54 @@ export default function BuddyCardEdit() {
               style={StyleSheet.absoluteFill}
             />
           )}
-          {headline ? (
-            <View style={styles.focusChip}>
-              <Ionicons name="flame" size={12} color="#fde68a" />
-              <Text style={styles.focusText} numberOfLines={4}>
-                {headline}
-              </Text>
+          <View style={styles.coverRow}>
+            <View style={styles.avatarRing}>
+              {myAvatar ? (
+                <Image source={{ uri: myAvatar }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Ionicons name="person" size={36} color="#fff" />
+                </View>
+              )}
             </View>
-          ) : null}
-          <View style={styles.avatarRing}>
-            {myAvatar ? (
-              <Image source={{ uri: myAvatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Ionicons name="person" size={36} color="#fff" />
+            <View style={styles.coverRight}>
+              <View style={styles.sinceChip}>
+                <Ionicons name="ribbon-outline" size={11} color="#fff" />
+                <Text style={styles.sinceText}>Member since …</Text>
               </View>
-            )}
+              {headline ? (
+                <View style={styles.focusChip}>
+                  <Text style={styles.focusLabel}>Focus: </Text>
+                  <Text style={styles.focusText}>{headline}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
         <Text style={styles.name}>{authorLabel(myName)}</Text>
-        <Text style={styles.subtitle}>Accountability buddy</Text>
+        <Text style={styles.subtitle}>
+          {myArea ? `${myArea} · ` : ''}Accountability buddy
+        </Text>
+        <View style={styles.statsRow}>
+          <View style={styles.stat}>
+            <Ionicons name="star-outline" size={13} color="#f59e0b" />
+            <Text style={styles.statText}>0</Text>
+          </View>
+          <View style={styles.stat}>
+            <Ionicons name="people-outline" size={13} color={colors.primary} />
+            <Text style={styles.statText}>buddies</Text>
+          </View>
+          <View style={styles.stat}>
+            <Ionicons name="walk-outline" size={13} color="#ea580c" />
+            <Text style={styles.statText}>km</Text>
+          </View>
+          {card.pr_weight?.trim() ? (
+            <View style={styles.stat}>
+              <Ionicons name="barbell-outline" size={13} color="#7c3aed" />
+              <Text style={styles.statText}>{card.pr_weight}</Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.aboutBox}>
           <Text style={styles.aboutTitle}>Profile</Text>
           <Text style={styles.aboutText}>{about}</Text>
@@ -277,40 +315,67 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.md,
     paddingBottom: spacing.lg,
-    alignItems: 'center',
     ...shadow.card,
   },
   photoFrame: {
     width: '100%',
     borderRadius: radius.lg,
     overflow: 'hidden',
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
-    minHeight: 170,
+    minHeight: 180,
     justifyContent: 'center',
   },
-  focusChip: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    maxWidth: 130,
+  coverRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  coverRight: { flex: 1, gap: spacing.sm, alignItems: 'flex-end' },
+  sinceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 5,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+  },
+  sinceText: { color: '#fff', fontFamily: font.semibold, fontSize: 11 },
+  focusChip: {
+    maxWidth: 160,
     backgroundColor: 'rgba(15,23,42,0.62)',
     borderRadius: radius.md,
-    padding: 8,
+    padding: 9,
   },
+  focusLabel: { color: '#fde68a', fontFamily: font.bold, fontSize: 11.5 },
   focusText: {
     color: '#fff',
-    fontFamily: font.semibold,
-    fontSize: 11,
+    fontFamily: font.medium,
+    fontSize: 11.5,
     flexShrink: 1,
-    lineHeight: 15,
+    lineHeight: 16,
   },
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    alignSelf: 'flex-start',
+  },
+  stat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+  },
+  statText: { fontFamily: font.bold, fontSize: 12, color: colors.text },
   avatarRing: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     borderWidth: 4,
     borderColor: 'rgba(255,255,255,0.85)',
     overflow: 'hidden',
@@ -318,7 +383,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  avatar: { width: 104, height: 104, borderRadius: 52 },
+  avatar: { width: 96, height: 96, borderRadius: 48 },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   name: { fontFamily: font.extrabold, fontSize: 18, color: colors.text, marginTop: spacing.md },
   subtitle: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted, marginTop: 2 },

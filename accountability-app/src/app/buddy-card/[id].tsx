@@ -3,25 +3,36 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getBuddyCard, cardText, CARD_BLUE, type BuddyCardView } from '../../buddy/card';
+import {
+  getBuddyCard,
+  getBuddyStats,
+  haveIStarred,
+  setStar,
+  cardText,
+  CARD_BLUE,
+  type BuddyCardView,
+  type BuddyStats,
+} from '../../buddy/card';
 import { sendRequest } from '../../buddy/api';
-import { authorLabel, timeAgo } from '../../feed/format';
+import { authorLabel } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
-import { colors, font, radius, spacing } from '../../ui/theme';
+import { colors, font, radius, shadow, spacing } from '../../ui/theme';
 
 export default function BuddyCardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const [view, setView] = useState<BuddyCardView | null>(null);
+  const [stats, setStats] = useState<BuddyStats | null>(null);
+  const [starred, setStarred] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -29,12 +40,29 @@ export default function BuddyCardScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
-      getBuddyCard(id)
-        .then(setView)
+      Promise.all([getBuddyCard(id), getBuddyStats(id), haveIStarred(id)])
+        .then(([v, s, st]) => {
+          setView(v);
+          setStats(s);
+          setStarred(st);
+        })
         .catch(() => {})
         .finally(() => setLoading(false));
     }, [id]),
   );
+
+  async function onToggleStar() {
+    if (!id || !stats) return;
+    const next = !starred;
+    setStarred(next);
+    setStats((s) => (s ? { ...s, stars: Math.max(0, s.stars + (next ? 1 : -1)) } : s));
+    try {
+      await setStar(id, next);
+    } catch {
+      setStarred(!next);
+      setStats((s) => (s ? { ...s, stars: Math.max(0, s.stars + (next ? -1 : 1)) } : s));
+    }
+  }
 
   async function onConnect() {
     if (!id) return;
@@ -66,92 +94,101 @@ export default function BuddyCardScreen() {
   }
 
   const { headline, about } = cardText(view);
-  const joined = new Date(view.created_at).toLocaleDateString(undefined, {
+  const memberSince = new Date(view.created_at).toLocaleDateString(undefined, {
     month: 'short',
     year: 'numeric',
   });
 
   return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* framed card like the reference */}
-        <View style={styles.card}>
-          <View style={styles.photoFrame}>
-            {view.card.bg_url ? (
-              <Image
-                source={{ uri: view.card.bg_url }}
-                style={StyleSheet.absoluteFill}
-                resizeMode="cover"
-              />
-            ) : (
-              <LinearGradient
-                colors={CARD_BLUE}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-            )}
-            {headline ? (
-              <View style={styles.focusChip}>
-                <Ionicons name="flame" size={12} color="#fde68a" />
-                <Text style={styles.focusText} numberOfLines={4}>
-                  {headline}
-                </Text>
-              </View>
-            ) : null}
+    <ScrollView style={styles.screen} contentContainerStyle={styles.scroll}>
+      <View style={styles.card}>
+        {/* cover: big avatar LEFT · member-since top right · message under it */}
+        <View style={styles.coverFrame}>
+          {view.card.bg_url ? (
+            <Image source={{ uri: view.card.bg_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : (
+            <LinearGradient
+              colors={CARD_BLUE}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
+          <View style={styles.coverRow}>
             <View style={styles.avatarRing}>
               {view.avatar ? (
                 <Image source={{ uri: view.avatar }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Ionicons name="person" size={44} color="#fff" />
+                  <Ionicons name="person" size={48} color="#fff" />
                 </View>
               )}
             </View>
-          </View>
-
-          <Text style={styles.name}>{authorLabel(view.name)}</Text>
-          <Text style={styles.subtitle}>Accountability buddy</Text>
-
-          <View style={styles.chips}>
-            {view.area ? (
-              <View style={styles.chip}>
-                <Ionicons name="location-outline" size={13} color={colors.primary} />
-                <Text style={styles.chipText}>{view.area}</Text>
+            <View style={styles.coverRight}>
+              <View style={styles.sinceChip}>
+                <Ionicons name="ribbon-outline" size={12} color="#fff" />
+                <Text style={styles.sinceText}>Member since {memberSince}</Text>
               </View>
-            ) : null}
-            <View style={styles.chip}>
-              <Ionicons name="calendar-outline" size={13} color={colors.primary} />
-              <Text style={styles.chipText}>Joined {joined}</Text>
+              {headline ? (
+                <View style={styles.msgChip}>
+                  <Text style={styles.msgLabel}>Focus: </Text>
+                  <Text style={styles.msgText}>{headline}</Text>
+                </View>
+              ) : null}
             </View>
-            {view.last_active_at ? (
-              <View style={styles.chip}>
-                <Ionicons name="pulse-outline" size={13} color={colors.success} />
-                <Text style={styles.chipText}>Active {timeAgo(view.last_active_at)}</Text>
-              </View>
-            ) : null}
           </View>
         </View>
 
-        <View style={styles.aboutCard}>
-          <Text style={styles.aboutTitle}>Profile</Text>
-          <Text style={styles.aboutText}>
-            {about || 'They haven’t written anything yet — say hi and find out!'}
-          </Text>
-        </View>
-
-        <Button
-          title={sent ? 'Request sent ✓' : 'Connect as buddies'}
-          onPress={onConnect}
-          loading={sending}
-          disabled={sent}
-          style={styles.connect}
-        />
-        <Text style={styles.hint}>
-          You&apos;ll only be linked if they accept — then you can chat.
+        {/* name across */}
+        <Text style={styles.name}>{authorLabel(view.name)}</Text>
+        <Text style={styles.subtitle}>
+          {view.area ? `${view.area} · ` : ''}Accountability buddy
         </Text>
-      </ScrollView>
-    </View>
+
+        {/* stats: stars · buddies · km ran · max lift */}
+        <View style={styles.statsRow}>
+          <Pressable
+            onPress={onToggleStar}
+            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
+            accessibilityLabel={starred ? 'Remove your star' : 'Give a star'}
+          >
+            <Ionicons name={starred ? 'star' : 'star-outline'} size={14} color="#f59e0b" />
+            <Text style={styles.statText}>{stats?.stars ?? 0}</Text>
+          </Pressable>
+          <View style={styles.stat}>
+            <Ionicons name="people-outline" size={14} color={colors.primary} />
+            <Text style={styles.statText}>{stats?.buddies ?? 0} buddies</Text>
+          </View>
+          <View style={styles.stat}>
+            <Ionicons name="walk-outline" size={14} color="#ea580c" />
+            <Text style={styles.statText}>{stats?.km ?? 0} km</Text>
+          </View>
+          {view.card.pr_weight?.trim() ? (
+            <View style={styles.stat}>
+              <Ionicons name="barbell-outline" size={14} color="#7c3aed" />
+              <Text style={styles.statText}>{view.card.pr_weight}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      {/* profile info below */}
+      <View style={styles.aboutCard}>
+        <Text style={styles.aboutTitle}>Profile</Text>
+        <Text style={styles.aboutText}>
+          {about || 'They haven’t written anything yet — say hi and find out!'}
+        </Text>
+      </View>
+
+      <Button
+        title={sent ? 'Request sent ✓' : 'Connect as buddies'}
+        onPress={onConnect}
+        loading={sending}
+        disabled={sent}
+        style={styles.connect}
+      />
+      <Text style={styles.hint}>You&apos;ll only be linked if they accept — then you can chat.</Text>
+    </ScrollView>
   );
 }
 
@@ -165,66 +202,91 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.md,
     paddingBottom: spacing.lg,
-    alignItems: 'center',
+    ...shadow.card,
   },
-  photoFrame: {
-    width: '100%',
+  coverFrame: {
     borderRadius: radius.lg,
     overflow: 'hidden',
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
-    minHeight: 210,
+    minHeight: 200,
     justifyContent: 'center',
   },
-  focusChip: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    maxWidth: 130,
+  coverRow: {
     flexDirection: 'row',
-    gap: 5,
-    backgroundColor: 'rgba(15,23,42,0.62)',
-    borderRadius: radius.md,
-    padding: 8,
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
   },
-  focusText: { color: '#fff', fontFamily: font.semibold, fontSize: 11, flexShrink: 1, lineHeight: 15 },
   avatarRing: {
-    width: 148,
-    height: 148,
-    borderRadius: 74,
+    width: 132,
+    height: 132,
+    borderRadius: 66,
     borderWidth: 5,
-    borderColor: 'rgba(255,255,255,0.85)',
+    borderColor: 'rgba(255,255,255,0.9)',
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  avatar: { width: 138, height: 138, borderRadius: 69 },
+  avatar: { width: 122, height: 122, borderRadius: 61 },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  name: { fontFamily: font.extrabold, fontSize: 20, color: colors.text, marginTop: spacing.md },
-  subtitle: { fontFamily: font.medium, fontSize: 13.5, color: colors.textMuted, marginTop: 2 },
-  chips: {
+  coverRight: { flex: 1, gap: spacing.sm, alignItems: 'flex-end' },
+  sinceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+  },
+  sinceText: { color: '#fff', fontFamily: font.semibold, fontSize: 11.5 },
+  msgChip: {
+    backgroundColor: 'rgba(15,23,42,0.62)',
+    borderRadius: radius.md,
+    padding: 10,
+    maxWidth: 170,
+  },
+  msgLabel: { color: '#fde68a', fontFamily: font.bold, fontSize: 12 },
+  msgText: { color: '#fff', fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  name: {
+    fontFamily: font.extrabold,
+    fontSize: 21,
+    color: colors.text,
+    marginTop: spacing.md,
+    marginHorizontal: spacing.xs,
+  },
+  subtitle: {
+    fontFamily: font.medium,
+    fontSize: 13.5,
+    color: colors.textMuted,
+    marginTop: 2,
+    marginHorizontal: spacing.xs,
+  },
+  statsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
     gap: spacing.sm,
     marginTop: spacing.md,
+    marginHorizontal: spacing.xs,
   },
-  chip: {
+  stat: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     backgroundColor: colors.primarySoft,
     borderRadius: radius.pill,
-    paddingVertical: 6,
+    paddingVertical: 7,
     paddingHorizontal: 12,
+    minHeight: 32,
   },
-  chipText: { fontFamily: font.semibold, fontSize: 12.5, color: colors.text },
+  statText: { fontFamily: font.bold, fontSize: 12.5, color: colors.text },
+  pressed: { opacity: 0.7 },
   aboutCard: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
     padding: spacing.lg,
     marginTop: spacing.md,
+    ...shadow.card,
   },
   aboutTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text, marginBottom: 6 },
   aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: colors.textSecondary },
