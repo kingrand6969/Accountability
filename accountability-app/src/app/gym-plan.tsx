@@ -119,12 +119,15 @@ export default function GymPlan() {
 
   async function logPlan() {
     if (!plan) return;
+    // Log only the checked exercises; if none are checked, take the whole plan.
+    const chosen = plan.filter((p) => keep.has(p.exercise.id));
+    const toLog = chosen.length > 0 ? chosen : plan;
     try {
       await createItem({
         type: 'workout',
         title: 'My plan',
-        // saved workout is a fresh checklist to tick off while training
-        checklist: plan.map((p) => ({
+        // a fresh checklist to tick off while training
+        checklist: toLog.map((p) => ({
           text: `${p.exercise.name} — ${p.sets}×${p.reps}`,
           done: false,
         })),
@@ -258,7 +261,7 @@ export default function GymPlan() {
             </Text>
           </View>
           <Text style={styles.keepHint}>
-            ✓ Check the ones you want to keep — Regenerate swaps only the rest.
+            ✓ Check the exercises you want. Regenerate re-rolls the unchecked; Log saves the checked.
           </Text>
           {plan.map((item) => {
             const isKept = keep.has(item.exercise.id);
@@ -304,7 +307,15 @@ export default function GymPlan() {
               </View>
             );
           })}
-          <Button title="Log this as a workout" onPress={logPlan} style={styles.logBtn} />
+          <Button
+            title={
+              keep.size > 0
+                ? `Log workout (${keep.size} checked)`
+                : 'Log all as a workout'
+            }
+            onPress={logPlan}
+            style={styles.logBtn}
+          />
         </>
       ) : null}
     </ScrollView>
