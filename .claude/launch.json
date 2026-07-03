@@ -7,6 +7,13 @@
       "runtimeArgs": ["--yes", "serve", "accountability-app/dist", "-s", "-l", "8123"],
       "port": 8123,
       "autoPort": false
+    },
+    {
+      "name": "portfolio",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5599", "--directory", "C:/Users/KinGrand/kingrand-portfolio"],
+      "port": 5599,
+      "autoPort": false
     }
   ]
 }

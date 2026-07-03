@@ -90,7 +90,11 @@ export default function GymPlan() {
       await createItem({
         type: 'workout',
         title: 'My plan',
-        note: plan.map((p) => p.exercise.name).join(', '),
+        // a workout is a checklist you tick off exercise-by-exercise
+        checklist: plan.map((p) => ({
+          text: `${p.exercise.name} — ${p.sets}×${p.reps}`,
+          done: false,
+        })),
         starts_at: new Date().toISOString(),
       });
       showToast('Plan logged as a workout 💪');

@@ -24,6 +24,31 @@ import { EmptyState } from '../../ui/EmptyState';
 import { showToast } from '../../ui/Toast';
 import { colors, font, radius, spacing } from '../../ui/theme';
 
+/** Frame matches the image's real aspect ratio, so it fills the width with no
+ *  white bars and no cropping — same on phone and tablet. */
+function DemoImage({ uri, label }: { uri: string; label: string }) {
+  const [ratio, setRatio] = useState(4 / 3);
+  useEffect(() => {
+    let ok = true;
+    Image.getSize(
+      uri,
+      (w, h) => {
+        if (ok && w > 0 && h > 0) setRatio(w / h);
+      },
+      () => {},
+    );
+    return () => {
+      ok = false;
+    };
+  }, [uri]);
+  return (
+    <View style={styles.imageWrap}>
+      <Image source={{ uri }} style={[styles.image, { aspectRatio: ratio }]} resizeMode="cover" />
+      <Text style={styles.imageLabel}>{label}</Text>
+    </View>
+  );
+}
+
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -119,13 +144,11 @@ export default function ExerciseDetail() {
 
       <View style={styles.images}>
         {ex.images.map((u, i) => (
-          <View key={i} style={styles.imageWrap}>
-            {/* contain so the whole movement is visible — never crop a form demo */}
-            <Image source={{ uri: u }} style={styles.image} resizeMode="contain" />
-            <Text style={styles.imageLabel}>
-              {ex.images.length === 1 ? 'Demo' : i === 0 ? 'Start' : 'Finish'}
-            </Text>
-          </View>
+          <DemoImage
+            key={i}
+            uri={u}
+            label={ex.images.length === 1 ? 'Demo' : i === 0 ? 'Start' : 'Finish'}
+          />
         ))}
       </View>
 
@@ -165,7 +188,6 @@ const styles = StyleSheet.create({
   imageWrap: { flex: 1, gap: spacing.xs },
   image: {
     width: '100%',
-    aspectRatio: 3 / 2,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
   },

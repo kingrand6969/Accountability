@@ -136,7 +136,8 @@ export default function Gym() {
       await createItem({
         type: 'workout',
         title: 'Workout',
-        note: selectedNames.join(', '),
+        // tick each exercise off as you do it
+        checklist: selectedNames.map((n) => ({ text: n, done: false })),
         starts_at: new Date().toISOString(),
       });
       setSelected({});
