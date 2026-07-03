@@ -27,6 +27,7 @@ import { colors, font, radius, spacing, contentMax } from '../ui/theme';
 export default function GymPlan() {
   const router = useRouter();
   const [focus, setFocus] = useState<Set<MuscleGroup>>(new Set());
+  const [equip, setEquip] = useState<'any' | 'gym' | 'body'>('any');
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [plan, setPlan] = useState<PlanItem[] | null>(null);
@@ -51,9 +52,14 @@ export default function GymPlan() {
     setGenerating(true);
     try {
       const chosen = [...focus];
+      const matchesEquip = (e: { equipment: string | null }) => {
+        if (equip === 'body') return e.equipment === 'body only';
+        if (equip === 'gym') return !!e.equipment && e.equipment !== 'body only';
+        return true;
+      };
       const pools = await Promise.all(
         chosen.map(async (muscle) => {
-          const list = await listExercises({ muscle, offset: 0 });
+          const list = (await listExercises({ muscle, offset: 0 })).filter(matchesEquip);
           // prefer entries with a demo image for nicer cards
           const withImg = list.filter((e) => e.images.length > 0);
           return { muscle, pool: withImg.length >= 3 ? withImg : list };
@@ -62,7 +68,12 @@ export default function GymPlan() {
       const perMuscle = focus.size >= 4 ? 1 : focus.size >= 2 ? 2 : 3;
       const built = buildPlan(pools, goal, perMuscle);
       if (built.length === 0) {
-        Alert.alert('No exercises found', 'Try different body parts.');
+        Alert.alert(
+          'No exercises found',
+          equip === 'body'
+            ? 'No bodyweight moves for those areas — try “Any” equipment.'
+            : 'Try different body parts or equipment.',
+        );
         return;
       }
       setPlan(built);
@@ -114,6 +125,38 @@ export default function GymPlan() {
             >
               {on ? <Ionicons name="checkmark" size={15} color="#fff" /> : null}
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{g.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={styles.sectionTitle}>Equipment</Text>
+      <View style={styles.toggle}>
+        {(
+          [
+            { value: 'any', label: 'Any', icon: 'apps-outline' },
+            { value: 'gym', label: 'With gear', icon: 'barbell-outline' },
+            { value: 'body', label: 'Bodyweight', icon: 'body-outline' },
+          ] as const
+        ).map((o) => {
+          const on = equip === o.value;
+          return (
+            <Pressable
+              key={o.value}
+              onPress={() => setEquip(o.value)}
+              style={({ pressed }) => [
+                styles.toggleBtn,
+                on && styles.toggleActive,
+                pressed && styles.pressed,
+              ]}
+              accessibilityState={{ selected: on }}
+            >
+              <Ionicons
+                name={o.icon}
+                size={15}
+                color={on ? colors.primary : colors.textMuted}
+              />
+              <Text style={[styles.toggleText, on && styles.toggleTextActive]}>{o.label}</Text>
             </Pressable>
           );
         })}
@@ -259,6 +302,26 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.primary },
   chipText: { color: colors.primary, fontFamily: font.semibold, fontSize: 14 },
   chipTextOn: { color: '#fff' },
+  toggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    padding: 3,
+    gap: 3,
+  },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: 8,
+    minHeight: 40,
+  },
+  toggleActive: { backgroundColor: colors.card },
+  toggleText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
+  toggleTextActive: { color: colors.primary },
   bmiRow: { flexDirection: 'row', gap: spacing.md },
   bmiField: { flex: 1, position: 'relative', justifyContent: 'center' },
   input: {
