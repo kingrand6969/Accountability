@@ -31,7 +31,17 @@ export default function GymPlan() {
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [plan, setPlan] = useState<PlanItem[] | null>(null);
+  const [done, setDone] = useState<Set<string>>(new Set()); // exercises ticked off
   const [generating, setGenerating] = useState(false);
+
+  function toggleDone(id: string) {
+    setDone((cur) => {
+      const n = new Set(cur);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
 
   const b = bmi(parseFloat(weightKg), parseFloat(heightCm));
   const cat = b !== null ? bmiCategory(b) : null;
@@ -77,6 +87,7 @@ export default function GymPlan() {
         return;
       }
       setPlan(built);
+      setDone(new Set());
     } catch (e) {
       Alert.alert('Could not build a plan', String((e as Error).message ?? e));
     } finally {
@@ -93,7 +104,7 @@ export default function GymPlan() {
         // a workout is a checklist you tick off exercise-by-exercise
         checklist: plan.map((p) => ({
           text: `${p.exercise.name} — ${p.sets}×${p.reps}`,
-          done: false,
+          done: done.has(p.exercise.id),
         })),
         starts_at: new Date().toISOString(),
       });
@@ -224,30 +235,52 @@ export default function GymPlan() {
               {scheme.sets} sets · {scheme.reps} reps each
             </Text>
           </View>
-          {plan.map((item) => (
-            <Pressable
-              key={item.exercise.id}
-              style={({ pressed }) => [styles.exRow, pressed && styles.pressed]}
-              onPress={() =>
-                router.push({ pathname: '/exercise/[id]', params: { id: item.exercise.id } })
-              }
-            >
-              {item.exercise.images[0] ? (
-                <Image source={{ uri: item.exercise.images[0] }} style={styles.thumb} resizeMode="contain" />
-              ) : (
-                <View style={[styles.thumb, styles.thumbFallback]}>
-                  <Ionicons name="barbell-outline" size={22} color={colors.textFaint} />
-                </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.exName}>{item.exercise.name}</Text>
-                <Text style={styles.exMeta}>
-                  {item.sets} × {item.reps} · {prettyEquipment(item.exercise.equipment)}
-                </Text>
+          {plan.map((item) => {
+            const isDone = done.has(item.exercise.id);
+            return (
+              <View key={item.exercise.id} style={styles.exRow}>
+                {/* tick each exercise off as you do it */}
+                <Pressable
+                  onPress={() => toggleDone(item.exercise.id)}
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.checkBox,
+                    isDone && styles.checkBoxOn,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: isDone }}
+                  accessibilityLabel={`Mark ${item.exercise.name} done`}
+                >
+                  {isDone ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.exBody, pressed && styles.pressed]}
+                  onPress={() =>
+                    router.push({ pathname: '/exercise/[id]', params: { id: item.exercise.id } })
+                  }
+                  accessibilityLabel={`How to do ${item.exercise.name}`}
+                >
+                  {item.exercise.images[0] ? (
+                    <Image source={{ uri: item.exercise.images[0] }} style={styles.thumb} resizeMode="contain" />
+                  ) : (
+                    <View style={[styles.thumb, styles.thumbFallback]}>
+                      <Ionicons name="barbell-outline" size={22} color={colors.textFaint} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.exName, isDone && styles.exNameDone]}>
+                      {item.exercise.name}
+                    </Text>
+                    <Text style={styles.exMeta}>
+                      {item.sets} × {item.reps} · {prettyEquipment(item.exercise.equipment)}
+                    </Text>
+                  </View>
+                  <Ionicons name="information-circle-outline" size={20} color={colors.textFaint} />
+                </Pressable>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-            </Pressable>
-          ))}
+            );
+          })}
           <Button title="Log this as a workout" onPress={logPlan} style={styles.logBtn} />
         </>
       ) : null}
@@ -373,16 +406,30 @@ const styles = StyleSheet.create({
   exRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: 10,
+    paddingLeft: spacing.md,
+    paddingRight: 10,
+    paddingVertical: 10,
   },
+  checkBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkBoxOn: { backgroundColor: colors.success, borderColor: colors.success },
+  exBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   thumb: { width: 54, height: 54, borderRadius: radius.sm - 2, backgroundColor: colors.surface },
   thumbFallback: { alignItems: 'center', justifyContent: 'center' },
   exName: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  exNameDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   exMeta: {
     color: colors.textMuted,
     fontFamily: font.medium,
