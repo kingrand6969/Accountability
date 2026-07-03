@@ -31,11 +31,11 @@ export default function GymPlan() {
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [plan, setPlan] = useState<PlanItem[] | null>(null);
-  const [done, setDone] = useState<Set<string>>(new Set()); // exercises ticked off
+  const [keep, setKeep] = useState<Set<string>>(new Set()); // exercises to lock on regenerate
   const [generating, setGenerating] = useState(false);
 
-  function toggleDone(id: string) {
-    setDone((cur) => {
+  function toggleKeep(id: string) {
+    setKeep((cur) => {
       const n = new Set(cur);
       if (n.has(id)) n.delete(id);
       else n.add(id);
@@ -76,7 +76,8 @@ export default function GymPlan() {
         }),
       );
       const perMuscle = focus.size >= 4 ? 1 : focus.size >= 2 ? 2 : 3;
-      const built = buildPlan(pools, goal, perMuscle);
+      // over-provision so we have fresh spares to fill the unchecked slots
+      const built = buildPlan(pools, goal, perMuscle + 2);
       if (built.length === 0) {
         Alert.alert(
           'No exercises found',
@@ -86,8 +87,29 @@ export default function GymPlan() {
         );
         return;
       }
-      setPlan(built);
-      setDone(new Set());
+
+      if (plan) {
+        // Regenerate: keep the checked exercises in place, swap the rest for
+        // fresh ones (no dupes vs. what's kept).
+        const usedIds = new Set(
+          plan.filter((p) => keep.has(p.exercise.id)).map((p) => p.exercise.id),
+        );
+        let fi = 0;
+        const next = plan.map((item) => {
+          if (keep.has(item.exercise.id)) return item; // locked — retain
+          while (fi < built.length && usedIds.has(built[fi].exercise.id)) fi++;
+          if (fi < built.length) {
+            const pick = built[fi++];
+            usedIds.add(pick.exercise.id);
+            return pick;
+          }
+          return item; // ran out of spares — keep as-is
+        });
+        setPlan(next);
+      } else {
+        setPlan(built.slice(0, perMuscle * focus.size));
+        setKeep(new Set());
+      }
     } catch (e) {
       Alert.alert('Could not build a plan', String((e as Error).message ?? e));
     } finally {
@@ -101,10 +123,10 @@ export default function GymPlan() {
       await createItem({
         type: 'workout',
         title: 'My plan',
-        // a workout is a checklist you tick off exercise-by-exercise
+        // saved workout is a fresh checklist to tick off while training
         checklist: plan.map((p) => ({
           text: `${p.exercise.name} — ${p.sets}×${p.reps}`,
-          done: done.has(p.exercise.id),
+          done: false,
         })),
         starts_at: new Date().toISOString(),
       });
@@ -235,24 +257,27 @@ export default function GymPlan() {
               {scheme.sets} sets · {scheme.reps} reps each
             </Text>
           </View>
+          <Text style={styles.keepHint}>
+            ✓ Check the ones you want to keep — Regenerate swaps only the rest.
+          </Text>
           {plan.map((item) => {
-            const isDone = done.has(item.exercise.id);
+            const isKept = keep.has(item.exercise.id);
             return (
-              <View key={item.exercise.id} style={styles.exRow}>
-                {/* tick each exercise off as you do it */}
+              <View key={item.exercise.id} style={[styles.exRow, isKept && styles.exRowKept]}>
+                {/* check = keep this one; Regenerate re-rolls the unchecked */}
                 <Pressable
-                  onPress={() => toggleDone(item.exercise.id)}
+                  onPress={() => toggleKeep(item.exercise.id)}
                   hitSlop={8}
                   style={({ pressed }) => [
                     styles.checkBox,
-                    isDone && styles.checkBoxOn,
+                    isKept && styles.checkBoxOn,
                     pressed && styles.pressed,
                   ]}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: isDone }}
-                  accessibilityLabel={`Mark ${item.exercise.name} done`}
+                  accessibilityState={{ checked: isKept }}
+                  accessibilityLabel={`Keep ${item.exercise.name} when regenerating`}
                 >
-                  {isDone ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+                  {isKept ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [styles.exBody, pressed && styles.pressed]}
@@ -269,9 +294,7 @@ export default function GymPlan() {
                     </View>
                   )}
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.exName, isDone && styles.exNameDone]}>
-                      {item.exercise.name}
-                    </Text>
+                    <Text style={styles.exName}>{item.exercise.name}</Text>
                     <Text style={styles.exMeta}>
                       {item.sets} × {item.reps} · {prettyEquipment(item.exercise.equipment)}
                     </Text>
@@ -425,11 +448,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkBoxOn: { backgroundColor: colors.success, borderColor: colors.success },
+  exRowKept: { borderColor: colors.success, backgroundColor: colors.successSoft },
+  keepHint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: -2 },
   exBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   thumb: { width: 54, height: 54, borderRadius: radius.sm - 2, backgroundColor: colors.surface },
   thumbFallback: { alignItems: 'center', justifyContent: 'center' },
   exName: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  exNameDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   exMeta: {
     color: colors.textMuted,
     fontFamily: font.medium,
