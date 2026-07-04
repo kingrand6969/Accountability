@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { colors, font, radius, spacing } from './theme';
 
 type Options = {
@@ -45,6 +46,8 @@ export function ConfirmHost() {
     <Modal visible={!!opts} transparent animationType="fade" onRequestClose={close}>
       <Pressable style={styles.backdrop} onPress={close}>
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
+          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={styles.glass} />
           <View style={[styles.iconWrap, destructive ? styles.iconDanger : styles.iconInfo]}>
             <Ionicons
               name={destructive ? 'trash-outline' : 'help-circle-outline'}
@@ -91,14 +94,25 @@ const styles = StyleSheet.create({
     padding: spacing.xxl,
   },
   card: {
-    backgroundColor: colors.card,
     borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     padding: spacing.xl,
     gap: spacing.sm,
     alignItems: 'center',
     maxWidth: 400,
     width: '100%',
     alignSelf: 'center',
+  },
+  // translucent tint over the blur keeps dark title/body text at 4.5:1
+  glass: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.66)',
   },
   iconWrap: {
     width: 52,

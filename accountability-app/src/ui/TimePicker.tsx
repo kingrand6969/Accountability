@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { colors, font, radius, spacing } from './theme';
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -85,6 +86,8 @@ export function TimePicker({
       <Modal visible={open !== null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(null)}>
           <View style={styles.menu}>
+            <BlurView intensity={50} tint="light" style={styles.menuBlur} />
+            <View style={styles.menuGlass} />
             <ScrollView>
               {open === 'hour'
                 ? HOURS.map((h) => (
@@ -189,8 +192,10 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   menu: {
-    backgroundColor: colors.card,
     borderRadius: radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     paddingVertical: spacing.xs,
     maxHeight: 320,
     width: 160,
@@ -199,6 +204,16 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
     elevation: 10,
+  },
+  menuBlur: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  // translucent tint keeps menu labels readable over the blur
+  menuGlass: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.7)',
   },
   menuItem: {
     flexDirection: 'row',

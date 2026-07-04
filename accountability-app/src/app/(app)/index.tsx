@@ -16,6 +16,7 @@ import {
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { createEvent, attendEvent } from '../../events/api';
 import { toIsoFromLocal, toLocalDateString } from '../../timeline/datetime';
@@ -338,6 +339,8 @@ export default function Feed() {
       >
         <Pressable style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+            <View style={styles.sheetGlass} />
             <Text style={styles.sheetTitle}>Create</Text>
             {CREATE_ITEMS.map((item) => (
               <Pressable
@@ -595,8 +598,10 @@ const styles = StyleSheet.create({
   },
   sheet: {
     width: 280,
-    backgroundColor: colors.card,
     borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     padding: spacing.sm,
     gap: 2,
     shadowColor: '#000',
@@ -604,6 +609,15 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 12,
+  },
+  // translucent tint over the blur so dark text keeps 4.5:1 contrast
+  sheetGlass: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.62)',
   },
   sheetTitle: {
     fontFamily: font.bold,
