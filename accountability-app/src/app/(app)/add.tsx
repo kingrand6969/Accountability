@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -98,6 +99,12 @@ export default function Add() {
   const [offsetMin, setOffsetMin] = useState(0);
   const [phrase, setPhrase] = useState('');
   const [saving, setSaving] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  function openForDate(d: string) {
+    setDate(d);
+    setDetailsOpen(true);
+  }
 
   function onAutoFill() {
     if (!phrase.trim()) return;
@@ -108,12 +115,14 @@ export default function Add() {
     setDate(r.date);
     setTime(r.time);
     setRemind(r.remind);
+    setDetailsOpen(true); // pop the details form pre-filled
   }
 
-  // Prefill date/time when opened from a tapped hour on the day grid.
+  // Prefill + open the sheet when opened from a tapped hour on the day grid.
   useEffect(() => {
     if (typeof params.date === 'string' && params.date) setDate(params.date);
     if (typeof params.time === 'string' && params.time) setTime(params.time);
+    if (typeof params.date === 'string' && params.date) setDetailsOpen(true);
   }, [params.date, params.time]);
 
   async function onSave() {
@@ -173,8 +182,10 @@ export default function Add() {
       setNote('');
       setChecklist([]);
       setRemind(false);
-      showToast('Added to your day ✓');
-      router.navigate('/today' as never);
+      setDetailsOpen(false);
+      showToast('Added ✓');
+      // land on the day you scheduled it for, so you see it
+      router.navigate({ pathname: '/today', params: { date } } as never);
     } catch (e) {
       // Don't leave an alarm ringing for an item that was never saved.
       if (reminderId) cancelReminder(reminderId).catch(() => {});
@@ -223,139 +234,179 @@ export default function Add() {
         </Pressable>
       )}
 
-      <Text style={styles.label}>What is it?</Text>
-      <ChipSelector options={TYPE_OPTIONS} value={type} onChange={setType} />
+      <Text style={styles.calHeading}>Tap a date to add something</Text>
+      <MonthCalendar value={date} onChange={openForDate} />
 
-      <Text style={styles.label}>Title</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. Buy medicine"
-        placeholderTextColor={colors.textFaint}
-        value={title}
-        onChangeText={setTitle}
-      />
+      {/* details popup — opens after a date is chosen */}
+      <Modal
+        visible={detailsOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDetailsOpen(false)}
+      >
+        <View style={styles.sheetBackdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>{formatDateLabel(date)}</Text>
+              <Pressable
+                onPress={() => setDetailsOpen(false)}
+                hitSlop={8}
+                style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={22} color={colors.textFaint} />
+              </Pressable>
+            </View>
 
-      <Text style={styles.label}>Note (optional)</Text>
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        placeholder="Details"
-        placeholderTextColor={colors.textFaint}
-        value={note}
-        onChangeText={setNote}
-        multiline
-      />
+            <ScrollView
+              contentContainerStyle={styles.sheetScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.label}>What is it?</Text>
+              <ChipSelector options={TYPE_OPTIONS} value={type} onChange={setType} />
 
-      <Text style={styles.label}>Checklist (optional)</Text>
-      {checklist.map((line, i) => (
-        <View key={i} style={styles.checkLine}>
-          <Ionicons name="ellipse-outline" size={16} color={colors.textFaint} />
-          <Text style={styles.checkLineText}>{line}</Text>
-          <Pressable
-            onPress={() => setChecklist((c) => c.filter((_, idx) => idx !== i))}
-            hitSlop={8}
-            accessibilityLabel={`Remove ${line}`}
-          >
-            <Ionicons name="close" size={16} color={colors.textFaint} />
-          </Pressable>
+              <Text style={styles.label}>Title</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Buy medicine"
+                placeholderTextColor={colors.textFaint}
+                value={title}
+                onChangeText={setTitle}
+                autoFocus
+              />
+
+              <Text style={styles.label}>Time</Text>
+              <View style={styles.presetRow}>
+                {TIME_PRESETS.map((p) => {
+                  const v = 'value' in p && p.value ? p.value : p.get!();
+                  return (
+                    <PresetChip
+                      key={p.label}
+                      label={p.label}
+                      selected={time === v}
+                      onPress={() => setTime(v)}
+                    />
+                  );
+                })}
+                <TextInput
+                  style={styles.timeInput}
+                  placeholder="HH:MM"
+                  placeholderTextColor={colors.textFaint}
+                  autoCapitalize="none"
+                  value={time}
+                  onChangeText={setTime}
+                />
+              </View>
+
+              <Text style={styles.label}>Note (optional)</Text>
+              <TextInput
+                style={[styles.input, styles.multiline]}
+                placeholder="Details"
+                placeholderTextColor={colors.textFaint}
+                value={note}
+                onChangeText={setNote}
+                multiline
+              />
+
+              <Text style={styles.label}>Checklist (optional)</Text>
+              {checklist.map((line, i) => (
+                <View key={i} style={styles.checkLine}>
+                  <Ionicons name="ellipse-outline" size={16} color={colors.textFaint} />
+                  <Text style={styles.checkLineText}>{line}</Text>
+                  <Pressable
+                    onPress={() => setChecklist((c) => c.filter((_, idx) => idx !== i))}
+                    hitSlop={8}
+                    accessibilityLabel={`Remove ${line}`}
+                  >
+                    <Ionicons name="close" size={16} color={colors.textFaint} />
+                  </Pressable>
+                </View>
+              ))}
+              <View style={styles.checkAddRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="Add a checklist item…"
+                  placeholderTextColor={colors.textFaint}
+                  value={checkText}
+                  onChangeText={setCheckText}
+                  onSubmitEditing={() => {
+                    const t = checkText.trim();
+                    if (t) {
+                      setChecklist((c) => [...c, t]);
+                      setCheckText('');
+                    }
+                  }}
+                  returnKeyType="done"
+                />
+                <Pressable
+                  onPress={() => {
+                    const t = checkText.trim();
+                    if (t) {
+                      setChecklist((c) => [...c, t]);
+                      setCheckText('');
+                    }
+                  }}
+                  style={({ pressed }) => [styles.checkAddBtn, pressed && styles.pressed]}
+                  accessibilityLabel="Add checklist item"
+                >
+                  <Ionicons name="add" size={22} color="#fff" />
+                </Pressable>
+              </View>
+
+              <View style={styles.remindRow}>
+                <Ionicons name="notifications-outline" size={20} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.remindTitle}>Remind me</Text>
+                  <Text style={styles.remindSub}>Get an alarm at this time</Text>
+                </View>
+                <Switch value={remind} onValueChange={setRemind} />
+              </View>
+
+              {remind && isPro ? (
+                <View style={styles.presetRow}>
+                  {OFFSET_OPTIONS.map((o) => (
+                    <PresetChip
+                      key={o.m}
+                      label={o.label}
+                      selected={offsetMin === o.m}
+                      onPress={() => setOffsetMin(o.m)}
+                    />
+                  ))}
+                </View>
+              ) : remind ? (
+                <Pressable
+                  style={({ pressed }) => [styles.proHint, pressed && styles.pressed]}
+                  onPress={() => router.push('/paywall')}
+                >
+                  <Ionicons name="star" size={15} color={colors.pro} />
+                  <Text style={styles.proHintText}>
+                    Pro: get reminded earlier (10 min, 1 hour before…)
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              <Button
+                title="Add to my day"
+                onPress={onSave}
+                loading={saving}
+                style={styles.save}
+              />
+            </ScrollView>
+          </View>
         </View>
-      ))}
-      <View style={styles.checkAddRow}>
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          placeholder="Add a checklist item…"
-          placeholderTextColor={colors.textFaint}
-          value={checkText}
-          onChangeText={setCheckText}
-          onSubmitEditing={() => {
-            const t = checkText.trim();
-            if (t) {
-              setChecklist((c) => [...c, t]);
-              setCheckText('');
-            }
-          }}
-          returnKeyType="done"
-        />
-        <Pressable
-          onPress={() => {
-            const t = checkText.trim();
-            if (t) {
-              setChecklist((c) => [...c, t]);
-              setCheckText('');
-            }
-          }}
-          style={({ pressed }) => [styles.checkAddBtn, pressed && styles.pressed]}
-          accessibilityLabel="Add checklist item"
-        >
-          <Ionicons name="add" size={22} color="#fff" />
-        </Pressable>
-      </View>
-
-      <Text style={styles.label}>Pick a date</Text>
-      <MonthCalendar value={date} onChange={setDate} />
-
-      <Text style={styles.label}>Time</Text>
-      <View style={styles.presetRow}>
-        {TIME_PRESETS.map((p) => {
-          const v = 'value' in p && p.value ? p.value : p.get!();
-          return (
-            <PresetChip
-              key={p.label}
-              label={p.label}
-              selected={time === v}
-              onPress={() => setTime(v)}
-            />
-          );
-        })}
-        <TextInput
-          style={styles.timeInput}
-          placeholder="HH:MM"
-          placeholderTextColor={colors.textFaint}
-          autoCapitalize="none"
-          value={time}
-          onChangeText={setTime}
-        />
-      </View>
-
-      <View style={styles.remindRow}>
-        <Ionicons name="notifications-outline" size={20} color={colors.primary} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.remindTitle}>Remind me</Text>
-          <Text style={styles.remindSub}>Get an alarm at this time</Text>
-        </View>
-        <Switch value={remind} onValueChange={setRemind} />
-      </View>
-
-      {remind && isPro ? (
-        <View style={styles.presetRow}>
-          {OFFSET_OPTIONS.map((o) => (
-            <PresetChip
-              key={o.m}
-              label={o.label}
-              selected={offsetMin === o.m}
-              onPress={() => setOffsetMin(o.m)}
-            />
-          ))}
-        </View>
-      ) : remind ? (
-        <Pressable
-          style={({ pressed }) => [styles.proHint, pressed && styles.pressed]}
-          onPress={() => router.push('/paywall')}
-        >
-          <Ionicons name="star" size={15} color={colors.pro} />
-          <Text style={styles.proHintText}>
-            Pro: get reminded earlier (10 min, 1 hour before…)
-          </Text>
-        </Pressable>
-      ) : null}
-
-      <Button
-        title="Add to my day"
-        onPress={onSave}
-        loading={saving}
-        style={styles.save}
-      />
+      </Modal>
     </ScrollView>
   );
+}
+
+function formatDateLabel(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return d.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 
 const styles = StyleSheet.create({
@@ -388,12 +439,44 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   quickBtnText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  calHeading: {
+    fontSize: 16,
+    fontFamily: font.bold,
+    color: colors.text,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
   label: {
     fontSize: 14,
     fontFamily: font.semibold,
     color: colors.textSecondary,
     marginTop: spacing.md,
   },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '88%',
+    paddingBottom: spacing.md,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  sheetTitle: { fontFamily: font.extrabold, fontSize: 18, color: colors.text },
+  sheetClose: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  sheetScroll: { padding: spacing.xl, paddingTop: spacing.sm, gap: spacing.sm },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
