@@ -1,8 +1,8 @@
-import { Alert, Platform } from 'react-native';
+import { confirmDialog } from './ConfirmDialog';
 
 /**
- * Cross-platform destructive confirm. Native uses Alert (with a red action);
- * web falls back to window.confirm because RN-Web's Alert has no buttons.
+ * Destructive confirm — a branded in-app dialog on every platform
+ * (phone, tablet, web), instead of the OS/browser alert.
  */
 export function confirmDestructive(
   title: string,
@@ -10,14 +10,5 @@ export function confirmDestructive(
   confirmLabel: string,
   onConfirm: () => void,
 ): void {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) {
-      onConfirm();
-    }
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
-  ]);
+  confirmDialog({ title, message, confirmLabel, destructive: true, onConfirm });
 }

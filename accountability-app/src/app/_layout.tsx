@@ -11,6 +11,7 @@ import {
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { ProProvider } from '../pro/ProProvider';
 import { ToastHost } from '../ui/Toast';
+import { ConfirmHost } from '../ui/ConfirmDialog';
 import '../notifications/handler';
 import '../activity/locationTask';
 
@@ -86,6 +87,7 @@ export default function RootLayout() {
       <ProProvider>
         <RootNavigator />
         <ToastHost />
+        <ConfirmHost />
       </ProProvider>
     </AuthProvider>
   );
