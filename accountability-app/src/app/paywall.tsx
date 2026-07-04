@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useIsPro } from '../pro/ProProvider';
 import { Button } from '../ui/Button';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
@@ -30,12 +32,24 @@ export default function Paywall() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.hero}>
-        <View style={styles.heroIcon}>
-          <Ionicons name="star" size={34} color={colors.pro} />
-        </View>
-        <Text style={styles.title}>AccountAbility Pro</Text>
-        <Text style={styles.subtitle}>Get more out of every day.</Text>
+      <View style={styles.heroWrap}>
+        <LinearGradient
+          colors={['#8b5cf6', '#7c3aed', '#5b21b6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={styles.hero}
+        >
+          <View style={styles.heroIconWrap}>
+            <BlurView
+              intensity={24}
+              tint="light"
+              style={[StyleSheet.absoluteFill, { borderRadius: 36 }]}
+            />
+            <Ionicons name="star" size={32} color="#fde68a" />
+          </View>
+          <Text style={styles.title}>AccountAbility Pro</Text>
+          <Text style={styles.subtitle}>Get more out of every day.</Text>
+        </LinearGradient>
       </View>
 
       <View style={styles.card}>
@@ -105,18 +119,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   pressed: { opacity: 0.8 },
-  hero: { alignItems: 'center', gap: 4, marginBottom: spacing.xs },
-  heroIcon: {
+  heroWrap: {
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.xs,
+    shadowColor: colors.pro,
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  hero: { alignItems: 'center', gap: 4, padding: spacing.xl, paddingVertical: spacing.xxl },
+  heroIconWrap: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.proSoft,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  title: { fontSize: 26, fontFamily: font.extrabold, color: colors.text },
-  subtitle: { color: colors.textMuted, fontFamily: font.regular, fontSize: 15 },
+  title: { fontSize: 26, fontFamily: font.extrabold, color: '#fff' },
+  subtitle: { color: '#ede9fe', fontFamily: font.medium, fontSize: 15 },
   card: {
     backgroundColor: colors.card,
     borderWidth: 1,

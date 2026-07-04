@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { getMyProfile } from '../profiles/api';
 import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
@@ -75,24 +76,31 @@ export default function Menu() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* profile row */}
+      {/* profile hero */}
       <Pressable
-        style={({ pressed }) => [styles.profileRow, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.profileWrap, pressed && styles.pressed]}
         onPress={() => router.push('/profile')}
         accessibilityLabel="View your profile"
       >
-        {avatar ? (
-          <Image source={{ uri: avatar }} style={styles.profileAvatar} />
-        ) : (
-          <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
-            <Ionicons name="person" size={22} color="#fff" />
+        <LinearGradient
+          colors={['#3b82f6', '#2563eb', '#1e40af']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.profileRow}
+        >
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={styles.profileAvatar} />
+          ) : (
+            <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
+              <Ionicons name="person" size={22} color="#fff" />
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
+            <Text style={styles.profileSub}>View your profile</Text>
           </View>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
-          <Text style={styles.profileSub}>View your profile</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+          <Ionicons name="chevron-forward" size={18} color="#dbeafe" />
+        </LinearGradient>
       </Pressable>
 
       {/* invite friends — the growth loop lives one tap from everywhere */}
@@ -173,26 +181,36 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   pressed: { opacity: 0.75 },
+  profileWrap: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 68,
-    ...shadow.card,
   },
-  profileAvatar: { width: 46, height: 46, borderRadius: 23 },
+  profileAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
   profileAvatarFallback: {
-    backgroundColor: colors.primary,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileName: { fontFamily: font.bold, fontSize: 16, color: colors.text },
-  profileSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  profileName: { fontFamily: font.bold, fontSize: 16, color: '#fff' },
+  profileSub: { fontFamily: font.medium, fontSize: 12.5, color: '#dbeafe' },
   inviteRow: {
     flexDirection: 'row',
     alignItems: 'center',

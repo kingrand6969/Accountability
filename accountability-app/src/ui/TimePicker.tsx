@@ -205,7 +205,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 10,
   },
-  menuBlur: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  menuBlur: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: radius.md,
+  },
   // translucent tint keeps menu labels readable over the blur
   menuGlass: {
     position: 'absolute',

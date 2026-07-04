@@ -46,7 +46,11 @@ export function ConfirmHost() {
     <Modal visible={!!opts} transparent animationType="fade" onRequestClose={close}>
       <Pressable style={styles.backdrop} onPress={close}>
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          <BlurView
+            intensity={60}
+            tint="light"
+            style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
+          />
           <View style={styles.glass} />
           <View style={[styles.iconWrap, destructive ? styles.iconDanger : styles.iconInfo]}>
             <Ionicons

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, StyleSheet, Text, TextInput } from 'react-native';
 import { Link } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { validateEmail, validatePassword } from '../auth/validation';
+import { AuthShell } from '../ui/AuthShell';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
@@ -33,7 +34,7 @@ export default function SignUp() {
   }
 
   return (
-    <View style={styles.container}>
+    <AuthShell>
       <Text style={styles.title}>Create your account</Text>
       <TextInput
         style={styles.input}
@@ -41,6 +42,7 @@ export default function SignUp() {
         placeholderTextColor={colors.textFaint}
         autoCapitalize="none"
         keyboardType="email-address"
+        autoComplete="email"
         value={email}
         onChangeText={setEmail}
       />
@@ -49,6 +51,7 @@ export default function SignUp() {
         placeholder="Password (8+ characters)"
         placeholderTextColor={colors.textFaint}
         secureTextEntry
+        autoComplete="new-password"
         value={password}
         onChangeText={setPassword}
       />
@@ -56,19 +59,12 @@ export default function SignUp() {
       <Link href="/sign-in" style={styles.link}>
         Already have an account? Log in
       </Link>
-    </View>
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.xxl,
-    gap: spacing.md,
-    backgroundColor: colors.background,
-  },
-  title: { fontSize: 28, fontFamily: font.bold, color: colors.text, marginBottom: spacing.md },
+  title: { fontSize: 24, fontFamily: font.extrabold, color: colors.text, marginBottom: 2 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,

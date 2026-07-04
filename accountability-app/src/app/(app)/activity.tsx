@@ -16,6 +16,7 @@ import { getMyProfile } from '../../profiles/api';
 import { getHomeStats, type HomeStats } from '../../home/api';
 import { getInsights } from '../../insights/api';
 import { toLocalDateString } from '../../timeline/datetime';
+import { ProgressRing } from '../../ui/ProgressRing';
 import { colors, font, radius, shadow, spacing } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -181,11 +182,17 @@ export default function Track() {
           onPress={() => router.push('/insights')}
           accessibilityLabel="Open your progress"
         >
-          {/* faint halo ring extending past the dial */}
-          <View style={styles.dialHalo} pointerEvents="none" />
+          {/* live progress arc — fills to your consistency score */}
+          <View style={styles.dialRing} pointerEvents="none">
+            <ProgressRing size={DIAL + 28} strokeWidth={6} progress={(score ?? 0) / 100} />
+          </View>
           <View style={styles.dialOuter}>
             {/* real glass: blur what's behind + a diagonal light sheen */}
-            <BlurView intensity={26} tint="light" style={StyleSheet.absoluteFill} />
+            <BlurView
+              intensity={26}
+              tint="light"
+              style={[StyleSheet.absoluteFill, { borderRadius: DIAL / 2 }]}
+            />
             <LinearGradient
               colors={[
                 'rgba(255,255,255,0.42)',
@@ -203,7 +210,6 @@ export default function Track() {
               <Text style={styles.dialScore}>{score ?? '–'}</Text>
               <Text style={styles.dialLabel}>Consistency level</Text>
             </View>
-            <View style={styles.dialDot} />
           </View>
         </Pressable>
 
@@ -325,14 +331,7 @@ const styles = StyleSheet.create({
     marginVertical: spacing.md,
     height: DIAL + 28,
   },
-  dialHalo: {
-    position: 'absolute',
-    width: DIAL + 28,
-    height: DIAL + 28,
-    borderRadius: (DIAL + 28) / 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-  },
+  dialRing: { position: 'absolute' },
   dialOuter: {
     width: DIAL,
     height: DIAL,
@@ -353,19 +352,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
     paddingHorizontal: 18,
-  },
-  dialDot: {
-    position: 'absolute',
-    left: 8,
-    top: DIAL / 2 - 5,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#fff',
-    shadowColor: '#fff',
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 },
   },
   dialTitle: {
     color: '#fff',

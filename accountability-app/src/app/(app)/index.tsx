@@ -339,7 +339,11 @@ export default function Feed() {
       >
         <Pressable style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+            <BlurView
+              intensity={60}
+              tint="light"
+              style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
+            />
             <View style={styles.sheetGlass} />
             <Text style={styles.sheetTitle}>Create</Text>
             {CREATE_ITEMS.map((item) => (
