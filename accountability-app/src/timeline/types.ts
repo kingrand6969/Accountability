@@ -5,7 +5,9 @@ export type TimelineType =
   | 'meal'
   | 'expense'
   | 'income'
-  | 'activity';
+  | 'activity'
+  | 'grocery'
+  | 'other';
 
 export type ChecklistItem = { text: string; done: boolean };
 

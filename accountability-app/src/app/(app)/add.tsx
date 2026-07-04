@@ -23,6 +23,7 @@ import {
   toLocalDateString,
 } from '../../timeline/datetime';
 import { MonthCalendar } from '../../ui/MonthCalendar';
+import { TimePicker } from '../../ui/TimePicker';
 import {
   ensureNotificationPermission,
   scheduleReminder,
@@ -38,7 +39,9 @@ import type { TimelineType } from '../../timeline/types';
 // Workouts/meals/money live in their own trackers (Track tab).
 const TYPE_OPTIONS: { value: TimelineType; label: string }[] = [
   { value: 'event', label: '📅 Event' },
-  { value: 'task', label: '✅ Task / errand' },
+  { value: 'task', label: '✅ Task' },
+  { value: 'grocery', label: '🛒 Groceries' },
+  { value: 'other', label: '📌 Other' },
 ];
 
 const OFFSET_OPTIONS = [
@@ -53,13 +56,6 @@ function nextHour(): string {
   d.setHours(d.getHours() + 1, 0, 0, 0);
   return `${d.getHours().toString().padStart(2, '0')}:00`;
 }
-
-const TIME_PRESETS = [
-  { label: 'Morning', value: '08:00' },
-  { label: 'Noon', value: '12:00' },
-  { label: 'Evening', value: '18:00' },
-  { label: 'Next hour', get: nextHour },
-];
 
 function PresetChip({
   label,
@@ -277,27 +273,7 @@ export default function Add() {
               />
 
               <Text style={styles.label}>Time</Text>
-              <View style={styles.presetRow}>
-                {TIME_PRESETS.map((p) => {
-                  const v = 'value' in p && p.value ? p.value : p.get!();
-                  return (
-                    <PresetChip
-                      key={p.label}
-                      label={p.label}
-                      selected={time === v}
-                      onPress={() => setTime(v)}
-                    />
-                  );
-                })}
-                <TextInput
-                  style={styles.timeInput}
-                  placeholder="HH:MM"
-                  placeholderTextColor={colors.textFaint}
-                  autoCapitalize="none"
-                  value={time}
-                  onChangeText={setTime}
-                />
-              </View>
+              <TimePicker value={time} onChange={setTime} />
 
               <Text style={styles.label}>Note (optional)</Text>
               <TextInput

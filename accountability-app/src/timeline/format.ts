@@ -15,6 +15,8 @@ export const TIMELINE_TYPES: {
   { value: 'expense', label: 'Expense', emoji: '💸', icon: 'cash-outline', tint: '#dc2626' },
   { value: 'income', label: 'Income', emoji: '💰', icon: 'wallet-outline', tint: '#16a34a' },
   { value: 'activity', label: 'Activity', emoji: '🏃', icon: 'walk-outline', tint: '#ea580c' },
+  { value: 'grocery', label: 'Groceries', emoji: '🛒', icon: 'cart-outline', tint: '#0d9488' },
+  { value: 'other', label: 'Other', emoji: '📌', icon: 'bookmark-outline', tint: '#64748b' },
 ];
 
 export function typeMeta(type: TimelineType) {
