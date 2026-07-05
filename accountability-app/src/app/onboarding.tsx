@@ -12,7 +12,6 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { updateMyProfile } from '../profiles/api';
-import { setCalorieTarget } from '../diet/api';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../ui/Button';
 import { colors, font, radius, spacing } from '../ui/theme';
@@ -28,7 +27,6 @@ export default function Onboarding() {
   const userId = session?.user.id ?? null;
   const [name, setName] = useState('');
   const [area, setArea] = useState('');
-  const [target, setTarget] = useState('2000');
   const [saving, setSaving] = useState(false);
 
   async function markDone() {
@@ -50,8 +48,6 @@ export default function Onboarding() {
       if (name.trim()) updates.display_name = name.trim();
       if (area.trim()) updates.area = area.trim();
       if (Object.keys(updates).length > 0) await updateMyProfile(updates);
-      const kcal = parseInt(target, 10);
-      if (Number.isFinite(kcal) && kcal > 0) await setCalorieTarget(kcal);
       await markDone();
       router.replace('/');
     } catch (e) {
@@ -95,16 +91,6 @@ export default function Onboarding() {
         onChangeText={setArea}
       />
 
-      <Text style={styles.label}>Daily calorie target</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="2000"
-        placeholderTextColor={colors.textFaint}
-        keyboardType="number-pad"
-        value={target}
-        onChangeText={setTarget}
-      />
-
       <Button
         title="Get started"
         onPress={finish}
@@ -123,7 +109,15 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.xxl, gap: 10, flexGrow: 1, justifyContent: 'center' },
+  container: {
+    padding: spacing.xxl,
+    gap: 10,
+    flexGrow: 1,
+    justifyContent: 'center',
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+  },
   hero: {
     alignSelf: 'center',
     width: 84,
