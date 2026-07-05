@@ -3,12 +3,16 @@ import { supabase } from '../lib/supabase';
 import { pickIndex, type Cadence } from './rotate';
 
 /** Interests map to Project Gutenberg topic searches (public domain, free
- *  forever, no API key — served by gutendex.com). */
-export const INTERESTS: { key: string; label: string; topic: string }[] = [
+ *  forever, no API key — served by gutendex.com). `curatedOnly` interests
+ *  skip the live search and always serve the hand-picked catalog (crypto
+ *  has no public-domain books — its picks are openly-licensed instead). */
+export const INTERESTS: { key: string; label: string; topic: string; curatedOnly?: boolean }[] = [
   { key: 'motivation', label: 'Motivation & discipline', topic: 'conduct of life' },
   { key: 'philosophy', label: 'Philosophy & stoicism', topic: 'philosophy' },
   { key: 'health', label: 'Health & fitness', topic: 'hygiene' },
   { key: 'money', label: 'Money & success', topic: 'success' },
+  { key: 'stocks', label: 'Stocks & trading', topic: 'stock exchange' },
+  { key: 'crypto', label: 'Crypto & Bitcoin', topic: 'cryptocurrency', curatedOnly: true },
   { key: 'food', label: 'Food & cooking', topic: 'cooking' },
   { key: 'psychology', label: 'Mind & psychology', topic: 'psychology' },
   { key: 'adventure', label: 'Adventure stories', topic: 'adventure' },
@@ -34,6 +38,12 @@ function gb(id: number, title: string, author: string): Book {
     coverUrl: `https://www.gutenberg.org/cache/epub/${id}/pg${id}.cover.medium.jpg`,
     readUrl: `https://www.gutenberg.org/ebooks/${id}`,
   };
+}
+
+/** Openly-licensed book outside Gutenberg (MIT / CC BY-SA — legal to link
+ *  and read free). Synthetic 9M+ ids so they never collide with PG ids. */
+function open(id: number, title: string, author: string, readUrl: string): Book {
+  return { id, title, author, coverUrl: null, readUrl };
 }
 
 /** Hand-picked classics per interest (IDs verified against gutenberg.org) —
@@ -62,6 +72,35 @@ const CATALOG: Record<string, Book[]> = {
     gb(8581, 'The Art of Money Getting', 'P. T. Barnum'),
     gb(148, 'The Autobiography of Benjamin Franklin', 'Benjamin Franklin'),
     gb(935, 'Self Help', 'Samuel Smiles'),
+  ],
+  stocks: [
+    gb(60979, 'Reminiscences of a Stock Operator', 'Edwin Lefèvre'),
+    gb(26841, 'Successful Stock Speculation', 'John James Butler'),
+    gb(59518, 'The Theory of Stock Exchange Speculation', 'Arthur Crump'),
+    gb(73647, 'The Psychology of Speculation', 'Henry Howard Harper'),
+    gb(24518, 'Extraordinary Popular Delusions and the Madness of Crowds', 'Charles Mackay'),
+    gb(4359, 'Lombard Street: A Description of the Money Market', 'Walter Bagehot'),
+  ],
+  crypto: [
+    open(
+      9000001,
+      'Bitcoin: A Peer-to-Peer Electronic Cash System (the whitepaper)',
+      'Satoshi Nakamoto',
+      'https://bitcoin.org/bitcoin.pdf',
+    ),
+    open(
+      9000002,
+      'Mastering Bitcoin (open edition)',
+      'Andreas M. Antonopoulos',
+      'https://github.com/bitcoinbook/bitcoinbook#readme',
+    ),
+    open(
+      9000003,
+      'Mastering Ethereum (open edition)',
+      'Andreas M. Antonopoulos & Gavin Wood',
+      'https://github.com/ethereumbook/ethereumbook#readme',
+    ),
+    gb(24518, 'Extraordinary Popular Delusions and the Madness of Crowds', 'Charles Mackay'),
   ],
   food: [
     gb(10136, 'The Book of Household Management', 'Mrs. Beeton'),
@@ -156,12 +195,17 @@ export async function getBookFeed(prefs: BookPrefs, now = new Date()): Promise<B
       (i) => i.key === keys[pickIndex(prefs.cadence, now, keys.length)],
     ) ?? INTERESTS[0];
   let books: Book[];
-  try {
-    books = await fetchTopic(interest.topic);
-    if (books.length === 0) throw new Error('empty');
-  } catch {
-    // live API slow or down — the curated classics always work
+  if (interest.curatedOnly) {
+    // no public-domain library for this topic — serve the openly-licensed picks
     books = CATALOG[interest.key] ?? CATALOG.motivation;
+  } else {
+    try {
+      books = await fetchTopic(interest.topic);
+      if (books.length === 0) throw new Error('empty');
+    } catch {
+      // live API slow or down — the curated classics always work
+      books = CATALOG[interest.key] ?? CATALOG.motivation;
+    }
   }
   const idx = pickIndex(prefs.cadence, now, books.length);
   const more = [1, 2, 3, 4, 5]
