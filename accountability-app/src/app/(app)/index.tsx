@@ -435,7 +435,22 @@ export default function Feed() {
         ) : null}
         <View style={styles.composerActions}>
           <Pressable
-            style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.postBtn,
+              !canPost && styles.postBtnDisabled,
+              pressed && canPost && styles.pressed,
+            ]}
+            onPress={onPost}
+            disabled={!canPost}
+          >
+            {posting ? (
+              <ActivityIndicator color={colors.onPrimary} />
+            ) : (
+              <Text style={styles.postBtnText}>Post</Text>
+            )}
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.photoBtn, styles.firstAction, pressed && styles.pressed]}
             onPress={onPickPhoto}
             accessibilityLabel="Attach a photo"
           >
@@ -463,21 +478,6 @@ export default function Feed() {
               color={colors.success}
             />
             <Text style={[styles.photoBtnText, { color: colors.success }]}>Event</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.postBtn,
-              !canPost && styles.postBtnDisabled,
-              pressed && canPost && styles.pressed,
-            ]}
-            onPress={onPost}
-            disabled={!canPost}
-          >
-            {posting ? (
-              <ActivityIndicator color={colors.onPrimary} />
-            ) : (
-              <Text style={styles.postBtnText}>Post</Text>
-            )}
           </Pressable>
         </View>
       </View>
@@ -737,8 +737,9 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   photoBtnText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
+  // pushes Photo/Live/Event toward the right, away from the left-anchored Post
+  firstAction: { marginLeft: 'auto' },
   postBtn: {
-    marginLeft: 'auto',
     backgroundColor: colors.primary,
     borderRadius: radius.sm,
     paddingVertical: 11,

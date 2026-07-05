@@ -122,16 +122,19 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
             style={styles.tileImage}
           />
         )}
-        <View style={styles.createBottom}>
-          <View style={styles.createPlus}>
-            {posting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="add" size={20} color="#fff" />
-            )}
-          </View>
-          <Text style={styles.createLabel}>Create{'\n'}story</Text>
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.6)']}
+          style={styles.tileScrim}
+          pointerEvents="none"
+        />
+        <View style={styles.createPlus}>
+          {posting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="add" size={22} color="#fff" />
+          )}
         </View>
+        <Text style={styles.createLabel}>Create{'\n'}story</Text>
       </Pressable>
 
       {/* my story as a viewable tile */}
@@ -249,33 +252,31 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 16,
   },
-  createBottom: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    paddingBottom: 8,
-    paddingTop: 18,
-  },
+  // frosted ➕ floating over the tile — no white strip, all gradient
   createPlus: {
     position: 'absolute',
-    top: -16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: colors.card,
+    top: '50%',
+    left: '50%',
+    marginTop: -18,
+    marginLeft: -18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   createLabel: {
-    color: colors.text,
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    color: '#fff',
     fontFamily: font.bold,
-    fontSize: 12,
+    fontSize: 12.5,
     textAlign: 'center',
-    lineHeight: 15,
+    lineHeight: 16,
   },
 });
