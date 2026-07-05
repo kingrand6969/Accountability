@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { font, radius, spacing } from './theme';
 
 /** Branded backdrop for the auth screens: gradient, wordmark, elevated form card. */
@@ -21,17 +19,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.brand}>
-          <View style={styles.flameWrap}>
-            <BlurView
-              intensity={24}
-              tint="light"
-              style={[StyleSheet.absoluteFill, { borderRadius: 34 }]}
-            />
-            <Ionicons name="flame" size={30} color="#fde68a" />
+          <View style={styles.logoWrap}>
+            <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
           </View>
-          <Text style={styles.wordmark}>
-            Account<Text style={styles.wordmarkAccent}>Ability</Text>
-          </Text>
+          <Text style={styles.wordmark}>AccountAbility</Text>
           <Text style={styles.tagline}>Achieve. Consistency.</Text>
         </View>
         <View style={styles.card}>{children}</View>
@@ -51,24 +42,25 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   brand: { alignItems: 'center', gap: 6, marginBottom: spacing.xl },
-  flameWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+  logoWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: '#fffffc',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
+  logo: { width: 60, height: 60 },
   wordmark: {
     fontFamily: font.display,
     fontSize: 34,
     color: '#fff',
     letterSpacing: 0.5,
   },
-  wordmarkAccent: { color: '#fde68a' },
   tagline: { fontFamily: font.medium, fontSize: 14, color: '#dbeafe' },
   card: {
     backgroundColor: '#fff',

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -9,8 +9,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsPro } from '../pro/ProProvider';
+import {
+  clearSearchHistory,
+  deleteSearchEntry,
+  listSearchHistory,
+  recordSearch,
+  type SearchEntry,
+} from '../search/history';
+import { timeAgo } from '../feed/format';
 import { searchBuddies, type Candidate } from '../buddy/api';
 import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
@@ -21,13 +30,30 @@ import { colors, font, radius, spacing, contentMax } from '../ui/theme';
 
 export default function Search() {
   const router = useRouter();
+  const { isPro } = useIsPro();
   const [query, setQuery] = useState('');
   const [people, setPeople] = useState<Candidate[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [history, setHistory] = useState<SearchEntry[]>([]);
   const seq = useRef(0);
+
+  const loadHistory = useCallback(() => {
+    listSearchHistory(isPro).then(setHistory).catch(() => {});
+  }, [isPro]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+    }, [loadHistory]),
+  );
+
+  // a committed search = keyboard submit or tapping a result
+  function commit(q: string) {
+    recordSearch(q).then(loadHistory).catch(() => {});
+  }
 
   async function onChange(text: string) {
     setQuery(text);
@@ -76,12 +102,64 @@ export default function Search() {
             placeholderTextColor={colors.textFaint}
             value={query}
             onChangeText={onChange}
+            onSubmitEditing={() => query.trim().length >= 2 && commit(query)}
+            returnKeyType="search"
             autoFocus
             autoCapitalize="none"
             autoCorrect={false}
           />
           {searching ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         </View>
+
+        {/* recent searches — shown before typing */}
+        {!searched && !searching && history.length > 0 ? (
+          <>
+            <View style={styles.historyHeader}>
+              <Text style={styles.section}>Recent searches</Text>
+              <Pressable
+                onPress={() => {
+                  clearSearchHistory()
+                    .then(() => setHistory([]))
+                    .catch(() => {});
+                }}
+                hitSlop={8}
+                accessibilityLabel="Clear search history"
+              >
+                <Text style={styles.clearAll}>Clear all</Text>
+              </Pressable>
+            </View>
+            {history.map((h) => (
+              <Pressable
+                key={h.id}
+                style={({ pressed }) => [styles.historyRow, pressed && styles.pressed]}
+                onPress={() => onChange(h.query)}
+                accessibilityLabel={`Search again for ${h.query}`}
+              >
+                <Ionicons name="time-outline" size={16} color={colors.textFaint} />
+                <Text style={styles.historyQuery} numberOfLines={1}>
+                  {h.query}
+                </Text>
+                <Text style={styles.historyTime}>{timeAgo(h.created_at)}</Text>
+                <Pressable
+                  onPress={() => {
+                    deleteSearchEntry(h.id)
+                      .then(() => setHistory((cur) => cur.filter((x) => x.id !== h.id)))
+                      .catch(() => {});
+                  }}
+                  hitSlop={10}
+                  accessibilityLabel={`Remove ${h.query} from history`}
+                >
+                  <Ionicons name="close" size={16} color={colors.textFaint} />
+                </Pressable>
+              </Pressable>
+            ))}
+            {!isPro ? (
+              <Text style={styles.historyNote}>
+                Free keeps 30 days of history — Pro keeps it forever.
+              </Text>
+            ) : null}
+          </>
+        ) : null}
 
         {people.length > 0 ? <Text style={styles.section}>People</Text> : null}
         {people.map((p) => (
@@ -90,9 +168,10 @@ export default function Search() {
             title={authorLabel(p.display_name)}
             sub={p.area ?? 'Accountability buddy'}
             left={<Avatar url={p.avatar_url} name={p.display_name} size={40} />}
-            onPress={() =>
-              router.push({ pathname: '/buddy-card/[id]', params: { id: p.id } } as never)
-            }
+            onPress={() => {
+              commit(query);
+              router.push({ pathname: '/buddy-card/[id]', params: { id: p.id } } as never);
+            }}
           />
         ))}
 
@@ -107,7 +186,10 @@ export default function Search() {
                 <Ionicons name="people" size={18} color={colors.primary} />
               </View>
             }
-            onPress={() => router.push(`/group/${g.id}` as never)}
+            onPress={() => {
+              commit(query);
+              router.push(`/group/${g.id}` as never);
+            }}
           />
         ))}
 
@@ -126,7 +208,10 @@ export default function Search() {
                 </View>
               )
             }
-            onPress={() => router.push(`/page/${p.id}` as never)}
+            onPress={() => {
+              commit(query);
+              router.push(`/page/${p.id}` as never);
+            }}
           />
         ))}
 
@@ -234,5 +319,27 @@ const styles = StyleSheet.create({
     fontFamily: font.regular,
     fontSize: 13,
     marginTop: spacing.xl,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  clearAll: { color: colors.primary, fontFamily: font.semibold, fontSize: 13, marginTop: spacing.md },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    minHeight: 44,
+  },
+  historyQuery: { flex: 1, fontFamily: font.medium, fontSize: 14.5, color: colors.text },
+  historyTime: { fontFamily: font.regular, fontSize: 12, color: colors.textFaint },
+  historyNote: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
 });

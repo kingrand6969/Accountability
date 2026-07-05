@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -65,7 +66,7 @@ export default function Onboarding() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.hero}>
-        <Ionicons name="flame" size={44} color={colors.accent} />
+        <Image source={require('../../assets/images/logo.png')} style={styles.heroLogo} />
       </View>
       <Text style={styles.title}>Welcome to AccountAbility</Text>
       <Text style={styles.subtitle}>
@@ -122,12 +123,16 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: 84,
     height: 84,
-    borderRadius: 42,
-    backgroundColor: colors.primarySoft,
+    borderRadius: 24,
+    backgroundColor: '#fffffc',
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
+    overflow: 'hidden',
   },
+  heroLogo: { width: 70, height: 70 },
   title: {
     fontSize: 26,
     fontFamily: font.extrabold,

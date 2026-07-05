@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ImageBackground,
   Platform,
   Pressable,
@@ -157,10 +158,8 @@ export default function WinCard() {
 
       <View style={styles.cardContent}>
         <View style={styles.brandRow}>
-          <Ionicons name="flame" size={16} color={ACCENT} />
-          <Text style={styles.brandTop}>
-            Account<Text style={styles.brandAbility}>Ability</Text>
-          </Text>
+          <Image source={require('../../assets/images/logo.png')} style={styles.brandLogo} />
+          <Text style={styles.brandTop}>AccountAbility</Text>
         </View>
 
         <View style={styles.bottomBlock}>
@@ -277,6 +276,7 @@ const styles = StyleSheet.create({
   bottomScrim: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '62%' },
   cardContent: { flex: 1, padding: 22, justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  brandLogo: { width: 18, height: 18, borderRadius: 4 },
   brandTop: {
     color: 'rgba(255,255,255,0.95)',
     fontFamily: 'Inter_800ExtraBold',
