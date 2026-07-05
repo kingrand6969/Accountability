@@ -25,7 +25,7 @@ import { listFeed, createPost, setLiked } from '../../feed/api';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { shareInviteText } from '../../social/invite';
 import { showToast } from '../../ui/Toast';
-import { timeAgo, authorLabel } from '../../feed/format';
+import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
 import { EmptyState } from '../../ui/EmptyState';
@@ -331,7 +331,10 @@ export default function GroupDetail() {
               <Avatar url={item.author_avatar} name={item.author_name} size={40} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.author}>{authorLabel(item.author_name)}</Text>
-                <Text style={styles.time}>{timeAgo(item.created_at)}</Text>
+                <Text style={styles.time}>
+                  {timeAgo(item.created_at)}
+                  {item.tagged.length > 0 ? ` · ${taggedLabel(item.tagged)}` : ''}
+                </Text>
               </View>
             </View>
             {item.body ? <Text style={styles.body}>{item.body}</Text> : null}

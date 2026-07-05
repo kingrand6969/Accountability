@@ -193,6 +193,12 @@ export default function Memories() {
                     <Text style={styles.viewerPlace}>{viewer.location}</Text>
                   </View>
                 ) : null}
+                {viewer.tagged && viewer.tagged.length > 0 ? (
+                  <View style={styles.viewerPlaceRow}>
+                    <Ionicons name="people-outline" size={13} color="#e2e8f0" />
+                    <Text style={styles.viewerPlace}>with {viewer.tagged.join(', ')}</Text>
+                  </View>
+                ) : null}
               </View>
               <View style={styles.viewerActions}>
                 <Pressable

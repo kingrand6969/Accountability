@@ -14,7 +14,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getPost, listComments, addComment, setLiked } from '../../feed/api';
 import { SaveToMemories } from '../../memories/SaveToMemories';
-import { timeAgo, authorLabel } from '../../feed/format';
+import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost, PostComment } from '../../feed/types';
 import { EmptyState } from '../../ui/EmptyState';
@@ -110,7 +110,10 @@ export default function PostDetail() {
               <Avatar url={post.author_avatar} name={post.author_name} size={44} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.author}>{authorLabel(post.author_name)}</Text>
-                <Text style={styles.time}>{timeAgo(post.created_at)}</Text>
+                <Text style={styles.time}>
+                  {timeAgo(post.created_at)}
+                  {post.tagged.length > 0 ? ` · ${taggedLabel(post.tagged)}` : ''}
+                </Text>
               </View>
             </View>
             {post.body ? <Text style={styles.body}>{post.body}</Text> : null}

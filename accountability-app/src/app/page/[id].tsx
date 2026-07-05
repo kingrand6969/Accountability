@@ -18,7 +18,7 @@ import { getPage, followPage, unfollowPage, PAGE_CATEGORIES, type Page } from '.
 import { listFeed, createPost, setLiked } from '../../feed/api';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { showToast } from '../../ui/Toast';
-import { timeAgo } from '../../feed/format';
+import { timeAgo, taggedLabel } from '../../feed/format';
 import type { FeedPost } from '../../feed/types';
 import { EmptyState } from '../../ui/EmptyState';
 import { Button } from '../../ui/Button';
@@ -291,7 +291,10 @@ export default function PageDetail() {
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.author}>{page.name}</Text>
-                <Text style={styles.time}>{timeAgo(item.created_at)}</Text>
+                <Text style={styles.time}>
+                  {timeAgo(item.created_at)}
+                  {item.tagged.length > 0 ? ` · ${taggedLabel(item.tagged)}` : ''}
+                </Text>
               </View>
             </View>
             {item.body ? <Text style={styles.body}>{item.body}</Text> : null}

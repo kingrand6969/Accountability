@@ -8,14 +8,14 @@ async function currentUserId(): Promise<string | null> {
 }
 
 const POST_SELECT =
-  'id,body,image_url,created_at,user_id,post_likes(count),post_comments(count),event:events(id,title,starts_at,location,group_id)';
+  'id,body,image_url,created_at,user_id,post_likes(count),post_comments(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
 
 function mapPost(
   row: any,
   likedSet: Set<string>,
-  authors: Map<string, { display_name: string | null; avatar_url: string | null }>,
+  profiles: Map<string, { display_name: string | null; avatar_url: string | null }>,
 ): FeedPost {
-  const author = authors.get(row.user_id);
+  const author = profiles.get(row.user_id);
   return {
     id: row.id,
     body: row.body,
@@ -27,8 +27,22 @@ function mapPost(
     like_count: row.post_likes?.[0]?.count ?? 0,
     comment_count: row.post_comments?.[0]?.count ?? 0,
     liked_by_me: likedSet.has(row.id),
+    tagged: ((row.post_tags ?? []) as any[]).map((t) => ({
+      id: t.user_id,
+      name: profiles.get(t.user_id)?.display_name ?? null,
+    })),
     event: row.event ?? null,
   };
+}
+
+/** Author + tagged-user ids for one profiles lookup covering both. */
+function profileIds(rows: any[]): string[] {
+  const ids = new Set<string>();
+  for (const r of rows) {
+    ids.add(r.user_id);
+    for (const t of r.post_tags ?? []) ids.add(t.user_id);
+  }
+  return [...ids];
 }
 
 async function myLikedSet(me: string | null, postIds: string[]): Promise<Set<string>> {
@@ -72,11 +86,11 @@ export async function listFeed(
   const { data, error } = await query;
   if (error) throw error;
   const rows = data ?? [];
-  const [likedSet, authors] = await Promise.all([
+  const [likedSet, profiles] = await Promise.all([
     myLikedSet(me, rows.map((r: any) => r.id)),
-    getPublicProfiles(rows.map((r: any) => r.user_id)),
+    getPublicProfiles(profileIds(rows)),
   ]);
-  return rows.map((r: any) => mapPost(r, likedSet, authors));
+  return rows.map((r: any) => mapPost(r, likedSet, profiles));
 }
 
 export async function getPost(id: string): Promise<FeedPost | null> {
@@ -88,11 +102,11 @@ export async function getPost(id: string): Promise<FeedPost | null> {
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const [likedSet, authors] = await Promise.all([
+  const [likedSet, profiles] = await Promise.all([
     myLikedSet(me, [(data as any).id]),
-    getPublicProfiles([(data as any).user_id]),
+    getPublicProfiles(profileIds([data])),
   ]);
-  return mapPost(data, likedSet, authors);
+  return mapPost(data, likedSet, profiles);
 }
 
 export async function createPost(
@@ -101,17 +115,31 @@ export async function createPost(
   groupId: string | null = null,
   pageId: string | null = null,
   eventId: string | null = null,
-): Promise<void> {
+): Promise<string> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
-  const { error } = await supabase.from('posts').insert({
-    user_id: me,
-    body,
-    image_url: imageUrl,
-    group_id: groupId,
-    page_id: pageId,
-    event_id: eventId,
-  });
+  const { data, error } = await supabase
+    .from('posts')
+    .insert({
+      user_id: me,
+      body,
+      image_url: imageUrl,
+      group_id: groupId,
+      page_id: pageId,
+      event_id: eventId,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+/** Tag buddies on a post (author-only; RLS also requires they're your buddies). */
+export async function addPostTags(postId: string, userIds: string[]): Promise<void> {
+  if (userIds.length === 0) return;
+  const { error } = await supabase
+    .from('post_tags')
+    .insert(userIds.map((user_id) => ({ post_id: postId, user_id })));
   if (error) throw error;
 }
 

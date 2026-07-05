@@ -9,6 +9,7 @@ export type FeedPost = {
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
+  tagged: { id: string; name: string | null }[];
   event: {
     id: string;
     title: string;

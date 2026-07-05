@@ -17,17 +17,18 @@ import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
+import { addPostTags, listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { createEvent, attendEvent } from '../../events/api';
 import { toIsoFromLocal, toLocalDateString } from '../../timeline/datetime';
 import { uploadPostImage } from '../../feed/uploadPostImage';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { currentPlaceLabel, saveImageToMemories } from '../../memories/api';
+import { listBuddies, type Buddy } from '../../buddy/api';
 import { promptCrossShare } from '../../feed/crossShare';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
 import { PhotoEditor, type EditedPhoto } from '../../media/PhotoEditor';
 import { showToast } from '../../ui/Toast';
-import { timeAgo, authorLabel } from '../../feed/format';
+import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
 import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
@@ -76,6 +77,10 @@ export default function Feed() {
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [keepInMemories, setKeepInMemories] = useState(false);
+  // tag buddies on this post
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [buddies, setBuddies] = useState<Buddy[]>([]);
+  const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
   const [editorUri, setEditorUri] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   // event announcement mini-form
@@ -231,6 +236,27 @@ export default function Feed() {
     setPickedBase64(null);
     setPreviewUri(null);
     setKeepInMemories(false);
+    setTaggedIds(new Set());
+  }
+
+  async function openTagPicker() {
+    setTagPickerOpen(true);
+    if (buddies.length === 0) {
+      try {
+        setBuddies(await listBuddies());
+      } catch {
+        // list stays empty — the sheet explains how to add buddies
+      }
+    }
+  }
+
+  function toggleTag(id: string) {
+    setTaggedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   const canPost = eventOpen
@@ -282,15 +308,23 @@ export default function Feed() {
     const postedText = body.trim();
     const postedImageUri = previewUri; // local file — shareable to FB/IG
     const keep = keepInMemories && !!previewUri;
+    const tagIds = [...taggedIds];
+    const tagNames = buddies
+      .filter((b) => taggedIds.has(b.id))
+      .map((b) => authorLabel(b.name));
     try {
       let imageUrl: string | null = null;
       if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
-      await createPost(postedText, imageUrl);
+      const postId = await createPost(postedText, imageUrl);
+      if (tagIds.length > 0) {
+        // best-effort: a tagging hiccup must never fail the post itself
+        await addPostTags(postId, tagIds).catch(() => {});
+      }
       if (keep && postedImageUri) {
         // best-effort: a Memories hiccup must never fail the post itself
         try {
           const place = await currentPlaceLabel();
-          await saveImageToMemories(postedImageUri, place);
+          await saveImageToMemories(postedImageUri, place, tagNames);
           showToast('Posted — and kept in Memories ✨');
         } catch {
           showToast('Posted! (could not save to Memories)');
@@ -425,8 +459,84 @@ export default function Feed() {
                 Add to Memories
               </Text>
             </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.memoriesCheck, pressed && styles.pressed]}
+              onPress={openTagPicker}
+              accessibilityLabel="Tag buddies on this photo"
+            >
+              <Ionicons
+                name={taggedIds.size > 0 ? 'people' : 'person-add-outline'}
+                size={18}
+                color={taggedIds.size > 0 ? colors.primary : colors.textMuted}
+              />
+              <Text
+                style={[
+                  styles.memoriesCheckText,
+                  taggedIds.size > 0 && { color: colors.primary },
+                ]}
+                numberOfLines={1}
+              >
+                {taggedIds.size > 0
+                  ? taggedLabel(buddies.filter((b) => taggedIds.has(b.id)).map((b) => ({ name: b.name })))
+                  : 'Tag buddies'}
+              </Text>
+            </Pressable>
           </View>
         ) : null}
+
+        {/* buddy tag picker */}
+        <Modal
+          visible={tagPickerOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setTagPickerOpen(false)}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setTagPickerOpen(false)}>
+            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+              <BlurView
+                intensity={60}
+                tint="light"
+                style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
+              />
+              <View style={styles.sheetGlass} />
+              <Text style={styles.sheetTitle}>Tag buddies</Text>
+              {buddies.length === 0 ? (
+                <Text style={styles.tagEmpty}>
+                  No buddies yet — add some from the Buddies page first.
+                </Text>
+              ) : (
+                buddies.map((b) => {
+                  const selected = taggedIds.has(b.id);
+                  return (
+                    <Pressable
+                      key={b.id}
+                      style={({ pressed }) => [styles.tagRow, pressed && styles.pressed]}
+                      onPress={() => toggleTag(b.id)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
+                      accessibilityLabel={`Tag ${authorLabel(b.name)}`}
+                    >
+                      <Avatar url={b.avatar} name={b.name} size={32} />
+                      <Text style={styles.tagName}>{authorLabel(b.name)}</Text>
+                      <Ionicons
+                        name={selected ? 'checkbox' : 'square-outline'}
+                        size={20}
+                        color={selected ? colors.primary : colors.textFaint}
+                      />
+                    </Pressable>
+                  );
+                })
+              )}
+              <Pressable
+                style={({ pressed }) => [styles.tagDone, pressed && styles.pressed]}
+                onPress={() => setTagPickerOpen(false)}
+                accessibilityLabel="Done tagging"
+              >
+                <Text style={styles.tagDoneText}>Done</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
         {eventOpen ? (
           <View style={styles.eventForm}>
             <TextInput
@@ -547,7 +657,10 @@ export default function Feed() {
                 <Avatar url={item.author_avatar} name={item.author_name} size={40} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.author}>{authorLabel(item.author_name)}</Text>
-                  <Text style={styles.time}>{timeAgo(item.created_at)}</Text>
+                  <Text style={styles.time}>
+                    {timeAgo(item.created_at)}
+                    {item.tagged.length > 0 ? ` · ${taggedLabel(item.tagged)}` : ''}
+                  </Text>
                 </View>
               </View>
               {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
@@ -717,6 +830,32 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   memoriesCheckText: { fontFamily: font.semibold, fontSize: 13, color: colors.textMuted },
+  tagEmpty: {
+    fontFamily: font.regular,
+    fontSize: 13.5,
+    color: colors.textMuted,
+    padding: spacing.md,
+    lineHeight: 19,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: 48,
+  },
+  tagName: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.text },
+  tagDone: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: spacing.sm,
+  },
+  tagDoneText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
   preview: { width: 110, height: 110, borderRadius: radius.sm, backgroundColor: colors.surface },
   previewRemove: {
     position: 'absolute',

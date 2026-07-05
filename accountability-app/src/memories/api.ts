@@ -27,6 +27,7 @@ export type Memory = {
   kind: 'image' | 'video';
   bytes: number;
   location: string | null;
+  tagged: string[] | null; // buddy names at save time
   created_at: string;
   url: string; // signed
 };
@@ -82,7 +83,7 @@ async function signedUrls(paths: string[]): Promise<Map<string, string>> {
 export async function listMemories(): Promise<Memory[]> {
   const { data, error } = await supabase
     .from('memories')
-    .select('id,path,kind,bytes,location,created_at')
+    .select('id,path,kind,bytes,location,tagged,created_at')
     .order('created_at', { ascending: false })
     .limit(500);
   if (error) throw error;
@@ -99,6 +100,7 @@ async function uploadBuffer(
   contentType: string,
   kind: 'image' | 'video',
   location: string | null,
+  tagged: string[] | null,
 ): Promise<void> {
   const uid = await me();
   if (buf.byteLength > MAX_FILE_BYTES) {
@@ -116,7 +118,7 @@ async function uploadBuffer(
   if (error) throw error;
   const { error: rowError } = await supabase
     .from('memories')
-    .insert({ path, kind, bytes: buf.byteLength, location });
+    .insert({ path, kind, bytes: buf.byteLength, location, tagged });
   if (rowError) {
     // quota trigger said no — don't leave an orphan file behind
     await supabase.storage.from('memories').remove([path]).catch(() => {});
@@ -128,6 +130,7 @@ async function uploadBuffer(
 export async function saveImageToMemories(
   localUri: string,
   location: string | null = null,
+  tagged: string[] | null = null,
 ): Promise<void> {
   const shrunk = await ImageManipulator.manipulateAsync(
     localUri,
@@ -135,7 +138,14 @@ export async function saveImageToMemories(
     { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG, base64: true },
   );
   if (!shrunk.base64) throw new Error('Could not read that image.');
-  await uploadBuffer(decode(shrunk.base64), 'jpg', 'image/jpeg', 'image', location);
+  await uploadBuffer(
+    decode(shrunk.base64),
+    'jpg',
+    'image/jpeg',
+    'image',
+    location,
+    tagged && tagged.length > 0 ? tagged : null,
+  );
 }
 
 /** Save a picture that's already hosted (bookmark on a feed/group/page post) —
@@ -150,6 +160,7 @@ export async function saveRemoteImageToMemories(url: string): Promise<void> {
     isPng ? 'png' : 'jpg',
     isPng ? 'image/png' : 'image/jpeg',
     'image',
+    null,
     null,
   );
 }
