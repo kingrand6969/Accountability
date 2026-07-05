@@ -117,7 +117,7 @@ export default function BillNew() {
           <Text style={styles.label}>Name</Text>
           <TextInput
             style={styles.input}
-            placeholder={isCc ? 'e.g. Chase Sapphire' : 'e.g. Meralco electricity'}
+            placeholder={isCc ? 'e.g. My Visa card' : 'e.g. Electricity bill'}
             placeholderTextColor={colors.textFaint}
             value={name}
             onChangeText={setName}
