@@ -32,7 +32,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           <Text style={styles.wordmark}>
             Account<Text style={styles.wordmarkAccent}>Ability</Text>
           </Text>
-          <Text style={styles.tagline}>Show up. Every day.</Text>
+          <Text style={styles.tagline}>Achieve. Consistency.</Text>
         </View>
         <View style={styles.card}>{children}</View>
       </ScrollView>

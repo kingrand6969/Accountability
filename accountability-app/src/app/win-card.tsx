@@ -49,7 +49,7 @@ export default function WinCard() {
 
   const message =
     stats.streak > 0
-      ? `🔥 ${stats.streak}-day streak on AccountAbility! Showing up every day. 💪`
+      ? `🔥 ${stats.streak}-day streak on AccountAbility! Achieve. Consistency. 💪`
       : `Building better habits with AccountAbility 💪 — ${stats.weekWorkouts} workouts this week!`;
 
   async function pickPhoto(fromCamera: boolean) {
@@ -183,7 +183,7 @@ export default function WinCard() {
             </View>
           </View>
 
-          <Text style={styles.tagline}>Showing up every day.</Text>
+          <Text style={styles.tagline}>Achieve. Consistency.</Text>
         </View>
       </View>
     </>
