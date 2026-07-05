@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,37 +11,55 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsPro } from '../../pro/ProProvider';
 import { listMonth, deleteTransaction } from '../../money/api';
 import { sumByKind, groupByCategory } from '../../money/compute';
 import { categoryMeta, formatAmount } from '../../money/categories';
 import type { Transaction } from '../../money/types';
+import {
+  billCategoryMeta,
+  billStatus,
+  dueLabel,
+  sortBills,
+  unpaidTotal,
+  type Bill,
+} from '../../money/billing';
+import { listBills, markBillPaid, unmarkBillPaid } from '../../money/billsApi';
 import { EmptyState } from '../../ui/EmptyState';
+import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { ProgressRing } from '../../ui/ProgressRing';
 import { confirmDestructive } from '../../ui/confirm';
+import { showToast } from '../../ui/Toast';
 import { colors, font, radius, spacing, shadow } from '../../ui/theme';
 
-const INK = '#1e1b4b'; // dark indigo — strong contrast on the lavender gradient
+const INK = '#1e1b4b';
+const INK_SOFT = 'rgba(30,27,75,0.72)';
+const ACCENT = '#6d28d9';
 
 export default function Finance() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isPro } = useIsPro();
+  const bgRef = useRef<View>(null);
   const [txns, setTxns] = useState<Transaction[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
   const [lastSpend, setLastSpend] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // credit-card "which amount?" chooser (in-tree overlay — not a Modal, so
+  // Android blur behind it keeps working)
+  const [ccChooser, setCcChooser] = useState<Bill | null>(null);
+  const paysInFlight = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
       const now = new Date();
       const prev = new Date(now.getFullYear(), now.getMonth() - 1, 15);
-      const [cur, last] = await Promise.all([listMonth(now), listMonth(prev)]);
+      const [cur, last, bs] = await Promise.all([listMonth(now), listMonth(prev), listBills()]);
       setTxns(cur);
       setLastSpend(sumByKind(last, 'expense'));
+      setBills(bs);
     } catch (e) {
       Alert.alert('Could not load', String((e as Error).message ?? e));
     } finally {
@@ -61,7 +79,7 @@ export default function Finance() {
     await load();
   }
 
-  function onDelete(item: Transaction) {
+  function onDeleteTx(item: Transaction) {
     confirmDestructive(
       'Delete this transaction?',
       `${categoryMeta(item.category).label} · ${formatAmount(item.amount)}`,
@@ -77,6 +95,46 @@ export default function Finance() {
     );
   }
 
+  async function payBill(bill: Bill, amount: number) {
+    if (paysInFlight.current.has(bill.id)) return;
+    paysInFlight.current.add(bill.id);
+    setCcChooser(null);
+    try {
+      await markBillPaid(bill, amount);
+      showToast(`${bill.name} marked paid ✓`);
+      await load();
+    } catch (e) {
+      Alert.alert('Could not mark paid', String((e as Error).message ?? e));
+    } finally {
+      paysInFlight.current.delete(bill.id);
+    }
+  }
+
+  function onTogglePaid(bill: Bill) {
+    const s = billStatus(bill, new Date());
+    if (s.paid) {
+      confirmDestructive(
+        'Mark as unpaid?',
+        'The logged transaction stays in your list — delete it there if it was a mistake.',
+        'Mark unpaid',
+        async () => {
+          try {
+            await unmarkBillPaid(bill);
+            await load();
+          } catch (e) {
+            Alert.alert('Could not update', String((e as Error).message ?? e));
+          }
+        },
+      );
+      return;
+    }
+    if (bill.category === 'credit_card' && bill.min_payment != null) {
+      setCcChooser(bill); // ask which amount was paid
+      return;
+    }
+    payBill(bill, bill.amount);
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -85,41 +143,90 @@ export default function Finance() {
     );
   }
 
+  const today = new Date();
   const income = sumByKind(txns, 'income');
   const expense = sumByKind(txns, 'expense');
   const balance = income - expense;
   const byCat = groupByCategory(txns);
   const maxCat = byCat.length ? byCat[0].total : 0;
   const ringMax = Math.max(lastSpend, expense, 1);
+  const sortedBills = sortBills(bills, today);
+  const stillToPay = unpaidTotal(bills, today);
 
   const header = (
-    <View>
-      {/* glass hero */}
-      <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
-        <Text style={styles.heroLabel}>YOUR MONEY</Text>
-        <Text style={styles.heroBalance}>{formatAmount(balance)}</Text>
-        <Text style={styles.heroSub}>left this month</Text>
-
-        <Text style={styles.spentLabel}>MONEY SPENT</Text>
-        <View style={styles.ringRow}>
-          <SpendRing
-            amount={lastSpend}
-            progress={lastSpend / ringMax}
-            label="LAST MONTH"
-            startColor="#f472b6"
-            endColor="#ef4444"
-          />
-          <SpendRing
-            amount={expense}
-            progress={expense / ringMax}
-            label="THIS MONTH"
-            startColor="#8b5cf6"
-            endColor="#ec4899"
-          />
+    <View style={[styles.headerWrap, { paddingTop: insets.top + spacing.lg }]}>
+      {/* YOUR MONEY — glass hero */}
+      <GlassCard blurTarget={bgRef}>
+        <View style={styles.cardPad}>
+          <Text style={styles.kicker}>YOUR MONEY</Text>
+          <Text style={styles.heroBalance}>{formatAmount(balance)}</Text>
+          <Text style={styles.heroSub}>left this month</Text>
         </View>
-      </View>
+      </GlassCard>
 
-      {/* white sheet */}
+      {/* MONEY SPENT — glass rings */}
+      <GlassCard blurTarget={bgRef}>
+        <View style={styles.cardPad}>
+          <Text style={styles.kicker}>MONEY SPENT</Text>
+          <View style={styles.ringRow}>
+            <SpendRing
+              amount={lastSpend}
+              progress={lastSpend / ringMax}
+              label="LAST MONTH"
+              startColor="#f472b6"
+              endColor="#ef4444"
+            />
+            <SpendRing
+              amount={expense}
+              progress={expense / ringMax}
+              label="THIS MONTH"
+              startColor="#8b5cf6"
+              endColor="#ec4899"
+            />
+          </View>
+        </View>
+      </GlassCard>
+
+      {/* MONTHLY BILLS — glass ledger */}
+      <GlassCard blurTarget={bgRef}>
+        <View style={styles.cardPad}>
+          <View style={styles.billsHeader}>
+            <Text style={styles.kicker}>MONTHLY BILLS</Text>
+            {bills.length > 0 ? (
+              <Text style={styles.billsRollup}>
+                {stillToPay > 0 ? `${formatAmount(stillToPay)} to pay` : 'All paid 🎉'}
+              </Text>
+            ) : null}
+          </View>
+
+          {sortedBills.length === 0 ? (
+            <Text style={styles.billsEmpty}>
+              Track electricity, water, internet, cable and credit cards — with due dates.
+            </Text>
+          ) : (
+            <View style={styles.billsList}>
+              {sortedBills.map((b) => (
+                <BillRow key={b.id} bill={b} onTogglePaid={() => onTogglePaid(b)} onOpen={() => router.push({ pathname: '/bill-new', params: { id: b.id } } as never)} />
+              ))}
+            </View>
+          )}
+
+          <Pressable
+            style={({ pressed }) => [styles.addBillBtn, pressed && styles.pressed]}
+            onPress={() => router.push('/bill-new' as never)}
+            accessibilityLabel="Add a monthly bill"
+          >
+            <Ionicons name="add" size={16} color={ACCENT} />
+            <Text style={styles.addBillText}>Add bill</Text>
+          </Pressable>
+          <Text style={styles.disclaimer}>
+            Amounts and dates are entered by you for tracking. Refer to your provider’s
+            statement for official amounts. Not financial advice.
+          </Text>
+        </View>
+      </GlassCard>
+
+      {/* white sheet top */}
       <View style={styles.sheetTop}>
         <View style={styles.sheetHandle} />
         {isPro ? (
@@ -170,12 +277,7 @@ export default function Finance() {
 
   return (
     <View style={styles.screen}>
-      <LinearGradient
-        colors={['#c7d2fe', '#a5b4fc', '#a78bfa']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.3, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+      <GlassBackdrop ref={bgRef} />
       <FlatList
         data={txns}
         keyExtractor={(t) => t.id}
@@ -212,14 +314,14 @@ export default function Finance() {
                 <Text
                   style={[
                     styles.txAmount,
-                    item.kind === 'income' ? styles.income : styles.expense,
+                    item.kind === 'income' ? styles.incomeText : styles.expenseText,
                   ]}
                 >
                   {item.kind === 'income' ? '+' : '-'}
                   {formatAmount(item.amount)}
                 </Text>
                 <Pressable
-                  onPress={() => onDelete(item)}
+                  onPress={() => onDeleteTx(item)}
                   hitSlop={8}
                   style={({ pressed }) => [styles.deleteBtn, pressed && styles.pressed]}
                   accessibilityLabel="Delete transaction"
@@ -242,11 +344,114 @@ export default function Finance() {
         <Ionicons name="add" size={20} color={colors.onPrimary} />
         <Text style={styles.fabText}>Add</Text>
       </Pressable>
+
+      {/* credit card: which amount did you pay? (in-tree frosted overlay) */}
+      {ccChooser ? (
+        <Pressable style={styles.ccBackdrop} onPress={() => setCcChooser(null)}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={styles.ccSheetWrap}>
+            <GlassCard blurTarget={bgRef} plateOpacity={0.75}>
+              <View style={styles.cardPad}>
+                <Text style={styles.ccTitle}>{ccChooser.name}</Text>
+                <Text style={styles.ccSub}>How much did you pay?</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.ccOption, pressed && styles.pressed]}
+                  onPress={() => payBill(ccChooser, ccChooser.min_payment ?? 0)}
+                >
+                  <Text style={styles.ccOptionLabel}>Minimum due</Text>
+                  <Text style={styles.ccOptionAmount}>
+                    {formatAmount(ccChooser.min_payment ?? 0)}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.ccOption, pressed && styles.pressed]}
+                  onPress={() => payBill(ccChooser, ccChooser.amount)}
+                >
+                  <Text style={styles.ccOptionLabel}>Statement balance</Text>
+                  <Text style={styles.ccOptionAmount}>{formatAmount(ccChooser.amount)}</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.ccCancel, pressed && styles.pressed]}
+                  onPress={() => setCcChooser(null)}
+                >
+                  <Text style={styles.ccCancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </GlassCard>
+          </Pressable>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-const RING = 128;
+function BillRow({
+  bill,
+  onTogglePaid,
+  onOpen,
+}: {
+  bill: Bill;
+  onTogglePaid: () => void;
+  onOpen: () => void;
+}) {
+  const s = billStatus(bill, new Date());
+  const meta = billCategoryMeta(bill.category);
+  const isCc = bill.category === 'credit_card';
+  const badge = s.paid
+    ? { bg: 'rgba(4,120,87,0.12)', fg: '#047857' }
+    : s.overdue
+      ? { bg: 'rgba(190,18,60,0.14)', fg: '#be123c' }
+      : s.dueSoon
+        ? { bg: 'rgba(217,119,6,0.16)', fg: '#b45309' }
+        : { bg: 'rgba(30,27,75,0.08)', fg: INK_SOFT };
+
+  return (
+    <Pressable
+      onPress={onOpen}
+      style={({ pressed }) => [
+        styles.billRow,
+        s.overdue && styles.billRowOverdue,
+        s.paid && styles.billRowPaid,
+        pressed && styles.pressed,
+      ]}
+      accessibilityLabel={`Edit ${bill.name}`}
+    >
+      <View style={styles.billIcon}>
+        <Ionicons name={meta.icon as any} size={16} color={ACCENT} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.billName} numberOfLines={1}>
+          {bill.name}
+        </Text>
+        <Text style={[styles.billDue, s.overdue && !s.paid && styles.billDueOverdue]}>
+          {isCc && bill.min_payment != null && !s.paid
+            ? `Min due ${formatAmount(bill.min_payment)} · ${dueLabel(s)}`
+            : dueLabel(s)}
+        </Text>
+      </View>
+      <View style={styles.billRight}>
+        <Text style={styles.billAmount}>{formatAmount(bill.amount)}</Text>
+        {isCc ? <Text style={styles.billAmountSub}>statement</Text> : null}
+      </View>
+      <View style={[styles.dueBadge, { backgroundColor: badge.bg }]}>
+        <Text style={[styles.dueBadgeText, { color: badge.fg }]}>{bill.due_day}</Text>
+      </View>
+      <Pressable
+        onPress={onTogglePaid}
+        hitSlop={10}
+        style={({ pressed }) => [styles.payBtn, pressed && styles.pressed]}
+        accessibilityLabel={s.paid ? `Mark ${bill.name} unpaid` : `Mark ${bill.name} paid`}
+      >
+        <Ionicons
+          name={s.paid ? 'checkmark-circle' : 'ellipse-outline'}
+          size={24}
+          color={s.paid ? '#047857' : INK_SOFT}
+        />
+      </Pressable>
+    </Pressable>
+  );
+}
+
+const RING = 118;
 
 function SpendRing({
   amount,
@@ -263,18 +468,13 @@ function SpendRing({
 }) {
   return (
     <View style={styles.ringCol}>
-      <View style={styles.ringGlass}>
-        <BlurView
-          intensity={20}
-          tint="light"
-          style={[StyleSheet.absoluteFill, { borderRadius: RING / 2 }]}
-        />
+      <View style={styles.ringCircle}>
         <View style={styles.ringSvg} pointerEvents="none">
           <ProgressRing
             size={RING}
             strokeWidth={7}
             progress={progress}
-            trackColor="rgba(255,255,255,0.55)"
+            trackColor="rgba(255,255,255,0.9)"
             startColor={startColor}
             endColor={endColor}
           />
@@ -287,7 +487,7 @@ function SpendRing({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#a5b4fc' },
+  screen: { flex: 1, backgroundColor: '#E4DCF7' },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -295,8 +495,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: { flexGrow: 1 },
-  hero: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
-  heroLabel: { color: INK, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
+  headerWrap: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  cardPad: { padding: spacing.lg },
+  kicker: { color: INK, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
   heroBalance: {
     color: INK,
     fontFamily: font.display,
@@ -305,36 +506,97 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     marginTop: 2,
   },
-  heroSub: { color: '#4338ca', fontFamily: font.medium, fontSize: 13, marginBottom: spacing.lg },
-  spentLabel: {
-    color: INK,
-    fontFamily: font.extrabold,
-    fontSize: 13,
-    letterSpacing: 1.2,
-    marginBottom: spacing.md,
+  heroSub: { color: INK_SOFT, fontFamily: font.medium, fontSize: 13 },
+  ringRow: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    justifyContent: 'center',
+    marginTop: spacing.md,
   },
-  ringRow: { flexDirection: 'row', gap: spacing.xl, justifyContent: 'center' },
   ringCol: { alignItems: 'center', gap: spacing.sm },
-  ringGlass: {
+  ringCircle: {
     width: RING,
     height: RING,
-    borderRadius: RING / 2,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   ringSvg: { position: 'absolute', top: 0, left: 0 },
-  ringAmount: { color: INK, fontFamily: font.extrabold, fontSize: 17 },
-  ringLabel: { color: INK, fontFamily: font.bold, fontSize: 11.5, letterSpacing: 0.8 },
+  ringAmount: { color: INK, fontFamily: font.extrabold, fontSize: 16 },
+  ringLabel: { color: INK_SOFT, fontFamily: font.bold, fontSize: 11.5, letterSpacing: 0.8 },
+  billsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  billsRollup: { color: INK_SOFT, fontFamily: font.bold, fontSize: 12.5 },
+  billsEmpty: {
+    color: INK_SOFT,
+    fontFamily: font.regular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    marginTop: spacing.sm,
+  },
+  billsList: { gap: spacing.sm, marginTop: spacing.md },
+  // faux glass rows — real blur is budgeted to the 3 cards
+  billRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
+    borderRadius: 16,
+    padding: spacing.md,
+    minHeight: 56,
+  },
+  billRowOverdue: { borderLeftWidth: 3, borderLeftColor: '#be123c' },
+  billRowPaid: { opacity: 0.55 },
+  billIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(109,40,217,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billName: { color: INK, fontFamily: font.semibold, fontSize: 15 },
+  billDue: { color: INK_SOFT, fontFamily: font.medium, fontSize: 12, marginTop: 1 },
+  billDueOverdue: { color: '#be123c', fontFamily: font.bold },
+  billRight: { alignItems: 'flex-end' },
+  billAmount: { color: INK, fontFamily: font.bold, fontSize: 15 },
+  billAmountSub: { color: INK_SOFT, fontFamily: font.regular, fontSize: 10.5 },
+  dueBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dueBadgeText: { fontFamily: font.bold, fontSize: 12 },
+  payBtn: { minWidth: 32, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  addBillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 1.5,
+    borderColor: ACCENT,
+    borderRadius: radius.pill,
+    minHeight: 44,
+    marginTop: spacing.md,
+  },
+  addBillText: { color: ACCENT, fontFamily: font.bold, fontSize: 14 },
+  disclaimer: {
+    color: INK_SOFT,
+    fontFamily: font.regular,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: spacing.md,
+  },
   sheetTop: {
     backgroundColor: colors.background,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xs,
+    marginHorizontal: -spacing.lg,
+    marginTop: spacing.sm,
   },
   sheetBody: {
     backgroundColor: colors.background,
@@ -428,8 +690,8 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
   txAmount: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  income: { color: colors.success },
-  expense: { color: colors.danger },
+  incomeText: { color: colors.success },
+  expenseText: { color: colors.danger },
   deleteBtn: {
     minHeight: 44,
     minWidth: 32,
@@ -437,7 +699,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xs,
   },
-  pressed: { opacity: 0.7 },
+  pressed: { opacity: 0.75 },
   fab: {
     position: 'absolute',
     right: spacing.xl,
@@ -456,4 +718,34 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   fabText: { color: colors.onPrimary, fontSize: 16, fontFamily: font.bold },
+  ccBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15,23,42,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  ccSheetWrap: { width: '100%', maxWidth: 360 },
+  ccTitle: { color: INK, fontFamily: font.extrabold, fontSize: 18 },
+  ccSub: { color: INK_SOFT, fontFamily: font.medium, fontSize: 13.5, marginBottom: spacing.md },
+  ccOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 52,
+    marginBottom: spacing.sm,
+  },
+  ccOptionLabel: { color: INK, fontFamily: font.semibold, fontSize: 14.5 },
+  ccOptionAmount: { color: ACCENT, fontFamily: font.extrabold, fontSize: 16 },
+  ccCancel: { alignItems: 'center', minHeight: 44, justifyContent: 'center' },
+  ccCancelText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 14 },
 });
