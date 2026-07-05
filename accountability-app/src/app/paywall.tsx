@@ -14,7 +14,6 @@ const BENEFITS = [
   { icon: 'barbell-outline' as const, text: 'Full exercise library tools' },
   { icon: 'nutrition-outline' as const, text: 'Diet & calorie tracker' },
   { icon: 'people-outline' as const, text: 'Accountability circles & challenges' },
-  { icon: 'download-outline' as const, text: 'Data export (PDF / CSV)' },
 ];
 
 type Plan = 'yearly' | 'monthly';

@@ -13,7 +13,8 @@ export async function uploadPostImage(base64: string, ext: string): Promise<stri
 
   const { error } = await supabase.storage
     .from('post-images')
-    .upload(path, decode(base64), { contentType });
+    // unique path per upload → let the CDN cache it for a year (cuts egress)
+    .upload(path, decode(base64), { contentType, cacheControl: '31536000' });
   if (error) throw error;
 
   return supabase.storage.from('post-images').getPublicUrl(path).data.publicUrl;

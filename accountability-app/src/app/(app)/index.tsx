@@ -21,6 +21,7 @@ import { listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { createEvent, attendEvent } from '../../events/api';
 import { toIsoFromLocal, toLocalDateString } from '../../timeline/datetime';
 import { uploadPostImage } from '../../feed/uploadPostImage';
+import { SaveToMemories } from '../../memories/SaveToMemories';
 import { promptCrossShare } from '../../feed/crossShare';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
 import { PhotoEditor, type EditedPhoto } from '../../media/PhotoEditor';
@@ -554,7 +555,10 @@ export default function Feed() {
                 </View>
               ) : null}
               {item.image_url ? (
-                <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+                <View>
+                  <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+                  <SaveToMemories url={item.image_url} />
+                </View>
               ) : null}
               <View style={styles.actions}>
                 <Pressable

@@ -22,6 +22,7 @@ import {
   type Group,
 } from '../../groups/api';
 import { listFeed, createPost, setLiked } from '../../feed/api';
+import { SaveToMemories } from '../../memories/SaveToMemories';
 import { shareInviteText } from '../../social/invite';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
@@ -335,7 +336,10 @@ export default function GroupDetail() {
             </View>
             {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
             {item.image_url ? (
-              <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+              <View>
+                <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+                <SaveToMemories url={item.image_url} />
+              </View>
             ) : null}
             <View style={styles.actions}>
               <Pressable

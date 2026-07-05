@@ -21,6 +21,7 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 const GRID: { icon: IoniconName; tint: string; title: string; route: string }[] = [
   { icon: 'people-outline', tint: '#2563eb', title: 'Groups', route: '/groups' },
   { icon: 'storefront-outline', tint: '#0d9488', title: 'Pages', route: '/pages' },
+  { icon: 'images-outline', tint: '#0ea5e9', title: 'Memories', route: '/memories' },
   { icon: 'person-add-outline', tint: '#db2777', title: 'Buddies', route: '/buddy' },
   { icon: 'color-palette-outline', tint: '#7c3aed', title: 'My buddy card', route: '/buddy-card-edit' },
   { icon: 'stats-chart-outline', tint: '#ea580c', title: 'Progress', route: '/insights' },

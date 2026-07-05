@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getPage, followPage, unfollowPage, PAGE_CATEGORIES, type Page } from '../../pages/api';
 import { listFeed, createPost, setLiked } from '../../feed/api';
+import { SaveToMemories } from '../../memories/SaveToMemories';
 import { showToast } from '../../ui/Toast';
 import { timeAgo } from '../../feed/format';
 import type { FeedPost } from '../../feed/types';
@@ -295,7 +296,10 @@ export default function PageDetail() {
             </View>
             {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
             {item.image_url ? (
-              <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+              <View>
+                <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+                <SaveToMemories url={item.image_url} />
+              </View>
             ) : null}
             <View style={styles.actions}>
               <Pressable

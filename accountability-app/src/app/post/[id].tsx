@@ -13,6 +13,7 @@ import {
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getPost, listComments, addComment, setLiked } from '../../feed/api';
+import { SaveToMemories } from '../../memories/SaveToMemories';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost, PostComment } from '../../feed/types';
@@ -114,7 +115,10 @@ export default function PostDetail() {
             </View>
             {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
             {post.image_url ? (
-              <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" />
+              <View>
+                <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" />
+                <SaveToMemories url={post.image_url} />
+              </View>
             ) : null}
             <Pressable
               onPress={onToggleLike}
