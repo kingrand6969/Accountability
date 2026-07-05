@@ -46,8 +46,11 @@ function RootNavigator() {
         <Stack.Screen name="gym-plan" options={{ headerShown: true, title: 'Build my plan' }} />
         <Stack.Screen name="diet" options={{ headerShown: true, title: 'Diet' }} />
         <Stack.Screen name="food-search" options={{ headerShown: true, title: 'Add Food' }} />
-        <Stack.Screen name="money" options={{ headerShown: true, title: 'Money' }} />
         <Stack.Screen name="money-add" options={{ headerShown: true, title: 'Add Transaction' }} />
+        <Stack.Screen
+          name="add"
+          options={{ headerShown: true, title: 'Add', presentation: 'modal' }}
+        />
         <Stack.Screen name="activity-track" options={{ headerShown: true, title: 'Track Activity' }} />
         <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />

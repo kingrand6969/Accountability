@@ -58,8 +58,12 @@ export default function AppLayout() {
         options={{ title: 'Today', tabBarIcon: tabIcon('today', 'today-outline') }}
       />
       <Tabs.Screen
-        name="add"
-        options={{ title: 'Add', tabBarIcon: tabIcon('add-circle', 'add-circle-outline') }}
+        name="finance"
+        options={{
+          title: 'Finance',
+          tabBarIcon: tabIcon('wallet', 'wallet-outline'),
+          headerShown: false, // gradient hero runs edge-to-edge
+        }}
       />
       <Tabs.Screen
         name="activity"

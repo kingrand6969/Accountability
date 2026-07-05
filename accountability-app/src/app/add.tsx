@@ -13,27 +13,27 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { ChipSelector } from '../../profiles/ChipSelector';
-import { useIsPro } from '../../pro/ProProvider';
-import { parseVoiceCommand } from '../../voice/parse';
-import { createItem } from '../../timeline/api';
+import { ChipSelector } from '../profiles/ChipSelector';
+import { useIsPro } from '../pro/ProProvider';
+import { parseVoiceCommand } from '../voice/parse';
+import { createItem } from '../timeline/api';
 import {
   validateTimeString,
   toIsoFromLocal,
   toLocalDateString,
-} from '../../timeline/datetime';
-import { MonthCalendar } from '../../ui/MonthCalendar';
-import { TimePicker } from '../../ui/TimePicker';
+} from '../timeline/datetime';
+import { MonthCalendar } from '../ui/MonthCalendar';
+import { TimePicker } from '../ui/TimePicker';
 import {
   ensureNotificationPermission,
   scheduleReminder,
   cancelReminder,
-} from '../../notifications/api';
-import { reminderTriggerDate } from '../../notifications/trigger';
-import { Button } from '../../ui/Button';
-import { showToast } from '../../ui/Toast';
-import { colors, font, radius, spacing } from '../../ui/theme';
-import type { TimelineType } from '../../timeline/types';
+} from '../notifications/api';
+import { reminderTriggerDate } from '../notifications/trigger';
+import { Button } from '../ui/Button';
+import { showToast } from '../ui/Toast';
+import { colors, font, radius, spacing } from '../ui/theme';
+import type { TimelineType } from '../timeline/types';
 
 // Add is for scheduling reminders only — events, meetings, errands, grocery.
 // Workouts/meals/money live in their own trackers (Track tab).

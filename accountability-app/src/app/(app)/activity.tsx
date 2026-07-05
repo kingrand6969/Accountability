@@ -27,7 +27,7 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/diet' | '/money' | '/activity-track' | '/insights' | '/books';
+  route: '/gym' | '/diet' | '/activity-track' | '/insights' | '/books';
 }[] = [
   {
     key: 'insights',
@@ -52,14 +52,6 @@ const PILLARS: {
     title: 'Diet & Calories',
     sub: 'Track meals, calories & macros',
     route: '/diet',
-  },
-  {
-    key: 'money',
-    icon: 'wallet-outline',
-    tint: '#dc2626',
-    title: 'Money',
-    sub: 'Income, expenses & budgets',
-    route: '/money',
   },
   {
     key: 'activity',
