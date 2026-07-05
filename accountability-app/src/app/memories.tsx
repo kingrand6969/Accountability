@@ -1,10 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -12,36 +12,55 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
-import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import {
   deleteMemory,
   formatBytes,
   getMemoriesUsage,
   listMemories,
-  saveImageToMemories,
-  saveVideoToMemories,
   QUOTA_BYTES,
   type Memory,
 } from '../memories/api';
 import { confirmDestructive } from '../ui/confirm';
-import { showToast } from '../ui/Toast';
 import { EmptyState } from '../ui/EmptyState';
-import { colors, font, radius, spacing, shadow } from '../ui/theme';
+import { colors, font, radius, spacing } from '../ui/theme';
 
 const GRID_GAP = 4;
 const COLUMNS = 3;
 
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(d, today)) return 'Today';
+  if (sameDay(d, yesterday)) return 'Yesterday';
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric',
+  });
+}
+
+function timeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/** Memories: an automatic album of moments saved when posting — view-only.
+ *  Photos get here via the "Add to Memories" checkbox on the composer or the
+ *  bookmark on any post photo. */
 export default function Memories() {
   const { width } = useWindowDimensions();
   const [items, setItems] = useState<Memory[]>([]);
   const [used, setUsed] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false); // one upload at a time
   const [viewer, setViewer] = useState<Memory | null>(null);
 
-  const tile = Math.floor((Math.min(width, 720) - spacing.lg * 2 - GRID_GAP * (COLUMNS - 1)) / COLUMNS);
+  const tile = Math.floor(
+    (Math.min(width, 720) - spacing.lg * 2 - GRID_GAP * (COLUMNS - 1)) / COLUMNS,
+  );
 
   const load = useCallback(async () => {
     try {
@@ -61,30 +80,16 @@ export default function Memories() {
     }, [load]),
   );
 
-  async function onAdd(kind: 'image' | 'video') {
-    if (busy) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to save memories.');
-      return;
+  const sections = useMemo(() => {
+    const byDay = new Map<string, Memory[]>();
+    for (const m of items) {
+      const key = dayLabel(m.created_at);
+      const arr = byDay.get(key);
+      if (arr) arr.push(m);
+      else byDay.set(key, [m]);
     }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: kind === 'image' ? ['images'] : ['videos'],
-      quality: 0.8,
-    });
-    if (res.canceled) return;
-    setBusy(true);
-    try {
-      if (kind === 'image') await saveImageToMemories(res.assets[0].uri);
-      else await saveVideoToMemories(res.assets[0].uri);
-      showToast('Saved to Memories ✨');
-      await load();
-    } catch (e) {
-      Alert.alert('Could not save', String((e as Error).message ?? e));
-    } finally {
-      setBusy(false);
-    }
-  }
+    return [...byDay.entries()]; // items arrive newest-first, so days do too
+  }, [items]);
 
   function onDelete(m: Memory) {
     confirmDestructive(
@@ -96,19 +101,13 @@ export default function Memories() {
           await deleteMemory(m);
           setItems((cur) => cur.filter((x) => x.id !== m.id));
           setUsed((u) => Math.max(0, u - m.bytes));
+          setViewer(null);
         } catch (e) {
           Alert.alert('Could not delete', String((e as Error).message ?? e));
         }
       },
     );
   }
-
-  function onOpen(m: Memory) {
-    if (m.kind === 'video') WebBrowser.openBrowserAsync(m.url).catch(() => {});
-    else setViewer(m);
-  }
-
-  const pct = Math.min(100, Math.round((used / QUOTA_BYTES) * 100));
 
   if (loading) {
     return (
@@ -120,112 +119,99 @@ export default function Memories() {
 
   return (
     <View style={styles.screen}>
-      <FlatList
-        data={items}
-        key={COLUMNS}
-        numColumns={COLUMNS}
-        keyExtractor={(m) => m.id}
-        contentContainerStyle={styles.list}
-        columnWrapperStyle={{ gap: GRID_GAP }}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <View style={styles.meterCard}>
-              <View style={styles.meterTopRow}>
-                <Ionicons name="images" size={18} color={colors.primary} />
-                <Text style={styles.meterTitle}>Your storage</Text>
-                <Text style={styles.meterText}>
-                  {formatBytes(used)} of {formatBytes(QUOTA_BYTES)}
-                </Text>
-              </View>
-              <View style={styles.meterTrack}>
-                <View style={[styles.meterFill, { width: `${Math.max(pct, 1)}%` }]} />
-              </View>
-              <Text style={styles.meterHint}>
-                Photos are compressed before saving, so 1 GB fits roughly 3,000 of them.
-              </Text>
-            </View>
-            <View style={styles.addRow}>
-              <Pressable
-                style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
-                onPress={() => onAdd('image')}
-                disabled={busy}
-                accessibilityLabel="Save a photo to memories"
-              >
-                {busy ? (
-                  <ActivityIndicator size="small" color={colors.onPrimary} />
-                ) : (
-                  <Ionicons name="image-outline" size={17} color={colors.onPrimary} />
-                )}
-                <Text style={styles.addText}>Add photo</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.addBtn, styles.addBtnAlt, pressed && styles.pressed]}
-                onPress={() => onAdd('video')}
-                disabled={busy}
-                accessibilityLabel="Save a video to memories"
-              >
-                <Ionicons name="videocam-outline" size={17} color={colors.primary} />
-                <Text style={[styles.addText, { color: colors.primary }]}>Add video</Text>
-              </Pressable>
-            </View>
-          </View>
-        }
-        ListEmptyComponent={
-          <EmptyState
-            icon="images-outline"
-            title="No memories yet"
-            subtitle="Save photos and videos here — or tap the bookmark on any photo in your feed."
-          />
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [
-              { width: tile, height: tile, marginBottom: GRID_GAP },
-              pressed && styles.pressed,
-            ]}
-            onPress={() => onOpen(item)}
-            onLongPress={() => onDelete(item)}
-            accessibilityLabel={item.kind === 'video' ? 'Open video' : 'Open photo'}
-          >
-            {item.kind === 'video' ? (
-              <View style={[styles.tileVideo, { width: tile, height: tile }]}>
-                <Ionicons name="play-circle" size={34} color="#fff" />
-                <Text style={styles.tileVideoText}>{formatBytes(item.bytes)}</Text>
-              </View>
-            ) : (
-              <Image
-                source={{ uri: item.url }}
-                style={{ width: tile, height: tile, borderRadius: radius.sm }}
-                contentFit="cover"
-                transition={120}
-              />
-            )}
-            <Pressable
-              style={styles.tileDelete}
-              onPress={() => onDelete(item)}
-              hitSlop={8}
-              accessibilityLabel="Delete this memory"
-            >
-              <Ionicons name="close" size={13} color="#fff" />
-            </Pressable>
-          </Pressable>
-        )}
-      />
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={styles.usageLine}>
+          {formatBytes(used)} of {formatBytes(QUOTA_BYTES)} used
+        </Text>
 
-      {/* full-screen photo viewer */}
-      <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
+        {sections.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <EmptyState
+              icon="images-outline"
+              title="No memories yet"
+              subtitle='When you post a photo, tick "Add to Memories" — your moments collect here with their date and place.'
+            />
+          </View>
+        ) : (
+          sections.map(([day, mems]) => (
+            <View key={day} style={styles.section}>
+              <Text style={styles.dayHeader}>{day}</Text>
+              <View style={styles.grid}>
+                {mems.map((m) => (
+                  <Pressable
+                    key={m.id}
+                    style={({ pressed }) => [
+                      { width: tile, height: tile },
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => setViewer(m)}
+                    onLongPress={() => onDelete(m)}
+                    accessibilityLabel={`View memory from ${day}`}
+                  >
+                    <Image
+                      source={{ uri: m.url }}
+                      style={{ width: tile, height: tile, borderRadius: radius.sm }}
+                      contentFit="cover"
+                      transition={120}
+                    />
+                    {m.location ? (
+                      <View style={styles.tilePin}>
+                        <Ionicons name="location" size={10} color="#fff" />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
+
+      {/* full-screen viewer with the moment's details */}
+      <Modal
+        visible={!!viewer}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewer(null)}
+      >
         <Pressable style={styles.viewerBackdrop} onPress={() => setViewer(null)}>
           {viewer ? (
-            <Image
-              source={{ uri: viewer.url }}
-              style={styles.viewerImage}
-              contentFit="contain"
-              transition={150}
-            />
+            <>
+              <Image
+                source={{ uri: viewer.url }}
+                style={styles.viewerImage}
+                contentFit="contain"
+                transition={150}
+              />
+              <View style={styles.viewerMeta} pointerEvents="none">
+                <Text style={styles.viewerDate}>
+                  {dayLabel(viewer.created_at)} · {timeLabel(viewer.created_at)}
+                </Text>
+                {viewer.location ? (
+                  <View style={styles.viewerPlaceRow}>
+                    <Ionicons name="location-outline" size={13} color="#e2e8f0" />
+                    <Text style={styles.viewerPlace}>{viewer.location}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.viewerActions}>
+                <Pressable
+                  style={({ pressed }) => [styles.viewerBtn, pressed && styles.pressed]}
+                  onPress={() => onDelete(viewer)}
+                  accessibilityLabel="Delete this memory"
+                >
+                  <Ionicons name="trash-outline" size={20} color="#fff" />
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.viewerBtn, pressed && styles.pressed]}
+                  onPress={() => setViewer(null)}
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={22} color="#fff" />
+                </Pressable>
+              </View>
+            </>
           ) : null}
-          <View style={styles.viewerClose}>
-            <Ionicons name="close" size={22} color="#fff" />
-          </View>
         </Pressable>
       </Modal>
     </View>
@@ -240,78 +226,60 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.background,
   },
-  list: {
+  scroll: {
     padding: spacing.lg,
     maxWidth: 720,
     width: '100%',
     alignSelf: 'center',
     flexGrow: 1,
+    paddingBottom: 48,
   },
-  header: { gap: spacing.md, marginBottom: spacing.md },
-  meterCard: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: spacing.sm,
-    ...shadow.card,
+  usageLine: {
+    fontFamily: font.medium,
+    fontSize: 12.5,
+    color: colors.textMuted,
+    marginBottom: spacing.md,
   },
-  meterTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  meterTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text, flex: 1 },
-  meterText: { fontFamily: font.semibold, fontSize: 13, color: colors.textMuted },
-  meterTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
+  emptyWrap: { flex: 1, justifyContent: 'center' },
+  section: { marginBottom: spacing.lg },
+  dayHeader: {
+    fontFamily: font.bold,
+    fontSize: 14.5,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
-  meterFill: { height: 8, borderRadius: 4, backgroundColor: colors.primary },
-  meterHint: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted },
-  addRow: { flexDirection: 'row', gap: spacing.sm },
-  addBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    minHeight: 44,
-  },
-  addBtnAlt: { backgroundColor: colors.primarySoft },
-  addText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 14 },
-  pressed: { opacity: 0.8 },
-  tileVideo: {
-    borderRadius: radius.sm,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  tileVideoText: { color: 'rgba(255,255,255,0.7)', fontFamily: font.medium, fontSize: 11 },
-  tileDelete: {
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
+  tilePin: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(15,23,42,0.6)',
+    bottom: 6,
+    left: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(15,23,42,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  pressed: { opacity: 0.8 },
   viewerBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.92)',
+    backgroundColor: 'rgba(0,0,0,0.94)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  viewerImage: { width: '100%', height: '80%' },
-  viewerClose: {
+  viewerImage: { width: '100%', height: '78%' },
+  viewerMeta: { position: 'absolute', bottom: 40, alignItems: 'center', gap: 4 },
+  viewerDate: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  viewerPlaceRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  viewerPlace: { color: '#e2e8f0', fontFamily: font.medium, fontSize: 13 },
+  viewerActions: {
     position: 'absolute',
     top: 48,
     right: 20,
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  viewerBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,

@@ -22,6 +22,7 @@ import { createEvent, attendEvent } from '../../events/api';
 import { toIsoFromLocal, toLocalDateString } from '../../timeline/datetime';
 import { uploadPostImage } from '../../feed/uploadPostImage';
 import { SaveToMemories } from '../../memories/SaveToMemories';
+import { currentPlaceLabel, saveImageToMemories } from '../../memories/api';
 import { promptCrossShare } from '../../feed/crossShare';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
 import { PhotoEditor, type EditedPhoto } from '../../media/PhotoEditor';
@@ -74,6 +75,7 @@ export default function Feed() {
   const [pickedBase64, setPickedBase64] = useState<string | null>(null);
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [keepInMemories, setKeepInMemories] = useState(false);
   const [editorUri, setEditorUri] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   // event announcement mini-form
@@ -228,6 +230,7 @@ export default function Feed() {
   function clearPhoto() {
     setPickedBase64(null);
     setPreviewUri(null);
+    setKeepInMemories(false);
   }
 
   const canPost = eventOpen
@@ -278,10 +281,21 @@ export default function Feed() {
     setPosting(true);
     const postedText = body.trim();
     const postedImageUri = previewUri; // local file — shareable to FB/IG
+    const keep = keepInMemories && !!previewUri;
     try {
       let imageUrl: string | null = null;
       if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
       await createPost(postedText, imageUrl);
+      if (keep && postedImageUri) {
+        // best-effort: a Memories hiccup must never fail the post itself
+        try {
+          const place = await currentPlaceLabel();
+          await saveImageToMemories(postedImageUri, place);
+          showToast('Posted — and kept in Memories ✨');
+        } catch {
+          showToast('Posted! (could not save to Memories)');
+        }
+      }
       setBody('');
       clearPhoto();
       await load();
@@ -392,6 +406,24 @@ export default function Feed() {
               accessibilityLabel="Remove photo"
             >
               <Ionicons name="close" size={14} color="#fff" />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.memoriesCheck, pressed && styles.pressed]}
+              onPress={() => setKeepInMemories((v) => !v)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: keepInMemories }}
+              accessibilityLabel="Add to Memories"
+            >
+              <Ionicons
+                name={keepInMemories ? 'checkbox' : 'square-outline'}
+                size={19}
+                color={keepInMemories ? colors.primary : colors.textMuted}
+              />
+              <Text
+                style={[styles.memoriesCheckText, keepInMemories && { color: colors.primary }]}
+              >
+                Add to Memories
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -677,6 +709,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
   },
   previewWrap: { alignSelf: 'flex-start' },
+  memoriesCheck: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    minHeight: 32,
+  },
+  memoriesCheckText: { fontFamily: font.semibold, fontSize: 13, color: colors.textMuted },
   preview: { width: 110, height: 110, borderRadius: radius.sm, backgroundColor: colors.surface },
   previewRemove: {
     position: 'absolute',

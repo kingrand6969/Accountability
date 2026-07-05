@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '../lib/supabase';
@@ -25,6 +26,7 @@ export type Memory = {
   path: string;
   kind: 'image' | 'video';
   bytes: number;
+  location: string | null;
   created_at: string;
   url: string; // signed
 };
@@ -80,7 +82,7 @@ async function signedUrls(paths: string[]): Promise<Map<string, string>> {
 export async function listMemories(): Promise<Memory[]> {
   const { data, error } = await supabase
     .from('memories')
-    .select('id,path,kind,bytes,created_at')
+    .select('id,path,kind,bytes,location,created_at')
     .order('created_at', { ascending: false })
     .limit(500);
   if (error) throw error;
@@ -96,6 +98,7 @@ async function uploadBuffer(
   ext: string,
   contentType: string,
   kind: 'image' | 'video',
+  location: string | null,
 ): Promise<void> {
   const uid = await me();
   if (buf.byteLength > MAX_FILE_BYTES) {
@@ -113,7 +116,7 @@ async function uploadBuffer(
   if (error) throw error;
   const { error: rowError } = await supabase
     .from('memories')
-    .insert({ path, kind, bytes: buf.byteLength });
+    .insert({ path, kind, bytes: buf.byteLength, location });
   if (rowError) {
     // quota trigger said no — don't leave an orphan file behind
     await supabase.storage.from('memories').remove([path]).catch(() => {});
@@ -121,32 +124,55 @@ async function uploadBuffer(
   }
 }
 
-/** Save a local picture (camera/library). Compressed before upload. */
-export async function saveImageToMemories(localUri: string): Promise<void> {
+/** Save a picture at post time ("Add to Memories" checkbox). Compressed first. */
+export async function saveImageToMemories(
+  localUri: string,
+  location: string | null = null,
+): Promise<void> {
   const shrunk = await ImageManipulator.manipulateAsync(
     localUri,
     [{ resize: { width: MAX_IMAGE_DIM } }],
     { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG, base64: true },
   );
   if (!shrunk.base64) throw new Error('Could not read that image.');
-  await uploadBuffer(decode(shrunk.base64), 'jpg', 'image/jpeg', 'image');
+  await uploadBuffer(decode(shrunk.base64), 'jpg', 'image/jpeg', 'image', location);
 }
 
-/** Save a picture that's already hosted (feed/group/page post) — it was
- *  compressed when posted, so copy the bytes as-is. */
+/** Save a picture that's already hosted (bookmark on a feed/group/page post) —
+ *  it was compressed when posted, so copy the bytes as-is. */
 export async function saveRemoteImageToMemories(url: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error('Could not fetch that photo.');
   const buf = await res.arrayBuffer();
   const isPng = url.split('?')[0].toLowerCase().endsWith('.png');
-  await uploadBuffer(buf, isPng ? 'png' : 'jpg', isPng ? 'image/png' : 'image/jpeg', 'image');
+  await uploadBuffer(
+    buf,
+    isPng ? 'png' : 'jpg',
+    isPng ? 'image/png' : 'image/jpeg',
+    'image',
+    null,
+  );
 }
 
-/** Save a local video (no free transcoding exists in Expo — enforce size cap). */
-export async function saveVideoToMemories(localUri: string): Promise<void> {
-  const res = await fetch(localUri);
-  const buf = await res.arrayBuffer();
-  await uploadBuffer(buf, 'mp4', 'video/mp4', 'video');
+/**
+ * Place label for a memory — ONLY if location permission was already granted
+ * (e.g. for GPS runs). Never prompts; returns null on web or without permission.
+ */
+export async function currentPlaceLabel(): Promise<string | null> {
+  if (Platform.OS === 'web') return null;
+  try {
+    const Location = await import('expo-location');
+    const perm = await Location.getForegroundPermissionsAsync();
+    if (!perm.granted) return null;
+    const pos = await Location.getLastKnownPositionAsync();
+    if (!pos) return null;
+    const places = await Location.reverseGeocodeAsync(pos.coords);
+    const p = places[0];
+    if (!p) return null;
+    return [p.city ?? p.subregion, p.region].filter(Boolean).join(', ') || null;
+  } catch {
+    return null; // a missing place label must never block a post
+  }
 }
 
 export async function deleteMemory(m: Memory): Promise<void> {
