@@ -20,6 +20,7 @@ export type Page = {
   cover_url: string | null;
   owner: string;
   created_at: string;
+  privacy: 'public' | 'private';
   follower_count: number;
   is_following: boolean;
   is_owner: boolean;
@@ -31,7 +32,7 @@ async function me(): Promise<string | null> {
 }
 
 const PAGE_SELECT =
-  'id,name,handle,category,bio,avatar_url,cover_url,owner,created_at,page_follows(count)';
+  'id,name,handle,category,bio,avatar_url,cover_url,owner,created_at,privacy,page_follows(count)';
 
 function mapPage(row: any, uid: string | null, followed: Set<string>): Page {
   return {
@@ -44,6 +45,7 @@ function mapPage(row: any, uid: string | null, followed: Set<string>): Page {
     cover_url: row.cover_url ?? null,
     owner: row.owner,
     created_at: row.created_at,
+    privacy: row.privacy === 'private' ? 'private' : 'public',
     follower_count: row.page_follows?.[0]?.count ?? 0,
     is_following: followed.has(row.id),
     is_owner: row.owner === uid,
@@ -90,6 +92,7 @@ export async function createPage(input: {
   handle: string;
   category: string;
   bio: string;
+  privacy?: 'public' | 'private';
 }): Promise<string> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in.');
@@ -101,6 +104,7 @@ export async function createPage(input: {
       category: input.category,
       bio: input.bio.trim() || null,
       owner: uid,
+      privacy: input.privacy ?? 'public',
     })
     .select('id')
     .single();

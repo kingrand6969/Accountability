@@ -49,6 +49,11 @@ export default function Groups() {
   }
 
   async function onJoin(group: Group) {
+    if (group.privacy === 'private') {
+      // private joins need the gatekey — the prompt lives on the group page
+      router.push(`/group/${group.id}` as never);
+      return;
+    }
     if (joinsInFlight.current.has(group.id)) return;
     joinsInFlight.current.add(group.id);
     try {
@@ -132,7 +137,14 @@ export default function Groups() {
                 <Ionicons name="people" size={20} color={colors.primary} />
               </View>
               <View style={styles.rowBody}>
-                <Text style={styles.name}>{g.name}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {g.name}
+                  </Text>
+                  {g.privacy === 'private' ? (
+                    <Ionicons name="lock-closed" size={13} color={colors.textMuted} />
+                  ) : null}
+                </View>
                 <Text style={styles.meta} numberOfLines={1}>
                   {meta}
                 </Text>
@@ -210,7 +222,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rowBody: { flex: 1, gap: 2 },
-  name: { fontFamily: font.bold, fontSize: 15.5, color: colors.text },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  name: { fontFamily: font.bold, fontSize: 15.5, color: colors.text, flexShrink: 1 },
   meta: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
   joinBtn: {
     backgroundColor: colors.primary,

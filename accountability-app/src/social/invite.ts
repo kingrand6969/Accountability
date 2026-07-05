@@ -12,17 +12,17 @@ const INVITE_MESSAGE =
 
 /**
  * Opens the native share sheet (Messenger, WhatsApp, TikTok, SMS — whatever
- * is installed) with an invite message.
+ * is installed) with the given text. Falls back to the clipboard on web.
  */
-export async function inviteFriends(): Promise<void> {
+export async function shareInviteText(message: string): Promise<void> {
   if (Platform.OS === 'web') {
     const nav = navigator as Navigator & { share?: (d: { text: string }) => Promise<void> };
     try {
       if (nav.share) {
-        await nav.share({ text: INVITE_MESSAGE });
+        await nav.share({ text: message });
         return;
       }
-      await navigator.clipboard.writeText(INVITE_MESSAGE);
+      await navigator.clipboard.writeText(message);
       showToast('Invite copied — paste it anywhere');
     } catch {
       // clipboard/share unavailable (permissions) — still respond
@@ -31,8 +31,13 @@ export async function inviteFriends(): Promise<void> {
     return;
   }
   try {
-    await Share.share({ message: INVITE_MESSAGE });
+    await Share.share({ message });
   } catch {
     // user dismissed the sheet — nothing to do
   }
+}
+
+/** Share sheet pre-filled with the generic "join me on AccountAbility" invite. */
+export async function inviteFriends(): Promise<void> {
+  await shareInviteText(INVITE_MESSAGE);
 }

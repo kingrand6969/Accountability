@@ -13,8 +13,16 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getGroup, joinGroup, leaveGroup, type Group } from '../../groups/api';
+import {
+  getGroup,
+  getGroupGatekey,
+  joinGroup,
+  joinGroupWithKey,
+  leaveGroup,
+  type Group,
+} from '../../groups/api';
 import { listFeed, createPost, setLiked } from '../../feed/api';
+import { shareInviteText } from '../../social/invite';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
@@ -34,6 +42,7 @@ export default function GroupDetail() {
   const [posting, setPosting] = useState(false);
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
 
@@ -67,7 +76,16 @@ export default function GroupDetail() {
     if (!group || joining) return;
     setJoining(true);
     try {
-      await joinGroup(group.id);
+      if (group.privacy === 'private') {
+        const ok = await joinGroupWithKey(group.id, keyInput);
+        if (!ok) {
+          Alert.alert('Wrong gatekey', 'That key didn’t match. Ask the group admin for the right one.');
+          return;
+        }
+      } else {
+        await joinGroup(group.id);
+      }
+      setKeyInput('');
       showToast(`Welcome to ${group.name} 🎉`);
       await load();
     } catch (e) {
@@ -75,6 +93,18 @@ export default function GroupDetail() {
     } finally {
       setJoining(false);
     }
+  }
+
+  async function onInvite() {
+    if (!group) return;
+    let message =
+      `Join my group "${group.name}" on AccountAbility! ` +
+      `Search "AccountAbility" in your app store.`;
+    if (group.privacy === 'private') {
+      const key = await getGroupGatekey(group.id).catch(() => null);
+      if (key) message += `\n\nGatekey to get in: ${key}`;
+    }
+    await shareInviteText(message);
   }
 
   function onLeave() {
@@ -168,9 +198,15 @@ export default function GroupDetail() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.groupName}>{group.name}</Text>
-            <Text style={styles.groupMeta}>
-              {group.member_count} member{group.member_count === 1 ? '' : 's'}
-            </Text>
+            <View style={styles.metaRow}>
+              {group.privacy === 'private' ? (
+                <Ionicons name="lock-closed" size={12} color={colors.textMuted} />
+              ) : null}
+              <Text style={styles.groupMeta}>
+                {group.privacy === 'private' ? 'Private · ' : ''}
+                {group.member_count} member{group.member_count === 1 ? '' : 's'}
+              </Text>
+            </View>
           </View>
           {group.is_admin ? (
             <View style={styles.adminChip}>
@@ -183,10 +219,45 @@ export default function GroupDetail() {
           <Text style={styles.groupDescription}>{group.description.trim()}</Text>
         ) : null}
         {!group.is_member ? (
-          <Button title="Join group" onPress={onJoin} loading={joining} />
-        ) : !group.is_admin ? (
-          <Button title="Leave group" variant="ghost" onPress={onLeave} loading={leaving} />
-        ) : null}
+          group.privacy === 'private' ? (
+            <View style={styles.keyBlock}>
+              <TextInput
+                style={styles.keyInput}
+                placeholder="Enter the gatekey to join"
+                placeholderTextColor={colors.textFaint}
+                value={keyInput}
+                onChangeText={setKeyInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Group gatekey"
+              />
+              <Button
+                title="Join with gatekey"
+                onPress={onJoin}
+                loading={joining}
+                disabled={keyInput.trim().length === 0}
+              />
+              <Text style={styles.keyHint}>
+                This is a private group — ask a member for the key.
+              </Text>
+            </View>
+          ) : (
+            <Button title="Join group" onPress={onJoin} loading={joining} />
+          )
+        ) : (
+          <View style={styles.memberActions}>
+            <Button title="Invite buddies" onPress={onInvite} style={{ flex: 1 }} />
+            {!group.is_admin ? (
+              <Button
+                title="Leave"
+                variant="ghost"
+                onPress={onLeave}
+                loading={leaving}
+                style={{ flex: 1 }}
+              />
+            ) : null}
+          </View>
+        )}
       </View>
 
       {group.is_member ? (
@@ -236,6 +307,12 @@ export default function GroupDetail() {
               icon="chatbubbles-outline"
               title="No posts yet"
               subtitle="Be the first to post to the group."
+            />
+          ) : group.privacy === 'private' ? (
+            <EmptyState
+              icon="lock-closed-outline"
+              title="Members only"
+              subtitle="Enter the gatekey above to join and see posts."
             />
           ) : (
             <EmptyState
@@ -324,7 +401,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   groupName: { fontFamily: font.extrabold, fontSize: 20, color: colors.text },
-  groupMeta: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  groupMeta: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted },
+  keyBlock: { gap: spacing.sm },
+  keyInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    fontSize: 16,
+    fontFamily: font.regular,
+    color: colors.text,
+    minHeight: 48,
+    backgroundColor: colors.surfaceAlt,
+  },
+  keyHint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  memberActions: { flexDirection: 'row', gap: spacing.sm },
   adminChip: {
     flexDirection: 'row',
     alignItems: 'center',

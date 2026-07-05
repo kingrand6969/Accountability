@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { createPage, PAGE_CATEGORIES } from '../pages/api';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
+import { PrivacyToggle } from '../ui/PrivacyToggle';
 import { colors, font, radius, spacing } from '../ui/theme';
 
 const NAME_MIN = 3;
@@ -27,6 +28,7 @@ export default function PageNew() {
   const [handleTouched, setHandleTouched] = useState(false);
   const [category, setCategory] = useState('gym');
   const [bio, setBio] = useState('');
+  const [privacy, setPrivacy] = useState<'public' | 'private'>('public');
   const [creating, setCreating] = useState(false);
 
   const trimmedName = name.trim();
@@ -60,6 +62,7 @@ export default function PageNew() {
         handle,
         category,
         bio: bio.trim(),
+        privacy,
       });
       showToast('Page created 🎉');
       router.replace(`/page/${newId}` as never);
@@ -154,6 +157,16 @@ export default function PageNew() {
             onChangeText={setBio}
             multiline
             accessibilityLabel="Page bio"
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Privacy</Text>
+          <PrivacyToggle
+            value={privacy}
+            onChange={setPrivacy}
+            publicHint="Anyone can find and follow this page."
+            privateHint="Marked private — share the page link with people you want following."
           />
         </View>
 

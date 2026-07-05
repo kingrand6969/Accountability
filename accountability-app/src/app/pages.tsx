@@ -146,9 +146,14 @@ export default function Pages() {
                 </View>
               )}
               <View style={styles.rowBody}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {p.name}
-                </Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                  {p.privacy === 'private' ? (
+                    <Ionicons name="lock-closed" size={13} color={colors.textMuted} />
+                  ) : null}
+                </View>
                 <Text style={styles.meta} numberOfLines={1}>
                   {meta}
                 </Text>
@@ -232,7 +237,8 @@ const styles = StyleSheet.create({
   },
   avatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface },
   rowBody: { flex: 1, gap: 2 },
-  name: { fontFamily: font.bold, fontSize: 15.5, color: colors.text },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  name: { fontFamily: font.bold, fontSize: 15.5, color: colors.text, flexShrink: 1 },
   meta: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
   ownerChip: {
     flexDirection: 'row',

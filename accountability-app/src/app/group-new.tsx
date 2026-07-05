@@ -13,15 +13,19 @@ import { useRouter } from 'expo-router';
 import { createGroup } from '../groups/api';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
+import { PrivacyToggle } from '../ui/PrivacyToggle';
 import { colors, font, radius, spacing } from '../ui/theme';
 
 const NAME_MIN = 3;
 const NAME_MAX = 80;
+const KEY_MIN = 4;
 
 export default function GroupNew() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [privacy, setPrivacy] = useState<'public' | 'private'>('public');
+  const [gatekey, setGatekey] = useState('');
   const [creating, setCreating] = useState(false);
 
   const trimmed = name.trim();
@@ -33,13 +37,25 @@ export default function GroupNew() {
         : trimmed.length > NAME_MAX
           ? `Name must be ${NAME_MAX} characters or fewer.`
           : null;
-  const canCreate = trimmed.length >= NAME_MIN && trimmed.length <= NAME_MAX && !creating;
+  const keyTrimmed = gatekey.trim();
+  const keyError =
+    privacy === 'private' && keyTrimmed.length > 0 && keyTrimmed.length < KEY_MIN
+      ? `Gatekey must be at least ${KEY_MIN} characters.`
+      : null;
+  const canCreate =
+    trimmed.length >= NAME_MIN &&
+    trimmed.length <= NAME_MAX &&
+    (privacy === 'public' || keyTrimmed.length >= KEY_MIN) &&
+    !creating;
 
   async function onCreate() {
     if (!canCreate) return;
     setCreating(true);
     try {
-      const newId = await createGroup(trimmed, description.trim());
+      const newId = await createGroup(trimmed, description.trim(), {
+        privacy,
+        gatekey: privacy === 'private' ? keyTrimmed : undefined,
+      });
       showToast('Group created 🎉');
       router.replace(`/group/${newId}` as never);
     } catch (e) {
@@ -83,6 +99,39 @@ export default function GroupNew() {
           />
         </View>
 
+        <View style={styles.field}>
+          <Text style={styles.label}>Privacy</Text>
+          <PrivacyToggle
+            value={privacy}
+            onChange={setPrivacy}
+            publicHint="Anyone can find and join this group."
+            privateHint="Only people with your gatekey (or invite link) can join."
+          />
+        </View>
+
+        {privacy === 'private' ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>Gatekey</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. sunrise-crew"
+              placeholderTextColor={colors.textFaint}
+              value={gatekey}
+              onChangeText={setGatekey}
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="Group gatekey"
+            />
+            {keyError ? (
+              <Text style={styles.error}>{keyError}</Text>
+            ) : (
+              <Text style={styles.helper}>
+                Share this key with buddies you want in. You can share it later from the group.
+              </Text>
+            )}
+          </View>
+        ) : null}
+
         <Button
           title="Create group"
           onPress={onCreate}
@@ -112,4 +161,5 @@ const styles = StyleSheet.create({
   },
   multiline: { minHeight: 96, textAlignVertical: 'top' },
   error: { fontFamily: font.medium, fontSize: 13, color: colors.danger },
+  helper: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
 });
