@@ -41,10 +41,7 @@ export const RunCard = forwardRef<
   );
 
   const logo = (
-    <View style={styles.logoRow}>
-      <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
-      <Text style={styles.logoText}>AccountAbility</Text>
-    </View>
+    <Image source={require('../../assets/images/logo-mark.png')} style={styles.logo} />
   );
 
   return (
@@ -144,20 +141,11 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   stripWrap: { position: 'absolute', left: 0, right: 0, bottom: '9%' },
-  logoRow: {
+  logo: {
     position: 'absolute',
-    left: 18,
-    bottom: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  logo: { width: 22, height: 22, borderRadius: 5 },
-  logoText: {
-    color: 'rgba(255,255,255,0.92)',
-    fontFamily: 'Inter_800ExtraBold',
-    fontSize: 13,
-    letterSpacing: 0.5,
-    ...shadow,
+    left: 16,
+    bottom: 16,
+    width: 40,
+    height: 40,
   },
 });

@@ -43,6 +43,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | null>(null);
   const [posting, setPosting] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
   const cardRef = useRef<View>(null);
   // synchronous re-entrancy guard — state updates are async, so a fast
   // double-tap would otherwise post twice
@@ -52,9 +53,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   // header/mode-picker/buttons, so it never clips on short screens
   const cardWidth = Math.min(width - 40, 300, Math.floor(((height - 400) * 9) / 16));
 
-  // the shared route hides its true start/end (privacy zone); the full route
-  // stays in the private saved activity
-  const cardPoints = useMemo(() => trimRouteEnds(run.points), [run.points]);
+  // the shared route hides its true start/end by default (privacy zone); the
+  // user can opt to reveal them, and the full route always stays in the saved activity
+  const cardPoints = useMemo(
+    () => (showEnds ? run.points : trimRouteEnds(run.points)),
+    [run.points, showEnds],
+  );
 
   // Android hardware back closes the sheet instead of popping the run screen
   useEffect(() => {
@@ -178,10 +182,26 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           width={cardWidth}
         />
       </View>
-      <Text style={styles.privacyNote}>
-        <Ionicons name="shield-checkmark" size={11} color="#94a3b8" /> Start &amp; end points are
-        hidden for your privacy
-      </Text>
+
+      {/* privacy: start & end hidden by default; user can opt to show them */}
+      <Pressable
+        style={styles.privacyRow}
+        onPress={() => setShowEnds((v) => !v)}
+        disabled={busy}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: showEnds }}
+        accessibilityLabel="Show start and end points"
+      >
+        <Ionicons
+          name={showEnds ? 'eye-outline' : 'shield-checkmark'}
+          size={13}
+          color={showEnds ? '#c6f24e' : '#94a3b8'}
+        />
+        <Text style={styles.privacyText}>
+          {showEnds ? 'Showing start & end points' : 'Start & end hidden for privacy'}
+        </Text>
+        <Text style={styles.privacyAction}>{showEnds ? 'Hide' : 'Show'}</Text>
+      </Pressable>
 
       {/* mode picker */}
       <View style={styles.modeRow}>
@@ -284,10 +304,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#0b0e14',
     paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 28,
+    paddingTop: 48,
+    paddingBottom: 24,
     alignItems: 'center',
-    gap: 14,
+    justifyContent: 'center', // center the compact stack — no stretched gaps
+    gap: 12,
   },
   header: {
     flexDirection: 'row',
@@ -297,13 +318,15 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#fff', fontFamily: font.extrabold, fontSize: 18 },
   skip: { color: '#94a3b8', fontFamily: font.bold, fontSize: 15 },
-  preview: { flex: 1, justifyContent: 'center' },
-  privacyNote: {
-    color: '#94a3b8',
-    fontFamily: font.medium,
-    fontSize: 11.5,
-    textAlign: 'center',
+  preview: { justifyContent: 'center' },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
   },
+  privacyText: { color: '#94a3b8', fontFamily: font.medium, fontSize: 12 },
+  privacyAction: { color: '#c6f24e', fontFamily: font.bold, fontSize: 12 },
   modeRow: { flexDirection: 'row', gap: 8, alignSelf: 'stretch', justifyContent: 'center' },
   modeBtn: {
     flexDirection: 'row',
