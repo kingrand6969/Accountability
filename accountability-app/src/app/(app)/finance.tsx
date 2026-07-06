@@ -746,11 +746,13 @@ const styles = StyleSheet.create({
   insightSub: { color: INK_SOFT, fontFamily: font.regular, fontSize: 12, marginTop: 1 },
   donutRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap', // narrow phones: legend drops below the donut, labels stay whole
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.lg,
     marginTop: spacing.md,
   },
-  legendCol: { flex: 1, gap: spacing.sm, minWidth: 150 },
+  legendCol: { flex: 1, gap: spacing.sm, minWidth: 190 },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 26 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendLabel: { flex: 1, color: INK, fontFamily: font.medium, fontSize: 13 },
@@ -843,7 +845,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   sheetBody: { backgroundColor: colors.background, paddingHorizontal: spacing.lg },
-  sheetFooter: { backgroundColor: colors.background, minHeight: 96, flex: 1 },
+  sheetFooter: { backgroundColor: colors.background, minHeight: 130, flex: 1 },
   // footer must share the 600px column, or the white slab spills full-width
   sheetFooterWrap: { flexGrow: 1, width: '100%', maxWidth: COL_MAX, alignSelf: 'center' },
   paneTabs: {
@@ -944,7 +946,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.75 },
   fab: {
     position: 'absolute',
-    bottom: spacing.xxl,
+    bottom: 104,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

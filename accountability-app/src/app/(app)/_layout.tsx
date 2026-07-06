@@ -3,20 +3,22 @@ import { type ColorValue, Image, StyleSheet, View } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardedKey } from '../onboarding';
 import { useAuth } from '../../auth/AuthProvider';
 import { colors } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Active tab sits in a filled pill — you always see which page you're on. */
+/** Floating-island tab bar: icon-only, the active icon sits in a dark
+ *  squircle — you always see which page you're on. */
 function tabIcon(active: IoniconName, inactive: IoniconName) {
   return ({ color, size, focused }: { color: ColorValue; size: number; focused: boolean }) => (
     <View style={[styles.iconPill, focused && styles.iconPillActive]}>
       <Ionicons
         name={focused ? active : inactive}
         size={size - 2}
-        color={focused ? colors.onPrimary : color}
+        color={focused ? '#fff' : color}
       />
     </View>
   );
@@ -24,17 +26,18 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
 
 const styles = StyleSheet.create({
   iconPill: {
-    minWidth: 48,
-    height: 28,
-    borderRadius: 14,
+    width: 54,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconPillActive: { backgroundColor: colors.primary },
+  iconPillActive: { backgroundColor: '#0f172a' },
 });
 
 export default function AppLayout() {
   const { session } = useAuth();
+  const insets = useSafeAreaInsets();
   const userId = session?.user.id ?? null;
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
@@ -50,7 +53,37 @@ export default function AppLayout() {
   if (!onboarded) return <Redirect href="/onboarding" />;
 
   return (
-    <Tabs screenOptions={{ headerShown: true, tabBarActiveTintColor: colors.primary }}>
+    <Tabs
+      screenOptions={{
+        headerShown: true,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: '#475569',
+        tabBarShowLabel: false,
+        // floating island, detached from the screen edges
+        tabBarStyle: {
+          position: 'absolute',
+          left: 16,
+          right: 16,
+          bottom: Math.max(insets.bottom, 8) + 8,
+          height: 62,
+          borderRadius: 31,
+          backgroundColor: '#ffffff',
+          borderTopWidth: 0,
+          paddingHorizontal: 8,
+          shadowColor: '#0f172a',
+          shadowOpacity: 0.14,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 12,
+        },
+        tabBarItemStyle: {
+          height: 62,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingTop: 12,
+        },
+      }}
+    >
       {/* Feed is the home tab — the app opens social-first, like Facebook */}
       <Tabs.Screen
         name="index"

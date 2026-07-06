@@ -935,7 +935,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
   emptyWrap: { flexGrow: 1 },
-  list: { padding: spacing.lg, gap: spacing.md, ...contentMax },
+  list: { padding: spacing.lg, gap: spacing.md, paddingBottom: 110, ...contentMax },
   footerSpinner: { paddingVertical: spacing.lg },
   emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
   emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },

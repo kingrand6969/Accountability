@@ -290,7 +290,7 @@ const DIAL = 218;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#1e40af' },
-  scroll: { paddingBottom: 24 },
+  scroll: { paddingBottom: 110 },
   pressed: { opacity: 0.85 },
   greetingRow: {
     flexDirection: 'row',

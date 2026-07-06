@@ -191,8 +191,8 @@ export default function Today() {
       <Pressable
         style={({ pressed }) => [
           styles.fab,
-          // sit above the ad banner only when one is showing
-          { bottom: isPro ? 20 : 66 },
+          // clear the floating tab bar; higher still when an ad banner shows
+          { bottom: isPro ? 104 : 150 },
           pressed && styles.fabPressed,
         ]}
         onPress={() => router.push('/add')}
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: colors.primary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
   emptyWrap: { flexGrow: 1 },
-  listContent: { padding: spacing.lg, gap: 10, paddingBottom: 96, ...contentMax },
+  listContent: { padding: spacing.lg, gap: 10, paddingBottom: 170, ...contentMax },
   emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
   emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
   fab: {
