@@ -5,6 +5,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -35,6 +36,7 @@ import {
   type Bill,
 } from '../../money/billing';
 import { listBills, markBillPaid, unmarkBillPaid } from '../../money/billsApi';
+import { AccountsPane, SavingsPane } from '../../money/FinancePanes';
 import { EmptyState } from '../../ui/EmptyState';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { DonutChart } from '../../ui/DonutChart';
@@ -73,6 +75,15 @@ export default function Finance() {
   const [allCats, setAllCats] = useState(false);
   const [ccChooser, setCcChooser] = useState<Bill | null>(null);
   const paysInFlight = useRef<Set<string>>(new Set());
+  // 3-pane swipe: 0 = Banks & wallets, 1 = Overview (default), 2 = Savings
+  const [page, setPage] = useState(1);
+  const pagerRef = useRef<ScrollView>(null);
+  const pagerReady = useRef(false);
+
+  function goToPage(i: number) {
+    pagerRef.current?.scrollTo({ x: i * winW, animated: true });
+    setPage(i);
+  }
 
   const load = useCallback(async () => {
     try {
@@ -220,8 +231,10 @@ export default function Finance() {
     lastToDateSpend > 0 ? Math.min(1, expense / lastToDateSpend) : 0;
   const underPace = insight.direction !== 'up';
 
+  const panesTop = insets.top + 44; // room for the floating pane tabs
+
   const header = (
-    <View style={[styles.headerWrap, { paddingTop: insets.top + spacing.lg }]}>
+    <View style={[styles.headerWrap, { paddingTop: panesTop }]}>
       {/* HERO — balance, in/out, pacing insight */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
@@ -421,9 +434,7 @@ export default function Finance() {
     </View>
   );
 
-  return (
-    <View style={styles.screen}>
-      <GlassBackdrop ref={bgRef} />
+  const overview = (
       <FlatList
         data={txRows}
         keyExtractor={(r) => r.key}
@@ -509,15 +520,69 @@ export default function Finance() {
         ListFooterComponent={<View style={styles.sheetFooter} />}
         ListFooterComponentStyle={styles.sheetFooterWrap}
       />
+  );
 
-      <Pressable
-        style={({ pressed }) => [styles.fab, { right: fabRight }, pressed && styles.pressed]}
-        onPress={() => router.push('/money-add')}
-        accessibilityLabel="Add a transaction"
+  return (
+    <View style={styles.screen}>
+      <GlassBackdrop ref={bgRef} />
+
+      {/* swipe: ← Banks & wallets | Overview | Savings → */}
+      <ScrollView
+        ref={pagerRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onLayout={() => {
+          if (!pagerReady.current) {
+            pagerReady.current = true;
+            pagerRef.current?.scrollTo({ x: winW, animated: false });
+          }
+        }}
+        onScroll={(e) => {
+          const p = Math.round(e.nativeEvent.contentOffset.x / winW);
+          if (p !== page && p >= 0 && p <= 2) setPage(p);
+        }}
+        scrollEventThrottle={64}
+        style={{ flex: 1 }}
       >
-        <Ionicons name="add" size={20} color={colors.onPrimary} />
-        <Text style={styles.fabText}>Add</Text>
-      </Pressable>
+        <AccountsPane width={winW} topInset={panesTop} blurTarget={bgRef} />
+        <View style={{ width: winW }}>{overview}</View>
+        <SavingsPane width={winW} topInset={panesTop} blurTarget={bgRef} />
+      </ScrollView>
+
+      {/* floating pane tabs */}
+      <View style={[styles.paneTabs, { top: insets.top + spacing.xs }]}>
+        {['Accounts', 'Overview', 'Savings'].map((label, i) => (
+          <Pressable
+            key={label}
+            onPress={() => goToPage(i)}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${label}`}
+            accessibilityState={{ selected: page === i }}
+            style={({ pressed }) => [
+              styles.paneTab,
+              page === i && styles.paneTabActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.paneTabText, page === i && styles.paneTabTextActive]}>
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {page === 1 ? (
+        <Pressable
+          style={({ pressed }) => [styles.fab, { right: fabRight }, pressed && styles.pressed]}
+          onPress={() => router.push('/money-add')}
+          accessibilityLabel="Add a transaction"
+        >
+          <Ionicons name="add" size={20} color={colors.onPrimary} />
+          <Text style={styles.fabText}>Add</Text>
+        </Pressable>
+      ) : null}
 
       {/* credit card: which amount did you pay? */}
       {ccChooser ? (
@@ -779,7 +844,29 @@ const styles = StyleSheet.create({
   },
   sheetBody: { backgroundColor: colors.background, paddingHorizontal: spacing.lg },
   sheetFooter: { backgroundColor: colors.background, minHeight: 96, flex: 1 },
-  sheetFooterWrap: { flexGrow: 1 },
+  // footer must share the 600px column, or the white slab spills full-width
+  sheetFooterWrap: { flexGrow: 1, width: '100%', maxWidth: COL_MAX, alignSelf: 'center' },
+  paneTabs: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderRadius: radius.pill,
+    padding: 3,
+  },
+  paneTab: {
+    paddingHorizontal: 14,
+    minHeight: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+  },
+  paneTabActive: { backgroundColor: '#fff' },
+  paneTabText: { color: INK_SOFT, fontFamily: font.semibold, fontSize: 12.5 },
+  paneTabTextActive: { color: INK, fontFamily: font.bold },
   sheetHandle: {
     alignSelf: 'center',
     width: 40,
