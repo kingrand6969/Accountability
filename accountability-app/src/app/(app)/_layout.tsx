@@ -1,5 +1,5 @@
 import { type ComponentProps, useEffect, useState } from 'react';
-import { type ColorValue, Image, View } from 'react-native';
+import { type ColorValue, Image, StyleSheet, View } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,11 +9,29 @@ import { colors } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
+/** Active tab sits in a filled pill — you always see which page you're on. */
 function tabIcon(active: IoniconName, inactive: IoniconName) {
   return ({ color, size, focused }: { color: ColorValue; size: number; focused: boolean }) => (
-    <Ionicons name={focused ? active : inactive} size={size} color={color} />
+    <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+      <Ionicons
+        name={focused ? active : inactive}
+        size={size - 2}
+        color={focused ? colors.onPrimary : color}
+      />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  iconPill: {
+    minWidth: 48,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconPillActive: { backgroundColor: colors.primary },
+});
 
 export default function AppLayout() {
   const { session } = useAuth();
