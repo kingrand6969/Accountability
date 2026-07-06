@@ -52,7 +52,10 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* blob field anchors to the CONTENT COLUMN (max 600), not the viewport —
+          on wide screens the spheres keep crossing the glass cards' edges,
+          which is what makes the frosting visible */}
+      <View style={styles.blobColumn} pointerEvents="none">
         <Sphere
           id="blobA"
           size={300}
@@ -95,11 +98,12 @@ export function GlassCard({
   children,
   style,
   blurTarget,
-  plateOpacity = 0.5,
+  plateOpacity = 0.45,
 }: {
   children: ReactNode;
   style?: ViewStyle;
   blurTarget?: React.RefObject<View | null>;
+  /** 0.45 keeps ~4.5:1 ink contrast while letting the blobs glow through */
   plateOpacity?: number;
 }) {
   return (
@@ -129,6 +133,14 @@ export function GlassCard({
 }
 
 const styles = StyleSheet.create({
+  blobColumn: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 600,
+  },
   // shadow lives here — NO overflow:hidden (would clip the iOS shadow)
   shadowWrap: {
     borderRadius: 24,
