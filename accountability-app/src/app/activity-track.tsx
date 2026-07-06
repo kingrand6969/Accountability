@@ -1,17 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
   Easing,
+  Image,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -22,32 +23,35 @@ import {
   totalDistanceMeters,
   type Pt,
 } from '../activity/geo';
-import { RouteTrace } from '../activity/RouteTrace';
+import { RouteTrace, traceHead } from '../activity/RouteTrace';
 import {
   LOCATION_TASK_NAME,
   readTrackPoints,
   resetTrackPoints,
 } from '../activity/locationTask';
 import { saveActivity, type ActivityType } from '../activity/api';
+import { getMyProfile } from '../profiles/api';
 import { font } from '../ui/theme';
 
+const LIME = '#c6f24e';
+const BG = '#101319';
+
 const TYPES: { value: ActivityType; label: string; icon: 'walk-outline' | 'footsteps-outline' | 'bicycle-outline' }[] = [
-  { value: 'run', label: 'Run', icon: 'walk-outline' },
-  { value: 'walk', label: 'Walk', icon: 'footsteps-outline' },
-  { value: 'ride', label: 'Ride', icon: 'bicycle-outline' },
+  { value: 'run', label: 'run', icon: 'walk-outline' },
+  { value: 'walk', label: 'walk', icon: 'footsteps-outline' },
+  { value: 'ride', label: 'ride', icon: 'bicycle-outline' },
 ];
 
-// a small loop so the web preview shows the trace design (clearly labelled)
+// a small loop so the screen shows the trace design before a real run
 const SAMPLE_ROUTE: Pt[] = [
   { lat: 14.5, lon: 121.0 },
-  { lat: 14.5008, lon: 121.0005 },
-  { lat: 14.5012, lon: 121.0016 },
-  { lat: 14.5009, lon: 121.0027 },
-  { lat: 14.5, lon: 121.003 },
-  { lat: 14.4992, lon: 121.0024 },
-  { lat: 14.4989, lon: 121.0012 },
-  { lat: 14.4994, lon: 121.0003 },
-  { lat: 14.5, lon: 121.0 },
+  { lat: 14.5009, lon: 121.0006 },
+  { lat: 14.5014, lon: 121.0018 },
+  { lat: 14.501, lon: 121.003 },
+  { lat: 14.5, lon: 121.0034 },
+  { lat: 14.499, lon: 121.0027 },
+  { lat: 14.4986, lon: 121.0013 },
+  { lat: 14.4992, lon: 121.0003 },
 ];
 
 type PendingSave = {
@@ -58,6 +62,11 @@ type PendingSave = {
   startedAt: string;
 };
 
+function timeOfDay(): string {
+  const h = new Date().getHours();
+  return h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening';
+}
+
 async function stopUpdatesIfRunning() {
   if (Platform.OS === 'web') return;
   try {
@@ -65,13 +74,14 @@ async function stopUpdatesIfRunning() {
       await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
     }
   } catch {
-    // not running — nothing to stop
+    // not running
   }
 }
 
 export default function ActivityTrack() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { width: W, height: H } = useWindowDimensions();
   const [type, setType] = useState<ActivityType>('run');
   const [tracking, setTracking] = useState(false);
   const [distance, setDistance] = useState(0);
@@ -79,11 +89,18 @@ export default function ActivityTrack() {
   const [saving, setSaving] = useState(false);
   const [livePoints, setLivePoints] = useState<Pt[]>([]);
   const [pending, setPending] = useState<PendingSave | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
   const pulse = useRef(new Animated.Value(0)).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      getMyProfile().then((p) => setAvatar(p?.avatar_url ?? null)).catch(() => {});
+    }, []),
+  );
 
   useEffect(() => {
     return () => {
@@ -92,7 +109,6 @@ export default function ActivityTrack() {
     };
   }, []);
 
-  // recording pulse
   useEffect(() => {
     if (!tracking) {
       pulse.stopAnimation();
@@ -100,12 +116,7 @@ export default function ActivityTrack() {
       return;
     }
     const loop = Animated.loop(
-      Animated.timing(pulse, {
-        toValue: 1,
-        duration: 1400,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }),
+      Animated.timing(pulse, { toValue: 1, duration: 1500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
@@ -122,14 +133,12 @@ export default function ActivityTrack() {
       return;
     }
     await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
-
     await resetTrackPoints();
     setDistance(0);
     setElapsed(0);
     setLivePoints([]);
     startedAtRef.current = new Date().toISOString();
     startMsRef.current = Date.now();
-
     try {
       await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
         accuracy: Location.Accuracy.High,
@@ -146,7 +155,6 @@ export default function ActivityTrack() {
       Alert.alert('Could not start tracking', String((e as Error).message ?? e));
       return;
     }
-
     setTracking(true);
     timerRef.current = setInterval(async () => {
       setElapsed(Math.round((Date.now() - startMsRef.current) / 1000));
@@ -176,10 +184,7 @@ export default function ActivityTrack() {
       router.navigate('/today' as never);
     } catch (e) {
       setPending(p);
-      Alert.alert(
-        'Could not save',
-        `${String((e as Error).message ?? e)}\n\nYour recording is safe — tap "Retry save" when you're back online.`,
-      );
+      Alert.alert('Could not save', `${String((e as Error).message ?? e)}\n\nYour recording is safe — tap "Retry save".`);
     } finally {
       setSaving(false);
     }
@@ -190,24 +195,21 @@ export default function ActivityTrack() {
     timerRef.current = null;
     await stopUpdatesIfRunning();
     setTracking(false);
-
     const finalElapsed = Math.round((Date.now() - startMsRef.current) / 1000);
     const points = await readTrackPoints();
     const finalDistance = totalDistanceMeters(points);
     setElapsed(finalElapsed);
     setDistance(finalDistance);
     setLivePoints(points);
-
     if (finalElapsed < 3 && finalDistance < 5) {
       Alert.alert('Too short', 'That activity was too short to save.');
       await resetTrackPoints();
       return;
     }
-
     await persist({ type, distance: finalDistance, elapsed: finalElapsed, points, startedAt: startedAtRef.current });
   }
 
-  function onDiscardPending() {
+  function onDiscard() {
     Alert.alert('Discard recording?', 'This activity will be lost for good.', [
       { text: 'Keep it', style: 'cancel' },
       {
@@ -229,259 +231,245 @@ export default function ActivityTrack() {
   const shownPoints = pending ? pending.points : livePoints;
   const kcal = estimateCalories(type, shownDist);
 
-  // map panel dimensions
-  const mapW = Math.min(width, 600) - 40;
-  const mapH = Math.round(mapW * 0.62);
   const isSample = shownPoints.length === 0 && !tracking;
   const tracePoints = isSample ? SAMPLE_ROUTE : shownPoints;
+  // trace fills the screen but the path is lifted into the top ~55% so the
+  // floating bottom card never covers the runner marker
+  const tracePad = { top: insets.top + 80, right: 70, bottom: H * 0.44, left: 60 };
+  const head = traceHead(tracePoints, W, H, 5, tracePad);
+  const title = `${timeOfDay()} ${TYPES.find((t) => t.value === type)?.label ?? 'run'}`;
+  const when = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const timeLabel = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* activity type */}
-        <View style={styles.types}>
-          {TYPES.map((t) => {
-            const selected = type === t.value;
-            return (
-              <Pressable
-                key={t.value}
-                style={({ pressed }) => [
-                  styles.typeBtn,
-                  selected && styles.typeSelected,
-                  pressed && !tracking && styles.pressed,
-                ]}
-                onPress={() => !tracking && !pending && setType(t.value)}
-                disabled={tracking || !!pending}
-              >
-                <Ionicons name={t.icon} size={16} color={selected ? '#0b1220' : '#93c5fd'} />
-                <Text style={[styles.typeText, selected && styles.typeTextSelected]}>{t.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+      {/* full-screen map trace */}
+      <RouteTrace
+        points={tracePoints}
+        width={W}
+        height={H}
+        stroke={5}
+        accent={LIME}
+        showHead={false}
+        endStyle="none"
+        faint={isSample}
+        pad={tracePad}
+      />
 
-        {/* map panel with the route trace */}
-        <View style={[styles.mapPanel, { width: mapW, height: mapH }]}>
-          <RouteTrace
-            points={tracePoints}
-            width={mapW}
-            height={mapH}
-            stroke={4}
-            showHead={tracking}
-            faint={isSample}
-          />
+      {/* runner marker at the current position */}
+      {head ? (
+        <View style={[styles.runner, { left: head.x - 22, top: head.y - 22 }]} pointerEvents="none">
           {tracking ? (
-            <View style={styles.recPill}>
-              <Animated.View
-                style={[
-                  styles.recDot,
-                  {
-                    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.2] }),
-                    transform: [
-                      { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.8] }) },
-                    ],
-                  },
-                ]}
-              />
-              <Text style={styles.recText}>REC</Text>
-            </View>
+            <Animated.View
+              style={[
+                styles.runnerPulse,
+                {
+                  opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
+                  transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
+                },
+              ]}
+            />
+          ) : null}
+          <View style={styles.runnerDot}>
+            <Ionicons name="walk" size={18} color="#101319" />
+          </View>
+        </View>
+      ) : null}
+
+      {/* top bar */}
+      <View style={[styles.topBar, { top: insets.top + 6 }]}>
+        <Pressable style={styles.circleBtn} onPress={() => router.back()} accessibilityLabel="Back">
+          <Ionicons name="chevron-back" size={20} color="#fff" />
+        </Pressable>
+        <View style={styles.typeSwitch}>
+          {TYPES.map((t) => (
+            <Pressable
+              key={t.value}
+              onPress={() => !tracking && !pending && setType(t.value)}
+              disabled={tracking || !!pending}
+              style={[styles.typePill, type === t.value && styles.typePillActive]}
+              accessibilityLabel={t.label}
+            >
+              <Ionicons name={t.icon} size={15} color={type === t.value ? '#101319' : '#cbd5e1'} />
+            </Pressable>
+          ))}
+        </View>
+        <Pressable style={styles.circleBtn} onPress={onDiscard} accessibilityLabel="Discard">
+          <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+        </Pressable>
+      </View>
+
+      {/* floating stat pills */}
+      <View style={[styles.pills, { top: insets.top + 90 }]}>
+        <StatPill value={String(kcal)} label="Calories" />
+        <StatPill value={formatPace(shownDist, shownElapsed)} label="per km" />
+        <StatPill value="—" label="bpm" hint />
+      </View>
+
+      {/* floating bottom card */}
+      <View style={[styles.bottom, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={styles.titleRow}>
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={styles.avatar} />
           ) : (
-            <View style={styles.mapCaption}>
-              <Ionicons name="location" size={12} color="#93c5fd" />
-              <Text style={styles.mapCaptionText}>
-                {isSample ? 'Sample route — your real path records on mobile' : 'Route'}
-              </Text>
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              <Ionicons name="person" size={14} color="#cbd5e1" />
             </View>
           )}
+          <View>
+            <Text style={styles.runTitle}>{title}</Text>
+            <Text style={styles.runWhen}>
+              {when} · {timeLabel}
+            </Text>
+          </View>
         </View>
 
-        {/* big distance */}
-        <View style={styles.distanceBlock}>
-          <Text style={styles.distance}>{formatKm(shownDist)}</Text>
-          <Text style={styles.distanceUnit}>KILOMETRES</Text>
+        <View style={styles.cardsRow}>
+          <View style={styles.distanceCard}>
+            <View style={styles.distanceTop}>
+              <Ionicons name="location" size={14} color="#101319" />
+              <Text style={styles.distanceLabel}>Distance</Text>
+            </View>
+            <View style={styles.distanceValRow}>
+              <Text style={styles.distanceVal}>{formatKm(shownDist)}</Text>
+              <Text style={styles.distanceUnit}>Km</Text>
+            </View>
+          </View>
+
+          <View style={styles.timeCard}>
+            <Text style={styles.timeLabel}>Time</Text>
+            <Text style={styles.timeVal}>{formatDuration(shownElapsed)}</Text>
+          </View>
         </View>
 
-        {/* stat row */}
-        <View style={styles.statRow}>
-          <Stat icon="time-outline" value={formatDuration(shownElapsed)} label="Time" />
-          <Stat icon="speedometer-outline" value={formatPace(shownDist, shownElapsed)} label="Pace /km" />
-          <Stat icon="flame-outline" value={String(kcal)} label="Cal · est" />
-        </View>
-
-        {/* controls */}
+        {/* floating primary action */}
         {pending ? (
-          <View style={styles.pendingBox}>
-            <Text style={styles.pendingText}>Recording saved on your phone — not uploaded yet.</Text>
-            <Pressable style={styles.retryBtn} onPress={() => persist(pending)} disabled={saving}>
+          <View style={styles.pendingRow}>
+            <Pressable style={[styles.actionBtn, styles.retryBtn]} onPress={() => persist(pending)} disabled={saving}>
               <Text style={styles.retryText}>{saving ? 'Saving…' : 'Retry save'}</Text>
-            </Pressable>
-            <Pressable style={styles.ghostBtn} onPress={onDiscardPending} disabled={saving}>
-              <Text style={styles.ghostText}>Discard recording</Text>
             </Pressable>
           </View>
         ) : tracking ? (
-          <Pressable style={[styles.bigBtn, styles.stopBtn]} onPress={onStop} disabled={saving}>
+          <Pressable style={[styles.actionBtn, styles.stopBtn]} onPress={onStop} disabled={saving}>
             <Ionicons name="stop" size={20} color="#fff" />
-            <Text style={styles.bigBtnText}>{saving ? 'Saving…' : 'Stop & Save'}</Text>
+            <Text style={styles.stopText}>{saving ? 'Saving…' : 'Stop & Save'}</Text>
           </Pressable>
         ) : (
-          <Pressable style={[styles.bigBtn, styles.startBtn]} onPress={onStart}>
-            <Ionicons name="play" size={20} color="#0b1220" />
-            <Text style={[styles.bigBtnText, { color: '#0b1220' }]}>Start {TYPES.find((t) => t.value === type)?.label}</Text>
+          <Pressable style={[styles.actionBtn, styles.startBtn]} onPress={onStart}>
+            <Ionicons name="play" size={20} color="#101319" />
+            <Text style={styles.startText}>Start {TYPES.find((t) => t.value === type)?.label}</Text>
           </Pressable>
         )}
-
-        <Text style={styles.hint}>
-          Tracking keeps running with the screen off (a notification shows while active). Needs a
-          real device + location permission.
-        </Text>
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
-function Stat({
-  icon,
-  value,
-  label,
-}: {
-  icon: 'time-outline' | 'speedometer-outline' | 'flame-outline';
-  value: string;
-  label: string;
-}) {
+function StatPill({ value, label, hint }: { value: string; label: string; hint?: boolean }) {
   return (
-    <View style={styles.stat}>
-      <Ionicons name={icon} size={15} color="#60a5fa" />
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles.pill}>
+      <Text style={[styles.pillValue, hint && styles.pillValueHint]}>{value}</Text>
+      <Text style={styles.pillLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0b1220' },
-  content: {
-    padding: 20,
-    gap: 22,
+  screen: { flex: 1, backgroundColor: BG },
+  runner: { position: 'absolute', width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  runnerPulse: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: LIME },
+  runnerDot: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#fff',
     alignItems: 'center',
-    width: '100%',
-    maxWidth: 600,
-    alignSelf: 'center',
-    paddingBottom: 40,
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: LIME,
   },
-  types: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  typeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(147,197,253,0.4)',
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    minHeight: 44,
-  },
-  typeSelected: { backgroundColor: '#60a5fa', borderColor: '#60a5fa' },
-  typeText: { color: '#93c5fd', fontFamily: font.bold, fontSize: 14 },
-  typeTextSelected: { color: '#0b1220' },
-  pressed: { opacity: 0.7 },
-  mapPanel: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#111a2e',
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.18)',
-  },
-  recPill: {
+  topBar: {
     position: 'absolute',
-    top: 12,
-    left: 12,
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-  },
-  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
-  recText: { color: '#fff', fontFamily: font.extrabold, fontSize: 11, letterSpacing: 1 },
-  mapCaption: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-  },
-  mapCaptionText: { color: '#cbd5e1', fontFamily: font.medium, fontSize: 11 },
-  distanceBlock: { alignItems: 'center' },
-  distance: {
-    fontSize: 82,
-    lineHeight: 88,
-    fontFamily: font.display,
-    color: '#fff',
-    includeFontPadding: false,
-  },
-  distanceUnit: {
-    fontSize: 12,
-    color: '#60a5fa',
-    fontFamily: font.bold,
-    letterSpacing: 3,
-    marginTop: 2,
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: 10,
-    alignSelf: 'stretch',
     justifyContent: 'space-between',
   },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#111a2e',
+  circleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(30,36,48,0.85)',
     borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.15)',
-    borderRadius: 18,
-    paddingVertical: 16,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statValue: { fontSize: 20, fontFamily: font.extrabold, color: '#fff', marginTop: 2 },
-  statLabel: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11 },
-  bigBtn: {
+  typeSwitch: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: 'rgba(30,36,48,0.85)',
+    borderRadius: 999,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  typePill: { width: 38, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  typePillActive: { backgroundColor: LIME },
+  pills: { position: 'absolute', right: 16, gap: 10 },
+  pill: {
+    minWidth: 62,
+    alignItems: 'center',
+    backgroundColor: 'rgba(20,24,32,0.82)',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  pillValue: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
+  pillValueHint: { color: '#64748b' },
+  pillLabel: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11, marginTop: 1 },
+  bottom: { position: 'absolute', left: 16, right: 16, bottom: 0, gap: 12 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  avatar: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)' },
+  avatarFallback: { backgroundColor: 'rgba(30,36,48,0.9)', alignItems: 'center', justifyContent: 'center' },
+  runTitle: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
+  runWhen: { color: '#94a3b8', fontFamily: font.medium, fontSize: 12, marginTop: 1 },
+  cardsRow: { flexDirection: 'row', gap: 12 },
+  distanceCard: { flex: 1.5, backgroundColor: LIME, borderRadius: 24, padding: 18, justifyContent: 'space-between', minHeight: 108 },
+  distanceTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  distanceLabel: { color: '#101319', fontFamily: font.semibold, fontSize: 13 },
+  distanceValRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
+  distanceVal: { color: '#101319', fontFamily: font.display, fontSize: 46, lineHeight: 48, includeFontPadding: false },
+  distanceUnit: { color: '#101319', fontFamily: font.bold, fontSize: 16, marginBottom: 6 },
+  timeCard: {
+    flex: 1,
+    backgroundColor: 'rgba(24,29,39,0.92)',
+    borderRadius: 24,
+    padding: 18,
+    justifyContent: 'space-between',
+    minHeight: 108,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  timeLabel: { color: '#94a3b8', fontFamily: font.semibold, fontSize: 13 },
+  timeVal: { color: '#fff', fontFamily: font.display, fontSize: 34, includeFontPadding: false },
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    alignSelf: 'stretch',
     borderRadius: 999,
     paddingVertical: 18,
+    marginTop: 4,
   },
-  startBtn: { backgroundColor: '#a3e635' },
+  startBtn: { backgroundColor: LIME },
+  startText: { color: '#101319', fontFamily: font.extrabold, fontSize: 17, textTransform: 'capitalize' },
   stopBtn: { backgroundColor: '#ef4444' },
-  bigBtnText: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
-  pendingBox: {
-    alignSelf: 'stretch',
-    gap: 10,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.4)',
-    borderRadius: 18,
-    padding: 18,
-  },
-  pendingText: { color: '#fca5a5', fontFamily: font.semibold, fontSize: 13.5, textAlign: 'center' },
-  retryBtn: {
-    backgroundColor: '#60a5fa',
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  retryText: { color: '#0b1220', fontFamily: font.bold, fontSize: 15 },
-  ghostBtn: { alignItems: 'center', paddingVertical: 10 },
-  ghostText: { color: '#94a3b8', fontFamily: font.semibold, fontSize: 14 },
-  hint: { color: '#64748b', fontFamily: font.regular, fontSize: 12.5, textAlign: 'center' },
+  stopText: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
+  pendingRow: { gap: 8 },
+  retryBtn: { backgroundColor: LIME },
+  retryText: { color: '#101319', fontFamily: font.extrabold, fontSize: 16 },
 });
