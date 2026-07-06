@@ -40,6 +40,16 @@ export function formatKm(distanceM: number): string {
   return (distanceM / 1000).toFixed(2);
 }
 
+/** Human duration for the run card: "1h 31m", "31m", "45s". */
+export function formatDurationLong(totalS: number): string {
+  const s = Math.max(0, Math.floor(totalS));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
 export function formatPace(distanceM: number, durationS: number): string {
   const p = paceMinPerKm(distanceM, durationS);
   if (p == null || !Number.isFinite(p)) return '--:--';

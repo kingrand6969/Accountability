@@ -24,6 +24,7 @@ import {
   type Pt,
 } from '../activity/geo';
 import { RouteTrace, traceHead } from '../activity/RouteTrace';
+import { RunShareSheet, type FinishedRun } from '../activity/RunShareSheet';
 import {
   LOCATION_TASK_NAME,
   readTrackPoints,
@@ -90,6 +91,8 @@ export default function ActivityTrack() {
   const [livePoints, setLivePoints] = useState<Pt[]>([]);
   const [pending, setPending] = useState<PendingSave | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
+  // shareable run card, shown after a successful save
+  const [shareRun, setShareRun] = useState<FinishedRun | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<string>('');
@@ -124,7 +127,14 @@ export default function ActivityTrack() {
 
   async function onStart() {
     if (Platform.OS === 'web') {
-      Alert.alert('Use the mobile app', 'GPS tracking runs on your phone.');
+      // no GPS in a browser — let the user preview the shareable run card
+      setShareRun({
+        type,
+        distance: totalDistanceMeters(SAMPLE_ROUTE),
+        elapsed: 31 * 60 + 12,
+        points: SAMPLE_ROUTE,
+        title: `${timeOfDay()} ${TYPES.find((t) => t.value === type)?.label ?? 'run'}`,
+      });
       return;
     }
     const fg = await Location.requestForegroundPermissionsAsync();
@@ -180,8 +190,14 @@ export default function ActivityTrack() {
       });
       setPending(null);
       await resetTrackPoints();
-      Alert.alert('Activity saved 🏃', `${formatKm(p.distance)} km in ${formatDuration(p.elapsed)}`);
-      router.navigate('/today' as never);
+      // saved to the log — now offer the shareable run card
+      setShareRun({
+        type: p.type,
+        distance: p.distance,
+        elapsed: p.elapsed,
+        points: p.points,
+        title: `${timeOfDay()} ${TYPES.find((t) => t.value === p.type)?.label ?? 'run'}`,
+      });
     } catch (e) {
       setPending(p);
       Alert.alert('Could not save', `${String((e as Error).message ?? e)}\n\nYour recording is safe — tap "Retry save".`);
@@ -361,6 +377,17 @@ export default function ActivityTrack() {
           </Pressable>
         )}
       </View>
+
+      {/* post-run: turn it into a shareable card */}
+      {shareRun ? (
+        <RunShareSheet
+          run={shareRun}
+          onClose={() => {
+            setShareRun(null);
+            router.navigate('/today' as never);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
