@@ -1,8 +1,7 @@
 import { type ComponentProps, useEffect, useState } from 'react';
-import { type ColorValue, Image, Text, View } from 'react-native';
+import { type ColorValue, Image, View } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { font } from '../../ui/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onboardedKey } from '../onboarding';
 import { useAuth } from '../../auth/AuthProvider';
@@ -41,22 +40,12 @@ export default function AppLayout() {
           title: 'Feed',
           tabBarIcon: tabIcon('people', 'people-outline'),
           headerTitle: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Image
-                source={require('../../../assets/images/logo.png')}
-                style={{ width: 26, height: 26, borderRadius: 6 }}
-              />
-              <Text
-                style={{
-                  fontFamily: font.extrabold,
-                  fontSize: 18,
-                  letterSpacing: 0.3,
-                  color: '#0f172a',
-                }}
-              >
-                AccountAbility
-              </Text>
-            </View>
+            <Image
+              source={require('../../../assets/images/wordmark.png')}
+              style={{ width: 168, height: 26 }}
+              resizeMode="contain"
+              accessibilityLabel="AccountAbility"
+            />
           ),
           // headerLeft/right (menu, create, pages, groups) are set by the
           // Feed screen itself via navigation.setOptions — it needs screen state.

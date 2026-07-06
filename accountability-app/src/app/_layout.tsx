@@ -1,5 +1,6 @@
-import { Stack } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { ActivityIndicator, Pressable, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFonts, Anton_400Regular } from '@expo-google-fonts/anton';
 import {
   Inter_400Regular,
@@ -14,6 +15,22 @@ import { ToastHost } from '../ui/Toast';
 import { ConfirmHost } from '../ui/ConfirmDialog';
 import '../notifications/handler';
 import '../activity/locationTask';
+
+/** One tap back to the Feed from any pushed screen (menu, groups, search…). */
+function HomeButton() {
+  const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => router.navigate('/')}
+      hitSlop={10}
+      style={({ pressed }) => [{ paddingHorizontal: 4 }, pressed && { opacity: 0.6 }]}
+      accessibilityRole="button"
+      accessibilityLabel="Go to your feed"
+    >
+      <Ionicons name="home-outline" size={22} color="#2563eb" />
+    </Pressable>
+  );
+}
 
 function RootNavigator() {
   const { session, loading } = useAuth();
@@ -35,7 +52,7 @@ function RootNavigator() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, headerRight: () => <HomeButton /> }}>
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="(app)" />
         <Stack.Screen name="onboarding" />
