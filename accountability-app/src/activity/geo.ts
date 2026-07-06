@@ -47,3 +47,18 @@ export function formatPace(distanceM: number, durationS: number): string {
   const s = Math.round((p - m) * 60);
   return `${m}:${String(s).padStart(2, '0')}`;
 }
+
+/**
+ * Rough calorie ESTIMATE from distance + activity type. Per-km rates assume a
+ * ~68 kg adult (we don't collect weight); always show it labelled "est".
+ * Never presented as a medical/accurate figure.
+ */
+const KCAL_PER_KM: Record<'run' | 'walk' | 'ride', number> = {
+  run: 65,
+  walk: 34,
+  ride: 19,
+};
+
+export function estimateCalories(type: 'run' | 'walk' | 'ride', distanceM: number): number {
+  return Math.round((distanceM / 1000) * (KCAL_PER_KM[type] ?? 45));
+}

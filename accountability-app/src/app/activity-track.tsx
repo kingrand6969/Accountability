@@ -1,28 +1,53 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  totalDistanceMeters,
-  formatKm,
+  estimateCalories,
   formatDuration,
+  formatKm,
   formatPace,
+  totalDistanceMeters,
   type Pt,
 } from '../activity/geo';
+import { RouteTrace } from '../activity/RouteTrace';
 import {
   LOCATION_TASK_NAME,
-  resetTrackPoints,
   readTrackPoints,
+  resetTrackPoints,
 } from '../activity/locationTask';
 import { saveActivity, type ActivityType } from '../activity/api';
-import { Button } from '../ui/Button';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font } from '../ui/theme';
 
 const TYPES: { value: ActivityType; label: string; icon: 'walk-outline' | 'footsteps-outline' | 'bicycle-outline' }[] = [
   { value: 'run', label: 'Run', icon: 'walk-outline' },
   { value: 'walk', label: 'Walk', icon: 'footsteps-outline' },
   { value: 'ride', label: 'Ride', icon: 'bicycle-outline' },
+];
+
+// a small loop so the web preview shows the trace design (clearly labelled)
+const SAMPLE_ROUTE: Pt[] = [
+  { lat: 14.5, lon: 121.0 },
+  { lat: 14.5008, lon: 121.0005 },
+  { lat: 14.5012, lon: 121.0016 },
+  { lat: 14.5009, lon: 121.0027 },
+  { lat: 14.5, lon: 121.003 },
+  { lat: 14.4992, lon: 121.0024 },
+  { lat: 14.4989, lon: 121.0012 },
+  { lat: 14.4994, lon: 121.0003 },
+  { lat: 14.5, lon: 121.0 },
 ];
 
 type PendingSave = {
@@ -46,18 +71,19 @@ async function stopUpdatesIfRunning() {
 
 export default function ActivityTrack() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [type, setType] = useState<ActivityType>('run');
   const [tracking, setTracking] = useState(false);
   const [distance, setDistance] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [saving, setSaving] = useState(false);
-  // A recorded-but-unsaved activity (save failed, e.g. offline after a run).
-  // The route stays in memory until it's saved or explicitly discarded.
+  const [livePoints, setLivePoints] = useState<Pt[]>([]);
   const [pending, setPending] = useState<PendingSave | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
+  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     return () => {
@@ -65,6 +91,25 @@ export default function ActivityTrack() {
       stopUpdatesIfRunning();
     };
   }, []);
+
+  // recording pulse
+  useEffect(() => {
+    if (!tracking) {
+      pulse.stopAnimation();
+      pulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 1400,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [tracking, pulse]);
 
   async function onStart() {
     if (Platform.OS === 'web') {
@@ -76,12 +121,12 @@ export default function ActivityTrack() {
       Alert.alert('Location needed', 'Allow location access to track your activity.');
       return;
     }
-    // Background is best-effort: tracking still works in foreground if declined.
     await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
 
     await resetTrackPoints();
     setDistance(0);
     setElapsed(0);
+    setLivePoints([]);
     startedAtRef.current = new Date().toISOString();
     startMsRef.current = Date.now();
 
@@ -94,7 +139,7 @@ export default function ActivityTrack() {
         foregroundService: {
           notificationTitle: 'Tracking your activity',
           notificationBody: 'Recording distance & pace — tap to return.',
-          notificationColor: colors.primary,
+          notificationColor: '#2563eb',
         },
       });
     } catch (e) {
@@ -106,7 +151,9 @@ export default function ActivityTrack() {
     timerRef.current = setInterval(async () => {
       setElapsed(Math.round((Date.now() - startMsRef.current) / 1000));
       try {
-        setDistance(totalDistanceMeters(await readTrackPoints()));
+        const pts = await readTrackPoints();
+        setLivePoints(pts);
+        setDistance(totalDistanceMeters(pts));
       } catch {
         // keep last value
       }
@@ -123,16 +170,11 @@ export default function ActivityTrack() {
         route: p.points,
         started_at: p.startedAt,
       });
-      // Timeline card is created by a DB trigger (migration 0022) — atomic.
       setPending(null);
       await resetTrackPoints();
-      Alert.alert(
-        'Activity saved 🏃',
-        `${formatKm(p.distance)} km in ${formatDuration(p.elapsed)}`,
-      );
+      Alert.alert('Activity saved 🏃', `${formatKm(p.distance)} km in ${formatDuration(p.elapsed)}`);
       router.navigate('/today' as never);
     } catch (e) {
-      // KEEP the recording — the user can retry (e.g. once back online).
       setPending(p);
       Alert.alert(
         'Could not save',
@@ -154,6 +196,7 @@ export default function ActivityTrack() {
     const finalDistance = totalDistanceMeters(points);
     setElapsed(finalElapsed);
     setDistance(finalDistance);
+    setLivePoints(points);
 
     if (finalElapsed < 3 && finalDistance < 5) {
       Alert.alert('Too short', 'That activity was too short to save.');
@@ -161,13 +204,7 @@ export default function ActivityTrack() {
       return;
     }
 
-    await persist({
-      type,
-      distance: finalDistance,
-      elapsed: finalElapsed,
-      points,
-      startedAt: startedAtRef.current,
-    });
+    await persist({ type, distance: finalDistance, elapsed: finalElapsed, points, startedAt: startedAtRef.current });
   }
 
   function onDiscardPending() {
@@ -181,123 +218,270 @@ export default function ActivityTrack() {
           await resetTrackPoints();
           setDistance(0);
           setElapsed(0);
+          setLivePoints([]);
         },
       },
     ]);
   }
 
+  const shownDist = pending ? pending.distance : distance;
+  const shownElapsed = pending ? pending.elapsed : elapsed;
+  const shownPoints = pending ? pending.points : livePoints;
+  const kcal = estimateCalories(type, shownDist);
+
+  // map panel dimensions
+  const mapW = Math.min(width, 600) - 40;
+  const mapH = Math.round(mapW * 0.62);
+  const isSample = shownPoints.length === 0 && !tracking;
+  const tracePoints = isSample ? SAMPLE_ROUTE : shownPoints;
+
   return (
-    <View style={styles.container}>
-      <View style={styles.types}>
-        {TYPES.map((t) => {
-          const selected = type === t.value;
-          return (
-            <Pressable
-              key={t.value}
-              style={({ pressed }) => [
-                styles.typeBtn,
-                selected && styles.typeSelected,
-                pressed && !tracking && styles.pressed,
-              ]}
-              onPress={() => !tracking && setType(t.value)}
-              disabled={tracking || !!pending}
-            >
-              <Ionicons
-                name={t.icon}
-                size={16}
-                color={selected ? '#fff' : colors.primary}
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* activity type */}
+        <View style={styles.types}>
+          {TYPES.map((t) => {
+            const selected = type === t.value;
+            return (
+              <Pressable
+                key={t.value}
+                style={({ pressed }) => [
+                  styles.typeBtn,
+                  selected && styles.typeSelected,
+                  pressed && !tracking && styles.pressed,
+                ]}
+                onPress={() => !tracking && !pending && setType(t.value)}
+                disabled={tracking || !!pending}
+              >
+                <Ionicons name={t.icon} size={16} color={selected ? '#0b1220' : '#93c5fd'} />
+                <Text style={[styles.typeText, selected && styles.typeTextSelected]}>{t.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* map panel with the route trace */}
+        <View style={[styles.mapPanel, { width: mapW, height: mapH }]}>
+          <RouteTrace
+            points={tracePoints}
+            width={mapW}
+            height={mapH}
+            stroke={4}
+            showHead={tracking}
+            faint={isSample}
+          />
+          {tracking ? (
+            <View style={styles.recPill}>
+              <Animated.View
+                style={[
+                  styles.recDot,
+                  {
+                    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.2] }),
+                    transform: [
+                      { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.8] }) },
+                    ],
+                  },
+                ]}
               />
-              <Text style={[styles.typeText, selected && styles.typeTextSelected]}>
-                {t.label}
+              <Text style={styles.recText}>REC</Text>
+            </View>
+          ) : (
+            <View style={styles.mapCaption}>
+              <Ionicons name="location" size={12} color="#93c5fd" />
+              <Text style={styles.mapCaptionText}>
+                {isSample ? 'Sample route — your real path records on mobile' : 'Route'}
               </Text>
+            </View>
+          )}
+        </View>
+
+        {/* big distance */}
+        <View style={styles.distanceBlock}>
+          <Text style={styles.distance}>{formatKm(shownDist)}</Text>
+          <Text style={styles.distanceUnit}>KILOMETRES</Text>
+        </View>
+
+        {/* stat row */}
+        <View style={styles.statRow}>
+          <Stat icon="time-outline" value={formatDuration(shownElapsed)} label="Time" />
+          <Stat icon="speedometer-outline" value={formatPace(shownDist, shownElapsed)} label="Pace /km" />
+          <Stat icon="flame-outline" value={String(kcal)} label="Cal · est" />
+        </View>
+
+        {/* controls */}
+        {pending ? (
+          <View style={styles.pendingBox}>
+            <Text style={styles.pendingText}>Recording saved on your phone — not uploaded yet.</Text>
+            <Pressable style={styles.retryBtn} onPress={() => persist(pending)} disabled={saving}>
+              <Text style={styles.retryText}>{saving ? 'Saving…' : 'Retry save'}</Text>
             </Pressable>
-          );
-        })}
-      </View>
-
-      <View style={styles.stats}>
-        <Text style={styles.distance}>{formatKm(pending ? pending.distance : distance)}</Text>
-        <Text style={styles.distanceUnit}>km</Text>
-        <View style={styles.row}>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>
-              {formatDuration(pending ? pending.elapsed : elapsed)}
-            </Text>
-            <Text style={styles.statLabel}>Time</Text>
+            <Pressable style={styles.ghostBtn} onPress={onDiscardPending} disabled={saving}>
+              <Text style={styles.ghostText}>Discard recording</Text>
+            </Pressable>
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>
-              {pending ? formatPace(pending.distance, pending.elapsed) : formatPace(distance, elapsed)}
-            </Text>
-            <Text style={styles.statLabel}>Pace /km</Text>
-          </View>
-        </View>
-      </View>
+        ) : tracking ? (
+          <Pressable style={[styles.bigBtn, styles.stopBtn]} onPress={onStop} disabled={saving}>
+            <Ionicons name="stop" size={20} color="#fff" />
+            <Text style={styles.bigBtnText}>{saving ? 'Saving…' : 'Stop & Save'}</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={[styles.bigBtn, styles.startBtn]} onPress={onStart}>
+            <Ionicons name="play" size={20} color="#0b1220" />
+            <Text style={[styles.bigBtnText, { color: '#0b1220' }]}>Start {TYPES.find((t) => t.value === type)?.label}</Text>
+          </Pressable>
+        )}
 
-      {pending ? (
-        <View style={styles.pendingBox}>
-          <Text style={styles.pendingText}>
-            Recording saved on your phone — not uploaded yet.
-          </Text>
-          <Button title="Retry save" onPress={() => persist(pending)} loading={saving} />
-          <Button title="Discard recording" variant="ghost" onPress={onDiscardPending} disabled={saving} />
-        </View>
-      ) : tracking ? (
-        <Button title="Stop & Save" variant="danger" onPress={onStop} loading={saving} style={styles.bigBtn} />
-      ) : (
-        <Button title="Start" variant="success" onPress={onStart} style={styles.bigBtn} />
-      )}
+        <Text style={styles.hint}>
+          Tracking keeps running with the screen off (a notification shows while active). Needs a
+          real device + location permission.
+        </Text>
+      </ScrollView>
+    </View>
+  );
+}
 
-      <Text style={styles.hint}>
-        Tracking keeps running with the screen off (a notification shows while
-        active). Needs a real device + location permission.
-      </Text>
+function Stat({
+  icon,
+  value,
+  label,
+}: {
+  icon: 'time-outline' | 'speedometer-outline' | 'flame-outline';
+  value: string;
+  label: string;
+}) {
+  return (
+    <View style={styles.stat}>
+      <Ionicons name={icon} size={15} color="#60a5fa" />
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.xxl, gap: spacing.lg, backgroundColor: colors.background },
-  pressed: { opacity: 0.7 },
-  types: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center' },
+  screen: { flex: 1, backgroundColor: '#0b1220' },
+  content: {
+    padding: 20,
+    gap: 22,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
+    paddingBottom: 40,
+  },
+  types: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   typeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.pill,
+    borderColor: 'rgba(147,197,253,0.4)',
+    borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 18,
     minHeight: 44,
   },
-  typeSelected: { backgroundColor: colors.primary },
-  typeText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
-  typeTextSelected: { color: '#fff' },
-  stats: { alignItems: 'center', paddingVertical: 30 },
+  typeSelected: { backgroundColor: '#60a5fa', borderColor: '#60a5fa' },
+  typeText: { color: '#93c5fd', fontFamily: font.bold, fontSize: 14 },
+  typeTextSelected: { color: '#0b1220' },
+  pressed: { opacity: 0.7 },
+  mapPanel: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#111a2e',
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.18)',
+  },
+  recPill: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
+  recText: { color: '#fff', fontFamily: font.extrabold, fontSize: 11, letterSpacing: 1 },
+  mapCaption: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  mapCaptionText: { color: '#cbd5e1', fontFamily: font.medium, fontSize: 11 },
+  distanceBlock: { alignItems: 'center' },
   distance: {
-    fontSize: 76,
+    fontSize: 82,
+    lineHeight: 88,
     fontFamily: font.display,
-    color: colors.text,
+    color: '#fff',
     includeFontPadding: false,
   },
-  distanceUnit: { fontSize: 18, color: colors.textMuted, fontFamily: font.medium, marginTop: -4 },
-  row: { flexDirection: 'row', gap: 48, marginTop: spacing.xxl },
-  stat: { alignItems: 'center' },
-  statValue: { fontSize: 26, fontFamily: font.extrabold, color: colors.text },
-  statLabel: { color: colors.textFaint, fontFamily: font.medium, marginTop: 2 },
-  bigBtn: { paddingVertical: 18 },
+  distanceUnit: {
+    fontSize: 12,
+    color: '#60a5fa',
+    fontFamily: font.bold,
+    letterSpacing: 3,
+    marginTop: 2,
+  },
+  statRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
+  },
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#111a2e',
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.15)',
+    borderRadius: 18,
+    paddingVertical: 16,
+  },
+  statValue: { fontSize: 20, fontFamily: font.extrabold, color: '#fff', marginTop: 2 },
+  statLabel: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11 },
+  bigBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    alignSelf: 'stretch',
+    borderRadius: 999,
+    paddingVertical: 18,
+  },
+  startBtn: { backgroundColor: '#a3e635' },
+  stopBtn: { backgroundColor: '#ef4444' },
+  bigBtnText: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
   pendingBox: {
-    gap: spacing.sm,
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radius.md,
-    padding: spacing.lg,
+    alignSelf: 'stretch',
+    gap: 10,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.4)',
+    borderRadius: 18,
+    padding: 18,
   },
-  pendingText: {
-    color: colors.danger,
-    fontFamily: font.semibold,
-    fontSize: 13.5,
-    textAlign: 'center',
+  pendingText: { color: '#fca5a5', fontFamily: font.semibold, fontSize: 13.5, textAlign: 'center' },
+  retryBtn: {
+    backgroundColor: '#60a5fa',
+    borderRadius: 999,
+    paddingVertical: 14,
+    alignItems: 'center',
   },
-  hint: { color: colors.textFaint, fontFamily: font.regular, fontSize: 13, textAlign: 'center', marginTop: 4 },
+  retryText: { color: '#0b1220', fontFamily: font.bold, fontSize: 15 },
+  ghostBtn: { alignItems: 'center', paddingVertical: 10 },
+  ghostText: { color: '#94a3b8', fontFamily: font.semibold, fontSize: 14 },
+  hint: { color: '#64748b', fontFamily: font.regular, fontSize: 12.5, textAlign: 'center' },
 });
