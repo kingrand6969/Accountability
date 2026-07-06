@@ -1,5 +1,5 @@
 import { type ComponentProps, useEffect, useState } from 'react';
-import { type ColorValue, Image, StyleSheet, View } from 'react-native';
+import { type ColorValue, Image, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -38,6 +38,9 @@ const styles = StyleSheet.create({
 export default function AppLayout() {
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
+  // keep the island compact on wide screens — icons stay close together
+  const barWidth = Math.min(winW - 32, 400);
   const userId = session?.user.id ?? null;
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
@@ -62,8 +65,8 @@ export default function AppLayout() {
         // floating island, detached from the screen edges
         tabBarStyle: {
           position: 'absolute',
-          left: 16,
-          right: 16,
+          width: barWidth,
+          left: (winW - barWidth) / 2,
           bottom: Math.max(insets.bottom, 8) + 8,
           height: 62,
           borderRadius: 31,
