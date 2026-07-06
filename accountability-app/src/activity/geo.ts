@@ -72,3 +72,33 @@ const KCAL_PER_KM: Record<'run' | 'walk' | 'ride', number> = {
 export function estimateCalories(type: 'run' | 'walk' | 'ride', distanceM: number): number {
   return Math.round((distanceM / 1000) * (KCAL_PER_KM[type] ?? 45));
 }
+
+/**
+ * Privacy zone for a SHARED route: drop the points within `meters` of the
+ * start and the end, so a public run card never pinpoints where you live or
+ * work. The full route is still kept in the private saved activity. Falls back
+ * to the whole route when it's too short to trim meaningfully.
+ */
+export function trimRouteEnds(points: Pt[], meters = 130): Pt[] {
+  if (points.length < 4) return points;
+  let startIdx = 0;
+  let acc = 0;
+  for (let i = 1; i < points.length; i++) {
+    acc += haversineMeters(points[i - 1], points[i]);
+    if (acc >= meters) {
+      startIdx = i;
+      break;
+    }
+  }
+  let endIdx = points.length - 1;
+  acc = 0;
+  for (let i = points.length - 1; i > 0; i--) {
+    acc += haversineMeters(points[i - 1], points[i]);
+    if (acc >= meters) {
+      endIdx = i - 1;
+      break;
+    }
+  }
+  if (endIdx - startIdx < 1) return points; // nothing left after trimming
+  return points.slice(startIdx, endIdx + 1);
+}

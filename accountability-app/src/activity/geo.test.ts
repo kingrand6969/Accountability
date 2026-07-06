@@ -4,8 +4,36 @@ import {
   totalDistanceMeters,
   paceMinPerKm,
   formatDuration,
+  formatDurationLong,
   formatPace,
+  trimRouteEnds,
 } from './geo';
+
+// ~0.001° latitude ≈ 111 m — build a straight line of such steps
+const line = (n: number) => Array.from({ length: n }, (_, i) => ({ lat: i * 0.001, lon: 0 }));
+
+describe('trimRouteEnds', () => {
+  it('drops points within the privacy zone of both ends', () => {
+    const pts = line(10); // ~1 km straight, ~111 m spacing
+    const trimmed = trimRouteEnds(pts, 130);
+    // first ~130 m and last ~130 m removed → interior remains
+    expect(trimmed.length).toBeLessThan(pts.length);
+    expect(trimmed[0]).not.toEqual(pts[0]);
+    expect(trimmed[trimmed.length - 1]).not.toEqual(pts[pts.length - 1]);
+  });
+  it('keeps the full route when too short to trim', () => {
+    const pts = line(3);
+    expect(trimRouteEnds(pts, 130)).toEqual(pts);
+  });
+});
+
+describe('formatDurationLong', () => {
+  it('formats hours and minutes', () => {
+    expect(formatDurationLong(3600 + 31 * 60)).toBe('1h 31m');
+    expect(formatDurationLong(31 * 60)).toBe('31m');
+    expect(formatDurationLong(45)).toBe('45s');
+  });
+});
 
 describe('haversineMeters', () => {
   it('is ~111 km for 1° of longitude at the equator', () => {

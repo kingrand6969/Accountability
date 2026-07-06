@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Platform,
   Pressable,
   Share,
@@ -15,7 +16,7 @@ import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { RunCard } from './RunCard';
-import { formatDurationLong, formatKm, formatPace, type Pt } from './geo';
+import { formatDurationLong, formatKm, formatPace, trimRouteEnds, type Pt } from './geo';
 import type { ActivityType } from './api';
 import { createPost } from '../feed/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
@@ -36,14 +37,33 @@ type Mode = 'map' | 'photo';
 
 /** Full-screen overlay shown after Stop & Save — turn the run into a shareable card. */
 export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () => void }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const [mode, setMode] = useState<Mode>('map');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | null>(null);
   const [posting, setPosting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const cardRef = useRef<View>(null);
+  // synchronous re-entrancy guard — state updates are async, so a fast
+  // double-tap would otherwise post twice
+  const inFlight = useRef(false);
 
-  const cardWidth = Math.min(width - 40, 300);
+  // size the 9:16 card to fit BOTH the width and the space left after the
+  // header/mode-picker/buttons, so it never clips on short screens
+  const cardWidth = Math.min(width - 40, 300, Math.floor(((height - 400) * 9) / 16));
+
+  // the shared route hides its true start/end (privacy zone); the full route
+  // stays in the private saved activity
+  const cardPoints = useMemo(() => trimRouteEnds(run.points), [run.points]);
+
+  // Android hardware back closes the sheet instead of popping the run screen
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!posting && !sharing) onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [posting, sharing, onClose]);
 
   const caption =
     `🏃 ${run.title} · ${formatKm(run.distance)} km in ${formatDurationLong(run.elapsed)} ` +
@@ -68,6 +88,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       }
       if (!res.canceled && res.assets[0]) {
         setPhotoUri(res.assets[0].uri);
+        setPhotoKind(kind);
         setMode('photo');
       }
     } catch {
@@ -78,13 +99,22 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   async function capture(result: 'base64' | 'tmpfile'): Promise<string | null> {
     if (Platform.OS === 'web' || !cardRef.current) return null;
     try {
-      return await captureRef(cardRef, { format: 'jpg', quality: 0.9, result });
+      // upscale to a crisp story-sized image (the preview renders small)
+      return await captureRef(cardRef, {
+        format: 'jpg',
+        quality: 0.9,
+        result,
+        width: 1080,
+        height: 1920,
+      });
     } catch {
       return null;
     }
   }
 
   async function onPost() {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPosting(true);
     try {
       let imageUrl: string | null = null;
@@ -103,11 +133,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     } catch (e) {
       Alert.alert('Could not post', String((e as Error).message ?? e));
     } finally {
+      inFlight.current = false;
       setPosting(false);
     }
   }
 
   async function onShare() {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSharing(true);
     try {
       const uri = await capture('tmpfile');
@@ -141,24 +174,28 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           photoUri={photoUri}
           distanceM={run.distance}
           durationS={run.elapsed}
-          points={run.points}
+          points={cardPoints}
           width={cardWidth}
         />
       </View>
+      <Text style={styles.privacyNote}>
+        <Ionicons name="shield-checkmark" size={11} color="#94a3b8" /> Start &amp; end points are
+        hidden for your privacy
+      </Text>
 
       {/* mode picker */}
       <View style={styles.modeRow}>
         <ModeBtn
           icon="happy-outline"
           label="Selfie"
-          active={mode === 'photo' && !!photoUri}
+          active={mode === 'photo' && photoKind === 'selfie'}
           onPress={() => addPhoto('selfie')}
           disabled={busy}
         />
         <ModeBtn
           icon="camera-outline"
           label="Photo"
-          active={false}
+          active={mode === 'photo' && photoKind === 'place'}
           onPress={() => addPhoto('place')}
           disabled={busy}
         />
@@ -168,13 +205,21 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           active={mode === 'map'}
           onPress={() => {
             setPhotoUri(null);
+            setPhotoKind(null);
             setMode('map');
           }}
           disabled={busy}
         />
       </View>
 
-      <Pressable style={[styles.primary, busy && styles.dim]} onPress={onPost} disabled={busy}>
+      <Pressable
+        style={[styles.primary, busy && styles.dim]}
+        onPress={onPost}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel="Post your run to the feed"
+        accessibilityState={{ disabled: busy, busy: posting }}
+      >
         {posting ? (
           <ActivityIndicator color="#101319" />
         ) : (
@@ -184,7 +229,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           </>
         )}
       </Pressable>
-      <Pressable style={[styles.secondary, busy && styles.dim]} onPress={onShare} disabled={busy}>
+      <Pressable
+        style={[styles.secondary, busy && styles.dim]}
+        onPress={onShare}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={Platform.OS === 'web' ? 'Share a link' : 'Share the run image'}
+        accessibilityState={{ disabled: busy, busy: sharing }}
+      >
         {sharing ? (
           <ActivityIndicator color="#fff" />
         ) : (
@@ -246,6 +298,12 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#fff', fontFamily: font.extrabold, fontSize: 18 },
   skip: { color: '#94a3b8', fontFamily: font.bold, fontSize: 15 },
   preview: { flex: 1, justifyContent: 'center' },
+  privacyNote: {
+    color: '#94a3b8',
+    fontFamily: font.medium,
+    fontSize: 11.5,
+    textAlign: 'center',
+  },
   modeRow: { flexDirection: 'row', gap: 8, alignSelf: 'stretch', justifyContent: 'center' },
   modeBtn: {
     flexDirection: 'row',

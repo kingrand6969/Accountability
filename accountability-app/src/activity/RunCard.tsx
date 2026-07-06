@@ -52,8 +52,14 @@ export const RunCard = forwardRef<
       {usePhoto ? (
         <ImageBackground source={{ uri: photoUri! }} style={StyleSheet.absoluteFill} resizeMode="cover">
           <LinearGradient
-            colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.7)']}
-            locations={[0, 0.35, 0.7, 1]}
+            colors={[
+              'rgba(0,0,0,0.62)',
+              'rgba(0,0,0,0.32)',
+              'rgba(0,0,0,0.2)',
+              'rgba(0,0,0,0.35)',
+              'rgba(0,0,0,0.78)',
+            ]}
+            locations={[0, 0.28, 0.55, 0.78, 1]}
             style={StyleSheet.absoluteFill}
           />
           {stats}

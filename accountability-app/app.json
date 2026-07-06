@@ -51,7 +51,14 @@
         }
       ],
       "expo-notifications",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "AccountAbility uses your camera for selfies, run cards, stories and profile photos.",
+          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
