@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -7,6 +7,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -14,9 +15,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsPro } from '../../pro/ProProvider';
 import { listMonth, deleteTransaction } from '../../money/api';
-import { sumByKind, groupByCategory } from '../../money/compute';
+import { sumByKind } from '../../money/compute';
 import { categoryMeta, formatAmount } from '../../money/categories';
 import type { Transaction } from '../../money/types';
+import {
+  categorySlices,
+  categoryTint,
+  groupTxnsByDay,
+  spendingInsight,
+  txTime,
+  type CategorySlice,
+} from '../../money/insights';
 import {
   billCategoryMeta,
   billStatus,
@@ -28,27 +37,40 @@ import {
 import { listBills, markBillPaid, unmarkBillPaid } from '../../money/billsApi';
 import { EmptyState } from '../../ui/EmptyState';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
+import { DonutChart } from '../../ui/DonutChart';
 import { ProgressRing } from '../../ui/ProgressRing';
 import { confirmDestructive } from '../../ui/confirm';
 import { showToast } from '../../ui/Toast';
-import { colors, font, radius, spacing, shadow } from '../../ui/theme';
+import { colors, font, radius, spacing } from '../../ui/theme';
 
 const INK = '#1e1b4b';
 const INK_SOFT = 'rgba(30,27,75,0.72)';
 const ACCENT = '#6d28d9';
+const GOOD = '#047857';
+const OVER = '#b45309'; // over-pace is amber — red stays reserved for overdue bills
+const COL_MAX = 600;
+
+type Row =
+  | { type: 'day'; key: string; label: string; net: number }
+  | { type: 'tx'; key: string; tx: Transaction };
+
+/** day-of-month from 'YYYY-MM-DD' */
+function txDay(t: Transaction): number {
+  return parseInt(t.tx_date.slice(8, 10), 10);
+}
 
 export default function Finance() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isPro } = useIsPro();
+  const { width: winW } = useWindowDimensions();
   const bgRef = useRef<View>(null);
   const [txns, setTxns] = useState<Transaction[]>([]);
+  const [lastTxns, setLastTxns] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
-  const [lastSpend, setLastSpend] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // credit-card "which amount?" chooser (in-tree overlay — not a Modal, so
-  // Android blur behind it keeps working)
+  const [allCats, setAllCats] = useState(false);
   const [ccChooser, setCcChooser] = useState<Bill | null>(null);
   const paysInFlight = useRef<Set<string>>(new Set());
 
@@ -58,7 +80,7 @@ export default function Finance() {
       const prev = new Date(now.getFullYear(), now.getMonth() - 1, 15);
       const [cur, last, bs] = await Promise.all([listMonth(now), listMonth(prev), listBills()]);
       setTxns(cur);
-      setLastSpend(sumByKind(last, 'expense'));
+      setLastTxns(last);
       setBills(bs);
     } catch (e) {
       Alert.alert('Could not load', String((e as Error).message ?? e));
@@ -129,11 +151,58 @@ export default function Finance() {
       return;
     }
     if (bill.category === 'credit_card' && bill.min_payment != null) {
-      setCcChooser(bill); // ask which amount was paid
+      setCcChooser(bill);
       return;
     }
     payBill(bill, bill.amount);
   }
+
+  const today = new Date();
+  const income = sumByKind(txns, 'income');
+  const expense = sumByKind(txns, 'expense');
+  const balance = income - expense;
+
+  // fair pacing: this month-to-date vs last month THROUGH THE SAME DAY —
+  // never a partial month against a full one
+  const lastToDate = useMemo(
+    () => lastTxns.filter((t) => txDay(t) <= today.getDate()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lastTxns],
+  );
+  const lastToDateSpend = sumByKind(lastToDate, 'expense');
+  const insight = spendingInsight(expense, lastToDateSpend);
+
+  const slices = useMemo(() => categorySlices(txns, lastToDate), [txns, lastToDate]);
+  // donut readability: keep big slices, roll <4% into "Other" (max 6 + other)
+  const { donutSlices, legend } = useMemo(() => {
+    const major = slices.filter((s, i) => s.share >= 4 && i < 6);
+    const rest = slices.filter((s) => !major.includes(s));
+    const donut: CategorySlice[] = [...major];
+    if (rest.length > 0) {
+      donut.push({
+        category: 'other',
+        total: rest.reduce((a, s) => a + s.total, 0),
+        share: rest.reduce((a, s) => a + s.share, 0),
+        changePct: null,
+        changeDir: 'flat',
+      });
+    }
+    return { donutSlices: donut, legend: slices };
+  }, [slices]);
+
+  const txRows = useMemo<Row[]>(() => {
+    const out: Row[] = [];
+    for (const day of groupTxnsByDay(txns, today)) {
+      const net = day.items.reduce(
+        (a, t) => a + (t.kind === 'income' ? t.amount : -t.amount),
+        0,
+      );
+      out.push({ type: 'day', key: `d-${day.date}`, label: day.label, net });
+      for (const t of day.items) out.push({ type: 'tx', key: t.id, tx: t });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txns]);
 
   if (loading) {
     return (
@@ -143,51 +212,162 @@ export default function Finance() {
     );
   }
 
-  const today = new Date();
-  const income = sumByKind(txns, 'income');
-  const expense = sumByKind(txns, 'expense');
-  const balance = income - expense;
-  const byCat = groupByCategory(txns);
-  const maxCat = byCat.length ? byCat[0].total : 0;
-  const ringMax = Math.max(lastSpend, expense, 1);
   const sortedBills = sortBills(bills, today);
   const stillToPay = unpaidTotal(bills, today);
+  const monthLabel = today.toLocaleDateString(undefined, { month: 'long' }).toUpperCase();
+  const fabRight = Math.max(spacing.xl, (winW - COL_MAX) / 2 + spacing.xl);
+  const paceProgress =
+    lastToDateSpend > 0 ? Math.min(1, expense / lastToDateSpend) : 0;
+  const underPace = insight.direction !== 'up';
 
   const header = (
     <View style={[styles.headerWrap, { paddingTop: insets.top + spacing.lg }]}>
-      {/* YOUR MONEY — glass hero */}
+      {/* HERO — balance, in/out, pacing insight */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
-          <Text style={styles.kicker}>YOUR MONEY</Text>
-          <Text style={styles.heroBalance}>{formatAmount(balance)}</Text>
-          <Text style={styles.heroSub}>left this month</Text>
+          <View style={styles.heroTopRow}>
+            <Text style={styles.kicker}>YOUR MONEY</Text>
+            <Text style={styles.monthTag}>{monthLabel}</Text>
+          </View>
+          <View style={styles.heroMainRow}>
+            <View style={styles.heroBalanceBlock}>
+              <Text style={styles.heroBalance}>{formatAmount(balance)}</Text>
+              <Text style={styles.heroSub}>left this month</Text>
+            </View>
+            <View style={styles.heroChips}>
+              <View style={styles.heroChip}>
+                <Text style={styles.heroChipLabel}>IN</Text>
+                <Text style={[styles.heroChipValue, { color: GOOD }]}>
+                  +{formatAmount(income)}
+                </Text>
+              </View>
+              <View style={styles.heroChip}>
+                <Text style={styles.heroChipLabel}>OUT</Text>
+                <Text style={[styles.heroChipValue, { color: '#be123c' }]}>
+                  −{formatAmount(expense)}
+                </Text>
+              </View>
+            </View>
+          </View>
+          {insight.direction !== 'none' ? (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.insightRow}>
+                <ProgressRing
+                  size={44}
+                  strokeWidth={5}
+                  progress={paceProgress}
+                  trackColor="rgba(255,255,255,0.9)"
+                  startColor={underPace ? '#34d399' : '#f59e0b'}
+                  endColor={underPace ? '#059669' : '#d97706'}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.insightTitle,
+                      { color: insight.direction === 'flat' ? INK : underPace ? GOOD : OVER },
+                    ]}
+                  >
+                    {insight.direction === 'flat'
+                      ? 'About the same as last month'
+                      : `Spending ${insight.pct}% ${insight.direction === 'up' ? 'higher' : 'lower'} vs last month`}
+                  </Text>
+                  {insight.direction !== 'flat' ? (
+                    <Text style={styles.insightSub}>
+                      {formatAmount(Math.abs(insight.diff))}{' '}
+                      {insight.diff > 0 ? 'more' : 'less'} than by day {today.getDate()} last
+                      month
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </>
+          ) : null}
         </View>
       </GlassCard>
 
-      {/* MONEY SPENT — glass rings */}
+      {/* WHERE IT GOES — category donut + legend with change arrows */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
-          <Text style={styles.kicker}>MONEY SPENT</Text>
-          <View style={styles.ringRow}>
-            <SpendRing
-              amount={lastSpend}
-              progress={lastSpend / ringMax}
-              label="LAST MONTH"
-              startColor="#f472b6"
-              endColor="#ef4444"
+          <View style={styles.heroTopRow}>
+            <Text style={styles.kicker}>WHERE IT GOES</Text>
+            <Text style={styles.monthTag}>vs last month</Text>
+          </View>
+          <View style={styles.donutRow}>
+            <DonutChart
+              size={148}
+              strokeWidth={14}
+              segments={
+                isPro
+                  ? donutSlices.map((s) => ({ value: s.total, color: categoryTint(s.category) }))
+                  : expense > 0
+                    ? [{ value: 1, color: ACCENT }]
+                    : []
+              }
+              centerTitle={expense > 0 ? formatAmount(expense) : '0.00'}
+              centerSub="this month"
+              ink={INK}
             />
-            <SpendRing
-              amount={expense}
-              progress={expense / ringMax}
-              label="THIS MONTH"
-              startColor="#8b5cf6"
-              endColor="#ec4899"
-            />
+            <View style={styles.legendCol}>
+              {!isPro ? (
+                <Pressable
+                  style={({ pressed }) => [styles.proCard, pressed && styles.pressed]}
+                  onPress={() => router.push('/paywall')}
+                >
+                  <Ionicons name="star" size={16} color={colors.pro} />
+                  <Text style={styles.proText}>Pro: see where your money goes</Text>
+                </Pressable>
+              ) : legend.length === 0 ? (
+                <Text style={styles.legendEmpty}>
+                  Log expenses and your breakdown appears here.
+                </Text>
+              ) : (
+                <>
+                  {(allCats ? legend : legend.slice(0, 4)).map((s) => (
+                    <View key={s.category} style={styles.legendRow}>
+                      <View
+                        style={[styles.legendDot, { backgroundColor: categoryTint(s.category) }]}
+                      />
+                      <Text style={styles.legendLabel} numberOfLines={1}>
+                        {categoryMeta(s.category).label}
+                      </Text>
+                      <Text style={styles.legendAmount}>{formatAmount(s.total)}</Text>
+                      {s.changePct === null ? (
+                        <Text style={styles.legendNew}>new</Text>
+                      ) : s.changeDir === 'flat' ? (
+                        <Text style={styles.legendDelta}>—</Text>
+                      ) : (
+                        <Text
+                          style={[
+                            styles.legendDelta,
+                            { color: s.changeDir === 'down' ? GOOD : OVER },
+                          ]}
+                        >
+                          {s.changeDir === 'down' ? '▼' : '▲'}
+                          {s.changePct}%
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                  {legend.length > 4 ? (
+                    <Pressable
+                      onPress={() => setAllCats((v) => !v)}
+                      hitSlop={8}
+                      accessibilityLabel={allCats ? 'Show fewer categories' : 'Show all categories'}
+                    >
+                      <Text style={styles.legendMore}>
+                        {allCats ? 'Show less' : `+${legend.length - 4} more`}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              )}
+            </View>
           </View>
         </View>
       </GlassCard>
 
-      {/* MONTHLY BILLS — glass ledger */}
+      {/* MONTHLY BILLS — unchanged (density benchmark) */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
           <View style={styles.billsHeader}>
@@ -206,7 +386,14 @@ export default function Finance() {
           ) : (
             <View style={styles.billsList}>
               {sortedBills.map((b) => (
-                <BillRow key={b.id} bill={b} onTogglePaid={() => onTogglePaid(b)} onOpen={() => router.push({ pathname: '/bill-new', params: { id: b.id } } as never)} />
+                <BillRow
+                  key={b.id}
+                  bill={b}
+                  onTogglePaid={() => onTogglePaid(b)}
+                  onOpen={() =>
+                    router.push({ pathname: '/bill-new', params: { id: b.id } } as never)
+                  }
+                />
               ))}
             </View>
           )}
@@ -229,47 +416,6 @@ export default function Finance() {
       {/* white sheet top */}
       <View style={styles.sheetTop}>
         <View style={styles.sheetHandle} />
-        {isPro ? (
-          byCat.length > 0 ? (
-            <>
-              <Text style={styles.heading}>Where it goes</Text>
-              <View style={styles.bars}>
-                {byCat.map((c) => {
-                  const meta = categoryMeta(c.category);
-                  return (
-                    <View key={c.category} style={styles.barRow}>
-                      <View style={styles.barLabelWrap}>
-                        <View style={styles.barIconCircle}>
-                          <Ionicons name={meta.icon as any} size={13} color={colors.primary} />
-                        </View>
-                        <Text style={styles.barLabel} numberOfLines={1}>
-                          {meta.label}
-                        </Text>
-                      </View>
-                      <View style={styles.barTrack}>
-                        <View
-                          style={[
-                            styles.barFill,
-                            { width: `${maxCat ? (c.total / maxCat) * 100 : 0}%` },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.barValue}>{formatAmount(c.total)}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </>
-          ) : null
-        ) : (
-          <Pressable
-            style={({ pressed }) => [styles.proCard, pressed && styles.pressed]}
-            onPress={() => router.push('/paywall')}
-          >
-            <Ionicons name="star" size={16} color={colors.pro} />
-            <Text style={styles.proText}>Pro: see a breakdown of where your money goes</Text>
-          </Pressable>
-        )}
         <Text style={styles.heading}>Transactions</Text>
       </View>
     </View>
@@ -279,15 +425,15 @@ export default function Finance() {
     <View style={styles.screen}>
       <GlassBackdrop ref={bgRef} />
       <FlatList
-        data={txns}
-        keyExtractor={(t) => t.id}
+        data={txRows}
+        keyExtractor={(r) => r.key}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={INK} />
         }
         ListHeaderComponent={header}
         ListEmptyComponent={
-          <View style={styles.sheetBody}>
+          <View style={[styles.sheetBody, styles.col]}>
             <EmptyState
               icon="wallet-outline"
               title="Nothing logged this month"
@@ -298,37 +444,65 @@ export default function Finance() {
           </View>
         }
         renderItem={({ item }) => {
-          const meta = categoryMeta(item.category);
+          if (item.type === 'day') {
+            return (
+              <View style={[styles.sheetBody, styles.col]}>
+                <View style={styles.dayHeader}>
+                  <Text style={styles.dayLabel}>{item.label.toUpperCase()}</Text>
+                  <Text
+                    style={[
+                      styles.dayNet,
+                      { color: item.net >= 0 ? colors.success : colors.danger },
+                    ]}
+                  >
+                    {item.net >= 0 ? '+' : '−'}
+                    {formatAmount(Math.abs(item.net))}
+                  </Text>
+                </View>
+              </View>
+            );
+          }
+          const t = item.tx;
+          const meta = categoryMeta(t.category);
+          const tint = categoryTint(t.category);
+          const created = t.created_at ? new Date(t.created_at) : null;
+          const sameDay =
+            created &&
+            `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}` === t.tx_date;
           return (
-            <View style={styles.sheetBody}>
+            <View style={[styles.sheetBody, styles.col]}>
               <View style={styles.txRow}>
-                <View style={styles.txIconCircle}>
-                  <Ionicons name={meta.icon as any} size={16} color={colors.primary} />
+                <View style={[styles.txIconCircle, { backgroundColor: `${tint}1F` }]}>
+                  <Ionicons name={meta.icon as any} size={15} color={tint} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.txTitle}>{item.note?.trim() || meta.label}</Text>
+                  <Text style={styles.txTitle} numberOfLines={1}>
+                    {t.note?.trim() || meta.label}
+                  </Text>
                   <Text style={styles.txMeta}>
-                    {meta.label} · {item.tx_date}
+                    {meta.label}
+                    {sameDay ? ` · ${txTime(t)}` : ''}
                   </Text>
                 </View>
                 <Text
                   style={[
                     styles.txAmount,
-                    item.kind === 'income' ? styles.incomeText : styles.expenseText,
+                    t.kind === 'income' ? styles.incomeText : styles.expenseText,
                   ]}
                 >
-                  {item.kind === 'income' ? '+' : '-'}
-                  {formatAmount(item.amount)}
+                  {t.kind === 'income' ? '+' : '−'}
+                  {formatAmount(t.amount)}
                 </Text>
                 <Pressable
-                  onPress={() => onDeleteTx(item)}
+                  onPress={() => onDeleteTx(t)}
                   hitSlop={8}
                   style={({ pressed }) => [styles.deleteBtn, pressed && styles.pressed]}
                   accessibilityLabel="Delete transaction"
                 >
-                  <Ionicons name="close" size={18} color={colors.textFaint} />
+                  <Ionicons name="close" size={17} color={colors.textFaint} />
                 </Pressable>
               </View>
+              <View style={styles.txSeparator} />
             </View>
           );
         }}
@@ -337,7 +511,7 @@ export default function Finance() {
       />
 
       <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.fab, { right: fabRight }, pressed && styles.pressed]}
         onPress={() => router.push('/money-add')}
         accessibilityLabel="Add a transaction"
       >
@@ -345,7 +519,7 @@ export default function Finance() {
         <Text style={styles.fabText}>Add</Text>
       </Pressable>
 
-      {/* credit card: which amount did you pay? (in-tree frosted overlay) */}
+      {/* credit card: which amount did you pay? */}
       {ccChooser ? (
         <Pressable style={styles.ccBackdrop} onPress={() => setCcChooser(null)}>
           <Pressable onPress={(e) => e.stopPropagation()} style={styles.ccSheetWrap}>
@@ -451,41 +625,6 @@ function BillRow({
   );
 }
 
-const RING = 118;
-
-function SpendRing({
-  amount,
-  progress,
-  label,
-  startColor,
-  endColor,
-}: {
-  amount: number;
-  progress: number;
-  label: string;
-  startColor: string;
-  endColor: string;
-}) {
-  return (
-    <View style={styles.ringCol}>
-      <View style={styles.ringCircle}>
-        <View style={styles.ringSvg} pointerEvents="none">
-          <ProgressRing
-            size={RING}
-            strokeWidth={7}
-            progress={progress}
-            trackColor="rgba(255,255,255,0.9)"
-            startColor={startColor}
-            endColor={endColor}
-          />
-        </View>
-        <Text style={styles.ringAmount}>{formatAmount(amount)}</Text>
-      </View>
-      <Text style={styles.ringLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#E4DCF7' },
   center: {
@@ -495,34 +634,75 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: { flexGrow: 1 },
-  headerWrap: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  col: { width: '100%', maxWidth: COL_MAX, alignSelf: 'center' },
+  headerWrap: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: COL_MAX,
+    alignSelf: 'center',
+  },
   cardPad: { padding: spacing.lg },
   kicker: { color: INK, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
+  monthTag: { color: INK_SOFT, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8 },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  heroMainRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: 2,
+  },
+  heroBalanceBlock: { flex: 1, minWidth: 150 },
   heroBalance: {
     color: INK,
     fontFamily: font.display,
-    fontSize: 44,
-    lineHeight: 50,
+    fontSize: 40,
+    lineHeight: 46,
     includeFontPadding: false,
-    marginTop: 2,
   },
-  heroSub: { color: INK_SOFT, fontFamily: font.medium, fontSize: 13 },
-  ringRow: {
+  heroSub: { color: INK_SOFT, fontFamily: font.medium, fontSize: 12.5 },
+  heroChips: { gap: 6, alignItems: 'flex-end', paddingBottom: 2 },
+  heroChip: { alignItems: 'flex-end' },
+  heroChipLabel: {
+    color: INK_SOFT,
+    fontFamily: font.bold,
+    fontSize: 10.5,
+    letterSpacing: 0.8,
+  },
+  heroChipValue: { fontFamily: font.extrabold, fontSize: 15 },
+  divider: { height: 1, backgroundColor: 'rgba(30,27,75,0.08)', marginVertical: spacing.md },
+  insightRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  insightTitle: { fontFamily: font.bold, fontSize: 14 },
+  insightSub: { color: INK_SOFT, fontFamily: font.regular, fontSize: 12, marginTop: 1 },
+  donutRow: {
     flexDirection: 'row',
-    gap: spacing.xl,
-    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.lg,
     marginTop: spacing.md,
   },
-  ringCol: { alignItems: 'center', gap: spacing.sm },
-  ringCircle: {
-    width: RING,
-    height: RING,
-    alignItems: 'center',
-    justifyContent: 'center',
+  legendCol: { flex: 1, gap: spacing.sm, minWidth: 150 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 26 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendLabel: { flex: 1, color: INK, fontFamily: font.medium, fontSize: 13 },
+  legendAmount: { color: INK, fontFamily: font.bold, fontSize: 13.5 },
+  legendDelta: { fontFamily: font.bold, fontSize: 11, color: INK_SOFT, width: 44, textAlign: 'right' },
+  legendNew: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    color: ACCENT,
+    backgroundColor: 'rgba(109,40,217,0.10)',
+    borderRadius: radius.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    overflow: 'hidden',
   },
-  ringSvg: { position: 'absolute', top: 0, left: 0 },
-  ringAmount: { color: INK, fontFamily: font.extrabold, fontSize: 16 },
-  ringLabel: { color: INK_SOFT, fontFamily: font.bold, fontSize: 11.5, letterSpacing: 0.8 },
+  legendMore: { color: ACCENT, fontFamily: font.bold, fontSize: 12.5, paddingVertical: 4 },
+  legendEmpty: { color: INK_SOFT, fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
   billsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   billsRollup: { color: INK_SOFT, fontFamily: font.bold, fontSize: 12.5 },
   billsEmpty: {
@@ -533,7 +713,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   billsList: { gap: spacing.sm, marginTop: spacing.md },
-  // faux glass rows — real blur is budgeted to the 3 cards
   billRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -585,8 +764,8 @@ const styles = StyleSheet.create({
   disclaimer: {
     color: INK_SOFT,
     fontFamily: font.regular,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 10.5,
+    lineHeight: 14,
     marginTop: spacing.md,
   },
   sheetTop: {
@@ -598,11 +777,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -spacing.lg,
     marginTop: spacing.sm,
   },
-  sheetBody: {
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
+  sheetBody: { backgroundColor: colors.background, paddingHorizontal: spacing.lg },
   sheetFooter: { backgroundColor: colors.background, minHeight: 96, flex: 1 },
   sheetFooterWrap: { flexGrow: 1 },
   sheetHandle: {
@@ -618,35 +793,54 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: font.bold,
     color: colors.text,
-    marginTop: 18,
-    marginBottom: 6,
+    marginTop: spacing.sm,
+    marginBottom: 2,
   },
-  bars: { gap: spacing.sm },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  barLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, width: 110 },
-  barIconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primarySoft,
+  dayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  dayLabel: {
+    fontFamily: font.extrabold,
+    fontSize: 12,
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  dayNet: { fontFamily: font.bold, fontSize: 12 },
+  txRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 52,
+  },
+  txIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  barLabel: { flex: 1, fontSize: 13, fontFamily: font.regular, color: colors.text },
-  barTrack: {
-    flex: 1,
-    height: 10,
-    backgroundColor: colors.surface,
-    borderRadius: 5,
-    overflow: 'hidden',
+  txTitle: { fontSize: 15, fontFamily: font.semibold, color: colors.text },
+  txMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontFamily: font.regular,
+    marginTop: 1,
+    textTransform: 'capitalize',
   },
-  barFill: { height: 10, backgroundColor: colors.primary, borderRadius: 5 },
-  barValue: {
-    width: 80,
-    textAlign: 'right',
-    fontSize: 13,
-    fontFamily: font.semibold,
-    color: colors.text,
+  txAmount: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  txSeparator: { height: 1, backgroundColor: colors.surface, marginLeft: 42 },
+  incomeText: { color: colors.success },
+  expenseText: { color: colors.danger },
+  deleteBtn: {
+    minHeight: 44,
+    minWidth: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
   },
   proCard: {
     flexDirection: 'row',
@@ -658,51 +852,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     padding: 14,
     minHeight: 44,
-    marginTop: spacing.md,
   },
-  proText: { flex: 1, color: colors.pro, fontFamily: font.semibold },
-  txRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.card,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadow.card,
-  },
-  txIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  txTitle: { fontSize: 15, fontFamily: font.semibold, color: colors.text },
-  txMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontFamily: font.regular,
-    marginTop: 2,
-    textTransform: 'capitalize',
-  },
-  txAmount: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  incomeText: { color: colors.success },
-  expenseText: { color: colors.danger },
-  deleteBtn: {
-    minHeight: 44,
-    minWidth: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
+  proText: { flex: 1, color: colors.pro, fontFamily: font.semibold, fontSize: 13 },
   pressed: { opacity: 0.75 },
   fab: {
     position: 'absolute',
-    right: spacing.xl,
     bottom: spacing.xxl,
     flexDirection: 'row',
     alignItems: 'center',
