@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -7,9 +7,11 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { listItemsForDay, deleteItem } from '../../timeline/api';
 import { cancelReminder } from '../../notifications/api';
@@ -20,8 +22,21 @@ import { AdBanner } from '../../pro/AdBanner';
 import { HomeHeader } from '../../home/HomeHeader';
 import { useIsPro } from '../../pro/ProProvider';
 import { confirmDestructive } from '../../ui/confirm';
+import { GlassBackdrop, GlassCard } from '../../ui/Glass';
+import { contentMaxWidth } from '../../ui/responsive';
 import type { TimelineItem } from '../../timeline/types';
-import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
+import { font, radius, spacing } from '../../ui/theme';
+
+const INK = '#1e1b4b';
+const INK_SOFT = 'rgba(30,27,75,0.72)';
+const ACCENT = '#4f46e5';
+
+/** Quick-add shortcuts shown on an empty day — each opens Add pre-set. */
+const QUICK_ADD = [
+  { type: 'task', icon: 'checkmark-circle', label: 'Task', tint: '#4f46e5' },
+  { type: 'event', icon: 'calendar', label: 'Event', tint: '#0891b2' },
+  { type: 'grocery', icon: 'cart', label: 'Groceries', tint: '#16a34a' },
+] as const;
 
 function dayLabel(day: Date): string {
   const today = new Date();
@@ -42,6 +57,10 @@ function dayLabel(day: Date): string {
 export default function Today() {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const { width } = useWindowDimensions();
+  const colMax = contentMaxWidth(width);
+  const bgRef = useRef<View>(null);
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ date?: string }>();
   const [day, setDay] = useState(() => new Date());
   const [items, setItems] = useState<TimelineItem[]>([]);
@@ -109,61 +128,103 @@ export default function Today() {
     });
   }
 
+  const emptyState = (
+    <View style={styles.emptyCenter}>
+      <GlassCard blurTarget={bgRef} style={styles.emptyCard}>
+        <View style={styles.emptyPad}>
+          <View style={styles.sunWrap}>
+            <Ionicons name="sunny" size={26} color={ACCENT} />
+          </View>
+          <Text style={styles.emptyTitle}>Nothing planned yet</Text>
+          <Text style={styles.emptySub}>Add a task, an event, or groceries to get your day going.</Text>
+          <View style={styles.quickRow}>
+            {QUICK_ADD.map((q) => (
+              <Pressable
+                key={q.type}
+                style={({ pressed }) => [styles.quickChip, pressed && styles.pressed]}
+                onPress={() =>
+                  router.push({
+                    pathname: '/add',
+                    params: { date: toLocalDateString(day), type: q.type },
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${q.label.toLowerCase()}`}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: `${q.tint}18` }]}>
+                  <Ionicons name={q.icon} size={20} color={q.tint} />
+                </View>
+                <Text style={styles.quickLabel}>{q.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </GlassCard>
+    </View>
+  );
+
   return (
     <View style={styles.screen}>
-      <HomeHeader />
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => shiftDay(-1)}
-          style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
-          hitSlop={8}
-          accessibilityLabel="Previous day"
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.primary} />
-        </Pressable>
-        <Pressable onPress={() => setDay(new Date())} accessibilityLabel="Jump to today">
-          <Text style={styles.dayTitle}>{dayLabel(day)}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => shiftDay(1)}
-          style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
-          hitSlop={8}
-          accessibilityLabel="Next day"
-        >
-          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
-        </Pressable>
-      </View>
+      <GlassBackdrop ref={bgRef} columnWidth={colMax} />
 
-      <View style={styles.toggle}>
-        {(['list', 'hours'] as const).map((v) => (
+      <View style={[styles.topCol, { maxWidth: colMax, paddingTop: insets.top }]}>
+        <HomeHeader />
+        <View style={styles.header}>
           <Pressable
-            key={v}
-            style={({ pressed }) => [
-              styles.toggleBtn,
-              view === v && styles.toggleActive,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => setView(v)}
+            onPress={() => shiftDay(-1)}
+            style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
+            hitSlop={8}
+            accessibilityLabel="Previous day"
           >
-            <Text style={[styles.toggleText, view === v && styles.toggleTextActive]}>
-              {v === 'list' ? 'List' : 'Hours'}
-            </Text>
+            <Ionicons name="chevron-back" size={22} color={ACCENT} />
           </Pressable>
-        ))}
+          <Pressable onPress={() => setDay(new Date())} accessibilityLabel="Jump to today">
+            <Text style={styles.dayTitle}>{dayLabel(day)}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => shiftDay(1)}
+            style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
+            hitSlop={8}
+            accessibilityLabel="Next day"
+          >
+            <Ionicons name="chevron-forward" size={22} color={ACCENT} />
+          </Pressable>
+        </View>
+
+        <View style={styles.toggle}>
+          {(['list', 'hours'] as const).map((v) => (
+            <Pressable
+              key={v}
+              style={({ pressed }) => [
+                styles.toggleBtn,
+                view === v && styles.toggleActive,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => setView(v)}
+            >
+              <Text style={[styles.toggleText, view === v && styles.toggleTextActive]}>
+                {v === 'list' ? 'List' : 'Hours'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={ACCENT} />
         </View>
       ) : view === 'hours' ? (
-        <HourGrid items={items} onPressHour={openAddAtHour} onDelete={onDelete} />
+        <View style={[styles.flexCol, { maxWidth: colMax }]}>
+          <HourGrid items={items} onPressHour={openAddAtHour} onDelete={onDelete} />
+        </View>
       ) : (
         <FlatList
           data={items}
           keyExtractor={(i) => i.id}
+          style={styles.flexFill}
           contentContainerStyle={
-            items.length === 0 ? styles.emptyWrap : styles.listContent
+            items.length === 0 ? styles.emptyWrap : [styles.listContent, { maxWidth: colMax }]
           }
           refreshControl={
             <RefreshControl
@@ -172,18 +233,10 @@ export default function Today() {
                 setRefreshing(true);
                 load();
               }}
-              tintColor={colors.primary}
+              tintColor={ACCENT}
             />
           }
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Ionicons name="sunny-outline" size={40} color={colors.textFaint} />
-              <Text style={styles.emptyTitle}>Nothing planned</Text>
-              <Text style={styles.emptySub}>
-                Tap Add to put something on your day.
-              </Text>
-            </View>
-          }
+          ListEmptyComponent={emptyState}
           renderItem={({ item }) => <TimelineCard item={item} onDelete={onDelete} />}
         />
       )}
@@ -191,8 +244,11 @@ export default function Today() {
       <Pressable
         style={({ pressed }) => [
           styles.fab,
-          // clear the floating tab bar; higher still when an ad banner shows
-          { bottom: isPro ? 104 : 150 },
+          // sit at the centered column's edge; clear the floating tab bar (higher when an ad shows)
+          {
+            right: Math.max(spacing.xl, (width - colMax) / 2 + spacing.xl),
+            bottom: isPro ? 104 : 150,
+          },
           pressed && styles.fabPressed,
         ]}
         onPress={() => router.push('/add')}
@@ -208,14 +264,18 @@ export default function Today() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   pressed: { opacity: 0.7 },
+  topCol: { width: '100%', alignSelf: 'center' },
+  flexFill: { flex: 1 },
+  flexCol: { flex: 1, width: '100%', alignSelf: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   navBtn: {
     minWidth: 44,
@@ -223,38 +283,84 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayTitle: { fontSize: 20, fontFamily: font.bold, color: colors.text },
+  dayTitle: { fontSize: 20, fontFamily: font.bold, color: INK },
   toggle: {
     flexDirection: 'row',
     alignSelf: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
     borderRadius: radius.sm,
     padding: 3,
     marginBottom: spacing.sm,
   },
   toggleBtn: { paddingVertical: 7, paddingHorizontal: 22, borderRadius: 8 },
-  toggleActive: { backgroundColor: colors.card },
-  toggleText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 14 },
-  toggleTextActive: { color: colors.primary },
+  toggleActive: { backgroundColor: '#fff' },
+  toggleText: { color: INK_SOFT, fontFamily: font.semibold, fontSize: 14 },
+  toggleTextActive: { color: ACCENT },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
   emptyWrap: { flexGrow: 1 },
-  listContent: { padding: spacing.lg, gap: 10, paddingBottom: 170, ...contentMax },
-  emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
-  emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
+  listContent: { padding: spacing.lg, gap: 10, paddingBottom: 170, width: '100%', alignSelf: 'center' },
+  // quick-start empty state
+  emptyCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  emptyCard: { width: '100%', maxWidth: 380 },
+  emptyPad: { padding: spacing.xl, alignItems: 'center', gap: spacing.sm },
+  sunWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(79,70,229,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  emptyTitle: { fontSize: 18, fontFamily: font.bold, color: INK },
+  emptySub: {
+    color: INK_SOFT,
+    fontFamily: font.regular,
+    fontSize: 13.5,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    alignSelf: 'stretch',
+  },
+  quickChip: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.85)',
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  quickIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickLabel: { fontSize: 13, fontFamily: font.semibold, color: INK },
   fab: {
     position: 'absolute',
     right: spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: ACCENT,
     borderRadius: radius.pill,
     paddingVertical: 14,
     paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#4338ca',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
   fabPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },

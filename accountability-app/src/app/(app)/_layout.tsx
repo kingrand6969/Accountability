@@ -92,7 +92,11 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="today"
-        options={{ title: 'Today', tabBarIcon: tabIcon('today', 'today-outline') }}
+        options={{
+          title: 'Today',
+          tabBarIcon: tabIcon('today', 'today-outline'),
+          headerShown: false, // glass backdrop + hero run edge-to-edge
+        }}
       />
       <Tabs.Screen
         name="finance"

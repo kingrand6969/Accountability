@@ -82,7 +82,7 @@ function PresetChip({
 
 export default function Add() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string; time?: string }>();
+  const params = useLocalSearchParams<{ date?: string; time?: string; type?: string }>();
   const { isPro } = useIsPro();
   const [type, setType] = useState<TimelineType | null>('event');
   const [title, setTitle] = useState('');
@@ -114,12 +114,18 @@ export default function Add() {
     setDetailsOpen(true); // pop the details form pre-filled
   }
 
-  // Prefill + open the sheet when opened from a tapped hour on the day grid.
+  // Prefill + open the sheet when opened from a tapped hour on the day grid,
+  // or from a quick-add chip on Today (which passes a type).
   useEffect(() => {
     if (typeof params.date === 'string' && params.date) setDate(params.date);
     if (typeof params.time === 'string' && params.time) setTime(params.time);
+    const t = params.type;
+    if (t === 'event' || t === 'task' || t === 'grocery' || t === 'other') {
+      setType(t);
+      setDetailsOpen(true);
+    }
     if (typeof params.date === 'string' && params.date) setDetailsOpen(true);
-  }, [params.date, params.time]);
+  }, [params.date, params.time, params.type]);
 
   async function onSave() {
     if (!type) {

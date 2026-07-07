@@ -36,7 +36,7 @@ export function HomeHeader() {
   return (
     <View style={styles.card}>
       <LinearGradient
-        colors={['#3b82f6', '#2563eb', '#1e40af']}
+        colors={['#6366f1', '#4f46e5', '#4338ca']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.gradient}
@@ -47,11 +47,19 @@ export function HomeHeader() {
             onPress={() => router.push('/win-card')}
             accessibilityLabel="Share your streak"
           >
-            <Ionicons name="flame" size={26} color={colors.accent} />
-            <Text style={styles.streakNum}>{stats.streak}</Text>
-            <Text style={styles.streakLabel}>
-              day{stats.streak === 1 ? '' : 's'} streak · share
-            </Text>
+            <View style={styles.flameWrap}>
+              <Ionicons name="flame" size={20} color={colors.accent} />
+            </View>
+            {stats.streak > 0 ? (
+              <>
+                <Text style={styles.streakNum}>{stats.streak}</Text>
+                <Text style={styles.streakLabel}>
+                  day{stats.streak === 1 ? '' : 's'} streak · share
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.streakLabel}>Start your streak today</Text>
+            )}
           </Pressable>
           <Pressable
             style={({ pressed }) => [styles.buddy, pressed && styles.pressed]}
@@ -100,22 +108,30 @@ export function HomeHeader() {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     margin: spacing.lg,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
     overflow: 'hidden',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#4338ca',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
-  gradient: { padding: spacing.lg, gap: spacing.sm },
+  gradient: { padding: spacing.lg, gap: spacing.md },
   pressed: { opacity: 0.75 },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  streak: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
-  streakNum: { color: '#fff', fontSize: 30, fontFamily: font.extrabold },
-  streakLabel: { color: '#dbeafe', fontSize: 14, fontFamily: font.semibold },
+  streak: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
+  flameWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  streakNum: { color: '#fff', fontSize: 26, fontFamily: font.extrabold },
+  streakLabel: { color: '#e0e7ff', fontSize: 14, fontFamily: font.semibold },
   buddy: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44, paddingLeft: 8 },
   buddyText: { color: '#fff', fontSize: 16, fontFamily: font.bold },
   badge: {
