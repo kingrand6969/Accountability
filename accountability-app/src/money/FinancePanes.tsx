@@ -13,8 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   accountKindMeta,
   listAccounts,
+  listDebts,
   listSavings,
+  setDebtSettled,
   type Account,
+  type Debt,
   type SavingsGoal,
 } from './accountsApi';
 import { formatAmount } from './categories';
@@ -39,11 +42,15 @@ export function AccountsPane({
 }) {
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => {
-    listAccounts()
-      .then(setAccounts)
+    Promise.all([listAccounts(), listDebts()])
+      .then(([a, d]) => {
+        setAccounts(a);
+        setDebts(d);
+      })
       .catch((e) => Alert.alert('Could not load accounts', String((e as Error).message ?? e)))
       .finally(() => setRefreshing(false));
   }, []);
@@ -54,7 +61,22 @@ export function AccountsPane({
     }, [load]),
   );
 
+  async function onSettle(d: Debt) {
+    setDebts((cur) => cur.map((x) => (x.id === d.id ? { ...x, settled: true } : x)));
+    try {
+      await setDebtSettled(d.id, true);
+    } catch (e) {
+      setDebts((cur) => cur.map((x) => (x.id === d.id ? { ...x, settled: false } : x)));
+      Alert.alert('Could not update', String((e as Error).message ?? e));
+    }
+  }
+
   const total = accounts.reduce((a, b) => a + b.balance, 0);
+  const oweOpen = debts.filter((d) => d.kind === 'owe' && !d.settled);
+  const owedOpen = debts.filter((d) => d.kind === 'owed' && !d.settled);
+  const oweTotal = oweOpen.reduce((a, d) => a + d.amount, 0);
+  const owedTotal = owedOpen.reduce((a, d) => a + d.amount, 0);
+  const netWorth = total + owedTotal - oweTotal;
 
   return (
     <ScrollView
@@ -71,13 +93,29 @@ export function AccountsPane({
         />
       }
     >
+      {/* NET WORTH hero */}
+      <GlassCard blurTarget={blurTarget}>
+        <View style={styles.cardPad}>
+          <Text style={styles.kicker}>NET WORTH</Text>
+          <Text style={styles.netWorth}>{formatAmount(netWorth)}</Text>
+          <Text style={styles.totalSub}>
+            {formatAmount(total)} in accounts
+            {owedTotal > 0 ? ` + ${formatAmount(owedTotal)} owed to you` : ''}
+            {oweTotal > 0 ? ` − ${formatAmount(oweTotal)} you owe` : ''}
+          </Text>
+        </View>
+      </GlassCard>
+
+      {/* accounts */}
       <GlassCard blurTarget={blurTarget}>
         <View style={styles.cardPad}>
           <View style={styles.headRow}>
             <Text style={styles.kicker}>BANKS & WALLETS</Text>
             <Text style={styles.total}>{formatAmount(total)}</Text>
           </View>
-          <Text style={styles.totalSub}>total across {accounts.length || 'your'} account{accounts.length === 1 ? '' : 's'}</Text>
+          <Text style={styles.totalSub}>
+            across {accounts.length || 'your'} account{accounts.length === 1 ? '' : 's'}
+          </Text>
 
           {accounts.length === 0 ? (
             <Text style={styles.empty}>
@@ -121,12 +159,101 @@ export function AccountsPane({
             <Ionicons name="add" size={16} color={ACCENT} />
             <Text style={styles.addText}>Add bank or wallet</Text>
           </Pressable>
+        </View>
+      </GlassCard>
+
+      {/* debts & IOUs */}
+      <GlassCard blurTarget={blurTarget}>
+        <View style={styles.cardPad}>
+          <Text style={styles.kicker}>DEBTS & IOUs</Text>
+
+          <View style={styles.debtHead}>
+            <View style={styles.debtHeadCol}>
+              <Text style={styles.debtHeadLabel}>You owe</Text>
+              <Text style={[styles.debtHeadAmt, { color: '#be123c' }]}>{formatAmount(oweTotal)}</Text>
+            </View>
+            <View style={styles.debtDivider} />
+            <View style={styles.debtHeadCol}>
+              <Text style={styles.debtHeadLabel}>Owed to you</Text>
+              <Text style={[styles.debtHeadAmt, { color: GOOD }]}>{formatAmount(owedTotal)}</Text>
+            </View>
+          </View>
+
+          {oweOpen.length === 0 && owedOpen.length === 0 ? (
+            <Text style={styles.empty}>
+              Track what you still owe and what others owe you — settle them with a tap.
+            </Text>
+          ) : (
+            <View style={styles.list}>
+              {oweOpen.map((d) => (
+                <DebtRow key={d.id} debt={d} onSettle={() => onSettle(d)} onOpen={() => router.push({ pathname: '/debt-new', params: { id: d.id } } as never)} />
+              ))}
+              {owedOpen.map((d) => (
+                <DebtRow key={d.id} debt={d} onSettle={() => onSettle(d)} onOpen={() => router.push({ pathname: '/debt-new', params: { id: d.id } } as never)} />
+              ))}
+            </View>
+          )}
+
+          <View style={styles.debtBtnRow}>
+            <Pressable
+              style={({ pressed }) => [styles.debtBtn, pressed && styles.pressed]}
+              onPress={() => router.push({ pathname: '/debt-new', params: { kind: 'owe' } } as never)}
+              accessibilityLabel="Add something you owe"
+            >
+              <Ionicons name="arrow-up-circle-outline" size={15} color="#be123c" />
+              <Text style={[styles.debtBtnText, { color: '#be123c' }]}>I owe</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.debtBtn, pressed && styles.pressed]}
+              onPress={() => router.push({ pathname: '/debt-new', params: { kind: 'owed' } } as never)}
+              accessibilityLabel="Add something owed to you"
+            >
+              <Ionicons name="arrow-down-circle-outline" size={15} color={GOOD} />
+              <Text style={[styles.debtBtnText, { color: GOOD }]}>Owed to me</Text>
+            </Pressable>
+          </View>
           <Text style={styles.note}>
-            Balances are entered by you — update them any time by tapping an account.
+            Balances and debts are entered by you — tap any card to update it.
           </Text>
         </View>
       </GlassCard>
     </ScrollView>
+  );
+}
+
+function DebtRow({ debt, onSettle, onOpen }: { debt: Debt; onSettle: () => void; onOpen: () => void }) {
+  const isOwe = debt.kind === 'owe';
+  const due = debt.due_date
+    ? new Date(debt.due_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : null;
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      onPress={onOpen}
+      accessibilityLabel={`Edit debt with ${debt.counterparty}`}
+    >
+      <View style={[styles.icon, { backgroundColor: isOwe ? 'rgba(190,18,60,0.1)' : 'rgba(4,120,87,0.1)' }]}>
+        <Ionicons name={isOwe ? 'arrow-up' : 'arrow-down'} size={15} color={isOwe ? '#be123c' : GOOD} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowName} numberOfLines={1}>
+          {debt.counterparty}
+        </Text>
+        <Text style={styles.rowSub} numberOfLines={1}>
+          {debt.note?.trim() || (isOwe ? 'You owe' : 'Owes you')}
+          {due ? ` · due ${due}` : ''}
+        </Text>
+      </View>
+      <Text style={[styles.rowAmount, { color: isOwe ? '#be123c' : GOOD }]}>{formatAmount(debt.amount)}</Text>
+      <Pressable
+        onPress={onSettle}
+        hitSlop={10}
+        style={({ pressed }) => [styles.settleBtn, pressed && styles.pressed]}
+        accessibilityLabel="Mark settled"
+      >
+        <Ionicons name="checkmark-circle-outline" size={22} color={INK_SOFT} />
+      </Pressable>
+    </Pressable>
   );
 }
 
@@ -263,6 +390,34 @@ const styles = StyleSheet.create({
   kicker: { color: INK, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
   total: { color: INK, fontFamily: font.extrabold, fontSize: 17 },
   totalSub: { color: INK_SOFT, fontFamily: font.medium, fontSize: 12, marginTop: 1 },
+  netWorth: {
+    color: INK,
+    fontFamily: font.display,
+    fontSize: 38,
+    lineHeight: 42,
+    includeFontPadding: false,
+    marginTop: 2,
+  },
+  debtHead: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md },
+  debtHeadCol: { flex: 1, alignItems: 'center', gap: 2 },
+  debtHeadLabel: { color: INK_SOFT, fontFamily: font.semibold, fontSize: 12 },
+  debtHeadAmt: { fontFamily: font.extrabold, fontSize: 18 },
+  debtDivider: { width: 1, height: 34, backgroundColor: 'rgba(30,27,75,0.12)' },
+  debtBtnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  debtBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderRadius: radius.pill,
+    minHeight: 42,
+  },
+  debtBtnText: { fontFamily: font.bold, fontSize: 13.5 },
+  settleBtn: { minWidth: 30, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   empty: {
     color: INK_SOFT,
     fontFamily: font.regular,

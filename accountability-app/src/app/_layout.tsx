@@ -73,6 +73,7 @@ function RootNavigator() {
           name="saving-new"
           options={{ headerShown: true, title: 'Add savings goal' }}
         />
+        <Stack.Screen name="debt-new" options={{ headerShown: true, title: 'Add debt' }} />
         <Stack.Screen
           name="add"
           options={{ headerShown: true, title: 'Add', presentation: 'modal' }}

@@ -111,3 +111,64 @@ export async function deleteSavingsGoal(id: string): Promise<void> {
   const { error } = await supabase.from('savings_goals').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ---- debts & IOUs ----
+
+export type DebtKind = 'owe' | 'owed'; // owe = you owe them; owed = they owe you
+
+export type Debt = {
+  id: string;
+  kind: DebtKind;
+  counterparty: string;
+  amount: number;
+  note: string | null;
+  due_date: string | null;
+  settled: boolean;
+  created_at: string;
+};
+
+const DEBT_SELECT = 'id,kind,counterparty,amount,note,due_date,settled,created_at';
+
+export async function listDebts(): Promise<Debt[]> {
+  const { data, error } = await supabase
+    .from('debts')
+    .select(DEBT_SELECT)
+    .order('settled')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((d: any) => ({ ...d, amount: Number(d.amount) }));
+}
+
+export async function getDebt(id: string): Promise<Debt | null> {
+  const { data, error } = await supabase.from('debts').select(DEBT_SELECT).eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? { ...data, amount: Number(data.amount) } : null;
+}
+
+export type DebtInput = {
+  kind: DebtKind;
+  counterparty: string;
+  amount: number;
+  note: string | null;
+  due_date: string | null;
+};
+
+export async function addDebt(input: DebtInput): Promise<void> {
+  const { error } = await supabase.from('debts').insert(input);
+  if (error) throw error;
+}
+
+export async function updateDebt(id: string, input: DebtInput): Promise<void> {
+  const { error } = await supabase.from('debts').update(input).eq('id', id);
+  if (error) throw error;
+}
+
+export async function setDebtSettled(id: string, settled: boolean): Promise<void> {
+  const { error } = await supabase.from('debts').update({ settled }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteDebt(id: string): Promise<void> {
+  const { error } = await supabase.from('debts').delete().eq('id', id);
+  if (error) throw error;
+}
