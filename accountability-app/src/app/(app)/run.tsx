@@ -330,7 +330,6 @@ export default function ActivityTrack() {
       <View style={[styles.pills, { top: insets.top + 90 }]}>
         <StatPill value={String(kcal)} label="Calories" />
         <StatPill value={formatPace(shownDist, shownElapsed)} label="per km" />
-        <StatPill value="—" label="bpm" hint />
       </View>
 
       {/* floating bottom card */}
@@ -409,10 +408,10 @@ export default function ActivityTrack() {
   );
 }
 
-function StatPill({ value, label, hint }: { value: string; label: string; hint?: boolean }) {
+function StatPill({ value, label }: { value: string; label: string }) {
   return (
     <View style={styles.pill}>
-      <Text style={[styles.pillValue, hint && styles.pillValueHint]}>{value}</Text>
+      <Text style={styles.pillValue}>{value}</Text>
       <Text style={styles.pillLabel}>{label}</Text>
     </View>
   );
@@ -473,7 +472,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   pillValue: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
-  pillValueHint: { color: '#64748b' },
   pillLabel: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11, marginTop: 1 },
   bottom: { position: 'absolute', left: 16, right: 16, bottom: 0, gap: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
