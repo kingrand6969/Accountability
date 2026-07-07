@@ -264,6 +264,8 @@ export default function ActivityTrack() {
   // floating bottom card never covers the runner marker
   const tracePad = { top: insets.top + 80, right: 70, bottom: H * 0.44, left: 60 };
   const head = traceHead(tracePoints, W, H, 5, tracePad);
+  // keep the floating UI in a centered column on wide screens (map stays full-bleed)
+  const sideInset = Math.max(16, (W - 600) / 2);
   const title = `${timeOfDay()} ${TYPES.find((t) => t.value === type)?.label ?? 'run'}`;
   const when = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const timeLabel = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -304,7 +306,7 @@ export default function ActivityTrack() {
       ) : null}
 
       {/* top bar */}
-      <View style={[styles.topBar, { top: insets.top + 6 }]}>
+      <View style={[styles.topBar, { top: insets.top + 6, left: sideInset, right: sideInset }]}>
         <Pressable style={styles.circleBtn} onPress={() => router.back()} accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </Pressable>
@@ -327,7 +329,7 @@ export default function ActivityTrack() {
       </View>
 
       {/* floating stat pills */}
-      <View style={[styles.pills, { top: insets.top + 90 }]}>
+      <View style={[styles.pills, { top: insets.top + 90, right: sideInset }]}>
         <StatPill value={String(kcal)} label="Calories" />
         <StatPill value={formatPace(shownDist, shownElapsed)} label="per km" />
       </View>
@@ -337,7 +339,11 @@ export default function ActivityTrack() {
         style={[
           styles.bottom,
           // lift the controls clear of the floating bar when it's showing
-          { paddingBottom: insets.bottom + (immersive ? 16 : FLOATING_BAR_CLEARANCE + 12) },
+          {
+            left: sideInset,
+            right: sideInset,
+            paddingBottom: insets.bottom + (immersive ? 16 : FLOATING_BAR_CLEARANCE + 12),
+          },
         ]}
       >
         <View style={styles.titleRow}>
