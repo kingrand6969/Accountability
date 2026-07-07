@@ -77,7 +77,6 @@ function RootNavigator() {
           name="add"
           options={{ headerShown: true, title: 'Add', presentation: 'modal' }}
         />
-        <Stack.Screen name="activity-track" options={{ headerShown: false }} />
         <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
         <Stack.Screen name="buddy-card/[id]" options={{ headerShown: true, title: 'Buddy' }} />

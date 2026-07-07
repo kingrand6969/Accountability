@@ -31,7 +31,7 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/diet' | '/activity-track' | '/insights' | '/books';
+  route: '/gym' | '/diet' | '/run' | '/insights' | '/books';
 }[] = [
   {
     key: 'insights',
@@ -63,7 +63,7 @@ const PILLARS: {
     tint: '#ea580c',
     title: 'Activity',
     sub: 'GPS runs, rides & walks',
-    route: '/activity-track',
+    route: '/run',
   },
   {
     key: 'books',

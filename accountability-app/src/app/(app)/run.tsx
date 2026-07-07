@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,17 +22,18 @@ import {
   formatPace,
   totalDistanceMeters,
   type Pt,
-} from '../activity/geo';
-import { RouteTrace, traceHead } from '../activity/RouteTrace';
-import { RunShareSheet, type FinishedRun } from '../activity/RunShareSheet';
+} from '../../activity/geo';
+import { RouteTrace, traceHead } from '../../activity/RouteTrace';
+import { RunShareSheet, type FinishedRun } from '../../activity/RunShareSheet';
 import {
   LOCATION_TASK_NAME,
   readTrackPoints,
   resetTrackPoints,
-} from '../activity/locationTask';
-import { saveActivity, type ActivityType } from '../activity/api';
-import { getMyProfile } from '../profiles/api';
-import { font } from '../ui/theme';
+} from '../../activity/locationTask';
+import { saveActivity, type ActivityType } from '../../activity/api';
+import { getMyProfile } from '../../profiles/api';
+import { floatingTabBarStyle, FLOATING_BAR_CLEARANCE } from '../../ui/floatingTabBar';
+import { font } from '../../ui/theme';
 
 const LIME = '#c6f24e';
 const BG = '#101319';
@@ -82,6 +83,7 @@ async function stopUpdatesIfRunning() {
 export default function ActivityTrack() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const { width: W, height: H } = useWindowDimensions();
   const [type, setType] = useState<ActivityType>('run');
   const [tracking, setTracking] = useState(false);
@@ -111,6 +113,15 @@ export default function ActivityTrack() {
       stopUpdatesIfRunning();
     };
   }, []);
+
+  // hide the floating tab bar while actually recording or sharing, so the run
+  // stays immersive; show it (highlighted) in the idle pre-start state
+  const immersive = tracking || !!shareRun;
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: immersive ? { display: 'none' } : floatingTabBarStyle(W, insets.bottom),
+    });
+  }, [immersive, navigation, W, insets.bottom]);
 
   useEffect(() => {
     if (!tracking) {
@@ -323,7 +334,13 @@ export default function ActivityTrack() {
       </View>
 
       {/* floating bottom card */}
-      <View style={[styles.bottom, { paddingBottom: insets.bottom + 16 }]}>
+      <View
+        style={[
+          styles.bottom,
+          // lift the controls clear of the floating bar when it's showing
+          { paddingBottom: insets.bottom + (immersive ? 16 : FLOATING_BAR_CLEARANCE + 12) },
+        ]}
+      >
         <View style={styles.titleRow}>
           {avatar ? (
             <Image source={{ uri: avatar }} style={styles.avatar} />

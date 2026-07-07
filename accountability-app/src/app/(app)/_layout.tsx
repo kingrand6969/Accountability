@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardedKey } from '../onboarding';
 import { useAuth } from '../../auth/AuthProvider';
+import { floatingTabBarStyle } from '../../ui/floatingTabBar';
 import { colors } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -39,8 +40,6 @@ export default function AppLayout() {
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
-  // keep the island compact on wide screens — icons stay close together
-  const barWidth = Math.min(winW - 32, 400);
   const userId = session?.user.id ?? null;
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
@@ -62,23 +61,9 @@ export default function AppLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: '#475569',
         tabBarShowLabel: false,
-        // floating island, detached from the screen edges
-        tabBarStyle: {
-          position: 'absolute',
-          width: barWidth,
-          left: (winW - barWidth) / 2,
-          bottom: Math.max(insets.bottom, 8) + 8,
-          height: 62,
-          borderRadius: 31,
-          backgroundColor: '#ffffff',
-          borderTopWidth: 0,
-          paddingHorizontal: 8,
-          shadowColor: '#0f172a',
-          shadowOpacity: 0.14,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 12,
-        },
+        // floating island, detached from the screen edges (shared so the run
+        // screen can hide/restore it)
+        tabBarStyle: floatingTabBarStyle(winW, insets.bottom),
         tabBarItemStyle: {
           height: 62,
           alignItems: 'center',
@@ -123,6 +108,15 @@ export default function AppLayout() {
           title: 'Track',
           tabBarIcon: tabIcon('barbell', 'barbell-outline'),
           headerShown: false, // gradient hero runs edge-to-edge
+        }}
+      />
+      {/* Activity — the GPS run tracker, one tap from the bar */}
+      <Tabs.Screen
+        name="run"
+        options={{
+          title: 'Activity',
+          tabBarIcon: tabIcon('walk', 'walk-outline'),
+          headerShown: false, // immersive full-screen tracker
         }}
       />
       {/* Profile lives in the ☰ Menu now — hidden from the tab bar but the

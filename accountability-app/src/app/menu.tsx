@@ -30,7 +30,7 @@ const GRID: { icon: IoniconName; tint: string; title: string; route: string }[] 
   { icon: 'barbell-outline', tint: '#7c3aed', title: 'Exercises', route: '/gym' },
   { icon: 'nutrition-outline', tint: '#16a34a', title: 'Diet', route: '/diet' },
   { icon: 'wallet-outline', tint: '#dc2626', title: 'Finance', route: '/finance' },
-  { icon: 'walk-outline', tint: '#ea580c', title: 'Activity', route: '/activity-track' },
+  { icon: 'walk-outline', tint: '#ea580c', title: 'Activity', route: '/run' },
   { icon: 'star-outline', tint: '#7c3aed', title: 'Go Pro', route: '/paywall' },
 ];
 
