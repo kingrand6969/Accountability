@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { createItem } from '../timeline/api';
 import {
@@ -29,6 +30,22 @@ import { WorkoutTitleModal } from '../gym/WorkoutTitleModal';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
+
+const MUSCLE_TINT: Record<MuscleGroup, string> = {
+  chest: '#ef4444',
+  back: '#2563eb',
+  shoulders: '#f59e0b',
+  arms: '#7c3aed',
+  legs: '#0d9488',
+  core: '#db2777',
+};
+
+/** Colour for a raw primary-muscle name via its muscle group. */
+function tintForMuscle(raw: string | undefined): string {
+  if (!raw) return '#64748b';
+  const g = MUSCLE_GROUPS.find((m) => m.muscles.includes(raw));
+  return g ? MUSCLE_TINT[g.value] : '#64748b';
+}
 
 export default function Gym() {
   const router = useRouter();
@@ -137,7 +154,6 @@ export default function Gym() {
     if (selectedNames.length === 0) return;
     setSavingWorkout(true);
     try {
-      // A named workout holding the chosen exercises as check-off items.
       await createItem({
         type: 'workout',
         title,
@@ -155,8 +171,106 @@ export default function Gym() {
     }
   }
 
+  const activeLabel = showFavorites
+    ? 'Favorites'
+    : muscle
+      ? MUSCLE_GROUPS.find((g) => g.value === muscle)?.label
+      : 'All exercises';
+
   return (
     <View style={styles.screen}>
+      {/* pinned controls — always reachable while browsing */}
+      <View style={styles.header}>
+        <Pressable
+          style={({ pressed }) => [styles.planWrap, pressed && styles.pressed]}
+          onPress={() => router.push('/gym-plan' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Create a plan for me"
+        >
+          <LinearGradient
+            colors={['#3b82f6', '#2563eb']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.planCta}
+          >
+            <View style={styles.planIcon}>
+              <Ionicons name="sparkles" size={17} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.planTitle}>Create a plan for me</Text>
+              <Text style={styles.planSub}>Pick your focus — we build the workout</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#dbeafe" />
+          </LinearGradient>
+        </Pressable>
+
+        <View style={styles.searchWrap}>
+          <Ionicons name="search" size={17} color={colors.textFaint} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search 800+ exercises…"
+            placeholderTextColor={colors.textFaint}
+            autoCapitalize="none"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 ? (
+            <Pressable onPress={() => setSearch('')} hitSlop={8} accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={18} color={colors.textFaint} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <FilterChip
+            label="Favorites"
+            active={showFavorites}
+            onPress={() => setShowFavorites((v) => !v)}
+            star
+          />
+          <FilterChip
+            label="All"
+            active={!showFavorites && muscle === null}
+            onPress={() => {
+              setShowFavorites(false);
+              setMuscle(null);
+            }}
+          />
+          {MUSCLE_GROUPS.map((g) => (
+            <FilterChip
+              key={g.value}
+              label={g.label}
+              tint={MUSCLE_TINT[g.value]}
+              active={!showFavorites && muscle === g.value}
+              onPress={() => {
+                setShowFavorites(false);
+                setMuscle(g.value);
+              }}
+            />
+          ))}
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <FilterChip label="Any gear" active={equipment === null} onPress={() => setEquipment(null)} small />
+          {EQUIPMENT_OPTIONS.map((eq) => (
+            <FilterChip
+              key={eq.value}
+              label={eq.label}
+              active={equipment === eq.value}
+              onPress={() => setEquipment(equipment === eq.value ? null : eq.value)}
+              small
+            />
+          ))}
+        </ScrollView>
+
+        {!loading ? (
+          <Text style={styles.count}>
+            <Text style={styles.countStrong}>{activeLabel}</Text> · {results.length}
+            {hasMore ? '+' : ''} exercise{results.length === 1 ? '' : 's'}
+          </Text>
+        ) : null}
+      </View>
+
       <FlatList
         data={results}
         keyExtractor={(e) => e.id}
@@ -164,68 +278,6 @@ export default function Gym() {
         contentContainerStyle={styles.listContent}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
-        ListHeaderComponent={
-          <View style={styles.filters}>
-            <Pressable
-              style={({ pressed }) => [styles.planCta, pressed && styles.pressed]}
-              onPress={() => router.push('/gym-plan' as never)}
-              accessibilityRole="button"
-              accessibilityLabel="Create a plan for me"
-            >
-              <View style={styles.planIcon}>
-                <Ionicons name="sparkles" size={18} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.planCtaTitle}>Create a plan for me</Text>
-                <Text style={styles.planCtaSub}>Pick your focus — we build the workout</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-            </Pressable>
-            <TextInput
-              style={styles.search}
-              placeholder="Search exercises…"
-              placeholderTextColor={colors.textFaint}
-              autoCapitalize="none"
-              value={search}
-              onChangeText={setSearch}
-            />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <FilterChip
-                label="Favorites"
-                active={showFavorites}
-                onPress={() => setShowFavorites((v) => !v)}
-                star
-              />
-              <FilterChip label="All" active={!showFavorites && muscle === null} onPress={() => { setShowFavorites(false); setMuscle(null); }} />
-              {MUSCLE_GROUPS.map((g) => (
-                <FilterChip
-                  key={g.value}
-                  label={g.label}
-                  active={!showFavorites && muscle === g.value}
-                  onPress={() => { setShowFavorites(false); setMuscle(g.value); }}
-                />
-              ))}
-            </ScrollView>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <FilterChip label="Any gear" active={equipment === null} onPress={() => setEquipment(null)} small />
-              {EQUIPMENT_OPTIONS.map((eq) => (
-                <FilterChip
-                  key={eq.value}
-                  label={eq.label}
-                  active={equipment === eq.value}
-                  onPress={() => setEquipment(eq.value)}
-                  small
-                />
-              ))}
-            </ScrollView>
-            {!loading ? (
-              <Text style={styles.count}>
-                {results.length}
-                {hasMore ? '+' : ''} exercise{results.length === 1 ? '' : 's'}
-              </Text>
-            ) : null}
-          </View>
-        }
         ListEmptyComponent={
           loading ? (
             <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
@@ -239,59 +291,57 @@ export default function Gym() {
             <EmptyState
               icon="search-outline"
               title="No exercises found"
-              subtitle="No exercises match those filters."
+              subtitle="Try a different muscle group or gear."
             />
           )
         }
         ListFooterComponent={
-          loadingMore ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
-          ) : null
+          loadingMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} /> : null
         }
         renderItem={({ item }) => {
           const picked = !!selected[item.id];
           const fav = favIds.has(item.id);
+          const tint = tintForMuscle(item.primary_muscles[0]);
           return (
             <Pressable
-              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.row, picked && styles.rowPicked, pressed && styles.pressed]}
               onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: item.id } })}
             >
-              <Image source={{ uri: item.images[0] }} style={styles.thumb} resizeMode="contain" />
+              <View style={styles.thumbWrap}>
+                <Image source={{ uri: item.images[0] }} style={styles.thumb} resizeMode="cover" />
+              </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.meta}>
-                  {(item.primary_muscles[0] ?? 'full body')} · {prettyEquipment(item.equipment)}
+                <Text style={styles.name} numberOfLines={2}>
+                  {item.name}
                 </Text>
+                <View style={styles.metaRow}>
+                  <View style={[styles.muscleDot, { backgroundColor: tint }]} />
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {item.primary_muscles[0] ?? 'full body'} · {prettyEquipment(item.equipment)}
+                  </Text>
+                </View>
               </View>
               <Pressable
                 onPress={() => toggleFav(item.id)}
                 hitSlop={8}
-                style={({ pressed }) => [styles.starBtn, pressed && styles.pressed]}
+                style={styles.starBtn}
                 accessibilityRole="button"
                 accessibilityLabel={fav ? 'Remove from favorites' : 'Add to favorites'}
               >
                 <Ionicons
                   name={fav ? 'star' : 'star-outline'}
-                  size={22}
+                  size={21}
                   color={fav ? colors.accent : colors.textFaint}
                 />
               </Pressable>
               <Pressable
-                style={({ pressed }) => [
-                  styles.addBtn,
-                  picked && styles.addBtnOn,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.addBtn, picked && styles.addBtnOn, pressed && styles.pressed]}
                 onPress={() => toggleSelect(item)}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={picked ? `Remove ${item.name} from workout` : `Add ${item.name} to workout`}
               >
-                <Ionicons
-                  name={picked ? 'checkmark' : 'add'}
-                  size={22}
-                  color={picked ? colors.onPrimary : colors.primary}
-                />
+                <Ionicons name={picked ? 'checkmark' : 'add'} size={21} color={picked ? '#fff' : colors.primary} />
               </Pressable>
             </Pressable>
           );
@@ -304,7 +354,8 @@ export default function Gym() {
           onPress={() => setTitling(true)}
           accessibilityRole="button"
         >
-          <Text style={styles.logText}>Save workout ({selectedNames.length}) 💪</Text>
+          <Ionicons name="barbell" size={18} color="#fff" />
+          <Text style={styles.logText}>Save workout · {selectedNames.length}</Text>
         </Pressable>
       ) : null}
 
@@ -325,39 +376,34 @@ function FilterChip({
   onPress,
   small,
   star,
+  tint,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   small?: boolean;
   star?: boolean;
+  tint?: string;
 }) {
   return (
     <Pressable
       style={({ pressed }) => [
         styles.chip,
         small && styles.chipSmall,
-        star && styles.chipStar,
         active && (star ? styles.chipStarActive : styles.chipActive),
+        active && tint ? { backgroundColor: tint } : null,
         pressed && styles.pressed,
       ]}
       onPress={onPress}
       accessibilityRole="button"
+      accessibilityState={{ selected: active }}
     >
       {star ? (
-        <Ionicons
-          name={active ? 'star' : 'star-outline'}
-          size={14}
-          color={active ? colors.text : colors.accent}
-        />
+        <Ionicons name={active ? 'star' : 'star-outline'} size={14} color={active ? '#fff' : colors.accent} />
+      ) : tint && !active ? (
+        <View style={[styles.chipDot, { backgroundColor: tint }]} />
       ) : null}
-      <Text
-        style={[
-          styles.chipText,
-          active && styles.chipTextActive,
-          star && (active ? styles.chipStarTextActive : styles.chipStarText),
-        ]}
-      >
+      <Text style={[styles.chipText, small && styles.chipTextSmall, active && styles.chipTextActive]}>
         {label}
       </Text>
     </Pressable>
@@ -367,93 +413,97 @@ function FilterChip({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   pressed: { opacity: 0.7 },
-  listContent: { padding: 14, gap: 10, paddingBottom: 90 },
-  filters: { gap: 10, marginBottom: spacing.xs },
-  planCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    minHeight: 60,
+  header: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 10,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
+  planWrap: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  planCta: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, minHeight: 58 },
   planIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.card,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  planCtaTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  planCtaSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
-  search: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    fontSize: 16,
-    fontFamily: font.regular,
-    color: colors.text,
-    minHeight: 48,
+  planTitle: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
+  planSub: { fontFamily: font.regular, fontSize: 12.5, color: '#dbeafe', marginTop: 1 },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    minHeight: 46,
   },
-  chipRow: { gap: spacing.sm, paddingRight: spacing.sm },
+  searchInput: { flex: 1, fontSize: 15.5, fontFamily: font.regular, color: colors.text, paddingVertical: 10 },
+  chipRow: { gap: 7, paddingRight: spacing.sm },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    gap: 6,
+    backgroundColor: colors.surface,
     borderRadius: radius.pill,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    minHeight: 44,
+    paddingVertical: 9,
+    paddingHorizontal: 15,
+    minHeight: 40,
   },
-  chipSmall: { paddingVertical: 6, paddingHorizontal: spacing.md, borderColor: colors.textFaint },
-  chipStar: { borderColor: colors.accent },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipStarActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { color: colors.primary, fontFamily: font.semibold },
-  chipTextActive: { color: colors.onPrimary },
-  chipStarText: { color: colors.textSecondary },
-  chipStarTextActive: { color: colors.text },
-  count: { color: colors.textFaint, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
+  chipSmall: { minHeight: 34, paddingVertical: 6, paddingHorizontal: 13, backgroundColor: colors.surfaceAlt },
+  chipActive: { backgroundColor: colors.primary },
+  chipStarActive: { backgroundColor: colors.accent },
+  chipDot: { width: 7, height: 7, borderRadius: 3.5 },
+  chipText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 13.5 },
+  chipTextSmall: { fontSize: 12.5 },
+  chipTextActive: { color: '#fff', fontFamily: font.bold },
+  count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
+  countStrong: { color: colors.text, fontFamily: font.bold },
+  listContent: { padding: 14, gap: 9, paddingBottom: 96 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.surfaceAlt,
+    gap: 12,
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: 10,
-    minHeight: 44,
+    minHeight: 76,
   },
-  thumb: { width: 56, height: 56, borderRadius: radius.sm - 2, backgroundColor: colors.card },
-  name: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  meta: {
-    color: colors.textMuted,
-    fontFamily: font.regular,
-    marginTop: 2,
-    fontSize: 13,
-    textTransform: 'capitalize',
+  rowPicked: { borderColor: colors.success, backgroundColor: '#f0fdf4' },
+  thumbWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
   },
-  starBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  thumb: { width: '100%', height: '100%' },
+  name: { fontSize: 15.5, fontFamily: font.bold, color: colors.text, lineHeight: 19 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  muscleDot: { width: 8, height: 8, borderRadius: 4 },
+  meta: { flex: 1, color: colors.textMuted, fontFamily: font.medium, fontSize: 12.5, textTransform: 'capitalize' },
+  starBtn: { minWidth: 40, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1.5,
     borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -464,17 +514,19 @@ const styles = StyleSheet.create({
     left: spacing.lg,
     right: spacing.lg,
     bottom: spacing.xl,
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    minHeight: 48,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingVertical: 16,
+    minHeight: 52,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
-  logText: { color: colors.onPrimary, fontSize: 16, fontFamily: font.bold },
+  logText: { color: '#fff', fontSize: 16, fontFamily: font.extrabold },
 });
