@@ -27,6 +27,7 @@ import {
   txTime,
   type CategorySlice,
 } from '../../money/insights';
+import { buildFinanceInsights } from '../../money/financeInsights';
 import {
   billCategoryMeta,
   billStatus,
@@ -256,6 +257,13 @@ export default function Finance() {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txns]);
+
+  // private, on-device smart insights (the pacing line lives in the hero)
+  const smartInsights = useMemo(
+    () => (isCurrentMonth ? buildFinanceInsights({ cur: txns, last: lastTxns, bills, today }) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [txns, lastTxns, bills, isCurrentMonth],
+  ).slice(0, 2);
 
   if (loading) {
     return (
@@ -488,6 +496,32 @@ export default function Finance() {
           </View>
         </View>
       </GlassCard>
+
+      {/* SMART INSIGHT — private, computed from your own numbers */}
+      {isCurrentMonth && smartInsights.length > 0 ? (
+        <GlassCard blurTarget={bgRef}>
+          <View style={styles.cardPad}>
+            <View style={styles.insightHead}>
+              <Ionicons name="sparkles" size={14} color={ACCENT} />
+              <Text style={styles.kicker}>SMART INSIGHT</Text>
+            </View>
+            <View style={styles.insightList}>
+              {smartInsights.map((si) => {
+                const tone = si.tone === 'good' ? GOOD : si.tone === 'warn' ? OVER : INK;
+                return (
+                  <View key={si.key} style={styles.smartRow}>
+                    <View style={[styles.smartIcon, { backgroundColor: `${tone}1A` }]}>
+                      <Ionicons name={si.icon as never} size={15} color={tone} />
+                    </View>
+                    <Text style={styles.smartText}>{si.text}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={styles.smartNote}>Computed on your device — nothing is sent anywhere.</Text>
+          </View>
+        </GlassCard>
+      ) : null}
 
       {/* MONTHLY BILLS — current month only (bills are current templates) */}
       {isCurrentMonth ? (
@@ -910,6 +944,18 @@ const styles = StyleSheet.create({
   },
   legendMore: { color: ACCENT, fontFamily: font.bold, fontSize: 12.5, paddingVertical: 4 },
   legendEmpty: { color: INK_SOFT, fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
+  insightHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  insightList: { gap: spacing.sm, marginTop: spacing.md },
+  smartRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  smartIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smartText: { flex: 1, color: INK, fontFamily: font.semibold, fontSize: 13.5, lineHeight: 18 },
+  smartNote: { color: INK_SOFT, fontFamily: font.regular, fontSize: 10.5, marginTop: spacing.md },
   billsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   billsRollup: { color: INK_SOFT, fontFamily: font.bold, fontSize: 12.5 },
   billsEmpty: {
