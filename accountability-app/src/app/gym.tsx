@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -31,6 +30,7 @@ import { WorkoutTitleModal } from '../gym/WorkoutTitleModal';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { useLayout } from '../ui/responsive';
 
 const MUSCLE_TINT: Record<MuscleGroup, string> = {
   chest: '#ef4444',
@@ -50,12 +50,16 @@ function tintForMuscle(raw: string | undefined): string {
 
 export default function Gym() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { width, cols, gridMaxWidth: gridMax } = useLayout();
   // On wide/stretched screens, wrap the filter chips so every option is visible
   // (no more cut-off scroller); phones keep the compact horizontal scroll.
   const wide = width >= 520;
   // keep the floating "Save workout" bar in the same centered column
   const barInset = Math.max(16, (width - 560) / 2);
+  // tablet/desktop show 2–3 exercise cards per row; phones stay single column
+  const H_GAP = 10;
+  const gridInner = Math.min(width, gridMax) - 28; // 14px padding each side
+  const itemWidth = cols > 1 ? (gridInner - (cols - 1) * H_GAP) / cols : undefined;
   const [muscle, setMuscle] = useState<MuscleGroup | null>(null);
   const [equipment, setEquipment] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -188,7 +192,7 @@ export default function Gym() {
     <View style={styles.screen}>
       {/* pinned controls — always reachable while browsing */}
       <View style={styles.header}>
-        <View style={styles.headerInner}>
+        <View style={[styles.headerInner, { maxWidth: gridMax }]}>
         <Pressable
           style={({ pressed }) => [styles.planWrap, pressed && styles.pressed]}
           onPress={() => router.push('/gym-plan' as never)}
@@ -281,10 +285,14 @@ export default function Gym() {
       </View>
 
       <FlatList
+        // remount when column count changes (FlatList requires a new key)
+        key={`grid-${cols}`}
         data={results}
         keyExtractor={(e) => e.id}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.listContent}
+        numColumns={cols}
+        columnWrapperStyle={cols > 1 ? styles.gridRow : undefined}
+        contentContainerStyle={[styles.listContent, { maxWidth: gridMax }]}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         ListEmptyComponent={
@@ -313,7 +321,13 @@ export default function Gym() {
           const tint = tintForMuscle(item.primary_muscles[0]);
           return (
             <Pressable
-              style={({ pressed }) => [styles.row, picked && styles.rowPicked, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.row,
+                { marginBottom: 10 },
+                itemWidth != null && { width: itemWidth },
+                picked && styles.rowPicked,
+                pressed && styles.pressed,
+              ]}
               onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: item.id } })}
             >
               <View style={styles.thumbWrap}>
@@ -497,7 +511,8 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#fff', fontFamily: font.bold },
   count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
   countStrong: { color: colors.text, fontFamily: font.bold },
-  listContent: { padding: 14, gap: 9, paddingBottom: 96, width: '100%', maxWidth: 640, alignSelf: 'center' },
+  listContent: { padding: 14, paddingBottom: 96, width: '100%', alignSelf: 'center' },
+  gridRow: { gap: 10, alignItems: 'stretch' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
