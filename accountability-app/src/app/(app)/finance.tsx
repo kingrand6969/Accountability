@@ -75,6 +75,11 @@ export default function Finance() {
   const [allCats, setAllCats] = useState(false);
   const [ccChooser, setCcChooser] = useState<Bill | null>(null);
   const paysInFlight = useRef<Set<string>>(new Set());
+  // month backtracker (Pro): first-of-month; defaults to this month
+  const [selMonth, setSelMonth] = useState(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), 1);
+  });
   // 3-pane swipe: 0 = Banks & wallets, 1 = Overview (default), 2 = Savings
   const [page, setPage] = useState(1);
   const pagerRef = useRef<ScrollView>(null);
@@ -87,9 +92,12 @@ export default function Finance() {
 
   const load = useCallback(async () => {
     try {
-      const now = new Date();
-      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 15);
-      const [cur, last, bs] = await Promise.all([listMonth(now), listMonth(prev), listBills()]);
+      const prev = new Date(selMonth.getFullYear(), selMonth.getMonth() - 1, 15);
+      const [cur, last, bs] = await Promise.all([
+        listMonth(selMonth),
+        listMonth(prev),
+        listBills(),
+      ]);
       setTxns(cur);
       setLastTxns(last);
       setBills(bs);
@@ -99,7 +107,7 @@ export default function Finance() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selMonth]);
 
   useFocusEffect(
     useCallback(() => {
@@ -172,6 +180,22 @@ export default function Finance() {
   const income = sumByKind(txns, 'income');
   const expense = sumByKind(txns, 'expense');
   const balance = income - expense;
+  const isCurrentMonth =
+    selMonth.getFullYear() === today.getFullYear() && selMonth.getMonth() === today.getMonth();
+
+  // last 12 months (oldest → newest), for the Pro backtracker strip
+  const months: Date[] = [];
+  for (let i = 11; i >= 0; i--) {
+    months.push(new Date(today.getFullYear(), today.getMonth() - i, 1));
+  }
+  function onSelectMonth(m: Date) {
+    const cur = m.getFullYear() === today.getFullYear() && m.getMonth() === today.getMonth();
+    if (!cur && !isPro) {
+      router.push('/paywall');
+      return;
+    }
+    setSelMonth(m);
+  }
 
   // fair pacing: this month-to-date vs last month THROUGH THE SAME DAY —
   // never a partial month against a full one
@@ -225,7 +249,12 @@ export default function Finance() {
 
   const sortedBills = sortBills(bills, today);
   const stillToPay = unpaidTotal(bills, today);
-  const monthLabel = today.toLocaleDateString(undefined, { month: 'long' }).toUpperCase();
+  const monthLabel = selMonth
+    .toLocaleDateString(undefined, {
+      month: 'long',
+      year: isCurrentMonth ? undefined : 'numeric',
+    })
+    .toUpperCase();
   const fabRight = Math.max(spacing.xl, (winW - COL_MAX) / 2 + spacing.xl);
   const paceProgress =
     lastToDateSpend > 0 ? Math.min(1, expense / lastToDateSpend) : 0;
@@ -235,6 +264,45 @@ export default function Finance() {
 
   const header = (
     <View style={[styles.headerWrap, { paddingTop: panesTop }]}>
+      {/* month backtracker (Pro) */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.monthStrip}
+        ref={(r) => {
+          // land on the current (rightmost) month
+          if (r) requestAnimationFrame(() => r.scrollToEnd({ animated: false }));
+        }}
+      >
+        {months.map((m) => {
+          const active =
+            m.getFullYear() === selMonth.getFullYear() && m.getMonth() === selMonth.getMonth();
+          const cur =
+            m.getFullYear() === today.getFullYear() && m.getMonth() === today.getMonth();
+          const locked = !cur && !isPro;
+          return (
+            <Pressable
+              key={`${m.getFullYear()}-${m.getMonth()}`}
+              onPress={() => onSelectMonth(m)}
+              style={[styles.monthPill, active && styles.monthPillActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={m.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+            >
+              {locked ? (
+                <Ionicons name="lock-closed" size={10} color={INK_SOFT} />
+              ) : null}
+              <Text style={[styles.monthPillText, active && styles.monthPillTextActive]}>
+                {m.toLocaleDateString(undefined, {
+                  month: 'short',
+                  year: m.getFullYear() === today.getFullYear() ? undefined : '2-digit',
+                })}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
       {/* HERO — balance, in/out, pacing insight */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
@@ -245,7 +313,9 @@ export default function Finance() {
           <View style={styles.heroMainRow}>
             <View style={styles.heroBalanceBlock}>
               <Text style={styles.heroBalance}>{formatAmount(balance)}</Text>
-              <Text style={styles.heroSub}>left this month</Text>
+              <Text style={styles.heroSub}>
+                {isCurrentMonth ? 'left this month' : 'net that month'}
+              </Text>
             </View>
             <View style={styles.heroChips}>
               <View style={styles.heroChip}>
@@ -262,7 +332,7 @@ export default function Finance() {
               </View>
             </View>
           </View>
-          {insight.direction !== 'none' ? (
+          {isCurrentMonth && insight.direction !== 'none' ? (
             <>
               <View style={styles.divider} />
               <View style={styles.insightRow}>
@@ -318,7 +388,7 @@ export default function Finance() {
                     : []
               }
               centerTitle={expense > 0 ? formatAmount(expense) : '0.00'}
-              centerSub="this month"
+              centerSub={isCurrentMonth ? 'this month' : 'spent'}
               ink={INK}
             />
             <View style={styles.legendCol}>
@@ -380,51 +450,53 @@ export default function Finance() {
         </View>
       </GlassCard>
 
-      {/* MONTHLY BILLS — unchanged (density benchmark) */}
-      <GlassCard blurTarget={bgRef}>
-        <View style={styles.cardPad}>
-          <View style={styles.billsHeader}>
-            <Text style={styles.kicker}>MONTHLY BILLS</Text>
-            {bills.length > 0 ? (
-              <Text style={styles.billsRollup}>
-                {stillToPay > 0 ? `${formatAmount(stillToPay)} to pay` : 'All paid 🎉'}
-              </Text>
-            ) : null}
-          </View>
-
-          {sortedBills.length === 0 ? (
-            <Text style={styles.billsEmpty}>
-              Track electricity, water, internet, cable and credit cards — with due dates.
-            </Text>
-          ) : (
-            <View style={styles.billsList}>
-              {sortedBills.map((b) => (
-                <BillRow
-                  key={b.id}
-                  bill={b}
-                  onTogglePaid={() => onTogglePaid(b)}
-                  onOpen={() =>
-                    router.push({ pathname: '/bill-new', params: { id: b.id } } as never)
-                  }
-                />
-              ))}
+      {/* MONTHLY BILLS — current month only (bills are current templates) */}
+      {isCurrentMonth ? (
+        <GlassCard blurTarget={bgRef}>
+          <View style={styles.cardPad}>
+            <View style={styles.billsHeader}>
+              <Text style={styles.kicker}>MONTHLY BILLS</Text>
+              {bills.length > 0 ? (
+                <Text style={styles.billsRollup}>
+                  {stillToPay > 0 ? `${formatAmount(stillToPay)} to pay` : 'All paid 🎉'}
+                </Text>
+              ) : null}
             </View>
-          )}
 
-          <Pressable
-            style={({ pressed }) => [styles.addBillBtn, pressed && styles.pressed]}
-            onPress={() => router.push('/bill-new' as never)}
-            accessibilityLabel="Add a monthly bill"
-          >
-            <Ionicons name="add" size={16} color={ACCENT} />
-            <Text style={styles.addBillText}>Add bill</Text>
-          </Pressable>
-          <Text style={styles.disclaimer}>
-            Amounts and dates are entered by you for tracking. Refer to your provider’s
-            statement for official amounts. Not financial advice.
-          </Text>
-        </View>
-      </GlassCard>
+            {sortedBills.length === 0 ? (
+              <Text style={styles.billsEmpty}>
+                Track electricity, water, internet, cable and credit cards — with due dates.
+              </Text>
+            ) : (
+              <View style={styles.billsList}>
+                {sortedBills.map((b) => (
+                  <BillRow
+                    key={b.id}
+                    bill={b}
+                    onTogglePaid={() => onTogglePaid(b)}
+                    onOpen={() =>
+                      router.push({ pathname: '/bill-new', params: { id: b.id } } as never)
+                    }
+                  />
+                ))}
+              </View>
+            )}
+
+            <Pressable
+              style={({ pressed }) => [styles.addBillBtn, pressed && styles.pressed]}
+              onPress={() => router.push('/bill-new' as never)}
+              accessibilityLabel="Add a monthly bill"
+            >
+              <Ionicons name="add" size={16} color={ACCENT} />
+              <Text style={styles.addBillText}>Add bill</Text>
+            </Pressable>
+            <Text style={styles.disclaimer}>
+              Amounts and dates are entered by you for tracking. Refer to your provider’s
+              statement for official amounts. Not financial advice.
+            </Text>
+          </View>
+        </GlassCard>
+      ) : null}
 
       {/* white sheet top */}
       <View style={styles.sheetTop}>
@@ -708,6 +780,22 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   cardPad: { padding: spacing.lg },
+  monthStrip: { gap: 7, paddingRight: spacing.md, alignItems: 'center' },
+  monthPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    borderRadius: radius.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 15,
+    minHeight: 34,
+  },
+  monthPillActive: { backgroundColor: '#fff', borderColor: ACCENT },
+  monthPillText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 12.5, letterSpacing: 0.3 },
+  monthPillTextActive: { color: ACCENT },
   kicker: { color: INK, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
   monthTag: { color: INK_SOFT, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8 },
   heroTopRow: {
