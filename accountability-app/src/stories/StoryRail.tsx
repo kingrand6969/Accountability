@@ -160,6 +160,20 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
           }
         />
       ))}
+
+      {/* no buddies' stories yet — turn the empty rail into a useful nudge */}
+      {others.length === 0 ? (
+        <Pressable
+          style={({ pressed }) => [styles.hintTile, pressed && styles.pressed]}
+          onPress={() => router.push('/buddy')}
+          accessibilityLabel="Find accountability buddies"
+        >
+          <View style={styles.hintIcon}>
+            <Ionicons name="people" size={22} color={colors.primary} />
+          </View>
+          <Text style={styles.hintText}>Add buddies to see their stories</Text>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 });
@@ -278,5 +292,33 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     textAlign: 'center',
     lineHeight: 16,
+  },
+  hintTile: {
+    width: 150,
+    height: TILE_H,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: spacing.md,
+  },
+  hintIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hintText: {
+    color: colors.textMuted,
+    fontFamily: font.semibold,
+    fontSize: 12.5,
+    textAlign: 'center',
+    lineHeight: 17,
   },
 });

@@ -740,7 +740,8 @@ export default function Feed() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  // soft slate feed so the white cards lift off the page (FB/LinkedIn-style)
+  screen: { flex: 1, backgroundColor: colors.surface },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.45)',
@@ -799,12 +800,13 @@ const styles = StyleSheet.create({
   },
   sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
   sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  // stories + composer form a white "sheet" at the top of the slate feed
   storyStrip: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.card,
   },
   composer: {
     ...contentMax,
+    backgroundColor: colors.card,
     padding: spacing.lg,
     gap: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
