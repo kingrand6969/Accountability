@@ -23,6 +23,7 @@ import {
 import { formatAmount } from './categories';
 import { GlassCard } from '../ui/Glass';
 import { ProgressRing } from '../ui/ProgressRing';
+import { contentMaxWidth } from '../ui/responsive';
 import { colors, font, radius, spacing } from '../ui/theme';
 
 const INK = '#1e1b4b';
@@ -71,6 +72,7 @@ export function AccountsPane({
     }
   }
 
+  const colMax = contentMaxWidth(width);
   const total = accounts.reduce((a, b) => a + b.balance, 0);
   const oweOpen = debts.filter((d) => d.kind === 'owe' && !d.settled);
   const owedOpen = debts.filter((d) => d.kind === 'owed' && !d.settled);
@@ -81,7 +83,7 @@ export function AccountsPane({
   return (
     <ScrollView
       style={{ width }}
-      contentContainerStyle={[styles.pane, { paddingTop: topInset }]}
+      contentContainerStyle={[styles.pane, { maxWidth: colMax, paddingTop: topInset }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -284,12 +286,13 @@ export function SavingsPane({
     }, [load]),
   );
 
+  const colMax = contentMaxWidth(width);
   const total = goals.reduce((a, g) => a + g.saved, 0);
 
   return (
     <ScrollView
       style={{ width }}
-      contentContainerStyle={[styles.pane, { paddingTop: topInset }]}
+      contentContainerStyle={[styles.pane, { maxWidth: colMax, paddingTop: topInset }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

@@ -41,7 +41,7 @@ function Sphere({
 
 /** Base gradient + blob field. Wrap in BlurTargetView so Android blur samples it. */
 export const GlassBackdrop = forwardRef(function GlassBackdrop(
-  _props: object,
+  { columnWidth = 600 }: { columnWidth?: number },
   ref: Ref<View>,
 ) {
   return (
@@ -55,7 +55,7 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
       {/* blob field anchors to the CONTENT COLUMN (max 600), not the viewport —
           on wide screens the spheres keep crossing the glass cards' edges,
           which is what makes the frosting visible */}
-      <View style={styles.blobColumn} pointerEvents="none">
+      <View style={[styles.blobColumn, { maxWidth: columnWidth }]} pointerEvents="none">
         <Sphere
           id="blobA"
           size={300}

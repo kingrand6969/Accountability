@@ -34,6 +34,7 @@ import { saveActivity, type ActivityType } from '../../activity/api';
 import { getMyProfile } from '../../profiles/api';
 import { floatingTabBarStyle, FLOATING_BAR_CLEARANCE } from '../../ui/floatingTabBar';
 import { font } from '../../ui/theme';
+import { contentMaxWidth } from '../../ui/responsive';
 
 const LIME = '#c6f24e';
 const BG = '#101319';
@@ -265,7 +266,7 @@ export default function ActivityTrack() {
   const tracePad = { top: insets.top + 80, right: 70, bottom: H * 0.44, left: 60 };
   const head = traceHead(tracePoints, W, H, 5, tracePad);
   // keep the floating UI in a centered column on wide screens (map stays full-bleed)
-  const sideInset = Math.max(16, (W - 600) / 2);
+  const sideInset = Math.max(16, (W - contentMaxWidth(W)) / 2);
   const title = `${timeOfDay()} ${TYPES.find((t) => t.value === type)?.label ?? 'run'}`;
   const when = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const timeLabel = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });

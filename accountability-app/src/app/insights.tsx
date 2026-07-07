@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -15,6 +16,7 @@ import { formatHours, type Period } from '../insights/compute';
 import { useIsPro } from '../pro/ProProvider';
 import { GlassBackdrop, GlassCard } from '../ui/Glass';
 import { ProgressRing } from '../ui/ProgressRing';
+import { contentMaxWidth } from '../ui/responsive';
 import { colors, font, radius, spacing } from '../ui/theme';
 
 const INK = '#1e1b4b';
@@ -31,6 +33,8 @@ const PERIODS: { value: Period; label: string }[] = [
 export default function InsightsScreen() {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const { width } = useWindowDimensions();
+  const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
   const [period, setPeriod] = useState<Period>('week');
   const [data, setData] = useState<Insights | null>(null);
@@ -64,8 +68,8 @@ export default function InsightsScreen() {
 
   return (
     <View style={styles.screen}>
-      <GlassBackdrop ref={bgRef} />
-      <ScrollView contentContainerStyle={styles.container}>
+      <GlassBackdrop ref={bgRef} columnWidth={colMax} />
+      <ScrollView contentContainerStyle={[styles.container, { maxWidth: colMax }]}>
         {/* period toggle */}
         <View style={styles.toggle}>
           {PERIODS.map((p) => (
@@ -257,7 +261,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
     width: '100%',
-    maxWidth: 600,
     alignSelf: 'center',
   },
   center: { paddingVertical: 80, alignItems: 'center' },

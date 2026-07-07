@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -16,6 +17,7 @@ import { getInsights } from '../../insights/api';
 import { toLocalDateString } from '../../timeline/datetime';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { ProgressRing } from '../../ui/ProgressRing';
+import { contentMaxWidth } from '../../ui/responsive';
 import { font, radius, spacing } from '../../ui/theme';
 
 const INK = '#1e1b4b';
@@ -86,6 +88,8 @@ function weekDayDate(index: number): string {
 export default function Track() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -143,9 +147,9 @@ export default function Track() {
 
   return (
     <View style={styles.screen}>
-      <GlassBackdrop ref={bgRef} />
+      <GlassBackdrop ref={bgRef} columnWidth={colMax} />
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + spacing.xl }]}
+        contentContainerStyle={[styles.scroll, { maxWidth: colMax, paddingTop: insets.top + spacing.xl }]}
         showsVerticalScrollIndicator={false}
       >
         {/* greeting floats on the backdrop */}
@@ -289,7 +293,6 @@ const styles = StyleSheet.create({
     paddingBottom: 110, // clear the floating tab bar
     gap: spacing.md,
     width: '100%',
-    maxWidth: 600,
     alignSelf: 'center',
   },
   pressed: { opacity: 0.8 },

@@ -24,9 +24,9 @@ import {
 import { confirmDestructive } from '../ui/confirm';
 import { EmptyState } from '../ui/EmptyState';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { BP } from '../ui/responsive';
 
 const GRID_GAP = 4;
-const COLUMNS = 3;
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -58,8 +58,11 @@ export default function Memories() {
   const [loading, setLoading] = useState(true);
   const [viewer, setViewer] = useState<Memory | null>(null);
 
+  // more columns as the screen grows: 3 phone → 5 tablet → 6 large
+  const columns = width < BP.tablet ? 3 : width < BP.large ? 5 : 6;
+  const containerMax = width < BP.large ? width : 1120;
   const tile = Math.floor(
-    (Math.min(width, 720) - spacing.lg * 2 - GRID_GAP * (COLUMNS - 1)) / COLUMNS,
+    (Math.min(width, containerMax) - spacing.lg * 2 - GRID_GAP * (columns - 1)) / columns,
   );
 
   const load = useCallback(async () => {
@@ -119,7 +122,7 @@ export default function Memories() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { maxWidth: containerMax }]}>
         <Text style={styles.usageLine}>
           {formatBytes(used)} of {formatBytes(QUOTA_BYTES)} used
         </Text>
@@ -234,7 +237,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: spacing.lg,
-    maxWidth: 720,
     width: '100%',
     alignSelf: 'center',
     flexGrow: 1,

@@ -40,6 +40,7 @@ import { listBills, markBillPaid, unmarkBillPaid } from '../../money/billsApi';
 import { AccountsPane, SavingsPane } from '../../money/FinancePanes';
 import { EmptyState } from '../../ui/EmptyState';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
+import { contentMaxWidth } from '../../ui/responsive';
 import { DonutChart } from '../../ui/DonutChart';
 import { ProgressRing } from '../../ui/ProgressRing';
 import { confirmDestructive } from '../../ui/confirm';
@@ -67,6 +68,7 @@ export default function Finance() {
   const insets = useSafeAreaInsets();
   const { isPro } = useIsPro();
   const { width: winW } = useWindowDimensions();
+  const colMax = contentMaxWidth(winW);
   const bgRef = useRef<View>(null);
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [lastTxns, setLastTxns] = useState<Transaction[]>([]);
@@ -281,7 +283,7 @@ export default function Finance() {
       year: isCurrentMonth ? undefined : 'numeric',
     })
     .toUpperCase();
-  const fabRight = Math.max(spacing.xl, (winW - COL_MAX) / 2 + spacing.xl);
+  const fabRight = Math.max(spacing.xl, (winW - colMax) / 2 + spacing.xl);
   const paceProgress =
     lastToDateSpend > 0 ? Math.min(1, expense / lastToDateSpend) : 0;
   const underPace = insight.direction !== 'up';
@@ -289,7 +291,7 @@ export default function Finance() {
   const panesTop = insets.top + 44; // room for the floating pane tabs
 
   const header = (
-    <View style={[styles.headerWrap, { paddingTop: panesTop }]}>
+    <View style={[styles.headerWrap, { maxWidth: colMax, paddingTop: panesTop }]}>
       {/* month backtracker (Pro) — arrows step; strip scrolls to follow */}
       <View style={styles.monthNav}>
         <Pressable
@@ -589,7 +591,7 @@ export default function Finance() {
         }
         ListHeaderComponent={header}
         ListEmptyComponent={
-          <View style={[styles.sheetBody, styles.col]}>
+          <View style={[styles.sheetBody, styles.col, { maxWidth: colMax }]}>
             <EmptyState
               icon="wallet-outline"
               title="Nothing logged this month"
@@ -602,7 +604,7 @@ export default function Finance() {
         renderItem={({ item }) => {
           if (item.type === 'day') {
             return (
-              <View style={[styles.sheetBody, styles.col]}>
+              <View style={[styles.sheetBody, styles.col, { maxWidth: colMax }]}>
                 <View style={styles.dayHeader}>
                   <Text style={styles.dayLabel}>{item.label.toUpperCase()}</Text>
                   <Text
@@ -626,7 +628,7 @@ export default function Finance() {
             created &&
             `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}` === t.tx_date;
           return (
-            <View style={[styles.sheetBody, styles.col]}>
+            <View style={[styles.sheetBody, styles.col, { maxWidth: colMax }]}>
               <View style={styles.txRow}>
                 <View style={[styles.txIconCircle, { backgroundColor: `${tint}1F` }]}>
                   <Ionicons name={meta.icon as any} size={15} color={tint} />
@@ -663,13 +665,13 @@ export default function Finance() {
           );
         }}
         ListFooterComponent={<View style={styles.sheetFooter} />}
-        ListFooterComponentStyle={styles.sheetFooterWrap}
+        ListFooterComponentStyle={[styles.sheetFooterWrap, { maxWidth: colMax }]}
       />
   );
 
   return (
     <View style={styles.screen}>
-      <GlassBackdrop ref={bgRef} />
+      <GlassBackdrop ref={bgRef} columnWidth={colMax} />
 
       {/* swipe: ← Banks & wallets | Overview | Savings → */}
       <ScrollView
