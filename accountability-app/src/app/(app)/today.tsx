@@ -129,8 +129,7 @@ export default function Today() {
   }
 
   const emptyState = (
-    <View style={styles.emptyCenter}>
-      <GlassCard blurTarget={bgRef} style={styles.emptyCard}>
+    <GlassCard blurTarget={bgRef} style={styles.emptyCard}>
         <View style={styles.emptyPad}>
           <View style={styles.sunWrap}>
             <Ionicons name="sunny" size={26} color={ACCENT} />
@@ -159,8 +158,7 @@ export default function Today() {
             ))}
           </View>
         </View>
-      </GlassCard>
-    </View>
+    </GlassCard>
   );
 
   return (
@@ -224,7 +222,9 @@ export default function Today() {
           keyExtractor={(i) => i.id}
           style={styles.flexFill}
           contentContainerStyle={
-            items.length === 0 ? styles.emptyWrap : [styles.listContent, { maxWidth: colMax }]
+            items.length === 0
+              ? [styles.emptyWrap, { paddingBottom: isPro ? 150 : 200 }]
+              : [styles.listContent, { maxWidth: colMax }]
           }
           refreshControl={
             <RefreshControl
@@ -299,11 +299,18 @@ const styles = StyleSheet.create({
   toggleText: { color: INK_SOFT, fontFamily: font.semibold, fontSize: 14 },
   toggleTextActive: { color: ACCENT },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
-  emptyWrap: { flexGrow: 1 },
+  // centre the quick-start card in the space ABOVE the floating Add button,
+  // and let it scroll if the viewport is too short to fit it
+  emptyWrap: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+  },
   listContent: { padding: spacing.lg, gap: 10, paddingBottom: 170, width: '100%', alignSelf: 'center' },
   // quick-start empty state
-  emptyCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  emptyCard: { width: '100%', maxWidth: 380 },
+  emptyCard: { width: '100%', maxWidth: 380, alignSelf: 'center' },
   emptyPad: { padding: spacing.xl, alignItems: 'center', gap: spacing.sm },
   sunWrap: {
     width: 52,
