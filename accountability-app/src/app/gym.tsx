@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -49,6 +50,12 @@ function tintForMuscle(raw: string | undefined): string {
 
 export default function Gym() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  // On wide/stretched screens, wrap the filter chips so every option is visible
+  // (no more cut-off scroller); phones keep the compact horizontal scroll.
+  const wide = width >= 520;
+  // keep the floating "Save workout" bar in the same centered column
+  const barInset = Math.max(16, (width - 560) / 2);
   const [muscle, setMuscle] = useState<MuscleGroup | null>(null);
   const [equipment, setEquipment] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -181,6 +188,7 @@ export default function Gym() {
     <View style={styles.screen}>
       {/* pinned controls — always reachable while browsing */}
       <View style={styles.header}>
+        <View style={styles.headerInner}>
         <Pressable
           style={({ pressed }) => [styles.planWrap, pressed && styles.pressed]}
           onPress={() => router.push('/gym-plan' as never)}
@@ -221,7 +229,7 @@ export default function Gym() {
           ) : null}
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        <ChipBar wide={wide}>
           <FilterChip
             label="Favorites"
             active={showFavorites}
@@ -248,9 +256,9 @@ export default function Gym() {
               }}
             />
           ))}
-        </ScrollView>
+        </ChipBar>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        <ChipBar wide={wide}>
           <FilterChip label="Any gear" active={equipment === null} onPress={() => setEquipment(null)} small />
           {EQUIPMENT_OPTIONS.map((eq) => (
             <FilterChip
@@ -261,7 +269,7 @@ export default function Gym() {
               small
             />
           ))}
-        </ScrollView>
+        </ChipBar>
 
         {!loading ? (
           <Text style={styles.count}>
@@ -269,6 +277,7 @@ export default function Gym() {
             {hasMore ? '+' : ''} exercise{results.length === 1 ? '' : 's'}
           </Text>
         ) : null}
+        </View>
       </View>
 
       <FlatList
@@ -350,7 +359,11 @@ export default function Gym() {
 
       {selectedNames.length > 0 ? (
         <Pressable
-          style={({ pressed }) => [styles.logBar, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.logBar,
+            { left: barInset, right: barInset },
+            pressed && styles.pressed,
+          ]}
           onPress={() => setTitling(true)}
           accessibilityRole="button"
         >
@@ -367,6 +380,16 @@ export default function Gym() {
         onSave={onSaveWorkout}
       />
     </View>
+  );
+}
+
+/** Filter chips: wrap to fit every option on wide screens, scroll on phones. */
+function ChipBar({ wide, children }: { wide: boolean; children: ReactNode }) {
+  if (wide) return <View style={styles.chipWrap}>{children}</View>;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+      {children}
+    </ScrollView>
   );
 }
 
@@ -414,14 +437,14 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   pressed: { opacity: 0.7 },
   header: {
-    paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 8,
-    gap: 10,
     backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  // full-width bar, but keep the controls in a centered column on wide screens
+  headerInner: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 14, gap: 10 },
   planWrap: {
     borderRadius: radius.md,
     overflow: 'hidden',
@@ -453,6 +476,7 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 15.5, fontFamily: font.regular, color: colors.text, paddingVertical: 10 },
   chipRow: { gap: 7, paddingRight: spacing.sm },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -473,7 +497,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#fff', fontFamily: font.bold },
   count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
   countStrong: { color: colors.text, fontFamily: font.bold },
-  listContent: { padding: 14, gap: 9, paddingBottom: 96 },
+  listContent: { padding: 14, gap: 9, paddingBottom: 96, width: '100%', maxWidth: 640, alignSelf: 'center' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
