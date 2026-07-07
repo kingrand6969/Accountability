@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -84,6 +84,7 @@ export default function Finance() {
   const [page, setPage] = useState(1);
   const pagerRef = useRef<ScrollView>(null);
   const pagerReady = useRef(false);
+  const monthScrollRef = useRef<ScrollView>(null);
 
   function goToPage(i: number) {
     pagerRef.current?.scrollTo({ x: i * winW, animated: true });
@@ -196,6 +197,23 @@ export default function Finance() {
     }
     setSelMonth(m);
   }
+  function stepMonth(delta: number) {
+    onSelectMonth(new Date(selMonth.getFullYear(), selMonth.getMonth() + delta, 1));
+  }
+  const selMonthKey = `${selMonth.getFullYear()}-${selMonth.getMonth()}`;
+  // keep the selected pill in view (arrows drive it; the strip itself can't be
+  // dragged reliably — it's nested in the horizontal pane-swiper)
+  useEffect(() => {
+    const idx = months.findIndex(
+      (m) => m.getFullYear() === selMonth.getFullYear() && m.getMonth() === selMonth.getMonth(),
+    );
+    if (idx >= 0) {
+      requestAnimationFrame(() =>
+        monthScrollRef.current?.scrollTo({ x: Math.max(0, (idx - 2) * 74), animated: true }),
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selMonthKey]);
 
   // fair pacing: this month-to-date vs last month THROUGH THE SAME DAY —
   // never a partial month against a full one
@@ -264,17 +282,24 @@ export default function Finance() {
 
   const header = (
     <View style={[styles.headerWrap, { paddingTop: panesTop }]}>
-      {/* month backtracker (Pro) */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.monthStrip}
-        ref={(r) => {
-          // land on the current (rightmost) month
-          if (r) requestAnimationFrame(() => r.scrollToEnd({ animated: false }));
-        }}
-      >
-        {months.map((m) => {
+      {/* month backtracker (Pro) — arrows step; strip scrolls to follow */}
+      <View style={styles.monthNav}>
+        <Pressable
+          onPress={() => stepMonth(-1)}
+          hitSlop={8}
+          style={({ pressed }) => [styles.monthArrow, pressed && styles.pressed]}
+          accessibilityLabel="Previous month"
+        >
+          <Ionicons name="chevron-back" size={18} color={INK} />
+        </Pressable>
+        <ScrollView
+          ref={monthScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.monthStrip}
+          style={styles.monthStripScroll}
+        >
+          {months.map((m) => {
           const active =
             m.getFullYear() === selMonth.getFullYear() && m.getMonth() === selMonth.getMonth();
           const cur =
@@ -300,8 +325,22 @@ export default function Finance() {
               </Text>
             </Pressable>
           );
-        })}
-      </ScrollView>
+          })}
+        </ScrollView>
+        <Pressable
+          onPress={() => stepMonth(1)}
+          disabled={isCurrentMonth}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.monthArrow,
+            isCurrentMonth && styles.monthArrowDim,
+            pressed && styles.pressed,
+          ]}
+          accessibilityLabel="Next month"
+        >
+          <Ionicons name="chevron-forward" size={18} color={INK} />
+        </Pressable>
+      </View>
 
       {/* HERO — balance, in/out, pacing insight */}
       <GlassCard blurTarget={bgRef}>
@@ -780,7 +819,20 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   cardPad: { padding: spacing.lg },
-  monthStrip: { gap: 7, paddingRight: spacing.md, alignItems: 'center' },
+  monthNav: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  monthArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthArrowDim: { opacity: 0.35 },
+  monthStripScroll: { flex: 1 },
+  monthStrip: { gap: 7, paddingHorizontal: 4, alignItems: 'center' },
   monthPill: {
     flexDirection: 'row',
     alignItems: 'center',
