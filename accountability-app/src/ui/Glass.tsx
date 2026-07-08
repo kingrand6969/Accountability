@@ -12,26 +12,28 @@ import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
  * white plate for text contrast — per platform quirks).
  */
 
+/** A soft radial glow that fades fully to transparent at its edge — so it reads
+ *  as a gentle wash of colour with NO hard circle, even with no blur behind it. */
 function Sphere({
   id,
   size,
-  colors: [hi, mid, lo],
+  colors: [hi, mid],
   style,
   opacity,
 }: {
   id: string;
   size: number;
-  colors: [string, string, string];
+  colors: [string, string];
   style: ViewStyle;
   opacity: number;
 }) {
   return (
     <Svg width={size} height={size} style={[{ position: 'absolute', opacity }, style]}>
       <Defs>
-        <RadialGradient id={id} cx="32%" cy="28%" r="78%">
-          <Stop offset="0%" stopColor={hi} />
-          <Stop offset="55%" stopColor={mid} />
-          <Stop offset="100%" stopColor={lo} />
+        <RadialGradient id={id} cx="38%" cy="32%" r="72%">
+          <Stop offset="0%" stopColor={hi} stopOpacity={0.55} />
+          <Stop offset="50%" stopColor={mid} stopOpacity={0.28} />
+          <Stop offset="100%" stopColor={mid} stopOpacity={0} />
         </RadialGradient>
       </Defs>
       <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={`url(#${id})`} />
@@ -52,43 +54,31 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {/* blob field anchors to the CONTENT COLUMN (max 600), not the viewport —
-          on wide screens the spheres keep crossing the glass cards' edges,
-          which is what makes the frosting visible */}
+      {/* soft colour washes anchored to the content column — gentle glows that
+          fade to nothing, so the background stays calm and premium with or
+          without blur (no hard circles) */}
       <View style={[styles.blobColumn, { maxWidth: columnWidth }]} pointerEvents="none">
         <Sphere
           id="blobA"
-          size={300}
-          colors={['#E4D5FF', '#A78BFA', '#7C5CD9']}
-          style={{ top: -50, left: -90 }}
-          opacity={0.9}
+          size={460}
+          colors={['#EBE1FF', '#C9B6F5']}
+          style={{ top: -140, left: -160 }}
+          opacity={0.85}
         />
         <Sphere
           id="blobB"
-          size={230}
-          colors={['#FFD3E6', '#F49AC6', '#D96FA8']}
-          style={{ top: 170, right: -70 }}
-          opacity={0.75}
+          size={380}
+          colors={['#FFE4F0', '#F4BCD8']}
+          style={{ top: 220, right: -150 }}
+          opacity={0.7}
         />
         <Sphere
           id="blobC"
-          size={360}
-          colors={['#D3E6FF', '#8EC5FF', '#5E9BE6']}
-          style={{ top: 430, left: -130 }}
-          opacity={0.65}
+          size={520}
+          colors={['#E1EEFF', '#B7D6F7']}
+          style={{ top: 560, left: -190 }}
+          opacity={0.6}
         />
-        <Sphere
-          id="blobD"
-          size={130}
-          colors={['#FFE9C4', '#FFC96B', '#E8A93F']}
-          style={{ top: 330, right: 48 }}
-          opacity={0.55}
-        />
-        {/* crisp accents — blur shows best on hard edges */}
-        <View style={styles.ring} />
-        <View style={[styles.dot, { top: 150, left: 40 }]} />
-        <View style={[styles.dot, { top: 400, right: 90 }]} />
-        <View style={[styles.dot, { top: 600, left: 70 }]} />
       </View>
     </BlurTargetView>
   );
@@ -171,22 +161,5 @@ const styles = StyleSheet.create({
   blur: {
     borderRadius: 22.5,
     overflow: 'hidden',
-  },
-  ring: {
-    position: 'absolute',
-    top: 90,
-    right: -30,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.65)',
-  },
-  dot: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.8)',
   },
 });
