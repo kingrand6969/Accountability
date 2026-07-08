@@ -51,7 +51,7 @@ function HeaderIcon({
       onPress={onPress}
       accessibilityLabel={label}
       style={({ pressed }) => ({
-        minWidth: 42,
+        minWidth: 36,
         minHeight: 44,
         alignItems: 'center',
         justifyContent: 'center',

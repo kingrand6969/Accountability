@@ -27,9 +27,9 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
 
 const styles = StyleSheet.create({
   iconPill: {
-    width: 54,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 34,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -68,7 +68,6 @@ export default function AppLayout() {
           height: 62,
           alignItems: 'center',
           justifyContent: 'center',
-          paddingTop: 12,
         },
       }}
     >
@@ -78,10 +77,13 @@ export default function AppLayout() {
         options={{
           title: 'Feed',
           tabBarIcon: tabIcon('people', 'people-outline'),
+          // pin the wordmark to the left (iOS centres by default, which collides
+          // with the right-hand icons on a phone) and keep it compact
+          headerTitleAlign: 'left',
           headerTitle: () => (
             <Image
               source={require('../../../assets/images/wordmark.png')}
-              style={{ width: 168, height: 26 }}
+              style={{ width: 132, height: 21 }}
               resizeMode="contain"
               accessibilityLabel="AccountAbility"
             />
