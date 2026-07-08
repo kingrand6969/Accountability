@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Minimal shape of the props Expo Router's <Tabs tabBar={...}> passes — avoids a
@@ -53,16 +54,29 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
         { width: barWidth, left: (winW - barWidth) / 2, bottom: Math.max(insets.bottom, 8) + 8 },
       ]}
     >
-      <View style={styles.clip}>
-        <BlurView
-          intensity={Platform.select({ ios: 40, android: 55, web: 60, default: 50 })}
-          tint="light"
-          blurMethod="dimezisBlurViewSdk31Plus"
-          blurReductionFactor={2}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.plate} />
-        <View style={styles.row}>
+      <LinearGradient
+        colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.7)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.borderGrad}
+      >
+        <View style={styles.clip}>
+          <BlurView
+            intensity={Platform.select({ ios: 40, android: 55, web: 60, default: 50 })}
+            tint="light"
+            blurMethod="dimezisBlurViewSdk31Plus"
+            blurReductionFactor={2}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.plate} />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View style={styles.row}>
           {items.map((route) => {
             const { options } = descriptors[route.key];
             const isFocused = route.key === focusedKey;
@@ -87,8 +101,9 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
               </Pressable>
             );
           })}
+          </View>
         </View>
-      </View>
+      </LinearGradient>
     </View>
   );
 }
@@ -104,12 +119,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 12,
   },
+  // gradient border frame (1.5px) around the frosted pill
+  borderGrad: { flex: 1, borderRadius: 31, padding: 1.5 },
   clip: {
     flex: 1,
-    borderRadius: 31,
+    borderRadius: 29.5,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
   },
   // translucent plate so the frosted content behind stays legible under the icons
   plate: {

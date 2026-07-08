@@ -108,26 +108,38 @@ export function GlassCard({
 }) {
   return (
     <View style={[styles.shadowWrap, style]}>
-      <BlurView
-        intensity={Platform.select({ ios: 45, android: 60, web: 85, default: 60 })}
-        tint="light"
-        blurMethod="dimezisBlurViewSdk31Plus"
-        blurReductionFactor={2}
-        blurTarget={(blurTarget as never) ?? undefined}
-        style={styles.blur}
+      {/* gradient BORDER — a 1.5px light edge that catches the light top-left and
+          bottom-right, the signature glass rim. Renders identically on every
+          platform, so the panel reads as glass even where native blur is weak. */}
+      <LinearGradient
+        colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.7)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.borderGrad}
       >
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: `rgba(255,255,255,${plateOpacity})` },
-          ]}
-        />
-        <LinearGradient
-          colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0)']}
-          style={styles.bevel}
-        />
-        {children}
-      </BlurView>
+        <BlurView
+          intensity={Platform.select({ ios: 45, android: 60, web: 85, default: 60 })}
+          tint="light"
+          blurMethod="dimezisBlurViewSdk31Plus"
+          blurReductionFactor={2}
+          blurTarget={(blurTarget as never) ?? undefined}
+          style={styles.blur}
+        >
+          {/* base plate keeps ink legible */}
+          <View
+            style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(255,255,255,${plateOpacity})` }]}
+          />
+          {/* diagonal sheen — the frosted-glass highlight */}
+          <LinearGradient
+            colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          {children}
+        </BlurView>
+      </LinearGradient>
     </View>
   );
 }
@@ -153,14 +165,13 @@ const styles = StyleSheet.create({
           shadowRadius: 32,
         }),
   },
-  // radius + clip + border on the BlurView itself (clips native blur AND web backdrop-filter)
+  // the gradient border is a 1.5px frame around the frosted panel
+  borderGrad: { borderRadius: 24, padding: 1.5 },
+  // radius + clip on the BlurView itself (clips native blur AND web backdrop-filter)
   blur: {
-    borderRadius: 24,
+    borderRadius: 22.5,
     overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.65)',
   },
-  bevel: { position: 'absolute', top: 0, left: 16, right: 16, height: 1 },
   ring: {
     position: 'absolute',
     top: 90,
