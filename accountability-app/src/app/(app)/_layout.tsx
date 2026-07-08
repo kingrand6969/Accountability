@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardedKey } from '../onboarding';
 import { useAuth } from '../../auth/AuthProvider';
 import { floatingTabBarStyle } from '../../ui/floatingTabBar';
+import { GlassTabBar } from '../../ui/GlassTabBar';
 import { colors } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -56,13 +57,14 @@ export default function AppLayout() {
 
   return (
     <Tabs
+      // custom glassmorphic bar — guarantees even icon distribution + frosted glass
+      tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
         headerShown: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: '#475569',
         tabBarShowLabel: false,
-        // floating island, detached from the screen edges (shared so the run
-        // screen can hide/restore it)
+        // kept so the run screen can hide the bar via tabBarStyle:{display:'none'}
         tabBarStyle: floatingTabBarStyle(winW, insets.bottom),
         tabBarItemStyle: {
           height: 62,
