@@ -1,6 +1,5 @@
-import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getNotifications } from '../lib/expoGo';
 
 const FLAG_KEY = 'streakReminder:enabled';
 const ID_KEY = 'streakReminder:id';
@@ -11,32 +10,32 @@ export async function isStreakReminderOn(): Promise<boolean> {
 
 /** Schedule a daily 8pm "keep your streak" reminder. Returns false if denied. */
 export async function enableStreakReminder(): Promise<boolean> {
-  if (Platform.OS === 'web') {
+  const N = await getNotifications();
+  if (!N) {
+    // web or Expo Go — remember the preference; real scheduling needs a dev build
     await AsyncStorage.setItem(FLAG_KEY, '1');
     return true;
   }
-  const current = await Notifications.getPermissionsAsync();
-  const granted = current.granted
-    ? true
-    : (await Notifications.requestPermissionsAsync()).granted;
+  const current = await N.getPermissionsAsync();
+  const granted = current.granted ? true : (await N.requestPermissionsAsync()).granted;
   if (!granted) return false;
 
   const existing = await AsyncStorage.getItem(ID_KEY);
   if (existing) {
     try {
-      await Notifications.cancelScheduledNotificationAsync(existing);
+      await N.cancelScheduledNotificationAsync(existing);
     } catch {
       // already gone
     }
   }
-  const id = await Notifications.scheduleNotificationAsync({
+  const id = await N.scheduleNotificationAsync({
     content: {
       title: 'Keep your streak alive 🔥',
       body: "Log something today so your streak doesn't reset.",
       sound: true,
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      type: N.SchedulableTriggerInputTypes.DAILY,
       hour: 20,
       minute: 0,
     },
@@ -48,11 +47,14 @@ export async function enableStreakReminder(): Promise<boolean> {
 
 export async function disableStreakReminder(): Promise<void> {
   const existing = await AsyncStorage.getItem(ID_KEY);
-  if (existing && Platform.OS !== 'web') {
-    try {
-      await Notifications.cancelScheduledNotificationAsync(existing);
-    } catch {
-      // already gone
+  if (existing) {
+    const N = await getNotifications();
+    if (N) {
+      try {
+        await N.cancelScheduledNotificationAsync(existing);
+      } catch {
+        // already gone
+      }
     }
   }
   await AsyncStorage.removeItem(ID_KEY);
