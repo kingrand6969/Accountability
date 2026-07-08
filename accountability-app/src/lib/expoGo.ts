@@ -17,5 +17,12 @@ export const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.
  */
 export async function getNotifications(): Promise<typeof import('expo-notifications') | null> {
   if (Platform.OS === 'web' || isExpoGo) return null;
-  return import('expo-notifications');
+  try {
+    // Dynamic import so the module is only ever evaluated in a supported build.
+    // Belt-and-braces: if execution-environment detection is wrong and we're
+    // actually in Expo Go, evaluating expo-notifications throws — swallow it.
+    return await import('expo-notifications');
+  } catch {
+    return null;
+  }
 }
