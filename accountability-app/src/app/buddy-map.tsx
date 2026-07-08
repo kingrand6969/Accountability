@@ -59,13 +59,17 @@ export default function BuddyMap() {
   }, []);
 
   const load = useCallback(() => {
-    getBuddyLocations()
+    return getBuddyLocations()
       .then(setRows)
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
   }, []);
 
-  useFocusEffect(load);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   const mine = rows.find((r) => r.user_id === uid) ?? null;
   const buddies = rows.filter((r) => r.user_id !== uid);
@@ -92,7 +96,7 @@ export default function BuddyMap() {
         await pushLiveLocation(pos.coords.latitude, pos.coords.longitude);
         showToast('Sharing your live location with buddies');
       }
-      load();
+      await load(); // keep the spinner until state reflects reality (no OFF flicker)
     } catch (e) {
       Alert.alert('Could not update', String((e as Error).message ?? e));
     } finally {
@@ -139,6 +143,9 @@ export default function BuddyMap() {
         ) : (
           <GlassCard style={styles.card}>
             <View style={styles.listPad}>
+              {!mine ? (
+                <Text style={styles.distHint}>Turn on your location above to see how far away they are.</Text>
+              ) : null}
               {buddies.map((b) => {
                 const dist = mine ? haversineKm(mine, b) : null;
                 return (
@@ -190,6 +197,7 @@ const styles = StyleSheet.create({
   name: { fontFamily: font.bold, fontSize: 14.5, color: INK },
   rowSub: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, marginTop: 1 },
   dist: { fontFamily: font.extrabold, fontSize: 14, color: ACCENT },
+  distHint: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, paddingHorizontal: 4, paddingBottom: 6, lineHeight: 16 },
   empty: { fontFamily: font.medium, fontSize: 13.5, color: INK_SOFT, textAlign: 'center', padding: spacing.lg, lineHeight: 19 },
   note: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, textAlign: 'center', lineHeight: 17, marginTop: 4 },
 });

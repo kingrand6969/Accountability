@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { getPublicProfiles } from '../profiles/publicProfiles';
 
 /**
  * Compete layer — opt-in location, buddy live-location, Pro-created challenges,
@@ -120,8 +121,12 @@ export async function enableLocationSharing(): Promise<{ city: string | null; co
   const uid = await me();
   if (!uid) return null;
   if (Platform.OS === 'web') {
-    // web can't geocode; still let the user opt in so they appear once on a phone
-    await supabase.from('profiles').update({ share_location: true }).eq('id', uid);
+    // web can't geocode — null any stale place so we never re-publish a location
+    // the user hasn't confirmed here; they'll geocode next time on their phone
+    await supabase
+      .from('profiles')
+      .update({ city: null, country: null, share_location: true })
+      .eq('id', uid);
     return { city: null, country: null };
   }
   try {
@@ -135,7 +140,7 @@ export async function enableLocationSharing(): Promise<{ city: string | null; co
     const country = p?.country ?? null;
     const { error } = await supabase
       .from('profiles')
-      .update({ city, country, share_location: true })
+      .update({ city, country, share_location: true, tz_offset: new Date().getTimezoneOffset() })
       .eq('id', uid);
     if (error) throw error;
     return { city, country };
@@ -147,9 +152,28 @@ export async function enableLocationSharing(): Promise<{ city: string | null; co
 export async function disableLocationSharing(): Promise<void> {
   const uid = await me();
   if (!uid) return;
-  await supabase.from('profiles').update({ share_location: false }).eq('id', uid);
+  // opt-out forgets the coarse place too (data minimisation), not just the flag
+  await supabase
+    .from('profiles')
+    .update({ city: null, country: null, share_location: false })
+    .eq('id', uid);
   // also drop any live position we were sharing with buddies
   await supabase.from('buddy_locations').delete().eq('user_id', uid);
+}
+
+/**
+ * Store the device's current UTC offset so leaderboards bucket "active days" by
+ * the user's local day (matching the streak on Insights/Track). Cheap & safe to
+ * call on mount; failures are non-critical.
+ */
+export async function syncTimezone(): Promise<void> {
+  const uid = await me();
+  if (!uid) return;
+  try {
+    await supabase.from('profiles').update({ tz_offset: new Date().getTimezoneOffset() }).eq('id', uid);
+  } catch {
+    // non-critical — leaderboards fall back to UTC bucketing
+  }
 }
 
 // ─── Live buddy location ─────────────────────────────────────────────────────
@@ -174,16 +198,23 @@ export async function stopLiveLocation(): Promise<void> {
 export async function getBuddyLocations(): Promise<BuddyLocation[]> {
   const { data, error } = await supabase
     .from('buddy_locations')
-    .select('user_id,lat,lng,updated_at,profiles(display_name,avatar_url)');
+    .select('user_id,lat,lng,updated_at');
   if (error) throw error;
-  return (data ?? []).map((r: any) => ({
-    user_id: r.user_id,
-    lat: Number(r.lat),
-    lng: Number(r.lng),
-    updated_at: r.updated_at,
-    name: r.profiles?.display_name ?? null,
-    avatar: r.profiles?.avatar_url ?? null,
-  }));
+  const rows = data ?? [];
+  // names/avatars come from public_profiles — the base profiles row only exposes
+  // your own, so an embedded join would return null for every buddy
+  const profs = await getPublicProfiles(rows.map((r: any) => r.user_id));
+  return rows.map((r: any) => {
+    const p = profs.get(r.user_id);
+    return {
+      user_id: r.user_id,
+      lat: Number(r.lat),
+      lng: Number(r.lng),
+      updated_at: r.updated_at,
+      name: p?.display_name ?? null,
+      avatar: p?.avatar_url ?? null,
+    };
+  });
 }
 
 // ─── Leaderboards ────────────────────────────────────────────────────────────
@@ -308,7 +339,8 @@ export async function joinChallenge(id: string): Promise<void> {
   const { error } = await supabase
     .from('challenge_participants')
     .insert({ challenge_id: id, user_id: uid });
-  if (error && !String(error.message).includes('duplicate')) throw error;
+  // 23505 = unique-violation (already joined) — treat as a no-op
+  if (error && error.code !== '23505') throw error;
 }
 
 export async function leaveChallenge(id: string): Promise<void> {

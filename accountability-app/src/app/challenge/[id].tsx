@@ -44,16 +44,18 @@ export default function ChallengeDetail() {
   const [challenge, setChallenge] = useState<ChallengeCard | null>(null);
   const [standings, setStandings] = useState<StandingRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
+    setFailed(false);
     Promise.all([getChallenge(id), getChallengeStandings(id)])
       .then(([c, s]) => {
         setChallenge(c);
         setStandings(s);
       })
-      .catch(() => {})
+      .catch(() => setFailed(true)) // a fetch error is NOT the same as "deleted"
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -87,7 +89,21 @@ export default function ChallengeDetail() {
     return (
       <View style={[styles.screen, styles.center]}>
         <GlassBackdrop ref={bgRef} columnWidth={colMax} />
-        <Text style={styles.gone}>This challenge no longer exists.</Text>
+        <Text style={styles.gone}>
+          {failed ? "Couldn't load this challenge." : 'This challenge no longer exists.'}
+        </Text>
+        {failed ? (
+          <Pressable
+            style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+            onPress={() => {
+              setLoading(true);
+              load();
+            }}
+            accessibilityRole="button"
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -162,8 +178,15 @@ export default function ChallengeDetail() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
-  center: { alignItems: 'center', justifyContent: 'center' },
-  gone: { fontFamily: font.medium, color: INK_SOFT, fontSize: 15 },
+  center: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
+  gone: { fontFamily: font.medium, color: INK_SOFT, fontSize: 15, textAlign: 'center' },
+  retryBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: radius.pill,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+  },
+  retryText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   pressed: { opacity: 0.7 },
   hero: {},

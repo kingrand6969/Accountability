@@ -29,6 +29,7 @@ import {
   joinChallenge,
   leaveChallenge,
   metricMeta,
+  syncTimezone,
   type ChallengeCard,
   type LocationSharing,
   type Metric,
@@ -57,6 +58,8 @@ export default function Compete() {
 
   useEffect(() => {
     supabase.auth.getUser().then((r) => setUid(r.data.user?.id ?? null));
+    // keep the user's local-day offset current so board days match their streak
+    syncTimezone();
   }, []);
 
   return (
