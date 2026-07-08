@@ -79,6 +79,10 @@ function RootNavigator() {
           options={{ headerShown: true, title: 'Add', presentation: 'modal' }}
         />
         <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
+        <Stack.Screen name="compete" options={{ headerShown: true, title: 'Compete' }} />
+        <Stack.Screen name="challenge/[id]" options={{ headerShown: true, title: 'Challenge' }} />
+        <Stack.Screen name="challenge-new" options={{ headerShown: true, title: 'New Challenge' }} />
+        <Stack.Screen name="buddy-map" options={{ headerShown: true, title: 'Buddy Location' }} />
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
         <Stack.Screen name="buddy-card/[id]" options={{ headerShown: true, title: 'Buddy' }} />
         <Stack.Screen

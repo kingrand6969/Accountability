@@ -222,6 +222,15 @@ export default function BuddyHub() {
         <Text style={styles.customizeText}>Customize how others see your buddy card</Text>
       </Pressable>
 
+      <Pressable
+        onPress={() => router.push('/compete' as never)}
+        style={({ pressed }) => [styles.customizeRow, pressed && styles.pressed]}
+        accessibilityLabel="Compete with your buddies"
+      >
+        <Ionicons name="trophy-outline" size={15} color={colors.primary} />
+        <Text style={styles.customizeText}>Compete with your buddies &amp; climb the leaderboards</Text>
+      </Pressable>
+
       {tab === 'discover' ? (
         <FlatList
           data={results ?? candidates}

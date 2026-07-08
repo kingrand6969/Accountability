@@ -33,7 +33,7 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/diet' | '/run' | '/insights' | '/books';
+  route: '/gym' | '/diet' | '/run' | '/insights' | '/books' | '/compete';
 }[] = [
   {
     key: 'insights',
@@ -42,6 +42,14 @@ const PILLARS: {
     title: 'Progress & Insights',
     sub: 'Your day, week & month at a glance',
     route: '/insights',
+  },
+  {
+    key: 'compete',
+    icon: 'trophy-outline',
+    tint: '#6d28d9',
+    title: 'Compete & Leaderboards',
+    sub: 'Rank by city, challenge buddies & more',
+    route: '/compete',
   },
   {
     key: 'gym',
