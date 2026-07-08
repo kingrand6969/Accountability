@@ -131,6 +131,9 @@ export default function AppLayout() {
         name="profile"
         options={{
           href: null,
+          // href:null hides the button but on native still reserves a flex slot,
+          // leaving dead space on the right of the bar — collapse it entirely
+          tabBarItemStyle: { display: 'none' },
           headerShown: false, // cover photo runs edge-to-edge, FB-style
         }}
       />
