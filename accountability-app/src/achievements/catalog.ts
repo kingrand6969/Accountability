@@ -164,6 +164,7 @@ export const RANKS = [
   { name: 'Committed', at: 140 },
   { name: 'Elite', at: 260 },
   { name: 'Legend', at: 420 },
+  { name: 'Mythical', at: 600 },
 ];
 
 export function rankFor(points: number): { name: string; next: { name: string; at: number } | null; progress: number } {
