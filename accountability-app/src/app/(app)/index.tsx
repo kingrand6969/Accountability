@@ -5,31 +5,23 @@ import {
   FlatList,
   Image,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { addPostTags, listFeed, createPost, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
-import { createEvent, attendEvent } from '../../events/api';
-import { toIsoFromLocal, toLocalDateString } from '../../timeline/datetime';
-import { uploadPostImage } from '../../feed/uploadPostImage';
+import { listFeed, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
+import { attendEvent } from '../../events/api';
 import { SaveToMemories } from '../../memories/SaveToMemories';
-import { currentPlaceLabel, saveImageToMemories } from '../../memories/api';
-import { listBuddies, type Buddy } from '../../buddy/api';
-import { promptCrossShare } from '../../feed/crossShare';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
-import { PhotoEditor, type EditedPhoto } from '../../media/PhotoEditor';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
+import { getMyProfile } from '../../profiles/api';
 import type { FeedPost } from '../../feed/types';
 import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
 
@@ -71,29 +63,15 @@ export default function Feed() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
-  const [body, setBody] = useState('');
-  const [posting, setPosting] = useState(false);
-  const [pickedBase64, setPickedBase64] = useState<string | null>(null);
-  const [pickedExt, setPickedExt] = useState('jpg');
-  const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const [keepInMemories, setKeepInMemories] = useState(false);
-  // tag buddies on this post
-  const [tagPickerOpen, setTagPickerOpen] = useState(false);
-  const [buddies, setBuddies] = useState<Buddy[]>([]);
-  const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
-  const [editorUri, setEditorUri] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  // event announcement mini-form
-  const [eventOpen, setEventOpen] = useState(false);
-  const [evTitle, setEvTitle] = useState('');
-  const [evDate, setEvDate] = useState(() => toLocalDateString(new Date()));
-  const [evTime, setEvTime] = useState('18:00');
-  const [evLocation, setEvLocation] = useState('');
   const [attending, setAttending] = useState<Set<string>>(new Set());
+  const [me, setMe] = useState<{ name: string | null; avatar: string | null }>({
+    name: null,
+    avatar: null,
+  });
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
   const storyRailRef = useRef<StoryRailHandle>(null);
-  const composerRef = useRef<TextInput>(null);
 
   // header: ☰ menu left; ＋ create, pages, groups right
   useEffect(() => {
@@ -114,13 +92,19 @@ export default function Feed() {
     });
   }, [navigation, router]);
 
+  useEffect(() => {
+    getMyProfile()
+      .then((p) => setMe({ name: p?.display_name ?? null, avatar: p?.avatar_url ?? null }))
+      .catch(() => {});
+  }, []);
+
   const CREATE_ITEMS: { icon: IoniconName; tint: string; title: string; sub: string; action: () => void }[] = [
     {
       icon: 'create-outline',
       tint: colors.primary,
       title: 'Post',
       sub: 'Share a win or an update',
-      action: () => composerRef.current?.focus(),
+      action: () => router.push('/compose' as never),
     },
     {
       icon: 'add-circle-outline',
@@ -197,72 +181,6 @@ export default function Feed() {
     }
   }
 
-  async function onPickPhoto() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to attach an image.');
-      return;
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.6,
-      base64: true,
-    });
-    if (res.canceled) return;
-    const asset = res.assets[0];
-    if (!asset.base64) {
-      Alert.alert('Could not read image', 'Please try a different photo.');
-      return;
-    }
-    if (Platform.OS === 'web') {
-      // no view-shot on web — use the raw photo
-      setPickedBase64(asset.base64);
-      setPickedExt(asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg');
-      setPreviewUri(asset.uri);
-      return;
-    }
-    // native: filters + brand watermark get baked in by the editor
-    setEditorUri(asset.uri);
-  }
-
-  function onEdited(photo: EditedPhoto) {
-    setPickedBase64(photo.base64);
-    setPickedExt('jpg');
-    setPreviewUri(photo.uri);
-    setEditorUri(null);
-  }
-
-  function clearPhoto() {
-    setPickedBase64(null);
-    setPreviewUri(null);
-    setKeepInMemories(false);
-    setTaggedIds(new Set());
-  }
-
-  async function openTagPicker() {
-    setTagPickerOpen(true);
-    if (buddies.length === 0) {
-      try {
-        setBuddies(await listBuddies());
-      } catch {
-        // list stays empty — the sheet explains how to add buddies
-      }
-    }
-  }
-
-  function toggleTag(id: string) {
-    setTaggedIds((cur) => {
-      const next = new Set(cur);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  const canPost = eventOpen
-    ? evTitle.trim().length >= 3 && !posting
-    : (body.trim().length > 0 || !!pickedBase64) && !posting;
-
   async function onAttend(post: FeedPost) {
     if (!post.event || attending.has(post.event.group_id)) return;
     setAttending((cur) => new Set(cur).add(post.event!.group_id));
@@ -276,73 +194,6 @@ export default function Feed() {
         return n;
       });
       Alert.alert('Could not join', String((e as Error).message ?? e));
-    }
-  }
-
-  async function onPost() {
-    if (eventOpen) {
-      if (evTitle.trim().length < 3) return;
-      setPosting(true);
-      try {
-        await createEvent({
-          title: evTitle,
-          startsAtIso: toIsoFromLocal(evDate, evTime),
-          location: evLocation,
-          message: body.trim(),
-        });
-        setBody('');
-        setEvTitle('');
-        setEvLocation('');
-        setEventOpen(false);
-        await load();
-        showToast('Event announced — its group is ready 🎉');
-      } catch (e) {
-        Alert.alert('Could not announce event', String((e as Error).message ?? e));
-      } finally {
-        setPosting(false);
-      }
-      return;
-    }
-    if (!body.trim() && !pickedBase64) return;
-    setPosting(true);
-    const postedText = body.trim();
-    const postedImageUri = previewUri; // local file — shareable to FB/IG
-    const keep = keepInMemories && !!previewUri;
-    const tagIds = [...taggedIds];
-    const tagNames = buddies
-      .filter((b) => taggedIds.has(b.id))
-      .map((b) => authorLabel(b.name));
-    try {
-      let imageUrl: string | null = null;
-      if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
-      const postId = await createPost(postedText, imageUrl);
-      if (tagIds.length > 0) {
-        // best-effort: a tagging hiccup must never fail the post itself
-        await addPostTags(postId, tagIds).catch(() => {});
-      }
-      if (keep && postedImageUri) {
-        // best-effort: a Memories hiccup must never fail the post itself
-        try {
-          const place = await currentPlaceLabel();
-          await saveImageToMemories(postedImageUri, place, tagNames);
-          showToast('Posted — and kept in Memories ✨');
-        } catch {
-          showToast('Posted! (could not save to Memories)');
-        }
-      }
-      setBody('');
-      clearPhoto();
-      await load();
-      // Growth loop: offer to cross-share to Facebook/Instagram (native only).
-      if (Platform.OS === 'web') {
-        showToast('Posted to your feed 🎉');
-      } else {
-        promptCrossShare(postedText, postedImageUri);
-      }
-    } catch (e) {
-      Alert.alert('Could not post', String((e as Error).message ?? e));
-    } finally {
-      setPosting(false);
     }
   }
 
@@ -375,10 +226,6 @@ export default function Feed() {
 
   return (
     <View style={styles.screen}>
-      {editorUri ? (
-        <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
-      ) : null}
-
       {/* ＋ create sheet */}
       <Modal
         visible={createOpen}
@@ -420,209 +267,25 @@ export default function Feed() {
       <View style={styles.storyStrip}>
         <StoryRail ref={storyRailRef} />
       </View>
-      <View style={styles.composer}>
-        <TextInput
-          ref={composerRef}
-          style={styles.composerInput}
-          placeholder="Share a win or what you're up to…"
-          placeholderTextColor={colors.textFaint}
-          value={body}
-          onChangeText={setBody}
-          multiline
-        />
-        {previewUri ? (
-          <View style={styles.previewWrap}>
-            <Image source={{ uri: previewUri }} style={styles.preview} resizeMode="cover" />
-            <Pressable
-              style={styles.previewRemove}
-              onPress={clearPhoto}
-              hitSlop={8}
-              accessibilityLabel="Remove photo"
-            >
-              <Ionicons name="close" size={14} color="#fff" />
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.memoriesCheck, pressed && styles.pressed]}
-              onPress={() => setKeepInMemories((v) => !v)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: keepInMemories }}
-              accessibilityLabel="Add to Memories"
-            >
-              <Ionicons
-                name={keepInMemories ? 'checkbox' : 'square-outline'}
-                size={19}
-                color={keepInMemories ? colors.primary : colors.textMuted}
-              />
-              <Text
-                style={[styles.memoriesCheckText, keepInMemories && { color: colors.primary }]}
-              >
-                Add to Memories
-              </Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.memoriesCheck, pressed && styles.pressed]}
-              onPress={openTagPicker}
-              accessibilityLabel="Tag buddies on this photo"
-            >
-              <Ionicons
-                name={taggedIds.size > 0 ? 'people' : 'person-add-outline'}
-                size={18}
-                color={taggedIds.size > 0 ? colors.primary : colors.textMuted}
-              />
-              <Text
-                style={[
-                  styles.memoriesCheckText,
-                  taggedIds.size > 0 && { color: colors.primary },
-                ]}
-                numberOfLines={1}
-              >
-                {taggedIds.size > 0
-                  ? taggedLabel(buddies.filter((b) => taggedIds.has(b.id)).map((b) => ({ name: b.name })))
-                  : 'Tag buddies'}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* buddy tag picker */}
-        <Modal
-          visible={tagPickerOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setTagPickerOpen(false)}
+      {/* slim prompt row — opens the full-screen composer (FB-style) */}
+      <View style={styles.promptWrap}>
+        <Pressable
+          style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
+          onPress={() => router.push('/compose' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Share a win — create a post"
         >
-          <Pressable style={styles.sheetBackdrop} onPress={() => setTagPickerOpen(false)}>
-            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-              <BlurView
-                intensity={60}
-                tint="light"
-                style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
-              />
-              <View style={styles.sheetGlass} />
-              <Text style={styles.sheetTitle}>Tag buddies</Text>
-              {buddies.length === 0 ? (
-                <Text style={styles.tagEmpty}>
-                  No buddies yet — add some from the Buddies page first.
-                </Text>
-              ) : (
-                buddies.map((b) => {
-                  const selected = taggedIds.has(b.id);
-                  return (
-                    <Pressable
-                      key={b.id}
-                      style={({ pressed }) => [styles.tagRow, pressed && styles.pressed]}
-                      onPress={() => toggleTag(b.id)}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: selected }}
-                      accessibilityLabel={`Tag ${authorLabel(b.name)}`}
-                    >
-                      <Avatar url={b.avatar} name={b.name} size={32} />
-                      <Text style={styles.tagName}>{authorLabel(b.name)}</Text>
-                      <Ionicons
-                        name={selected ? 'checkbox' : 'square-outline'}
-                        size={20}
-                        color={selected ? colors.primary : colors.textFaint}
-                      />
-                    </Pressable>
-                  );
-                })
-              )}
-              <Pressable
-                style={({ pressed }) => [styles.tagDone, pressed && styles.pressed]}
-                onPress={() => setTagPickerOpen(false)}
-                accessibilityLabel="Done tagging"
-              >
-                <Text style={styles.tagDoneText}>Done</Text>
-              </Pressable>
-            </Pressable>
-          </Pressable>
-        </Modal>
-        {eventOpen ? (
-          <View style={styles.eventForm}>
-            <TextInput
-              style={styles.eventInput}
-              placeholder="Event title (e.g. Saturday 5k group run)"
-              placeholderTextColor={colors.textFaint}
-              value={evTitle}
-              onChangeText={setEvTitle}
-            />
-            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <TextInput
-                style={[styles.eventInput, { flex: 1 }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textFaint}
-                autoCapitalize="none"
-                value={evDate}
-                onChangeText={setEvDate}
-              />
-              <TextInput
-                style={[styles.eventInput, { flex: 1 }]}
-                placeholder="HH:MM"
-                placeholderTextColor={colors.textFaint}
-                autoCapitalize="none"
-                value={evTime}
-                onChangeText={setEvTime}
-              />
-            </View>
-            <TextInput
-              style={styles.eventInput}
-              placeholder="Location (park, gym, meet point…)"
-              placeholderTextColor={colors.textFaint}
-              value={evLocation}
-              onChangeText={setEvLocation}
-            />
-            <Text style={styles.eventHint}>
-              Announcing creates a group — everyone who taps Attend joins it automatically.
-            </Text>
-          </View>
-        ) : null}
-        <View style={styles.composerActions}>
+          <Avatar url={me.avatar} name={me.name} size={40} />
+          <Text style={styles.promptText}>Share a win or what you&apos;re up to…</Text>
           <Pressable
-            style={({ pressed }) => [
-              styles.postBtn,
-              !canPost && styles.postBtnDisabled,
-              pressed && canPost && styles.pressed,
-            ]}
-            onPress={onPost}
-            disabled={!canPost}
+            onPress={() => router.push('/compose?photo=1' as never)}
+            hitSlop={8}
+            style={({ pressed }) => [styles.promptPhoto, pressed && styles.pressed]}
+            accessibilityLabel="Add a photo"
           >
-            {posting ? (
-              <ActivityIndicator color={colors.onPrimary} />
-            ) : (
-              <Text style={styles.postBtnText}>Post</Text>
-            )}
+            <Ionicons name="images-outline" size={24} color={colors.success} />
           </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.photoBtn, styles.firstAction, pressed && styles.pressed]}
-            onPress={onPickPhoto}
-            accessibilityLabel="Attach a photo"
-          >
-            <Ionicons name="camera-outline" size={18} color={colors.primary} />
-            <Text style={styles.photoBtnText}>Photo</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
-            onPress={() =>
-              showToast('Live video arrives with the next update — stay tuned 🔴')
-            }
-            accessibilityLabel="Go live (coming soon)"
-          >
-            <Ionicons name="videocam-outline" size={18} color={colors.danger} />
-            <Text style={[styles.photoBtnText, { color: colors.danger }]}>Live</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.photoBtn, pressed && styles.pressed]}
-            onPress={() => setEventOpen((v) => !v)}
-            accessibilityLabel="Announce an event"
-          >
-            <Ionicons
-              name={eventOpen ? 'calendar' : 'calendar-outline'}
-              size={18}
-              color={colors.success}
-            />
-            <Text style={[styles.photoBtnText, { color: colors.success }]}>Event</Text>
-          </Pressable>
-        </View>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -804,6 +467,23 @@ const styles = StyleSheet.create({
   storyStrip: {
     backgroundColor: colors.card,
   },
+  // white "sheet" holding the slim compose prompt
+  promptWrap: {
+    ...contentMax,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  promptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 48 },
+  promptText: {
+    flex: 1,
+    fontSize: 15.5,
+    fontFamily: font.regular,
+    color: colors.textMuted,
+  },
+  promptPhoto: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   composer: {
     ...contentMax,
     backgroundColor: colors.card,

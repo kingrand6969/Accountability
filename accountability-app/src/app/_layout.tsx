@@ -78,6 +78,10 @@ function RootNavigator() {
           name="add"
           options={{ headerShown: true, title: 'Add', presentation: 'modal' }}
         />
+        <Stack.Screen
+          name="compose"
+          options={{ headerShown: false, presentation: 'fullScreenModal' }}
+        />
         <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
         <Stack.Screen name="compete" options={{ headerShown: true, title: 'Compete' }} />
         <Stack.Screen name="challenge/[id]" options={{ headerShown: true, title: 'Challenge' }} />
