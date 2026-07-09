@@ -264,10 +264,7 @@ export default function Feed() {
         </Pressable>
       </Modal>
 
-      <View style={styles.storyStrip}>
-        <StoryRail ref={storyRailRef} />
-      </View>
-      {/* slim prompt row — opens the full-screen composer (FB-style) */}
+      {/* slim prompt row — opens the full-screen composer (FB-style, above stories) */}
       <View style={styles.promptWrap}>
         <Pressable
           style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
@@ -286,6 +283,9 @@ export default function Feed() {
             <Ionicons name="images-outline" size={24} color={colors.success} />
           </Pressable>
         </Pressable>
+      </View>
+      <View style={styles.storyStrip}>
+        <StoryRail ref={storyRailRef} />
       </View>
 
       {loading ? (
