@@ -75,7 +75,7 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
     setPosting(true);
     try {
       await addStory(base64, ext);
-      showToast('Story posted — visible for 24 hours');
+      showToast('Flex posted — visible for 24 hours');
       load();
     } catch (e) {
       Alert.alert('Could not post story', String((e as Error).message ?? e));
@@ -106,7 +106,7 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
       <Pressable
         style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
         onPress={onAddStory}
-        accessibilityLabel="Create a story"
+        accessibilityLabel="Post a Flex"
       >
         {mine ? (
           <Image
@@ -134,7 +134,7 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
             <Ionicons name="add" size={22} color="#fff" />
           )}
         </View>
-        <Text style={styles.createLabel}>Create{'\n'}story</Text>
+        <Text style={styles.createLabel}>Post{'\n'}Flex</Text>
       </Pressable>
 
       {/* my story as a viewable tile */}
