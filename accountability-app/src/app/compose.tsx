@@ -33,13 +33,13 @@ import { colors, font, radius, spacing } from '../ui/theme';
 export default function Compose() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ photo?: string; event?: string }>();
+  const params = useLocalSearchParams<{ photo?: string; event?: string; text?: string }>();
 
   const [me, setMe] = useState<{ name: string | null; avatar: string | null }>({
     name: null,
     avatar: null,
   });
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState(typeof params.text === 'string' ? params.text : '');
   const [posting, setPosting] = useState(false);
   const [pickedBase64, setPickedBase64] = useState<string | null>(null);
   const [pickedExt, setPickedExt] = useState('jpg');

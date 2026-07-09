@@ -33,7 +33,7 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/diet' | '/run' | '/insights' | '/books' | '/compete';
+  route: '/gym' | '/diet' | '/run' | '/insights' | '/books' | '/compete' | '/achievements';
 }[] = [
   {
     key: 'insights',
@@ -42,6 +42,14 @@ const PILLARS: {
     title: 'Progress & Insights',
     sub: 'Your day, week & month at a glance',
     route: '/insights',
+  },
+  {
+    key: 'achievements',
+    icon: 'medal-outline',
+    tint: '#f59e0b',
+    title: 'Trophy Case',
+    sub: 'Medals for your streaks, distance & wins',
+    route: '/achievements',
   },
   {
     key: 'compete',

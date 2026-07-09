@@ -84,6 +84,7 @@ function RootNavigator() {
         />
         <Stack.Screen name="buddy" options={{ headerShown: true, title: 'Accountability Buddy' }} />
         <Stack.Screen name="compete" options={{ headerShown: true, title: 'Compete' }} />
+        <Stack.Screen name="achievements" options={{ headerShown: true, title: 'Trophy Case' }} />
         <Stack.Screen name="challenge/[id]" options={{ headerShown: true, title: 'Challenge' }} />
         <Stack.Screen name="challenge-new" options={{ headerShown: true, title: 'New Challenge' }} />
         <Stack.Screen name="buddy-map" options={{ headerShown: true, title: 'Buddy Location' }} />
