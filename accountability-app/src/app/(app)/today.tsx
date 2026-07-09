@@ -18,9 +18,7 @@ import { cancelReminder } from '../../notifications/api';
 import { TimelineCard } from '../../timeline/TimelineCard';
 import { HourGrid } from '../../timeline/HourGrid';
 import { toLocalDateString } from '../../timeline/datetime';
-import { AdBanner } from '../../pro/AdBanner';
 import { HomeHeader } from '../../home/HomeHeader';
-import { useIsPro } from '../../pro/ProProvider';
 import { confirmDestructive } from '../../ui/confirm';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { contentMaxWidth } from '../../ui/responsive';
@@ -56,7 +54,6 @@ function dayLabel(day: Date): string {
 
 export default function Today() {
   const router = useRouter();
-  const { isPro } = useIsPro();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -223,7 +220,7 @@ export default function Today() {
           style={styles.flexFill}
           contentContainerStyle={
             items.length === 0
-              ? [styles.emptyWrap, { paddingBottom: isPro ? 150 : 200 }]
+              ? [styles.emptyWrap, { paddingBottom: 150 }]
               : [styles.listContent, { maxWidth: colMax }]
           }
           refreshControl={
@@ -244,10 +241,10 @@ export default function Today() {
       <Pressable
         style={({ pressed }) => [
           styles.fab,
-          // sit at the centered column's edge; clear the floating tab bar (higher when an ad shows)
+          // sit at the centered column's edge, clear of the floating tab bar
           {
             right: Math.max(spacing.xl, (width - colMax) / 2 + spacing.xl),
-            bottom: isPro ? 104 : 150,
+            bottom: 104,
           },
           pressed && styles.fabPressed,
         ]}
@@ -257,8 +254,6 @@ export default function Today() {
         <Ionicons name="add" size={20} color="#fff" />
         <Text style={styles.fabText}>Add</Text>
       </Pressable>
-
-      <AdBanner />
     </View>
   );
 }

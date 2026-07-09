@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,8 @@ import { listFeed, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
 import { attendEvent } from '../../events/api';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
+import { AdCard } from '../../pro/AdCard';
+import { useIsPro } from '../../pro/ProProvider';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
@@ -26,6 +28,10 @@ import type { FeedPost } from '../../feed/types';
 import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+// a sponsored card every N posts for free members (Pro sees none)
+const AD_EVERY = 5;
+type FeedRow = { kind: 'post'; post: FeedPost } | { kind: 'ad'; id: string };
 
 function HeaderIcon({
   icon,
@@ -58,6 +64,7 @@ function HeaderIcon({
 export default function Feed() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { isPro } = useIsPro();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -224,6 +231,16 @@ export default function Feed() {
     }
   }
 
+  // interleave a sponsored card every AD_EVERY posts (free members only)
+  const feedData = useMemo<FeedRow[]>(() => {
+    const rows: FeedRow[] = [];
+    posts.forEach((p, i) => {
+      rows.push({ kind: 'post', post: p });
+      if (!isPro && (i + 1) % AD_EVERY === 0) rows.push({ kind: 'ad', id: `ad-${p.id}` });
+    });
+    return rows;
+  }, [posts, isPro]);
+
   return (
     <View style={styles.screen}>
       {/* ＋ create sheet */}
@@ -294,9 +311,9 @@ export default function Feed() {
         </View>
       ) : (
         <FlatList
-          data={posts}
-          keyExtractor={(p) => p.id}
-          contentContainerStyle={posts.length === 0 ? styles.emptyWrap : styles.list}
+          data={feedData}
+          keyExtractor={(row) => (row.kind === 'ad' ? row.id : row.post.id)}
+          contentContainerStyle={feedData.length === 0 ? styles.emptyWrap : styles.list}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
@@ -314,7 +331,12 @@ export default function Feed() {
               <Text style={styles.emptySub}>Be the first to share something.</Text>
             </View>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item: row }) => {
+            if (row.kind === 'ad') {
+              return <AdCard onGoPro={() => router.push('/paywall' as never)} />;
+            }
+            const item = row.post;
+            return (
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Avatar url={item.author_avatar} name={item.author_name} size={40} />
@@ -395,7 +417,8 @@ export default function Feed() {
                 </Pressable>
               </View>
             </View>
-          )}
+            );
+          }}
         />
       )}
     </View>
