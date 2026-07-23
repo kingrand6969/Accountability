@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { Avatar } from '../feed/Avatar';
 import { GlassBackdrop, GlassCard } from '../ui/Glass';
+import { OsmMap } from '../ui/OsmMap';
+import type { MapMarker } from '../ui/osmHtml';
 import { contentMaxWidth } from '../ui/responsive';
 import { font, radius, spacing } from '../ui/theme';
 import { showToast } from '../ui/Toast';
@@ -75,6 +77,13 @@ export default function BuddyMap() {
   const buddies = rows.filter((r) => r.user_id !== uid);
   const sharing = !!mine;
 
+  const markers: MapMarker[] = rows.map((r) => ({
+    lat: r.lat,
+    lng: r.lng,
+    label: r.user_id === uid ? 'You' : r.name?.trim() || 'Buddy',
+    color: r.user_id === uid ? '#2563eb' : ACCENT,
+  }));
+
   async function onToggleShare(next: boolean) {
     setWorking(true);
     try {
@@ -129,6 +138,8 @@ export default function BuddyMap() {
           </View>
         </GlassCard>
 
+        {markers.length > 0 ? <OsmMap markers={markers} style={styles.map} /> : null}
+
         <Text style={styles.section}>Buddies sharing now</Text>
 
         {loading ? (
@@ -168,8 +179,8 @@ export default function BuddyMap() {
         )}
 
         <Text style={styles.note}>
-          A live map view is coming to the phone app. Distances update whenever you or your buddies
-          refresh a shared position.
+          The map shows everyone currently sharing — you in blue, buddies in purple. Positions and
+          distances refresh whenever you or a buddy shares an updated location.
         </Text>
       </ScrollView>
     </View>
@@ -180,12 +191,18 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   card: {},
+  map: {
+    height: 280,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
   shareRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
   iconWrap: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(109,40,217,0.12)',
+    backgroundColor: 'rgba(37,99,235,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },

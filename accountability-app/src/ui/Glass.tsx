@@ -49,7 +49,7 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
   return (
     <BlurTargetView ref={ref as never} style={StyleSheet.absoluteFill}>
       <LinearGradient
-        colors={['#F1EDFB', '#E4DCF7', '#D6C9F0']}
+        colors={['#EDF4FC', '#DEEAF8', '#C9DCF4']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -61,7 +61,7 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
         <Sphere
           id="blobA"
           size={460}
-          colors={['#EBE1FF', '#C9B6F5']}
+          colors={['#DBEAFE', '#93C5FD']}
           style={{ top: -140, left: -160 }}
           opacity={0.85}
         />
@@ -107,8 +107,11 @@ export function GlassCard({
         end={{ x: 1, y: 1 }}
         style={styles.borderGrad}
       >
+        {/* lower intensity = less white cast from the tint overlay (the fallback
+            path in Expo Go / web), so the backdrop colour glows through — the
+            actual glass effect. The white plate below guards text contrast. */}
         <BlurView
-          intensity={Platform.select({ ios: 45, android: 60, web: 85, default: 60 })}
+          intensity={Platform.select({ ios: 40, android: 45, web: 35, default: 45 })}
           tint="light"
           blurMethod="dimezisBlurViewSdk31Plus"
           blurReductionFactor={2}
@@ -121,7 +124,7 @@ export function GlassCard({
           />
           {/* diagonal sheen — the frosted-glass highlight */}
           <LinearGradient
-            colors={['rgba(255,255,255,0.5)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0)']}
+            colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -149,7 +152,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'android'
       ? {} // elevation bleeds grey through translucent children — skip on Android
       : {
-          shadowColor: '#4C3B8F',
+          shadowColor: '#1E3A8A',
           shadowOffset: { width: 0, height: 16 },
           shadowOpacity: 0.16,
           shadowRadius: 32,

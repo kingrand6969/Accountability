@@ -27,11 +27,11 @@ import { font, radius, spacing } from '../../ui/theme';
 
 const INK = '#1e1b4b';
 const INK_SOFT = 'rgba(30,27,75,0.72)';
-const ACCENT = '#4f46e5';
+const ACCENT = '#2563eb';
 
 /** Quick-add shortcuts shown on an empty day — each opens Add pre-set. */
 const QUICK_ADD = [
-  { type: 'task', icon: 'checkmark-circle', label: 'Task', tint: '#4f46e5' },
+  { type: 'task', icon: 'checkmark-circle', label: 'Task', tint: '#2563eb' },
   { type: 'event', icon: 'calendar', label: 'Event', tint: '#0891b2' },
   { type: 'grocery', icon: 'cart', label: 'Groceries', tint: '#16a34a' },
 ] as const;

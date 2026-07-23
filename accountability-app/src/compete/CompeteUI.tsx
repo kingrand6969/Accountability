@@ -6,7 +6,7 @@ import { formatScore, type Metric } from './api';
 
 export const INK = '#1e1b4b';
 export const INK_SOFT = 'rgba(30,27,75,0.72)';
-export const ACCENT = '#6d28d9';
+export const ACCENT = '#2563eb';
 const GOLD = '#f59e0b';
 const SILVER = '#94a3b8';
 const BRONZE = '#b45309';
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   rowMe: {
-    backgroundColor: 'rgba(109,40,217,0.10)',
+    backgroundColor: 'rgba(37,99,235,0.10)',
     borderRadius: radius.md,
     paddingHorizontal: 8,
   },

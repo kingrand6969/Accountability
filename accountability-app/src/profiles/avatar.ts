@@ -1,11 +1,26 @@
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabase';
+import { uploadToR2, type R2Kind } from '../lib/r2';
 
 /**
- * Uploads a base64 image to the user's own folder in the public `avatars`
- * bucket and returns a cache-busted public URL. Overwrites any previous avatar.
+ * Uploads a base64 profile image and returns a cache-busted public URL.
+ * Prefers zero-egress Cloudflare R2; falls back to Supabase Storage if R2 is
+ * unavailable, so changing a photo never breaks.
  */
 async function uploadProfileImage(
+  base64: string,
+  ext: string,
+  name: 'avatar' | 'cover',
+): Promise<string> {
+  try {
+    return await uploadToR2(base64, name as R2Kind, ext);
+  } catch (e) {
+    console.warn('[uploadProfileImage] R2 unavailable, using Supabase Storage:', e);
+    return uploadToSupabase(base64, ext, name);
+  }
+}
+
+async function uploadToSupabase(
   base64: string,
   ext: string,
   name: 'avatar' | 'cover',
@@ -20,7 +35,9 @@ async function uploadProfileImage(
 
   const { error } = await supabase.storage
     .from('avatars')
-    .upload(path, decode(base64), { contentType, upsert: true });
+    // Long cache is safe: the returned URL is ?t= cache-busted on every change,
+    // so a new upload gets a fresh URL while old ones stay served from the CDN.
+    .upload(path, decode(base64), { contentType, upsert: true, cacheControl: '31536000' });
   if (error) throw error;
 
   const { data } = supabase.storage.from('avatars').getPublicUrl(path);

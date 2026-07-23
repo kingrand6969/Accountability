@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -12,9 +13,11 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { addTransaction, todayDate } from '../money/api';
 import { categoriesFor } from '../money/categories';
+import { scanReceipt } from '../scan/api';
 import { validateDateString } from '../timeline/datetime';
 import type { TxKind } from '../money/types';
 import { Button } from '../ui/Button';
+import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
 
 export default function MoneyAdd() {
@@ -25,8 +28,45 @@ export default function MoneyAdd() {
   const [note, setNote] = useState('');
   const [date, setDate] = useState(() => todayDate());
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   const cats = categoriesFor(kind);
+
+  /**
+   * Photograph a receipt and PRE-FILL this form — it never saves by itself.
+   * The member sees exactly what was read and confirms or corrects it, which
+   * matters because OCR misreads totals on creased or faded paper.
+   */
+  async function onScanReceipt() {
+    setScanning(true);
+    try {
+      const out = await scanReceipt(true);
+      if (!out) return; // cancelled the camera
+      const r = out.scan;
+      if (r.total == null && !r.merchant) {
+        Alert.alert('Nothing found', r.note || "That didn't look like a receipt. Try a flatter, brighter shot.");
+        return;
+      }
+      setKind('expense');
+      if (r.total != null) setAmount(String(r.total));
+      if (r.date && !validateDateString(r.date)) setDate(r.date);
+      if (r.merchant) setNote(r.merchant);
+      if (r.category && cats.some((c) => c.value === r.category)) setCategory(r.category);
+      showToast(`Check the details · ${out.limit - out.used} scans left this month`);
+    } catch (e) {
+      const err = e as Error & { upgrade?: boolean };
+      if (err.upgrade) {
+        Alert.alert('Pro feature', err.message, [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'See Pro', onPress: () => router.push('/paywall') },
+        ]);
+      } else {
+        Alert.alert('Could not scan', err.message);
+      }
+    } finally {
+      setScanning(false);
+    }
+  }
 
   async function onSave() {
     const amt = parseFloat(amount);
@@ -62,6 +102,26 @@ export default function MoneyAdd() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+      <Pressable
+        onPress={onScanReceipt}
+        disabled={scanning}
+        style={({ pressed }) => [styles.scanBtn, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Scan a receipt with the camera"
+      >
+        {scanning ? (
+          <ActivityIndicator color={colors.primary} />
+        ) : (
+          <>
+            <Ionicons name="scan-outline" size={19} color={colors.primary} />
+            <Text style={styles.scanBtnText}>Scan a receipt</Text>
+            <View style={styles.proPill}>
+              <Text style={styles.proPillText}>PRO</Text>
+            </View>
+          </>
+        )}
+      </Pressable>
+
       <View style={styles.kindRow}>
         {(['expense', 'income'] as const).map((k) => (
           <Pressable
@@ -153,6 +213,26 @@ export default function MoneyAdd() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   container: { padding: spacing.xl, gap: spacing.sm, paddingBottom: 40 },
+  scanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 50,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  scanBtnText: { fontFamily: font.bold, fontSize: 15, color: colors.primary },
+  proPill: {
+    backgroundColor: colors.proSoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  proPillText: { fontFamily: font.extrabold, fontSize: 9.5, color: colors.pro, letterSpacing: 0.4 },
   kindRow: { flexDirection: 'row', gap: 10 },
   kindBtn: {
     flex: 1,

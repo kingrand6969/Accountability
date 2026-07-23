@@ -13,7 +13,7 @@ const BENEFITS = [
   { icon: 'mic-outline' as const, text: 'Smart reminders & voice commands' },
   { icon: 'barbell-outline' as const, text: 'Full exercise library tools' },
   { icon: 'nutrition-outline' as const, text: 'Diet & calorie tracker' },
-  { icon: 'people-outline' as const, text: 'Accountability circles & challenges' },
+  { icon: 'people-outline' as const, text: 'Create challenges for your buddies & city' },
 ];
 
 type Plan = 'yearly' | 'monthly';
@@ -74,8 +74,8 @@ export default function Paywall() {
             <Text style={styles.bestBadgeText}>BEST VALUE</Text>
           </View>
           <Text style={styles.priceLabel}>Yearly</Text>
-          <Text style={styles.priceValue}>$29.99</Text>
-          <Text style={styles.priceNote}>only $2.50/mo</Text>
+          <Text style={styles.priceValue}>$19.99</Text>
+          <Text style={styles.priceNote}>only $1.67/mo</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [
@@ -98,7 +98,7 @@ export default function Paywall() {
         </View>
       ) : (
         <Button
-          title={plan === 'yearly' ? 'Start Pro — $29.99/yr' : 'Start Pro — $3.99/mo'}
+          title={plan === 'yearly' ? 'Start Pro — $19.99/yr' : 'Start Pro — $3.99/mo'}
           onPress={onUpgrade}
           style={styles.cta}
         />

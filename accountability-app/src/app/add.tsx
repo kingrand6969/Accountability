@@ -38,10 +38,10 @@ import type { TimelineType } from '../timeline/types';
 // Add is for scheduling reminders only — events, meetings, errands, grocery.
 // Workouts/meals/money live in their own trackers (Track tab).
 const TYPE_OPTIONS: { value: TimelineType; label: string }[] = [
-  { value: 'event', label: '📅 Event' },
-  { value: 'task', label: '✅ Task' },
-  { value: 'grocery', label: '🛒 Groceries' },
-  { value: 'other', label: '📌 Other' },
+  { value: 'event', label: 'Event' },
+  { value: 'task', label: 'Task' },
+  { value: 'grocery', label: 'Groceries' },
+  { value: 'other', label: 'Other' },
 ];
 
 const OFFSET_OPTIONS = [

@@ -15,7 +15,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsPro } from '../../pro/ProProvider';
-import { listMonth, deleteTransaction } from '../../money/api';
+import { listMonth, deleteTransaction, getIncomeTrend, type IncomeMonth } from '../../money/api';
+import { IncomeTrend } from '../../money/IncomeTrend';
 import { sumByKind } from '../../money/compute';
 import { categoryMeta, formatAmount } from '../../money/categories';
 import type { Transaction } from '../../money/types';
@@ -38,18 +39,18 @@ import {
 } from '../../money/billing';
 import { listBills, markBillPaid, unmarkBillPaid } from '../../money/billsApi';
 import { AccountsPane, SavingsPane } from '../../money/FinancePanes';
+import { BusinessPane } from '../../business/BusinessPane';
 import { EmptyState } from '../../ui/EmptyState';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { contentMaxWidth } from '../../ui/responsive';
 import { DonutChart } from '../../ui/DonutChart';
-import { ProgressRing } from '../../ui/ProgressRing';
 import { confirmDestructive } from '../../ui/confirm';
 import { showToast } from '../../ui/Toast';
 import { colors, font, radius, spacing } from '../../ui/theme';
 
 const INK = '#1e1b4b';
 const INK_SOFT = 'rgba(30,27,75,0.72)';
-const ACCENT = '#6d28d9';
+const ACCENT = '#2563eb';
 const GOOD = '#047857';
 const OVER = '#b45309'; // over-pace is amber — red stays reserved for overdue bills
 const COL_MAX = 600;
@@ -76,6 +77,7 @@ export default function Finance() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [allCats, setAllCats] = useState(false);
+  const [trend, setTrend] = useState<IncomeMonth[]>([]);
   const [ccChooser, setCcChooser] = useState<Bill | null>(null);
   const paysInFlight = useRef<Set<string>>(new Set());
   // month backtracker (Pro): first-of-month; defaults to this month
@@ -83,7 +85,7 @@ export default function Finance() {
     const n = new Date();
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
-  // 3-pane swipe: 0 = Banks & wallets, 1 = Overview (default), 2 = Savings
+  // 4-pane swipe: 0 = Banks & wallets, 1 = Overview (default), 2 = Savings, 3 = Business
   const [page, setPage] = useState(1);
   const pagerRef = useRef<ScrollView>(null);
   const pagerReady = useRef(false);
@@ -105,13 +107,21 @@ export default function Finance() {
       setTxns(cur);
       setLastTxns(last);
       setBills(bs);
+      // Pro-only 12-month income chart — never fetched for free members
+      if (isPro) {
+        getIncomeTrend(12)
+          .then(setTrend)
+          .catch(() => setTrend([]));
+      } else {
+        setTrend([]);
+      }
     } catch (e) {
       Alert.alert('Could not load', String((e as Error).message ?? e));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selMonth]);
+  }, [selMonth, isPro]);
 
   useFocusEffect(
     useCallback(() => {
@@ -284,8 +294,6 @@ export default function Finance() {
     })
     .toUpperCase();
   const fabRight = Math.max(spacing.xl, (winW - colMax) / 2 + spacing.xl);
-  const paceProgress =
-    lastToDateSpend > 0 ? Math.min(1, expense / lastToDateSpend) : 0;
   const underPace = insight.direction !== 'up';
 
   const panesTop = insets.top + 44; // room for the floating pane tabs
@@ -385,14 +393,25 @@ export default function Finance() {
             <>
               <View style={styles.divider} />
               <View style={styles.insightRow}>
-                <ProgressRing
-                  size={44}
-                  strokeWidth={5}
-                  progress={paceProgress}
-                  trackColor="rgba(255,255,255,0.9)"
-                  startColor={underPace ? '#34d399' : '#f59e0b'}
-                  endColor={underPace ? '#059669' : '#d97706'}
-                />
+                {/* trend chip — the circle meter lives on the Track consistency dial only */}
+                <View
+                  style={[
+                    styles.insightIcon,
+                    { backgroundColor: underPace ? 'rgba(4,120,87,0.12)' : 'rgba(180,83,9,0.14)' },
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      insight.direction === 'flat'
+                        ? 'remove-outline'
+                        : insight.direction === 'up'
+                          ? 'trending-up'
+                          : 'trending-down'
+                    }
+                    size={20}
+                    color={insight.direction === 'flat' ? INK : underPace ? GOOD : OVER}
+                  />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text
                     style={[
@@ -496,6 +515,33 @@ export default function Finance() {
               )}
             </View>
           </View>
+        </View>
+      </GlassCard>
+
+      {/* INCOME TREND — 12 months at a glance (Pro) */}
+      <GlassCard blurTarget={bgRef}>
+        <View style={styles.cardPad}>
+          <View style={styles.heroTopRow}>
+            <Text style={styles.kicker}>INCOME TREND</Text>
+            <Text style={styles.monthTag}>last 12 months</Text>
+          </View>
+          {isPro ? (
+            <IncomeTrend
+              data={trend}
+              accent={GOOD}
+              ink={INK}
+              inkSoft={INK_SOFT}
+              formatAmount={formatAmount}
+            />
+          ) : (
+            <Pressable
+              style={({ pressed }) => [styles.proCard, pressed && styles.pressed]}
+              onPress={() => router.push('/paywall')}
+            >
+              <Ionicons name="star" size={16} color={colors.pro} />
+              <Text style={styles.proText}>Pro: see your income trend over 12 months</Text>
+            </Pressable>
+          )}
         </View>
       </GlassCard>
 
@@ -673,7 +719,7 @@ export default function Finance() {
     <View style={styles.screen}>
       <GlassBackdrop ref={bgRef} columnWidth={colMax} />
 
-      {/* swipe: ← Banks & wallets | Overview | Savings → */}
+      {/* swipe: ← Banks & wallets | Overview | Savings | Business → */}
       <ScrollView
         ref={pagerRef}
         horizontal
@@ -687,7 +733,7 @@ export default function Finance() {
         }}
         onScroll={(e) => {
           const p = Math.round(e.nativeEvent.contentOffset.x / winW);
-          if (p !== page && p >= 0 && p <= 2) setPage(p);
+          if (p !== page && p >= 0 && p <= 3) setPage(p);
         }}
         scrollEventThrottle={64}
         style={{ flex: 1 }}
@@ -695,11 +741,12 @@ export default function Finance() {
         <AccountsPane width={winW} topInset={panesTop} blurTarget={bgRef} />
         <View style={{ width: winW }}>{overview}</View>
         <SavingsPane width={winW} topInset={panesTop} blurTarget={bgRef} />
+        <BusinessPane width={winW} topInset={panesTop} />
       </ScrollView>
 
       {/* floating pane tabs */}
       <View style={[styles.paneTabs, { top: insets.top + spacing.xs }]}>
-        {['Accounts', 'Overview', 'Savings'].map((label, i) => (
+        {['Accounts', 'Overview', 'Savings', 'Business'].map((label, i) => (
           <Pressable
             key={label}
             onPress={() => goToPage(i)}
@@ -918,6 +965,13 @@ const styles = StyleSheet.create({
   heroChipValue: { fontFamily: font.extrabold, fontSize: 15 },
   divider: { height: 1, backgroundColor: 'rgba(30,27,75,0.08)', marginVertical: spacing.md },
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  insightIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   insightTitle: { fontFamily: font.bold, fontSize: 14 },
   insightSub: { color: INK_SOFT, fontFamily: font.regular, fontSize: 12, marginTop: 1 },
   donutRow: {
@@ -938,7 +992,7 @@ const styles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 10,
     color: ACCENT,
-    backgroundColor: 'rgba(109,40,217,0.10)',
+    backgroundColor: 'rgba(37,99,235,0.10)',
     borderRadius: radius.pill,
     paddingHorizontal: 6,
     paddingVertical: 1,
@@ -985,7 +1039,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(109,40,217,0.10)',
+    backgroundColor: 'rgba(37,99,235,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },

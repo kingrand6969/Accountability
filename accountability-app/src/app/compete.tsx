@@ -18,6 +18,9 @@ import { contentMaxWidth } from '../ui/responsive';
 import { font, radius, spacing } from '../ui/theme';
 import { showToast } from '../ui/Toast';
 import { Chips, RankRow, Segmented, INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
+import { getRank, flexStanding } from '../achievements/api';
+import { RankBadge } from '../achievements/RankBadge';
+import { hapticSuccess } from '../ui/haptics';
 import {
   METRICS,
   PERIODS,
@@ -29,6 +32,7 @@ import {
   joinChallenge,
   leaveChallenge,
   metricMeta,
+  formatScore,
   syncTimezone,
   type ChallengeCard,
   type LocationSharing,
@@ -36,6 +40,8 @@ import {
   type Period,
   type Scope,
 } from '../compete/api';
+import { MissionIcon } from '../achievements/MissionIcon';
+import { challengeArtFor } from '../achievements/missionArt';
 
 const metricOpts = METRICS.map((m) => ({ value: m.value, label: m.label, icon: m.icon }));
 const periodOpts = PERIODS.map((p) => ({ value: p.value, label: p.label }));
@@ -55,6 +61,7 @@ export default function Compete() {
   const bgRef = useRef<View>(null);
   const [tab, setTab] = useState<'rankings' | 'challenges' | 'buddies'>('rankings');
   const [uid, setUid] = useState<string | null>(null);
+  const [rank, setRank] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then((r) => setUid(r.data.user?.id ?? null));
@@ -62,11 +69,33 @@ export default function Compete() {
     syncTimezone();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      getRank()
+        .then((r) => setRank(r.name))
+        .catch(() => {});
+    }, []),
+  );
+
   return (
     <View style={styles.screen}>
       <GlassBackdrop ref={bgRef} columnWidth={colMax} />
       <ScrollView contentContainerStyle={[styles.scroll, { maxWidth: colMax }]}>
-        <Text style={styles.title}>Compete</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Compete</Text>
+          <View style={styles.headerRight}>
+            <Pressable
+              onPress={() => router.push('/win-card' as never)}
+              hitSlop={8}
+              style={({ pressed }) => [styles.winBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Share a win"
+            >
+              <Ionicons name="flame" size={17} color="#f59e0b" />
+            </Pressable>
+            {rank ? <RankBadge rank={rank} size={30} onPress={() => router.push('/achievements' as never)} /> : null}
+          </View>
+        </View>
         <Segmented
           options={[
             { value: 'rankings', label: 'Rankings', icon: 'podium' },
@@ -95,6 +124,7 @@ function RankingsTab({ uid }: { uid: string | null }) {
   const [period, setPeriod] = useState<Period>('week');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof getLeaderboard>>>([]);
   const [loading, setLoading] = useState(true);
+  const [flexing, setFlexing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -161,6 +191,27 @@ function RankingsTab({ uid }: { uid: string | null }) {
   }
 
   const placeLabel = sharing.city || sharing.country;
+  const meRow = rows.find((r) => r.user_id === uid) ?? null;
+  const boardLabel = (scope === 'city' ? sharing.city : sharing.country) || 'my area';
+
+  async function onFlexStanding() {
+    if (!meRow || flexing) return;
+    setFlexing(true);
+    try {
+      await flexStanding(
+        meRow.rnk,
+        boardLabel,
+        metricMeta(metric).label,
+        formatScore(meRow.score, metric),
+      );
+      hapticSuccess();
+      showToast('Flexed to your feed 🏆');
+    } catch (e) {
+      Alert.alert('Could not post your flex', String((e as Error).message ?? e));
+    } finally {
+      setFlexing(false);
+    }
+  }
 
   return (
     <View style={{ gap: spacing.md }}>
@@ -173,7 +224,11 @@ function RankingsTab({ uid }: { uid: string | null }) {
         onChange={(v) => setScope(v as Scope)}
       />
       <Chips options={metricOpts} value={metric} onChange={(v) => setMetric(v as Metric)} />
-      <Chips options={periodOpts} value={period} onChange={(v) => setPeriod(v as Period)} />
+      {metric === 'avgkm' ? (
+        <Text style={styles.note}>Lifetime pace — total km averaged since each member joined.</Text>
+      ) : (
+        <Chips options={periodOpts} value={period} onChange={(v) => setPeriod(v as Period)} />
+      )}
 
       {!placeLabel ? (
         <Text style={styles.note}>
@@ -204,6 +259,27 @@ function RankingsTab({ uid }: { uid: string | null }) {
           )}
         </View>
       </GlassCard>
+
+      {meRow ? (
+        <Pressable
+          style={({ pressed }) => [styles.flexBtn, pressed && styles.pressed]}
+          onPress={onFlexStanding}
+          disabled={flexing}
+          accessibilityRole="button"
+          accessibilityLabel="Flex your leaderboard spot to your feed"
+        >
+          {flexing ? (
+            <ActivityIndicator size="small" color={ACCENT} />
+          ) : (
+            <>
+              <Ionicons name="sparkles" size={16} color={ACCENT} />
+              <Text style={styles.flexBtnText}>
+                Flex my spot — #{meRow.rnk} in {boardLabel}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -270,9 +346,16 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
                 style={({ pressed }) => [styles.challengePad, pressed && styles.pressed]}
                 onPress={() => router.push({ pathname: '/challenge/[id]', params: { id: c.id } })}
               >
-                <View style={[styles.iconWrap, { marginBottom: 0 }]}>
-                  <Ionicons name={meta.icon as never} size={22} color={ACCENT} />
-                </View>
+                {(() => {
+                  const art = challengeArtFor(c.metric);
+                  return art ? (
+                    <MissionIcon source={art} size={48} />
+                  ) : (
+                    <View style={[styles.iconWrap, { marginBottom: 0 }]}>
+                      <Ionicons name={meta.icon as never} size={22} color={ACCENT} />
+                    </View>
+                  );
+                })()}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.challengeTitle} numberOfLines={1}>
                     {c.title}
@@ -348,7 +431,11 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
       </Pressable>
 
       <Chips options={metricOpts} value={metric} onChange={(v) => setMetric(v as Metric)} />
-      <Chips options={periodOpts} value={period} onChange={(v) => setPeriod(v as Period)} />
+      {metric === 'avgkm' ? (
+        <Text style={styles.note}>Lifetime pace — total km averaged since each member joined.</Text>
+      ) : (
+        <Chips options={periodOpts} value={period} onChange={(v) => setPeriod(v as Period)} />
+      )}
 
       <GlassCard style={styles.card}>
         <View style={styles.listPad}>
@@ -386,7 +473,17 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
-  title: { fontSize: 26, fontFamily: font.extrabold, color: INK, marginBottom: 2 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  winBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { fontSize: 26, fontFamily: font.extrabold, color: INK },
   pressed: { opacity: 0.7 },
   card: {},
   pad: { padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
@@ -395,7 +492,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(109,40,217,0.12)',
+    backgroundColor: 'rgba(37,99,235,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 2,
@@ -424,7 +521,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
   secondaryBtn: {
-    backgroundColor: 'rgba(109,40,217,0.12)',
+    backgroundColor: 'rgba(37,99,235,0.12)',
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 18,
@@ -457,4 +554,17 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   mapBtnText: { flex: 1, fontFamily: font.bold, fontSize: 14, color: INK },
+  flexBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(37,99,235,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.3)',
+    borderRadius: radius.pill,
+    paddingVertical: 12,
+    minHeight: 44,
+  },
+  flexBtnText: { fontFamily: font.bold, fontSize: 14, color: ACCENT },
 });

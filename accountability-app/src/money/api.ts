@@ -28,6 +28,33 @@ export async function listMonth(month: Date): Promise<Transaction[]> {
   return (data ?? []).map((t: any) => ({ ...t, amount: Number(t.amount) })) as Transaction[];
 }
 
+export type IncomeMonth = { month: string; total: number };
+
+/**
+ * Income totalled per calendar month for the last `months` months (Pro feature).
+ * The database does the grouping (migration 0068) so this is ~12 rows, not a
+ * year of transactions. Months with no income are filled in as zero here so the
+ * chart always shows a continuous timeline.
+ */
+export async function getIncomeTrend(months = 12): Promise<IncomeMonth[]> {
+  const { data, error } = await supabase.rpc('income_trend', { p_months: months });
+  if (error) throw error;
+  const byMonth = new Map<string, number>();
+  for (const r of (data ?? []) as { month: string; total: number | string }[]) {
+    byMonth.set(String(r.month).slice(0, 7), Number(r.total) || 0);
+  }
+  const out: IncomeMonth[] = [];
+  const cursor = new Date();
+  cursor.setDate(1);
+  cursor.setMonth(cursor.getMonth() - (months - 1));
+  for (let i = 0; i < months; i++) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    out.push({ month: key, total: byMonth.get(key) ?? 0 });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return out;
+}
+
 export async function addTransaction(tx: NewTransaction): Promise<void> {
   const uid = await currentUserId();
   if (!uid) throw new Error('Not signed in.');

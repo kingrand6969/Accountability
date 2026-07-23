@@ -16,9 +16,9 @@ import { contentMaxWidth } from '../ui/responsive';
 import { font, radius, spacing } from '../ui/theme';
 import { showToast } from '../ui/Toast';
 import { Chips, INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
-import { METRICS, createChallenge, type Metric } from '../compete/api';
+import { CHALLENGE_METRICS, createChallenge, type Metric } from '../compete/api';
 
-const metricOpts = METRICS.map((m) => ({ value: m.value, label: m.label, icon: m.icon }));
+const metricOpts = CHALLENGE_METRICS.map((m) => ({ value: m.value, label: m.label, icon: m.icon }));
 const DAYS = [
   { value: '7', label: '1 week' },
   { value: '14', label: '2 weeks' },

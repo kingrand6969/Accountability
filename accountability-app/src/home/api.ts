@@ -53,12 +53,13 @@ export async function getHomeStats(): Promise<HomeStats> {
       .gte('tx_date', toLocalDateString(weekStart)),
     supabase
       .from('buddy_requests')
-      .select('id')
+      // count only — we just need the number, not the rows
+      .select('id', { count: 'exact', head: true })
       .eq('to_user', uid)
       .eq('status', 'pending'),
     supabase
       .from('buddy_links')
-      .select('user_a')
+      .select('user_a', { count: 'exact', head: true })
       .or(`user_a.eq.${uid},user_b.eq.${uid}`),
   ]);
 
@@ -87,7 +88,7 @@ export async function getHomeStats(): Promise<HomeStats> {
     weekWorkouts,
     weekActivities,
     weekSpend,
-    buddyRequests: (reqRes.data ?? []).length,
-    buddyCount: (linkRes.data ?? []).length,
+    buddyRequests: reqRes.count ?? 0,
+    buddyCount: linkRes.count ?? 0,
   };
 }

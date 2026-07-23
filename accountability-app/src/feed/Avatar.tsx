@@ -1,4 +1,5 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { CachedImage } from '../ui/CachedImage';
 
 type Props = { url: string | null; name: string | null; size?: number };
 
@@ -7,7 +8,7 @@ export function Avatar({ url, name, size = 40 }: Props) {
   const radius = size / 2;
   if (url) {
     return (
-      <Image source={{ uri: url }} style={{ width: size, height: size, borderRadius: radius }} />
+      <CachedImage uri={url} style={{ width: size, height: size, borderRadius: radius }} />
     );
   }
   return (

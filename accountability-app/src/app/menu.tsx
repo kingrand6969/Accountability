@@ -14,22 +14,26 @@ import { getMyProfile } from '../profiles/api';
 import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
 import { inviteFriends } from '../social/invite';
+import { getRank } from '../achievements/api';
+import { RankBadge } from '../achievements/RankBadge';
 import { colors, font, radius, shadow, spacing, contentMax } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 const GRID: { icon: IoniconName; tint: string; title: string; route: string }[] = [
+  { icon: 'podium-outline', tint: '#1d4ed8', title: 'Leaderboards & Wins', route: '/compete' },
+  { icon: 'today-outline', tint: '#0284c7', title: 'Planner', route: '/today' },
   { icon: 'people-outline', tint: '#2563eb', title: 'Groups', route: '/groups' },
   { icon: 'storefront-outline', tint: '#0d9488', title: 'Pages', route: '/pages' },
   { icon: 'images-outline', tint: '#0ea5e9', title: 'Memories', route: '/memories' },
   { icon: 'person-add-outline', tint: '#db2777', title: 'Buddies', route: '/buddy' },
   { icon: 'color-palette-outline', tint: '#7c3aed', title: 'My buddy card', route: '/buddy-card-edit' },
   { icon: 'stats-chart-outline', tint: '#ea580c', title: 'Progress', route: '/insights' },
-  { icon: 'flame-outline', tint: '#f59e0b', title: 'Share a win', route: '/win-card' },
   { icon: 'book-outline', tint: '#0d9488', title: 'Daily Reads', route: '/books' },
   { icon: 'barbell-outline', tint: '#7c3aed', title: 'Exercises', route: '/gym' },
   { icon: 'nutrition-outline', tint: '#16a34a', title: 'Diet', route: '/diet' },
   { icon: 'wallet-outline', tint: '#dc2626', title: 'Finance', route: '/finance' },
+  { icon: 'briefcase-outline', tint: '#b45309', title: 'Business', route: '/business' },
   { icon: 'walk-outline', tint: '#ea580c', title: 'Activity', route: '/run' },
   { icon: 'star-outline', tint: '#7c3aed', title: 'Go Pro', route: '/paywall' },
 ];
@@ -40,6 +44,7 @@ export default function Menu() {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
   const [myPages, setMyPages] = useState<Page[]>([]);
+  const [rank, setRank] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -48,6 +53,9 @@ export default function Menu() {
           setName(p?.display_name ?? null);
           setAvatar(p?.avatar_url ?? null);
         })
+        .catch(() => {});
+      getRank()
+        .then((r) => setRank(r.name))
         .catch(() => {});
       listGroups()
         .then((gs) => setMyGroups(gs.filter((g) => g.is_member).slice(0, 8)))
@@ -102,6 +110,22 @@ export default function Menu() {
           </View>
           <Ionicons name="chevron-forward" size={18} color="#dbeafe" />
         </LinearGradient>
+      </Pressable>
+
+      {/* trophy case — carries the member's live rank badge */}
+      <Pressable
+        style={({ pressed }) => [styles.trophyRow, pressed && styles.pressed]}
+        onPress={() => router.push('/achievements' as never)}
+        accessibilityLabel="Open your Trophy Case"
+      >
+        <View style={styles.trophyIcon}>
+          <Ionicons name="medal" size={19} color="#fff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.trophyTitle}>Trophy Case</Text>
+          <Text style={styles.trophySub}>Your rank, medals & Flex Points</Text>
+        </View>
+        {rank ? <RankBadge rank={rank} size={30} /> : <Ionicons name="chevron-forward" size={18} color="#f59e0b" />}
       </Pressable>
 
       {/* invite friends — the growth loop lives one tap from everywhere */}
@@ -169,6 +193,31 @@ export default function Menu() {
           </Pressable>
         ))}
       </View>
+
+      <Pressable
+        style={({ pressed }) => [styles.helpRow, pressed && styles.pressed]}
+        onPress={() => router.push('/help')}
+        accessibilityLabel="Help and Support"
+      >
+        <View style={styles.helpIcon}>
+          <Ionicons name="help-buoy-outline" size={20} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.helpLabel}>Help &amp; Support</Text>
+          <Text style={styles.helpSub}>Contact us, report a problem, Terms &amp; Privacy</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      </Pressable>
+
+      <View style={styles.legalRow}>
+        <Text style={styles.legalLink} onPress={() => router.push('/legal/terms')}>
+          Terms of Service
+        </Text>
+        <Text style={styles.legalDot}>·</Text>
+        <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy')}>
+          Privacy Policy
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -182,6 +231,37 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   pressed: { opacity: 0.75 },
+  helpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  helpIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  helpLabel: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  helpSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
+  legalRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  legalLink: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted },
+  legalDot: { color: colors.textFaint },
   profileWrap: {
     borderRadius: radius.md,
     overflow: 'hidden',
@@ -233,6 +313,27 @@ const styles = StyleSheet.create({
   },
   inviteTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
   inviteSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  trophyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: '#fff8ec',
+    borderWidth: 1,
+    borderColor: '#f4d9a6',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 60,
+  },
+  trophyIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#f59e0b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trophyTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  trophySub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,

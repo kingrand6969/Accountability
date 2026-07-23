@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,9 +25,11 @@ import {
   enableStreakReminder,
   disableStreakReminder,
 } from '../../notifications/streakReminder';
-import { getMyProfile, updateMyProfile, touchLastActive } from '../../profiles/api';
+import { getMyProfile, updateMyProfile, touchLastActive, deleteMyAccount } from '../../profiles/api';
 import { validateBirthday } from '../../profiles/validation';
 import { uploadAvatar, uploadCover } from '../../profiles/avatar';
+import { prepareUpload } from '../../media/prepareUpload';
+import { CachedImage } from '../../ui/CachedImage';
 import { ChipSelector } from '../../profiles/ChipSelector';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
@@ -82,6 +85,7 @@ export default function Profile() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
   const [area, setArea] = useState('');
@@ -180,28 +184,24 @@ export default function Profile() {
   }
 
   async function pickImage(aspect: [number, number]) {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to set a photo.');
-      return null;
+    // On web the file dialog MUST open synchronously from the click — an
+    // `await` for permission first breaks the user-gesture and the picker
+    // silently never opens. Web needs no permission, so skip it there.
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission needed', 'Allow photo access to set a photo.');
+        return null;
+      }
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: Platform.OS !== 'web', // web has no crop UI
       aspect,
-      quality: 0.6,
-      base64: true,
+      quality: 1, // keep the crop sharp — prepareUpload does the resize/compress
     });
     if (result.canceled) return null;
-    const asset = result.assets[0];
-    if (!asset.base64) {
-      Alert.alert('Could not read image', 'Please try a different photo.');
-      return null;
-    }
-    return {
-      base64: asset.base64,
-      ext: asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg',
-    };
+    return { uri: result.assets[0].uri };
   }
 
   async function onPickAvatar() {
@@ -209,7 +209,9 @@ export default function Profile() {
     if (!img) return;
     setUploading(true);
     try {
-      const url = await uploadAvatar(img.base64, img.ext);
+      // avatars never render above ~200 px — 512 is a generous 2x cap
+      const base64 = await prepareUpload(img.uri, 512);
+      const url = await uploadAvatar(base64, 'jpg');
       await updateMyProfile({ avatar_url: url });
       setAvatarUrl(url);
       showToast('Photo updated');
@@ -225,7 +227,9 @@ export default function Profile() {
     if (!img) return;
     setUploadingCover(true);
     try {
-      const url = await uploadCover(img.base64, img.ext);
+      // cover banners are shown ~screen-wide — 1280 is plenty
+      const base64 = await prepareUpload(img.uri, 1280);
+      const url = await uploadCover(base64, 'jpg');
       await updateMyProfile({ cover_url: url });
       setCoverUrl(url);
       showToast('Cover updated');
@@ -250,6 +254,39 @@ export default function Profile() {
     ]);
   }
 
+  function onDeleteAccount() {
+    // two-step confirm — this is permanent and irreversible
+    Alert.alert(
+      'Delete your account?',
+      'This permanently erases your profile, posts, activity, money, buddies and everything else. Your chats stay with your buddies as “Deleted Account.” This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Are you absolutely sure?', 'There is no way to recover this account.', [
+              { text: 'Keep my account', style: 'cancel' },
+              {
+                text: 'Delete forever',
+                style: 'destructive',
+                onPress: async () => {
+                  setDeleting(true);
+                  try {
+                    await deleteMyAccount();
+                    // signOut inside deleteMyAccount flips the auth guard → sign-in
+                  } catch (e) {
+                    setDeleting(false);
+                    Alert.alert('Could not delete account', String((e as Error).message ?? e));
+                  }
+                },
+              },
+            ]),
+        },
+      ],
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -263,10 +300,10 @@ export default function Profile() {
       {/* cover photo (brand gradient until one is set) — full-bleed, no header */}
       <View style={[styles.coverWrap, { height: 222 + insets.top }]}>
         {coverUrl ? (
-          <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
+          <CachedImage uri={coverUrl} style={styles.cover} contentFit="cover" />
         ) : (
           <LinearGradient
-            colors={['#312e81', '#7c3aed', '#db2777']}
+            colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.cover}
@@ -298,7 +335,7 @@ export default function Profile() {
           accessibilityLabel="Change profile photo"
         >
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            <CachedImage uri={avatarUrl} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
               <Text style={styles.avatarInitial}>
@@ -456,6 +493,26 @@ export default function Profile() {
       >
         <Text style={styles.signOutText}>Sign out</Text>
       </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
+        onPress={onDeleteAccount}
+        disabled={deleting}
+        accessibilityLabel="Delete account"
+      >
+        {deleting ? (
+          <ActivityIndicator size="small" color={colors.danger} />
+        ) : (
+          <>
+            <Ionicons name="trash-outline" size={16} color={colors.danger} />
+            <Text style={styles.deleteText}>Delete account</Text>
+          </>
+        )}
+      </Pressable>
+      <Text style={styles.deleteHint}>
+        Permanently erases everything about you. Your buddies keep their copy of your chats, where
+        you&apos;ll show as “Deleted Account.” This can&apos;t be undone.
+      </Text>
     </ScrollView>
   );
 }
@@ -466,7 +523,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingTop: 0,
     gap: spacing.sm,
-    paddingBottom: 48,
+    paddingBottom: 110, // clear the floating glass tab bar
     backgroundColor: colors.background,
   },
   pressed: { opacity: 0.8 },
@@ -615,4 +672,22 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   signOutText: { color: colors.danger, fontSize: 15, fontFamily: font.semibold },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    marginTop: spacing.sm,
+  },
+  deleteText: { color: colors.danger, fontSize: 14.5, fontFamily: font.bold },
+  deleteHint: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginTop: 2,
+    paddingHorizontal: spacing.lg,
+  },
 });

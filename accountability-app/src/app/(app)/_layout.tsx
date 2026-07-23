@@ -8,6 +8,8 @@ import { onboardedKey } from '../onboarding';
 import { useAuth } from '../../auth/AuthProvider';
 import { floatingTabBarStyle } from '../../ui/floatingTabBar';
 import { GlassTabBar } from '../../ui/GlassTabBar';
+import { useUnreadMessages } from '../../buddy/useUnreadMessages';
+import { getMyProfile, touchLastActive } from '../../profiles/api';
 import { colors } from '../../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -26,6 +28,29 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
   );
 }
 
+/** Bell icon with a live unread dot — lights up the instant something lands. */
+function MessagesTabIcon({
+  color,
+  size,
+  focused,
+}: {
+  color: ColorValue;
+  size: number;
+  focused: boolean;
+}) {
+  const { unread } = useUnreadMessages();
+  return (
+    <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+      <Ionicons
+        name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+        size={size - 2}
+        color={focused ? '#fff' : color}
+      />
+      {unread > 0 && !focused ? <View style={styles.unreadDot} /> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   iconPill: {
     width: 44,
@@ -35,6 +60,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconPillActive: { backgroundColor: '#0f172a' },
+  unreadDot: {
+    position: 'absolute',
+    top: 5,
+    right: 9,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#db2777',
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
 });
 
 export default function AppLayout() {
@@ -46,10 +82,42 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!userId) return; // route guard in the root layout handles signed-out
+    let alive = true;
     setOnboarded(null);
-    AsyncStorage.getItem(onboardedKey(userId))
-      .then((v) => setOnboarded(v === '1'))
-      .catch(() => setOnboarded(true));
+    (async () => {
+      // 1) fast path — this device already finished onboarding
+      try {
+        const flag = await AsyncStorage.getItem(onboardedKey(userId));
+        if (flag === '1') {
+          if (alive) setOnboarded(true);
+          return;
+        }
+      } catch {
+        /* storage unavailable — fall through to the profile check */
+      }
+      // 2) new device / cleared storage: the SERVER is the source of truth. A
+      //    profile that already has a name and an area is onboarded — never make
+      //    an existing member retype it just because this device forgot.
+      try {
+        const profile = await getMyProfile();
+        const done = !!profile?.display_name?.trim() && !!profile?.area?.trim();
+        if (alive) setOnboarded(done);
+        if (done) AsyncStorage.setItem(onboardedKey(userId), '1').catch(() => {});
+      } catch {
+        if (alive) setOnboarded(true); // fail open — never trap someone on setup
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+
+  // presence heartbeat — keeps last_active_at fresh so buddies see me "online"
+  useEffect(() => {
+    if (!userId) return;
+    touchLastActive().catch(() => {});
+    const t = setInterval(() => touchLastActive().catch(() => {}), 90_000);
+    return () => clearInterval(t);
   }, [userId]);
 
   if (onboarded === null) return <View style={{ flex: 1 }} />;
@@ -73,12 +141,12 @@ export default function AppLayout() {
         },
       }}
     >
-      {/* Feed is the home tab — the app opens social-first, like Facebook */}
+      {/* Feed is home — the app opens social-first */}
       <Tabs.Screen
         name="index"
         options={{
           title: 'Feed',
-          tabBarIcon: tabIcon('people', 'people-outline'),
+          tabBarIcon: tabIcon('home', 'home-outline'),
           // pin the wordmark to the left (iOS centres by default, which collides
           // with the right-hand icons on a phone) and keep it compact
           headerTitleAlign: 'left',
@@ -95,36 +163,56 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="today"
-        options={{
-          title: 'Today',
-          tabBarIcon: tabIcon('today', 'today-outline'),
-          headerShown: false, // glass backdrop + hero run edge-to-edge
-        }}
-      />
-      <Tabs.Screen
         name="finance"
         options={{
           title: 'Finance',
           tabBarIcon: tabIcon('wallet', 'wallet-outline'),
-          headerShown: false, // gradient hero runs edge-to-edge
+          headerShown: false, // glass hero runs edge-to-edge
         }}
       />
       <Tabs.Screen
         name="activity"
         options={{
-          title: 'Track',
+          title: 'Exercise',
           tabBarIcon: tabIcon('barbell', 'barbell-outline'),
-          headerShown: false, // gradient hero runs edge-to-edge
+          headerShown: false, // glass hero runs edge-to-edge
         }}
       />
-      {/* Activity — the GPS run tracker, one tap from the bar */}
+      {/* the GPS run tracker, one tap from the bar */}
       <Tabs.Screen
         name="run"
         options={{
-          title: 'Activity',
+          title: 'Track Run',
           tabBarIcon: tabIcon('walk', 'walk-outline'),
           headerShown: false, // immersive full-screen tracker
+        }}
+      />
+      {/* messages — buddy conversations inbox, live via realtime */}
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: 'Messages',
+          tabBarIcon: (p) => <MessagesTabIcon {...p} />,
+          headerShown: true,
+        }}
+      />
+      {/* notifications live in the Feed header now — keep the route reachable */}
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          href: null,
+          tabBarItemStyle: { display: 'none' },
+          headerShown: true,
+          title: 'Notifications',
+        }}
+      />
+      {/* Planner (Today) lives in the ☰ Menu now — route stays reachable */}
+      <Tabs.Screen
+        name="today"
+        options={{
+          href: null,
+          tabBarItemStyle: { display: 'none' },
+          headerShown: false, // glass backdrop + hero run edge-to-edge
         }}
       />
       {/* Profile lives in the ☰ Menu now — hidden from the tab bar but the

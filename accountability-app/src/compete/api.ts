@@ -8,7 +8,7 @@ import { getPublicProfiles } from '../profiles/publicProfiles';
  * server (see 0040_compete.sql), so no raw activity data is ever exposed.
  */
 
-export type Metric = 'consistency' | 'distance' | 'points';
+export type Metric = 'consistency' | 'distance' | 'points' | 'avgkm' | 'chwin';
 export type Period = 'week' | 'month' | 'all';
 export type Scope = 'city' | 'country';
 
@@ -16,7 +16,16 @@ export const METRICS: { value: Metric; label: string; icon: string; unit: string
   { value: 'consistency', label: 'Consistency', icon: 'flame', unit: 'days' },
   { value: 'distance', label: 'Distance', icon: 'walk', unit: 'km' },
   { value: 'points', label: 'Points', icon: 'trophy', unit: 'pts' },
+  // lifetime average — computed since join date, so the period chips don't apply
+  { value: 'avgkm', label: 'Avg km/day', icon: 'speedometer', unit: 'km/day' },
+  // net challenge record: wins − losses, floored at 0 — only wins are shown
+  { value: 'chwin', label: 'Challenge wins', icon: 'medal', unit: 'wins' },
 ];
+
+/** Time-boxed challenges can't run on the derived metrics. */
+export const CHALLENGE_METRICS = METRICS.filter(
+  (m) => m.value !== 'avgkm' && m.value !== 'chwin',
+);
 
 export const PERIODS: { value: Period; label: string }[] = [
   { value: 'week', label: 'This week' },
@@ -31,6 +40,8 @@ export function metricMeta(m: Metric) {
 /** Format a raw score for a metric (distance keeps 1 decimal, others whole). */
 export function formatScore(score: number, metric: Metric): string {
   if (metric === 'distance') return `${score.toFixed(1)} km`;
+  if (metric === 'avgkm') return `${score.toFixed(2)} km/day`;
+  if (metric === 'chwin') return `${Math.round(score)} ${Math.round(score) === 1 ? 'win' : 'wins'}`;
   const meta = metricMeta(metric);
   return `${Math.round(score)} ${meta.unit}`;
 }
@@ -113,9 +124,14 @@ export async function getLocationSharing(): Promise<LocationSharing> {
 }
 
 /**
- * Ask for location permission, reverse-geocode the current position to a
- * city + country, and turn on leaderboard sharing. Returns the resolved place,
- * or null on web / if the user declines. Never throws for a missing place.
+ * Ask for location permission and register the device's real position as this
+ * member's leaderboard place. The COORDINATES are sent to the set-location
+ * Edge Function, which reverse-geocodes them server-side and is the only writer
+ * of city/country — the client cannot assert a place it isn't in.
+ *
+ * Returns null on web or if the member declines the permission prompt. THROWS
+ * with a readable message when the server refuses (e.g. the 30-day change
+ * cooldown, or a location under admin review) so the screen can show it.
  */
 export async function enableLocationSharing(): Promise<{ city: string | null; country: string | null } | null> {
   const uid = await me();
@@ -134,18 +150,28 @@ export async function enableLocationSharing(): Promise<{ city: string | null; co
     const perm = await Location.requestForegroundPermissionsAsync();
     if (!perm.granted) return null;
     const pos = await Location.getCurrentPositionAsync({});
-    const places = await Location.reverseGeocodeAsync(pos.coords);
-    const p = places[0];
-    const city = p?.city ?? p?.subregion ?? null;
-    const country = p?.country ?? null;
-    const { error } = await supabase
-      .from('profiles')
-      .update({ city, country, share_location: true, tz_offset: new Date().getTimezoneOffset() })
-      .eq('id', uid);
-    if (error) throw error;
-    return { city, country };
-  } catch {
-    return null;
+    // Send RAW COORDINATES only. The server reverse-geocodes them and is the
+    // sole writer of city/country (migration 0067) — so a client can never
+    // claim a city it isn't in just to top that leaderboard.
+    const { data, error } = await supabase.functions.invoke('set-location', {
+      body: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+    });
+    if (error) {
+      let msg = 'Could not verify your location. Please try again.';
+      try {
+        const ctx = await (error as { context?: { json?: () => Promise<{ error?: string }> } }).context?.json?.();
+        if (ctx?.error) msg = ctx.error;
+      } catch {
+        /* keep the generic message */
+      }
+      throw new Error(msg);
+    }
+    if (data?.error) throw new Error(data.error as string);
+    // timezone is not rank-affecting, so it stays a plain client write
+    await supabase.from('profiles').update({ tz_offset: new Date().getTimezoneOffset() }).eq('id', uid);
+    return { city: (data?.city as string) ?? null, country: (data?.country as string) ?? null };
+  } catch (e) {
+    throw e instanceof Error ? e : new Error('Could not verify your location.');
   }
 }
 
@@ -247,8 +273,9 @@ export async function listChallenges(): Promise<ChallengeCard[]> {
   const [{ data: rows, error }, joinedRes] = await Promise.all([
     supabase
       .from('challenges')
-      .select('*, challenge_participants(count)')
-      .order('ends_at', { ascending: true }),
+      .select('id,creator_id,title,metric,starts_at,ends_at,created_at, challenge_participants(count)')
+      .order('ends_at', { ascending: true })
+      .limit(100),
     uid
       ? supabase.from('challenge_participants').select('challenge_id').eq('user_id', uid)
       : Promise.resolve({ data: [] as { challenge_id: string }[] }),
@@ -272,7 +299,7 @@ export async function getChallenge(id: string): Promise<ChallengeCard | null> {
   const uid = await me();
   const { data, error } = await supabase
     .from('challenges')
-    .select('*, challenge_participants(count)')
+    .select('id,creator_id,title,metric,starts_at,ends_at,created_at, challenge_participants(count)')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;

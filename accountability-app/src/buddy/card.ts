@@ -8,10 +8,65 @@ export type BuddyCard = {
   mode?: 'profile' | 'custom';
   headline?: string;
   about?: string;
-  pr_weight?: string; // manual PR: max weight lifted (e.g. "120 kg")
+  // what the owner chooses to display on their card
+  show_rank?: boolean;
+  rank_name?: string; // snapshotted at save time (rank only climbs)
+  medals?: number; // medals earned (count), snapshotted alongside the rank
+  medals_list?: { id: string; tier: number }[]; // which medals + tier, for display
+  show_city_rank?: boolean;
+  show_country_rank?: boolean;
+  show_posts?: boolean; // posts section on the card
 };
 
-export type BuddyStats = { buddies: number; km: number; stars: number };
+export type BuddyStats = { buddies: number; km: number; stars: number; cheers: number };
+
+/** A member's public performance line — the five Compete metrics, all-time,
+ *  plus where they place among their own buddies by consistency. */
+export type CardMetrics = {
+  consistency: number;
+  points: number;
+  avgkm: number;
+  distance: number;
+  chwin: number;
+  buddiesRank: number | null;
+  buddiesTotal: number;
+};
+
+export async function getCardMetrics(id: string): Promise<CardMetrics> {
+  const { data, error } = await supabase.rpc('member_card_stats', { p_target: id });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    consistency: Number(row?.consistency ?? 0),
+    points: Number(row?.points ?? 0),
+    avgkm: Number(row?.avgkm ?? 0),
+    distance: Number(row?.distance ?? 0),
+    chwin: Number(row?.chwin ?? 0),
+    buddiesRank: row?.buddies_rank != null ? Number(row.buddies_rank) : null,
+    buddiesTotal: Number(row?.buddies_total ?? 0),
+  };
+}
+
+export type BoardRank = {
+  city: string | null;
+  country: string | null;
+  cityRank: number | null;
+  countryRank: number | null;
+};
+
+/** The member's live standing on their own city/country boards (this week's
+ *  consistency). All-null unless they share their location. */
+export async function getBoardRank(id: string): Promise<BoardRank> {
+  const { data, error } = await supabase.rpc('member_board_rank', { p_user: id });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    city: row?.city ?? null,
+    country: row?.country ?? null,
+    cityRank: row?.city_rank != null ? Number(row.city_rank) : null,
+    countryRank: row?.country_rank != null ? Number(row.country_rank) : null,
+  };
+}
 
 export async function getBuddyStats(id: string): Promise<BuddyStats> {
   const { data, error } = await supabase.rpc('buddy_public_stats', { p_target: id });
@@ -21,6 +76,7 @@ export async function getBuddyStats(id: string): Promise<BuddyStats> {
     buddies: Number(row?.buddies ?? 0),
     km: Number(row?.km ?? 0),
     stars: Number(row?.stars ?? 0),
+    cheers: Number(row?.cheers ?? 0),
   };
 }
 
@@ -111,13 +167,37 @@ export async function saveMyBuddyCard(card: BuddyCard): Promise<void> {
   if (error) throw error;
 }
 
-/** The text a viewer should see, honoring the owner's chosen source. */
+export type CardPost = {
+  id: string;
+  body: string;
+  image_url: string | null;
+  created_at: string;
+};
+
+/**
+ * Posts shown on a member's card. Buddies see their recent feed posts;
+ * non-buddies see ONLY the posts the owner marked "Show on Buddy Card".
+ */
+export async function listCardPosts(userId: string, isBuddy: boolean): Promise<CardPost[]> {
+  let q = supabase
+    .from('posts')
+    .select('id,body,image_url,created_at')
+    .eq('user_id', userId)
+    .is('group_id', null)
+    .is('page_id', null)
+    .order('created_at', { ascending: false })
+    .limit(6);
+  if (!isBuddy) q = q.eq('show_on_card', true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as CardPost[];
+}
+
+/** The text a viewer should see — the owner's own words, falling back to their
+ *  profile area/bio so the card is never blank. */
 export function cardText(view: BuddyCardView): { headline: string | null; about: string | null } {
-  if (view.card.mode === 'custom') {
-    return {
-      headline: view.card.headline?.trim() || null,
-      about: view.card.about?.trim() || null,
-    };
-  }
-  return { headline: view.area ? `Trains around ${view.area}` : null, about: view.bio };
+  return {
+    headline: view.card.headline?.trim() || (view.area ? `Trains around ${view.area}` : null),
+    about: view.card.about?.trim() || view.bio,
+  };
 }

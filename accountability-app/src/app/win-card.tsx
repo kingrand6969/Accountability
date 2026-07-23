@@ -197,7 +197,7 @@ export default function WinCard() {
           </ImageBackground>
         ) : (
           <LinearGradient
-            colors={['#312e81', '#7c3aed', '#db2777']}
+            colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.card}

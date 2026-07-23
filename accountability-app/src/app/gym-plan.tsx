@@ -20,12 +20,14 @@ import {
 } from '../gym/library';
 import { bmi, bmiCategory, buildPlan, schemeFor, type PlanItem } from '../gym/plan';
 import { createItem } from '../timeline/api';
+import { useIsPro } from '../pro/ProProvider';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing, contentMax } from '../ui/theme';
 
 export default function GymPlan() {
   const router = useRouter();
+  const { isPro, loading: proLoading } = useIsPro();
   const [focus, setFocus] = useState<Set<MuscleGroup>>(new Set());
   const [equip, setEquip] = useState<'any' | 'gym' | 'body'>('any');
   const [heightCm, setHeightCm] = useState('');
@@ -138,6 +140,34 @@ export default function GymPlan() {
     } catch (e) {
       Alert.alert('Could not log', String((e as Error).message ?? e));
     }
+  }
+
+  if (proLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // browsing the library is free — the plan BUILDER is the Pro tool
+  if (!isPro) {
+    return (
+      <View style={styles.upsell}>
+        <View style={styles.upsellIconCircle}>
+          <Ionicons name="barbell-outline" size={48} color={colors.pro} />
+        </View>
+        <Text style={styles.upsellTitle}>Build My Plan</Text>
+        <Text style={styles.upsellText}>
+          A personalised workout plan from your goals, equipment and BMI — a Pro feature.
+        </Text>
+        <Button
+          title="Upgrade to Pro"
+          onPress={() => router.push('/paywall')}
+          style={styles.upsellBtn}
+        />
+      </View>
+    );
   }
 
   return (
@@ -323,6 +353,33 @@ export default function GymPlan() {
 }
 
 const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  upsell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xxl,
+    gap: spacing.md,
+    backgroundColor: colors.background,
+  },
+  upsellIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.proSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upsellTitle: { fontFamily: font.bold, fontSize: 20, color: colors.text },
+  upsellText: {
+    fontFamily: font.regular,
+    fontSize: 14.5,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 21,
+    maxWidth: 320,
+  },
+  upsellBtn: { alignSelf: 'stretch', maxWidth: 320, marginTop: spacing.sm },
   container: {
     padding: spacing.lg,
     gap: spacing.sm,

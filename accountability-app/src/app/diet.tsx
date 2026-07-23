@@ -14,12 +14,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsPro } from '../pro/ProProvider';
 import {
   listFoodLogs,
+  addFoodLog,
   deleteFoodLog,
   getCalorieTarget,
   setCalorieTarget,
   todayString,
   type FoodLog,
 } from '../diet/api';
+import { scanFood, type FoodItem, type FoodScan } from '../scan/api';
+import { FoodScanSheet } from '../scan/FoodScanSheet';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
@@ -32,6 +35,9 @@ export default function Diet() {
   const [target, setTarget] = useState(2000);
   const [targetText, setTargetText] = useState('2000');
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<FoodScan | null>(null);
+  const [savingScan, setSavingScan] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -45,6 +51,56 @@ export default function Diet() {
       setLoading(false);
     }
   }, []);
+
+  /** Photo → estimated items. Nothing is logged until the member confirms. */
+  async function onScanMeal() {
+    setScanning(true);
+    try {
+      const out = await scanFood(true);
+      if (!out) return; // cancelled the camera
+      setScanResult(out.scan);
+      if (out.scan.items.length > 0) {
+        showToast(`${out.limit - out.used} scan${out.limit - out.used === 1 ? '' : 's'} left this month`);
+      }
+    } catch (e) {
+      const err = e as Error & { upgrade?: boolean };
+      if (err.upgrade) {
+        Alert.alert('Pro feature', err.message, [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'See Pro', onPress: () => router.push('/paywall') },
+        ]);
+      } else {
+        Alert.alert('Could not scan', err.message);
+      }
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function saveScannedItems(items: FoodItem[]) {
+    setSavingScan(true);
+    try {
+      const day = todayString();
+      for (const it of items) {
+        await addFoodLog({
+          name: it.name,
+          calories: Math.round(it.kcal || 0),
+          protein: Math.round(it.protein || 0),
+          carbs: Math.round(it.carbs || 0),
+          fat: Math.round(it.fat || 0),
+          quantity_g: Math.round(it.grams || 0),
+          log_date: day,
+        });
+      }
+      setScanResult(null);
+      showToast(`Added ${items.length} item${items.length === 1 ? '' : 's'}`);
+      await load();
+    } catch (e) {
+      Alert.alert('Could not save', String((e as Error).message ?? e));
+    } finally {
+      setSavingScan(false);
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -199,15 +255,40 @@ export default function Diet() {
         )}
       />
 
-      <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.pressed]}
-        onPress={() => router.push('/food-search')}
-        accessibilityRole="button"
-        accessibilityLabel="Add food"
-      >
-        <Ionicons name="add" size={20} color={colors.onPrimary} />
-        <Text style={styles.fabText}>Add food</Text>
-      </Pressable>
+      <View style={styles.fabRow}>
+        <Pressable
+          style={({ pressed }) => [styles.scanFab, scanning && styles.fabBusy, pressed && styles.pressed]}
+          onPress={onScanMeal}
+          disabled={scanning}
+          accessibilityRole="button"
+          accessibilityLabel="Scan a meal with the camera"
+        >
+          {scanning ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <>
+              <Ionicons name="camera" size={19} color={colors.primary} />
+              <Text style={styles.scanFabText}>Scan meal</Text>
+            </>
+          )}
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.fab, pressed && styles.pressed]}
+          onPress={() => router.push('/food-search')}
+          accessibilityRole="button"
+          accessibilityLabel="Add food"
+        >
+          <Ionicons name="add" size={20} color={colors.onPrimary} />
+          <Text style={styles.fabText}>Add food</Text>
+        </Pressable>
+      </View>
+
+      <FoodScanSheet
+        scan={scanResult}
+        saving={savingScan}
+        onCancel={() => setScanResult(null)}
+        onSave={saveScannedItems}
+      />
     </View>
   );
 }
@@ -290,10 +371,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fab: {
+  fabRow: {
     position: 'absolute',
     right: spacing.xl,
     bottom: spacing.xxl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scanFab: {
+    backgroundColor: colors.card,
+    borderRadius: 28,
+    minHeight: 48,
+    minWidth: 128,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  scanFabText: { color: colors.primary, fontFamily: font.bold, fontSize: 14.5 },
+  fabBusy: { opacity: 0.8 },
+  fab: {
     backgroundColor: colors.success,
     borderRadius: 28,
     minHeight: 48,

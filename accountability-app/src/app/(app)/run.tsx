@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -23,7 +24,7 @@ import {
   totalDistanceMeters,
   type Pt,
 } from '../../activity/geo';
-import { RouteTrace, traceHead } from '../../activity/RouteTrace';
+import { OsmMap, type OsmMapHandle } from '../../ui/OsmMap';
 import { RunShareSheet, type FinishedRun } from '../../activity/RunShareSheet';
 import {
   LOCATION_TASK_NAME,
@@ -34,6 +35,7 @@ import { saveActivity, type ActivityType } from '../../activity/api';
 import { getMyProfile } from '../../profiles/api';
 import { floatingTabBarStyle, FLOATING_BAR_CLEARANCE } from '../../ui/floatingTabBar';
 import { font } from '../../ui/theme';
+import { hapticImpact } from '../../ui/haptics';
 import { contentMaxWidth } from '../../ui/responsive';
 
 const LIME = '#c6f24e';
@@ -45,7 +47,10 @@ const TYPES: { value: ActivityType; label: string; icon: 'walk-outline' | 'foots
   { value: 'ride', label: 'ride', icon: 'bicycle-outline' },
 ];
 
-// a small loop so the screen shows the trace design before a real run
+// the run tracker stores points as {lat, lon}; the map wants {lat, lng}
+const toLatLng = (pts: Pt[]) => pts.map((p) => ({ lat: p.lat, lng: p.lon }));
+
+// a small loop used only for the web preview of the shareable run card (no GPS)
 const SAMPLE_ROUTE: Pt[] = [
   { lat: 14.5, lon: 121.0 },
   { lat: 14.5009, lon: 121.0006 },
@@ -101,12 +106,27 @@ export default function ActivityTrack() {
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
   const pulse = useRef(new Animated.Value(0)).current;
+  const mapRef = useRef<OsmMapHandle>(null);
+  // where to centre the idle map — the user's last-known spot (no prompt)
+  const [idlePos, setIdlePos] = useState<{ lat: number; lng: number } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       getMyProfile().then((p) => setAvatar(p?.avatar_url ?? null)).catch(() => {});
+      if (Platform.OS === 'web') return;
+      Location.getForegroundPermissionsAsync()
+        .then((perm) => (perm.granted ? Location.getLastKnownPositionAsync() : null))
+        .then((pos) => pos && setIdlePos({ lat: pos.coords.latitude, lng: pos.coords.longitude }))
+        .catch(() => {});
     }, []),
   );
+
+  // stream live GPS points into the map without reloading it
+  useEffect(() => {
+    if (!tracking) return;
+    const pts = toLatLng(livePoints);
+    mapRef.current?.setRoute(pts, pts[pts.length - 1]);
+  }, [livePoints, tracking]);
 
   useEffect(() => {
     return () => {
@@ -138,6 +158,7 @@ export default function ActivityTrack() {
   }, [tracking, pulse]);
 
   async function onStart() {
+    hapticImpact();
     if (Platform.OS === 'web') {
       // no GPS in a browser — let the user preview the shareable run card
       setShareRun({
@@ -219,6 +240,7 @@ export default function ActivityTrack() {
   }
 
   async function onStop() {
+    hapticImpact();
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     await stopUpdatesIfRunning();
@@ -259,12 +281,13 @@ export default function ActivityTrack() {
   const shownPoints = pending ? pending.points : livePoints;
   const kcal = estimateCalories(type, shownDist);
 
-  const isSample = shownPoints.length === 0 && !tracking;
-  const tracePoints = isSample ? SAMPLE_ROUTE : shownPoints;
-  // trace fills the screen but the path is lifted into the top ~55% so the
-  // floating bottom card never covers the runner marker
-  const tracePad = { top: insets.top + 80, right: 70, bottom: H * 0.44, left: 60 };
-  const head = traceHead(tracePoints, W, H, 5, tracePad);
+  // live route is pushed via the map ref while tracking (no reload); a finished
+  // run passes its full route as a prop
+  const mapRoute = tracking ? [] : toLatLng(shownPoints);
+  const idleMarkers =
+    !tracking && shownPoints.length === 0 && idlePos
+      ? [{ lat: idlePos.lat, lng: idlePos.lng, label: 'You', color: LIME }]
+      : [];
   // keep the floating UI in a centered column on wide screens (map stays full-bleed)
   const sideInset = Math.max(16, (W - contentMaxWidth(W)) / 2);
   const title = `${timeOfDay()} ${TYPES.find((t) => t.value === type)?.label ?? 'run'}`;
@@ -273,38 +296,22 @@ export default function ActivityTrack() {
 
   return (
     <View style={styles.screen}>
-      {/* full-screen map trace */}
-      <RouteTrace
-        points={tracePoints}
-        width={W}
-        height={H}
-        stroke={5}
-        accent={LIME}
-        showHead={false}
-        endStyle="none"
-        faint={isSample}
-        pad={tracePad}
+      {/* full-screen real map (dark tiles to match the immersive UI) */}
+      <OsmMap
+        ref={mapRef}
+        route={mapRoute}
+        markers={idleMarkers}
+        interactive={false}
+        tiles="dark"
+        style={[StyleSheet.absoluteFill, styles.mapBg]}
       />
-
-      {/* runner marker at the current position */}
-      {head ? (
-        <View style={[styles.runner, { left: head.x - 22, top: head.y - 22 }]} pointerEvents="none">
-          {tracking ? (
-            <Animated.View
-              style={[
-                styles.runnerPulse,
-                {
-                  opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
-                  transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
-                },
-              ]}
-            />
-          ) : null}
-          <View style={styles.runnerDot}>
-            <Ionicons name="walk" size={18} color="#101319" />
-          </View>
-        </View>
-      ) : null}
+      {/* top/bottom scrim keeps the white overlay text legible over the map */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(16,19,25,0.62)', 'rgba(16,19,25,0.05)', 'rgba(16,19,25,0.12)', 'rgba(16,19,25,0.86)']}
+        locations={[0, 0.28, 0.62, 1]}
+        style={StyleSheet.absoluteFill}
+      />
 
       {/* top bar */}
       <View style={[styles.topBar, { top: insets.top + 6, left: sideInset, right: sideInset }]}>
@@ -426,6 +433,7 @@ function StatPill({ value, label }: { value: string; label: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG },
+  mapBg: { backgroundColor: BG },
   runner: { position: 'absolute', width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   runnerPulse: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: LIME },
   runnerDot: {

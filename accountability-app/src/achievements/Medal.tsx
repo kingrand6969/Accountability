@@ -2,12 +2,19 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { LOCKED_META, TIER_META, type MedalState } from './catalog';
+import { LOCKED_META, TIER_META, medalMetal, type MedalState } from './catalog';
+import { MedalIcon } from './MedalIcon';
+import { medalArtFor, type MedalTierIndex } from './medalArt';
 
 /**
- * A shiny metallic medal coin that actually moves: a light glint sweeps across
- * it, a coloured aura pulses behind it, and it floats gently. Locked medals are
- * a still grey coin with a lock. Pure RN Animated (native driver) — no libs.
+ * A medal in the Trophy Case.
+ *
+ * UNLOCKED → the real artwork, animated (<MedalIcon />).
+ * LOCKED   → the SAME artwork as a dimmed preview with a small lock chip, so a
+ *            member can see what they are working toward. A wall of identical
+ *            padlocks tells you nothing and hides the art; a ghosted medal is
+ *            the thing that actually pulls people forward.
+ * Families without artwork fall back to the drawn metal coin.
  */
 export function Medal({
   state,
@@ -18,7 +25,44 @@ export function Medal({
   size?: number;
   animate?: boolean;
 }) {
-  const meta = state.unlocked ? TIER_META[state.tierIndex] : LOCKED_META;
+  // locked medals preview the FIRST tier — "here's what the first one looks like"
+  const artKey = medalArtFor(state.def.id, state.unlocked ? state.tierIndex : 0);
+  if (artKey) {
+    if (!state.unlocked) {
+      return (
+        <View style={{ width: size, height: size }}>
+          <View style={styles.lockedArt}>
+            <MedalIcon icon={artKey} size={size} animated={false} tier={0} />
+          </View>
+          <View style={[styles.lockChip, { borderRadius: size * 0.14 }]}>
+            <Ionicons name="lock-closed" size={Math.round(size * 0.15)} color="#fff" />
+          </View>
+        </View>
+      );
+    }
+    return (
+      <MedalIcon
+        icon={artKey}
+        size={size}
+        animated={animate}
+        tier={medalMetal(state.def, state.tierIndex) as MedalTierIndex}
+      />
+    );
+  }
+  return <MedalCoin state={state} size={size} animate={animate} />;
+}
+
+/** The original drawn coin — locked medals and families without artwork. */
+function MedalCoin({
+  state,
+  size = 92,
+  animate = true,
+}: {
+  state: MedalState;
+  size?: number;
+  animate?: boolean;
+}) {
+  const meta = state.unlocked ? TIER_META[medalMetal(state.def, state.tierIndex)] : LOCKED_META;
   const shine = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const float = useRef(new Animated.Value(0)).current;
@@ -125,6 +169,18 @@ export function Medal({
 }
 
 const styles = StyleSheet.create({
+  // dimmed enough to read as "not yet yours", solid enough to still tempt
+  lockedArt: { opacity: 0.32 },
+  lockChip: {
+    position: 'absolute',
+    right: 0,
+    bottom: 2,
+    backgroundColor: 'rgba(71,85,105,0.92)',
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   halo: { position: 'absolute' },
   shadowWrap: {
     ...(Platform.OS === 'android'

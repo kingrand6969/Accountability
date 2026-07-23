@@ -1,14 +1,11 @@
 import { Platform, Share } from 'react-native';
 import { showToast } from '../ui/Toast';
+import { myInviteUrl } from '../profiles/referrals';
 
-// TODO(launch): append the real store links once the app is listed
-// (Play Store URL + App Store URL). Until then the invite is text-only so
-// we never send friends to a dead link.
 const INVITE_MESSAGE =
   `I'm using AccountAbility to stay on track — workouts, meals, money and a ` +
   `daily streak, with buddies who keep me honest. 💪🔥\n\n` +
-  `Join me so we can keep each other accountable! Search "AccountAbility" ` +
-  `in your app store.`;
+  `Join me so we can keep each other accountable!`;
 
 /**
  * Opens the native share sheet (Messenger, WhatsApp, TikTok, SMS — whatever
@@ -37,7 +34,10 @@ export async function shareInviteText(message: string): Promise<void> {
   }
 }
 
-/** Share sheet pre-filled with the generic "join me on AccountAbility" invite. */
+/** Share sheet pre-filled with the invite + your personal referral link, so the
+ *  friends who join are credited to you (the Ambassador medal). */
 export async function inviteFriends(): Promise<void> {
-  await shareInviteText(INVITE_MESSAGE);
+  const url = await myInviteUrl();
+  const message = url ? `${INVITE_MESSAGE}\n\n${url}` : INVITE_MESSAGE;
+  await shareInviteText(message);
 }

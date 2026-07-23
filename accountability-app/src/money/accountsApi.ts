@@ -125,9 +125,16 @@ export type Debt = {
   due_date: string | null;
   settled: boolean;
   created_at: string;
+  // credit-card mode (is_card): monthly cycle + one-tap payments that deduct
+  due_day: number | null;
+  monthly_payment: number | null;
+  credit_limit: number | null;
+  is_card: boolean;
+  last_paid_at: string | null;
 };
 
-const DEBT_SELECT = 'id,kind,counterparty,amount,note,due_date,settled,created_at';
+const DEBT_SELECT =
+  'id,kind,counterparty,amount,note,due_date,settled,created_at,due_day,monthly_payment,credit_limit,is_card,last_paid_at';
 
 export async function listDebts(): Promise<Debt[]> {
   const { data, error } = await supabase
@@ -166,6 +173,70 @@ export async function updateDebt(id: string, input: DebtInput): Promise<void> {
 export async function setDebtSettled(id: string, settled: boolean): Promise<void> {
   const { error } = await supabase.from('debts').update({ settled }).eq('id', id);
   if (error) throw error;
+}
+
+// ---- credit cards (debts with is_card) ----
+
+export async function addCard(input: {
+  counterparty: string;
+  amount: number;
+  monthly_payment: number | null;
+  due_day: number | null;
+  credit_limit: number | null;
+}): Promise<void> {
+  const { error } = await supabase.from('debts').insert({
+    kind: 'owe',
+    counterparty: input.counterparty,
+    amount: input.amount,
+    note: null,
+    due_date: null,
+    is_card: true,
+    monthly_payment: input.monthly_payment,
+    due_day: input.due_day,
+    credit_limit: input.credit_limit,
+  });
+  if (error) throw error;
+}
+
+/** One tap: log the payment, deduct it from the balance. 0 left = settled. */
+export async function payCard(card: Debt, amount: number): Promise<number> {
+  const { error: pe } = await supabase
+    .from('debt_payments')
+    .insert({ debt_id: card.id, amount });
+  if (pe) throw pe;
+  const left = Math.max(0, Math.round((card.amount - amount) * 100) / 100);
+  const { error } = await supabase
+    .from('debts')
+    .update({
+      amount: left,
+      last_paid_at: new Date().toISOString().slice(0, 10),
+      settled: left <= 0,
+    })
+    .eq('id', card.id);
+  if (error) throw error;
+  return left;
+}
+
+/** Paid within the current calendar month? */
+export function cardPaidThisMonth(card: Debt): boolean {
+  if (!card.last_paid_at) return false;
+  const now = new Date();
+  const [y, m] = card.last_paid_at.split('-').map(Number);
+  return y === now.getFullYear() && m === now.getMonth() + 1;
+}
+
+/** ~months to clear at the planned monthly payment. */
+export function cardMonthsLeft(card: Debt): number | null {
+  if (!card.monthly_payment || card.monthly_payment <= 0 || card.amount <= 0) return null;
+  return Math.ceil(card.amount / card.monthly_payment);
+}
+
+/** Credit-limit view: what's left to spend and how much of the limit is used. */
+export function cardCredit(card: Debt): { available: number; usedPct: number } | null {
+  if (!card.credit_limit || card.credit_limit <= 0) return null;
+  const available = Math.max(0, Math.round((card.credit_limit - card.amount) * 100) / 100);
+  const usedPct = Math.min(1, Math.max(0, card.amount / card.credit_limit));
+  return { available, usedPct };
 }
 
 export async function deleteDebt(id: string): Promise<void> {

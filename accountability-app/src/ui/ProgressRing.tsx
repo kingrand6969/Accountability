@@ -1,8 +1,11 @@
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
 /**
  * Circular progress arc. Draws a faint track plus a gradient arc that fills
- * clockwise from 12 o'clock, with a glowing dot at the arc's end.
+ * clockwise from 12 o'clock, with a glowing dot at the arc's end. The arc
+ * sweeps to its value on mount/change (a one-shot ease-out, ~700ms).
  */
 export function ProgressRing({
   size,
@@ -11,6 +14,7 @@ export function ProgressRing({
   trackColor = 'rgba(255,255,255,0.18)',
   startColor = '#ffffff',
   endColor = '#fde68a',
+  animate = true,
 }: {
   size: number;
   strokeWidth?: number;
@@ -18,8 +22,30 @@ export function ProgressRing({
   trackColor?: string;
   startColor?: string;
   endColor?: string;
+  animate?: boolean;
 }) {
-  const clamped = Math.min(1, Math.max(0, progress));
+  const target = Math.min(1, Math.max(0, progress));
+  const anim = useRef(new Animated.Value(0)).current;
+  const [shown, setShown] = useState(animate ? 0 : target);
+
+  useEffect(() => {
+    if (!animate) {
+      setShown(target);
+      return;
+    }
+    // SVG props aren't native-driver animatable — drive re-renders via listener.
+    // One-shot ~700ms sweep; only runs when the value actually changes.
+    const id = anim.addListener(({ value }) => setShown(value));
+    Animated.timing(anim, {
+      toValue: target,
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+    return () => anim.removeListener(id);
+  }, [target, animate, anim]);
+
+  const clamped = Math.min(1, Math.max(0, shown));
   const r = (size - strokeWidth) / 2;
   const c = 2 * Math.PI * r;
   const cx = size / 2;

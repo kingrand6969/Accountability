@@ -57,6 +57,43 @@ async function myLikedSet(me: string | null, postIds: string[]): Promise<Set<str
   return new Set((data ?? []).map((l: any) => l.post_id as string));
 }
 
+/** Posts this member chose to hide — filtered out of every feed page. */
+async function myHiddenPostIds(me: string | null): Promise<string[]> {
+  if (!me) return [];
+  const { data } = await supabase.from('post_hides').select('post_id').eq('user_id', me);
+  return (data ?? []).map((r: any) => r.post_id as string);
+}
+
+/** Hide a post from MY feed only (the author keeps it). */
+export async function hidePost(postId: string): Promise<void> {
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  const { error } = await supabase
+    .from('post_hides')
+    .upsert({ user_id: me, post_id: postId }, { onConflict: 'user_id,post_id', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+/** Delete my own post for everyone (RLS only allows the author). */
+export async function deletePost(postId: string): Promise<void> {
+  const { error } = await supabase.from('posts').delete().eq('id', postId);
+  if (error) throw error;
+}
+
+/** Report a post to the team — lands in the admin Reports queue with the
+ *  post's text quoted so it can be reviewed even if later deleted. */
+export async function reportPost(post: { id: string; user_id: string; body: string | null }): Promise<void> {
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  const excerpt = (post.body ?? '(no text — image post)').slice(0, 140);
+  const { error } = await supabase.from('buddy_reports').insert({
+    reporter: me,
+    reported: post.user_id,
+    reason: `Reported a post: "${excerpt}" (post ${post.id})`,
+  });
+  if (error) throw error;
+}
+
 export const FEED_PAGE_SIZE = 20;
 
 /**
@@ -70,11 +107,13 @@ export async function listFeed(
   pageId?: string,
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
+  const hidden = await myHiddenPostIds(me);
   let query = supabase
     .from('posts')
     .select(POST_SELECT)
     .order('created_at', { ascending: false })
     .limit(FEED_PAGE_SIZE);
+  if (hidden.length > 0) query = query.not('id', 'in', `(${hidden.join(',')})`);
   if (groupId) {
     query = query.eq('group_id', groupId);
   } else if (pageId) {
@@ -115,6 +154,7 @@ export async function createPost(
   groupId: string | null = null,
   pageId: string | null = null,
   eventId: string | null = null,
+  showOnCard = false,
 ): Promise<string> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
@@ -127,6 +167,7 @@ export async function createPost(
       group_id: groupId,
       page_id: pageId,
       event_id: eventId,
+      show_on_card: showOnCard,
     })
     .select('id')
     .single();
@@ -162,13 +203,16 @@ export async function setLiked(postId: string, liked: boolean): Promise<void> {
 }
 
 export async function listComments(postId: string): Promise<PostComment[]> {
+  // newest 100, then flipped back to reading order — bounds a viral post's
+  // thread instead of downloading every comment ever written on it
   const { data, error } = await supabase
     .from('post_comments')
     .select('id,body,created_at,user_id')
     .eq('post_id', postId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false })
+    .limit(100);
   if (error) throw error;
-  const rows = data ?? [];
+  const rows = (data ?? []).reverse();
   const authors = await getPublicProfiles(rows.map((r: any) => r.user_id));
   return rows.map((r: any) => ({
     id: r.id,

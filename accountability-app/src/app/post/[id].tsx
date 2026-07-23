@@ -10,10 +10,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getPost, listComments, addComment, setLiked } from '../../feed/api';
+import { showPostMenu } from '../../feed/postActions';
+import { useAuth } from '../../auth/AuthProvider';
 import { SaveToMemories } from '../../memories/SaveToMemories';
+import { PostImage } from '../../feed/PostImage';
 import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import type { FeedPost, PostComment } from '../../feed/types';
@@ -22,6 +25,9 @@ import { colors, font, radius, spacing } from '../../ui/theme';
 
 export default function PostDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { session } = useAuth();
+  const myId = session?.user.id ?? null;
   const [post, setPost] = useState<FeedPost | null>(null);
   const [comments, setComments] = useState<PostComment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,11 +121,25 @@ export default function PostDetail() {
                   {post.tagged.length > 0 ? ` · ${taggedLabel(post.tagged)}` : ''}
                 </Text>
               </View>
+              <Pressable
+                onPress={() =>
+                  showPostMenu(post, myId, () => {
+                    if (router.canGoBack()) router.back();
+                    else router.replace('/');
+                  })
+                }
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Post options"
+                style={({ pressed }) => [styles.menuBtn, pressed && styles.pressed]}
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
+              </Pressable>
             </View>
             {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
             {post.image_url ? (
-              <View>
-                <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" />
+              <View style={{ alignSelf: 'stretch' }}>
+                <PostImage url={post.image_url} />
                 <SaveToMemories url={post.image_url} />
               </View>
             ) : null}
@@ -127,12 +147,12 @@ export default function PostDetail() {
               onPress={onToggleLike}
               hitSlop={8}
               style={({ pressed }) => [styles.likeRow, pressed && styles.pressed]}
-              accessibilityLabel={post.liked_by_me ? 'Unlike' : 'Like'}
+              accessibilityLabel={post.liked_by_me ? 'Remove cheer' : 'Cheer'}
             >
               <Ionicons
-                name={post.liked_by_me ? 'heart' : 'heart-outline'}
+                name={post.liked_by_me ? 'flame' : 'flame-outline'}
                 size={20}
-                color={post.liked_by_me ? colors.danger : colors.textMuted}
+                color={post.liked_by_me ? colors.cheer : colors.textMuted}
               />
               <Text style={[styles.like, post.liked_by_me && styles.liked]}>{post.like_count}</Text>
             </Pressable>
@@ -202,6 +222,14 @@ const styles = StyleSheet.create({
   list: { padding: spacing.lg, gap: spacing.md },
   post: { gap: 10, marginBottom: spacing.sm },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  menuBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
   author: { fontSize: 16, fontFamily: font.bold, color: colors.text },
   time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
   body: { fontSize: 16, lineHeight: 23, fontFamily: font.regular, color: colors.text },
@@ -220,7 +248,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   like: { fontSize: 15, color: colors.textMuted, fontFamily: font.semibold },
-  liked: { color: colors.danger },
+  liked: { color: colors.cheer },
   pressed: { opacity: 0.7 },
   commentsHeading: {
     fontSize: 14,

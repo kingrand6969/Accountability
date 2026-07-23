@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -11,21 +12,29 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { GlassBackdrop, GlassCard } from '../ui/Glass';
+import { GlassBackdrop } from '../ui/Glass';
 import { contentMaxWidth } from '../ui/responsive';
+import { hapticSuccess } from '../ui/haptics';
+import { showToast } from '../ui/Toast';
 import { font, radius, spacing } from '../ui/theme';
 import { INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
 import { Medal } from '../achievements/Medal';
+import { RankCarousel } from '../achievements/RankCarousel';
+import { ChallengesCarousel } from '../achievements/ChallengesCarousel';
+import { MissionsList } from '../achievements/MissionsList';
 import { Confetti } from '../achievements/Confetti';
-import { getMetrics } from '../achievements/api';
+import { getMetrics, getMissionProgress, buildMissionStates, flexRank } from '../achievements/api';
+import { listChallenges, type ChallengeCard } from '../compete/api';
 import {
   MEDALS,
   TIER_META,
   flexPoints,
+  medalMetal,
   medalState,
   rankFor,
   type MedalState,
 } from '../achievements/catalog';
+import { missionPoints, type MissionState } from '../achievements/missions';
 
 const SEEN_KEY = 'achievements:seen:v1';
 
@@ -37,12 +46,19 @@ export default function Achievements() {
   const [states, setStates] = useState<MedalState[] | null>(null);
   const [selected, setSelected] = useState<MedalState | null>(null);
   const [unlock, setUnlock] = useState<MedalState | null>(null);
+  const [challenges, setChallenges] = useState<ChallengeCard[] | null>(null);
+  const [missions, setMissions] = useState<MissionState[] | null>(null);
+  const [flexing, setFlexing] = useState(false);
 
   const load = useCallback(() => {
-    getMetrics()
-      .then(async (m) => {
+    listChallenges()
+      .then(setChallenges)
+      .catch(() => setChallenges([]));
+    Promise.all([getMetrics(), getMissionProgress()])
+      .then(async ([m, progress]) => {
         const list = MEDALS.map((def) => medalState(def, m[def.metric]));
         setStates(list);
+        setMissions(buildMissionStates(m, progress));
         // celebrate a fresh unlock (or the best one on first ever visit)
         try {
           const raw = await AsyncStorage.getItem(SEEN_KEY);
@@ -56,40 +72,95 @@ export default function Achievements() {
           const current: Record<string, number> = {};
           list.forEach((s) => (current[s.def.id] = s.tierIndex));
           await AsyncStorage.setItem(SEEN_KEY, JSON.stringify(current));
-          if (toCelebrate) setUnlock(toCelebrate);
+          if (toCelebrate) {
+            hapticSuccess();
+            setUnlock(toCelebrate);
+          }
         } catch {
           // celebration is non-critical
         }
       })
-      .catch(() => setStates(MEDALS.map((def) => medalState(def, 0))));
+      .catch(() => {
+        setStates(MEDALS.map((def) => medalState(def, 0)));
+        setMissions(
+          buildMissionStates(
+            {
+              streak: 0,
+              totalKm: 0,
+              workouts: 0,
+              challenges: 0,
+              buddies: 0,
+              activities: 0,
+              longestKm: 0,
+              activeDays: 0,
+              challengeWins: 0,
+              memories: 0,
+              goalsHit: 0,
+              totalHours: 0,
+              places: 0,
+              invitesAccepted: 0,
+              postsShared: 0,
+              likesGiven: 0,
+              groupsJoined: 0,
+              buddyMessages: 0,
+              profileFields: 0,
+            },
+            new Map(),
+          ),
+        );
+      });
   }, []);
 
   useFocusEffect(load);
 
-  const points = states ? flexPoints(states) : 0;
-  const rank = rankFor(points);
+  const points = (states ? flexPoints(states) : 0) + (missions ? missionPoints(missions) : 0);
   const earned = states ? states.filter((s) => s.unlocked).length : 0;
+
+  async function onFlex() {
+    if (flexing) return;
+    setFlexing(true);
+    try {
+      await flexRank(rankFor(points).name);
+      hapticSuccess();
+      showToast('Flexed to your buddies 💪');
+      load();
+    } catch (e) {
+      Alert.alert('Could not post your flex', String((e as Error).message ?? e));
+    } finally {
+      setFlexing(false);
+    }
+  }
 
   return (
     <View style={styles.screen}>
       <GlassBackdrop ref={bgRef} columnWidth={colMax} />
       <ScrollView contentContainerStyle={[styles.scroll, { maxWidth: colMax }]}>
-        {/* rank hero */}
-        <GlassCard style={styles.card}>
-          <View style={styles.hero}>
-            <Text style={styles.rankName}>{rank.name}</Text>
-            <Text style={styles.rankSub}>
-              {points} Flex Points · {earned}/{MEDALS.length} medals
-            </Text>
-            <View style={styles.track}>
-              <View style={[styles.trackFill, { width: `${Math.round(rank.progress * 100)}%` }]} />
-            </View>
-            <Text style={styles.rankNext}>
-              {rank.next ? `${rank.next.at - points} pts to ${rank.next.name}` : 'Max rank — Legend 👑'}
-            </Text>
-          </View>
-        </GlassCard>
+        {/* rank ladder — swipe to preview every rank up to Mythical */}
+        <RankCarousel points={points} ready={states !== null && missions !== null} />
+        <Text style={styles.caption}>
+          {earned} of {MEDALS.length} medals earned · swipe or tap ‹ › to preview ranks
+        </Text>
 
+        {/* missions — social & sharing actions (distinct from the fitness medals) */}
+        <Text style={[styles.sectionLabel, styles.sectionTop]}>MISSIONS</Text>
+        <Text style={styles.sectionHint}>Actions & social wins that earn Flex Points</Text>
+        <MissionsList states={missions} onFlex={onFlex} flexing={flexing} />
+
+        {/* live challenges — swipe through the competitions you can join */}
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionLabel}>CHALLENGES</Text>
+          <Pressable onPress={() => router.push('/compete' as never)} hitSlop={8}>
+            <Text style={styles.seeAll}>See all ›</Text>
+          </Pressable>
+        </View>
+        <ChallengesCarousel
+          items={challenges}
+          onOpen={(id) => router.push({ pathname: '/challenge/[id]', params: { id } })}
+          onBrowse={() => router.push('/compete' as never)}
+        />
+
+        <Text style={[styles.sectionLabel, styles.sectionTop]}>MEDALS</Text>
+        <Text style={styles.sectionHint}>Milestones from your training</Text>
         {states === null ? (
           <ActivityIndicator color={ACCENT} style={{ marginTop: 40 }} />
         ) : (
@@ -181,7 +252,7 @@ function MedalSheet({
                   const done = i <= state.tierIndex;
                   return (
                     <View key={t.name} style={styles.ladderRow}>
-                      <View style={[styles.ladderDot, { backgroundColor: done ? TIER_META[i].base : 'rgba(30,27,75,0.12)' }]} />
+                      <View style={[styles.ladderDot, { backgroundColor: done ? TIER_META[medalMetal(state.def, i)].base : 'rgba(30,27,75,0.12)' }]} />
                       <Text style={[styles.ladderName, done && { color: INK, fontFamily: font.bold }]}>
                         {t.name}
                       </Text>
@@ -226,20 +297,24 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   pressed: { opacity: 0.75 },
-  card: {},
-  hero: { padding: spacing.lg, alignItems: 'center', gap: 4 },
-  rankName: { fontFamily: font.extrabold, fontSize: 26, color: INK },
-  rankSub: { fontFamily: font.semibold, fontSize: 13, color: INK_SOFT },
-  track: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(30,27,75,0.1)',
-    alignSelf: 'stretch',
-    marginTop: 8,
-    overflow: 'hidden',
+  caption: {
+    fontFamily: font.medium,
+    fontSize: 12,
+    color: INK_SOFT,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 4,
   },
-  trackFill: { height: 8, borderRadius: 4, backgroundColor: ACCENT },
-  rankNext: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, marginTop: 4 },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  sectionLabel: { fontFamily: font.extrabold, fontSize: 12, letterSpacing: 1.2, color: INK },
+  sectionHint: { fontFamily: font.regular, fontSize: 12, color: INK_SOFT, marginTop: 2, marginBottom: 8 },
+  sectionTop: { marginTop: spacing.md },
+  seeAll: { fontFamily: font.bold, fontSize: 13, color: ACCENT },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, justifyContent: 'center' },
   cell: {
     width: 152,

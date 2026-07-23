@@ -29,7 +29,10 @@ export const RunCard = forwardRef<
     width: number;
   }
 >(function RunCard({ mode, photoUri, distanceM, durationS, points, width }, ref) {
-  const height = Math.round((width * 16) / 9);
+  // 4:5 portrait — the modern share ratio (Instagram/FB): tall enough to look
+  // like a card, short enough not to dominate the feed, and it matches the
+  // feed's 4:5 frame so it shows whole with no crop.
+  const height = Math.round((width * 5) / 4);
   const usePhoto = mode === 'photo' && !!photoUri;
 
   const stats = (
@@ -65,7 +68,7 @@ export const RunCard = forwardRef<
             <RouteTrace
               points={points}
               width={width}
-              height={Math.round(height * 0.22)}
+              height={Math.round(height * 0.2)}
               stroke={4}
               accent={TRACE}
               endStyle="dot"
@@ -114,8 +117,8 @@ const shadow = {
 
 const styles = StyleSheet.create({
   card: { borderRadius: 24, overflow: 'hidden', backgroundColor: '#0b1018' },
-  statsPhoto: { position: 'absolute', top: '12%', left: 0, right: 0, alignItems: 'center', gap: 18 },
-  statsMap: { position: 'absolute', top: '7%', left: 0, right: 0, alignItems: 'center', gap: 14 },
+  statsPhoto: { position: 'absolute', top: '9%', left: 0, right: 0, alignItems: 'center', gap: 14 },
+  statsMap: { position: 'absolute', top: '6%', left: 0, right: 0, alignItems: 'center', gap: 12 },
   stat: { alignItems: 'center' },
   statLabel: {
     color: 'rgba(255,255,255,0.9)',
@@ -128,8 +131,8 @@ const styles = StyleSheet.create({
   statVal: {
     color: '#fff',
     fontFamily: 'Anton_400Regular',
-    fontSize: 46,
-    lineHeight: 50,
+    fontSize: 42,
+    lineHeight: 46,
     includeFontPadding: false,
     ...shadow,
   },

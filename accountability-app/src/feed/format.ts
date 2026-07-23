@@ -8,7 +8,14 @@ export function timeAgo(iso: string): string {
   if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d`;
-  return new Date(iso).toLocaleDateString();
+  // older posts: a friendly short date ("Jul 13"), year only when it differs
+  const dt = new Date(iso);
+  const sameYear = dt.getFullYear() === new Date().getFullYear();
+  return dt.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? null : { year: 'numeric' }),
+  });
 }
 
 export function authorLabel(name: string | null): string {

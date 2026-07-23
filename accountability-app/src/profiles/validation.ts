@@ -1,3 +1,14 @@
+/** Whole years old today for a YYYY-MM-DD birthday, or null if unparseable. */
+export function ageFromBirthday(value: string): number | null {
+  if (validateBirthday(value) || !value.trim()) return null;
+  const [y, m, d] = value.trim().split('-').map(Number);
+  const now = new Date();
+  let age = now.getFullYear() - y;
+  const reached = now.getMonth() + 1 > m || (now.getMonth() + 1 === m && now.getDate() >= d);
+  if (!reached) age -= 1;
+  return age;
+}
+
 export function validateBirthday(value: string): string | null {
   const v = value.trim();
   if (!v) return null; // optional

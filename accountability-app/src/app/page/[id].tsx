@@ -16,7 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getPage, followPage, unfollowPage, PAGE_CATEGORIES, type Page } from '../../pages/api';
 import { listFeed, createPost, setLiked } from '../../feed/api';
+import { showPostMenu } from '../../feed/postActions';
+import { useAuth } from '../../auth/AuthProvider';
 import { SaveToMemories } from '../../memories/SaveToMemories';
+import { PostImage } from '../../feed/PostImage';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, taggedLabel } from '../../feed/format';
 import type { FeedPost } from '../../feed/types';
@@ -24,7 +27,7 @@ import { EmptyState } from '../../ui/EmptyState';
 import { Button } from '../../ui/Button';
 import { colors, font, radius, spacing, shadow } from '../../ui/theme';
 
-const COVER_GRADIENT = ['#312e81', '#7c3aed', '#db2777'] as const;
+const COVER_GRADIENT = ['#1e3a8a', '#2563eb', '#0ea5e9'] as const;
 
 function categoryLabel(value: string): string | null {
   return PAGE_CATEGORIES.find((c) => c.value === value)?.label ?? null;
@@ -34,6 +37,8 @@ export default function PageDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [page, setPage] = useState<Page | null>(null);
+  const { session } = useAuth();
+  const myId = session?.user.id ?? null;
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -296,11 +301,39 @@ export default function PageDetail() {
                   {item.tagged.length > 0 ? ` · ${taggedLabel(item.tagged)}` : ''}
                 </Text>
               </View>
+              <Pressable
+                onPress={() =>
+                  showPostMenu(item, myId, (postId) =>
+                    setPosts((cur) => cur.filter((p) => p.id !== postId)),
+                  )
+                }
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Post options"
+                style={({ pressed }) => [styles.postMenuBtn, pressed && { opacity: 0.6 }]}
+              >
+                <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
+              </Pressable>
             </View>
-            {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
+            {item.body ? (
+              <Pressable
+                onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
+                accessibilityRole="link"
+                accessibilityLabel="Open post"
+              >
+                <Text style={styles.body}>{item.body}</Text>
+              </Pressable>
+            ) : null}
             {item.image_url ? (
-              <View>
-                <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+              <View style={{ alignSelf: 'stretch' }}>
+                <Pressable
+                  onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
+                  style={({ pressed }) => [{ alignSelf: 'stretch' as const }, pressed && { opacity: 0.9 }]}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open post"
+                >
+                  <PostImage url={item.image_url} capTall />
+                </Pressable>
                 <SaveToMemories url={item.image_url} />
               </View>
             ) : null}
@@ -309,12 +342,12 @@ export default function PageDetail() {
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 onPress={() => onToggleLike(item)}
                 hitSlop={8}
-                accessibilityLabel={item.liked_by_me ? 'Unlike' : 'Like'}
+                accessibilityLabel={item.liked_by_me ? 'Remove cheer' : 'Cheer'}
               >
                 <Ionicons
-                  name={item.liked_by_me ? 'heart' : 'heart-outline'}
+                  name={item.liked_by_me ? 'flame' : 'flame-outline'}
                   size={19}
-                  color={item.liked_by_me ? colors.danger : colors.textMuted}
+                  color={item.liked_by_me ? colors.cheer : colors.textMuted}
                 />
                 <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
                   {item.like_count}
@@ -447,6 +480,14 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  postMenuBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
   postAvatarImage: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface },
   postAvatarFallback: {
     width: 40,
@@ -469,5 +510,5 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   actionText: { fontSize: 14, color: colors.textMuted, fontFamily: font.semibold },
-  liked: { color: colors.danger },
+  liked: { color: colors.cheer },
 });

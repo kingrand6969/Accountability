@@ -21,6 +21,7 @@ import type { ActivityType } from './api';
 import { createPost } from '../feed/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { promptCrossShare } from '../feed/crossShare';
+import { recordRunSelfie } from '../achievements/api';
 import { font } from '../ui/theme';
 
 const LIME = '#c6f24e';
@@ -49,9 +50,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   // double-tap would otherwise post twice
   const inFlight = useRef(false);
 
-  // size the 9:16 card to fit BOTH the width and the space left after the
+  // size the 4:5 card to fit BOTH the width and the space left after the
   // header/mode-picker/buttons, so it never clips on short screens
-  const cardWidth = Math.min(width - 40, 300, Math.floor(((height - 400) * 9) / 16));
+  const cardWidth = Math.min(width - 40, 340, Math.floor(((height - 400) * 4) / 5));
 
   // the shared route hides its true start/end by default (privacy zone); the
   // user can opt to reveal them, and the full route always stays in the saved activity
@@ -75,20 +76,23 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
   async function addPhoto(kind: 'selfie' | 'place') {
     try {
-      const perm = await ImagePicker.requestCameraPermissionsAsync();
       const opts: ImagePicker.ImagePickerOptions = {
         mediaTypes: ['images'],
-        allowsEditing: true,
+        allowsEditing: Platform.OS !== 'web',
         aspect: [9, 16],
         quality: 0.85,
         cameraType: kind === 'selfie' ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
       };
       let res: ImagePicker.ImagePickerResult;
-      if (perm.granted && Platform.OS !== 'web') {
-        res = await ImagePicker.launchCameraAsync(opts);
-      } else {
-        // web / no camera permission → pick from library instead
+      // web has no camera and needs the picker to open synchronously (an
+      // await before it breaks the user-gesture) → go straight to the library
+      if (Platform.OS === 'web') {
         res = await ImagePicker.launchImageLibraryAsync(opts);
+      } else {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        res = perm.granted
+          ? await ImagePicker.launchCameraAsync(opts)
+          : await ImagePicker.launchImageLibraryAsync(opts);
       }
       if (!res.canceled && res.assets[0]) {
         setPhotoUri(res.assets[0].uri);
@@ -103,13 +107,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   async function capture(result: 'base64' | 'tmpfile'): Promise<string | null> {
     if (Platform.OS === 'web' || !cardRef.current) return null;
     try {
-      // upscale to a crisp story-sized image (the preview renders small)
+      // 4:5 at 1080×1350 — Instagram/FB portrait HD; near-lossless jpg so the
+      // stats stay crisp (the on-screen preview renders small)
       return await captureRef(cardRef, {
         format: 'jpg',
-        quality: 0.9,
+        quality: 0.97,
         result,
         width: 1080,
-        height: 1920,
+        height: 1350,
       });
     } catch {
       return null;
@@ -127,6 +132,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         imageUrl = await uploadPostImage(base64, 'jpg').catch(() => null);
       }
       await createPost(caption, imageUrl);
+      // a posted selfie counts toward the Selfie Club mission (2/5/10/25 km)
+      if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
       if (Platform.OS === 'web') {
         Alert.alert('Posted 🎉', 'Your run is on your feed.');
       } else {
@@ -150,9 +157,11 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       const uri = await capture('tmpfile');
       if (uri && Platform.OS !== 'web' && (await Sharing.isAvailableAsync())) {
         await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', dialogTitle: 'Share your run' });
+        if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
         return;
       }
       await Share.share({ message: `${caption}\n\n#accountability` });
+      if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
     } catch {
       // dismissed
     } finally {

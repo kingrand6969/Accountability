@@ -2,11 +2,23 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "ecpro",
+      "runtimeExecutable": "C:\\Users\\KinGrand\\AppData\\Local\\Temp\\claude\\C--Users-KinGrand-New-folder\\35ac7bba-0a33-480b-aa7d-cf1769ac5d0f\\scratchpad\\ecpro-dev.cmd",
+      "runtimeArgs": [],
+      "port": 5000
+    },
+    {
       "name": "webdist",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["--yes", "serve", "accountability-app/dist", "-s", "-l", "8123"],
       "port": 8123,
       "autoPort": false
+    },
+    {
+      "name": "kingrand-portfolio",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["C:/Users/KinGrand/New folder/kingrand-portfolio/site/serve.py", "8321"],
+      "port": 8321
     }
   ]
 }

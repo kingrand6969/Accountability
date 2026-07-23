@@ -148,7 +148,7 @@ export default function InsightsScreen() {
                           size={150}
                           strokeWidth={9}
                           progress={consistency}
-                          trackColor="rgba(255,255,255,0.9)"
+                          trackColor="rgba(30,27,75,0.12)"
                           startColor="#f59e0b"
                           endColor="#fbbf24"
                         />
@@ -211,7 +211,7 @@ export default function InsightsScreen() {
                             <View
                               style={[
                                 styles.barFill,
-                                { height: `${h * 100}%`, backgroundColor: c.items > 0 ? '#6d28d9' : 'rgba(30,27,75,0.12)' },
+                                { height: `${h * 100}%`, backgroundColor: c.items > 0 ? '#2563eb' : 'rgba(30,27,75,0.12)' },
                               ]}
                             />
                           </View>

@@ -4,7 +4,7 @@
  */
 
 export const colors = {
-  // brand
+  // brand — logo blue, one language everywhere
   primary: '#2563eb',
   primaryDark: '#1d4ed8',
   primarySoft: '#eff6ff',
@@ -13,8 +13,14 @@ export const colors = {
   danger: '#dc2626',
   dangerSoft: '#fef2f2',
   accent: '#fbbf24', // amber flame
+  cheer: '#ea580c', // flame orange — the "Cheer" reaction (our like)
   pro: '#7c3aed',
   proSoft: '#f5f3ff',
+
+  // glass ink — text on lavender glass surfaces
+  ink: '#1e1b4b',
+  inkSoft: 'rgba(30,27,75,0.72)',
+  inkFaint: 'rgba(30,27,75,0.12)',
 
   // slate neutrals
   text: '#0f172a',

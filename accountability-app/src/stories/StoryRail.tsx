@@ -7,7 +7,6 @@ import {
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { CachedImage } from '../ui/CachedImage';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,7 +23,7 @@ import { listStoryGroups, addStory, type StoryGroup } from './api';
 import { authorLabel } from '../feed/format';
 import { PhotoEditor, type EditedPhoto } from '../media/PhotoEditor';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { colors, font, radius, spacing, contentMax } from '../ui/theme';
 
 export type StoryRailHandle = { openPicker: () => void };
 
@@ -42,10 +42,12 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
 
   async function onAddStory() {
     if (posting) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to post a story.');
-      return;
+    if (Platform.OS !== 'web') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Allow photo access to post a story.');
+        return;
+      }
     }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -96,6 +98,8 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      // keep the rail inside the same centered column as the feed on wide screens
+      style={contentMax}
       contentContainerStyle={styles.rail}
     >
       {editorUri ? (
@@ -109,14 +113,14 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
         accessibilityLabel="Post a Flex"
       >
         {mine ? (
-          <Image
-            source={{ uri: mine.stories[mine.stories.length - 1].image_url }}
+          <CachedImage
+            uri={mine.stories[mine.stories.length - 1].image_url}
             style={styles.tileImage}
-            resizeMode="cover"
+            contentFit="cover"
           />
         ) : (
           <LinearGradient
-            colors={['#312e81', '#7c3aed', '#db2777']}
+            colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.tileImage}
@@ -195,7 +199,7 @@ function StoryTile({
       onPress={onPress}
       accessibilityLabel={`View ${name}`}
     >
-      <Image source={{ uri: image }} style={styles.tileImage} resizeMode="cover" />
+      <CachedImage uri={image} style={styles.tileImage} contentFit="cover" />
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.65)']}
         style={styles.tileScrim}
@@ -203,7 +207,7 @@ function StoryTile({
       />
       <View style={styles.tileAvatarRing}>
         {avatar ? (
-          <Image source={{ uri: avatar }} style={styles.tileAvatar} />
+          <CachedImage uri={avatar} style={styles.tileAvatar} />
         ) : (
           <View style={[styles.tileAvatar, styles.tileAvatarFallback]}>
             <Ionicons name="person" size={13} color="#fff" />
@@ -296,8 +300,8 @@ const styles = StyleSheet.create({
   hintTile: {
     width: 150,
     height: TILE_H,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    borderWidth: 1,
     borderColor: colors.border,
     borderStyle: 'dashed',
     backgroundColor: colors.surfaceAlt,

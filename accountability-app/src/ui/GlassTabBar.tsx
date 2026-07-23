@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'reac
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { hapticSelect } from './haptics';
 
 // Minimal shape of the props Expo Router's <Tabs tabBar={...}> passes — avoids a
 // direct dependency on @react-navigation/bottom-tabs' (nested) type declarations.
@@ -86,7 +87,10 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
                 target: route.key,
                 canPreventDefault: true,
               });
-              if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
+              if (!isFocused && !event.defaultPrevented) {
+                hapticSelect();
+                navigation.navigate(route.name);
+              }
             };
             return (
               <Pressable

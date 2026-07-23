@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
-const COLORS = ['#F2B33D', '#6d28d9', '#ef4444', '#16a34a', '#2563eb', '#F49AC6', '#57B6C7'];
+const COLORS = ['#F2B33D', '#2563eb', '#ef4444', '#16a34a', '#2563eb', '#F49AC6', '#57B6C7'];
 
 /** A one-shot confetti burst from the centre. Mount it when a medal unlocks. */
 export function Confetti({ count = 28 }: { count?: number }) {

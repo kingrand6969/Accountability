@@ -216,6 +216,14 @@ export default function Gym() {
           </LinearGradient>
         </Pressable>
 
+        <View style={styles.safetyNote}>
+          <Ionicons name="medkit-outline" size={14} color="#b45309" />
+          <Text style={styles.safetyText}>
+            Safety first — check with a doctor (and ideally a coach) before starting new workouts,
+            train within your limits, and stop if something hurts.
+          </Text>
+        </View>
+
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={17} color={colors.textFaint} />
           <TextInput
@@ -459,6 +467,18 @@ const styles = StyleSheet.create({
   },
   // full-width bar, but keep the controls in a centered column on wide screens
   headerInner: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 14, gap: 10 },
+  safetyNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 7,
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: radius.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  safetyText: { flex: 1, fontSize: 11.5, lineHeight: 16, fontFamily: font.medium, color: '#78350f' },
   planWrap: {
     borderRadius: radius.md,
     overflow: 'hidden',

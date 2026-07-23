@@ -4,6 +4,7 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsPro } from '../../pro/ProProvider';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { contentMaxWidth } from '../../ui/responsive';
 import { font, radius, spacing } from '../../ui/theme';
@@ -25,6 +27,8 @@ import {
   type ChallengeCard,
   type StandingRow,
 } from '../../compete/api';
+import { MissionIcon } from '../../achievements/MissionIcon';
+import { challengeArtFor } from '../../achievements/missionArt';
 
 function fmtRange(startsAt: string, endsAt: string): string {
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
@@ -38,6 +42,7 @@ function fmtRange(startsAt: string, endsAt: string): string {
 export default function ChallengeDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { isPro } = useIsPro();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -60,6 +65,32 @@ export default function ChallengeDetail() {
   }, [id]);
 
   useFocusEffect(load);
+
+  async function onChallengeFriend() {
+    if (!challenge) return;
+    if (!isPro) {
+      router.push('/paywall' as never);
+      return;
+    }
+    const days = Math.max(
+      1,
+      Math.round(
+        (new Date(challenge.ends_at).getTime() - new Date(challenge.starts_at).getTime()) /
+          86400000,
+      ),
+    );
+    const meta = metricMeta(challenge.metric);
+    try {
+      await Share.share({
+        message:
+          `I'm challenging you: "${challenge.title}" — ${days} days of ${meta.label.toLowerCase()} ` +
+          `on AccountAbility. Get the app, add me as a buddy and join the challenge. ` +
+          `Think you can beat me? 🏆`,
+      });
+    } catch {
+      showToast('Sharing is available on your phone');
+    }
+  }
 
   async function toggle() {
     if (!challenge) return;
@@ -117,9 +148,16 @@ export default function ChallengeDetail() {
       <ScrollView contentContainerStyle={[styles.scroll, { maxWidth: colMax }]}>
         <GlassCard style={styles.hero}>
           <View style={styles.heroPad}>
-            <View style={styles.iconWrap}>
-              <Ionicons name={meta.icon as never} size={28} color={ACCENT} />
-            </View>
+            {(() => {
+              const art = challengeArtFor(challenge.metric);
+              return art ? (
+                <MissionIcon source={art} size={64} style={{ marginBottom: 4 }} />
+              ) : (
+                <View style={styles.iconWrap}>
+                  <Ionicons name={meta.icon as never} size={28} color={ACCENT} />
+                </View>
+              );
+            })()}
             <Text style={styles.title}>{challenge.title}</Text>
             <Text style={styles.meta}>
               {meta.label} · {challenge.participants} competing
@@ -149,6 +187,23 @@ export default function ChallengeDetail() {
                 )}
               </Pressable>
             )}
+            {!ended ? (
+              <Pressable
+                style={({ pressed }) => [styles.inviteBtn, pressed && styles.pressed]}
+                onPress={onChallengeFriend}
+                accessibilityRole="button"
+                accessibilityLabel="Challenge a friend on another app"
+              >
+                <Ionicons
+                  name={isPro ? 'share-social' : 'lock-closed'}
+                  size={15}
+                  color={ACCENT}
+                />
+                <Text style={styles.inviteText}>
+                  {isPro ? 'Challenge a friend — share anywhere' : 'Challenge a friend — Pro'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </GlassCard>
 
@@ -195,7 +250,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'rgba(109,40,217,0.12)',
+    backgroundColor: 'rgba(37,99,235,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
@@ -218,6 +273,21 @@ const styles = StyleSheet.create({
   leaveText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 15 },
   endedBtn: { backgroundColor: 'rgba(30,27,75,0.06)' },
   endedText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 15 },
+  inviteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.35)',
+    backgroundColor: 'rgba(37,99,235,0.08)',
+    borderRadius: radius.pill,
+    paddingVertical: 11,
+    alignSelf: 'stretch',
+    minHeight: 44,
+    marginTop: 6,
+  },
+  inviteText: { color: ACCENT, fontFamily: font.bold, fontSize: 13.5 },
   section: { fontFamily: font.bold, fontSize: 15, color: INK, marginTop: 4, marginLeft: 4 },
   card: {},
   listPad: { padding: spacing.sm, gap: 2 },

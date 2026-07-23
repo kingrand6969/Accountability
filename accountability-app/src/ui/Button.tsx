@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -22,7 +23,7 @@ type Props = {
   accessibilityLabel?: string;
 };
 
-/** Standard app button: 48pt target, press feedback, loading spinner. */
+/** Standard app button: 48pt target, springy press, loading spinner. */
 export function Button({
   title,
   onPress,
@@ -35,29 +36,44 @@ export function Button({
 }: Props) {
   const v = VARIANTS[variant];
   const inactive = disabled || loading;
+  const scale = useRef(new Animated.Value(1)).current;
+
+  // springy press-in/out — motion tied to the touch, interruptible
+  function pressTo(value: number) {
+    Animated.spring(scale, {
+      toValue: value,
+      speed: 40,
+      bounciness: value === 1 ? 8 : 0,
+      useNativeDriver: true,
+    }).start();
+  }
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={inactive}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? title}
-      style={({ pressed }) => [
-        styles.base,
-        v.container,
-        pressed && !inactive && styles.pressed,
-        inactive && styles.disabled,
-        style,
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color={v.spinner} />
-      ) : (
-        <>
-          {icon}
-          <Text style={[styles.text, { color: v.textColor }]}>{title}</Text>
-        </>
-      )}
-    </Pressable>
+    <Animated.View style={[{ transform: [{ scale }] }, styles.wrap, style]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => !inactive && pressTo(0.96)}
+        onPressOut={() => pressTo(1)}
+        disabled={inactive}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? title}
+        style={({ pressed }) => [
+          styles.base,
+          v.container,
+          pressed && !inactive && styles.pressed,
+          inactive && styles.disabled,
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator color={v.spinner} />
+        ) : (
+          <>
+            {icon}
+            <Text style={[styles.text, { color: v.textColor }]}>{title}</Text>
+          </>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -97,6 +113,7 @@ const VARIANTS: Record<
 };
 
 const styles = StyleSheet.create({
+  wrap: { alignSelf: 'stretch' },
   base: {
     minHeight: 48,
     borderRadius: radius.md,
@@ -107,7 +124,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
+  pressed: { opacity: 0.92 },
   disabled: { opacity: 0.5 },
   text: { fontFamily: font.bold, fontSize: 16 },
 });

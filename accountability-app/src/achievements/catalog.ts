@@ -3,13 +3,30 @@ import type { Ionicons } from '@expo/vector-icons';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/** What we can measure about a member — every medal reads from one of these. */
+/** What we can measure about a member. Medals read the fitness fields; missions
+ *  read the social fields (posts shared, likes given) so the two never overlap. */
 export type Metrics = {
   streak: number;
   totalKm: number;
   workouts: number;
   challenges: number;
   buddies: number;
+  // more fitness / personal fields — medals only
+  activities: number; // GPS runs / walks / rides logged
+  longestKm: number; // longest single distance
+  activeDays: number; // distinct days with any activity (all-time)
+  challengeWins: number; // challenges won
+  memories: number; // photos / videos saved
+  goalsHit: number; // savings goals reached
+  totalHours: number; // total time spent on GPS activities
+  places: number; // memories saved with a location
+  invitesAccepted: number; // friends who joined the app from your invite
+  // social fields — missions only
+  postsShared: number;
+  likesGiven: number;
+  groupsJoined: number;
+  buddyMessages: number;
+  profileFields: number; // filled fields out of 3 (photo, name, bio)
 };
 
 /** The five metal tiers. Index maps to TIER_META (Bronze…Diamond). */
@@ -36,9 +53,22 @@ export type MedalDef = {
   blurb: string;
   unit: string;
   metric: keyof Metrics;
-  /** exactly five tiers, ascending; the flavour name shows under the medal */
+  /**
+   * Which metal the first tier is cast in (0 = Bronze … 4 = Diamond). Easy medals
+   * start at Bronze; hard ones start higher (e.g. Gold) because even step one is a
+   * big ask. Defaults to Bronze.
+   */
+  startTier?: number;
+  /** 1–5 tiers, ascending; the flavour name shows under the medal. The metal of
+   *  tier i is TIER_META[startTier + i], capped at Diamond. */
   tiers: { name: string; at: number }[];
 };
+
+/** The metal (0–4 → Bronze…Diamond) a medal's tier is cast in, honouring its
+ *  difficulty start-tier. */
+export function medalMetal(def: MedalDef, tierIndex: number): number {
+  return Math.min((def.startTier ?? 0) + Math.max(tierIndex, 0), TIER_META.length - 1);
+}
 
 export const MEDALS: MedalDef[] = [
   {
@@ -116,6 +146,142 @@ export const MEDALS: MedalDef[] = [
       { name: 'Team', at: 20 },
     ],
   },
+  {
+    id: 'trailblazer',
+    title: 'Trailblazer',
+    icon: 'compass',
+    blurb: 'Every run, walk and ride you log adds to your trail.',
+    unit: 'activities',
+    metric: 'activities',
+    tiers: [
+      { name: 'Explorer', at: 1 },
+      { name: 'Wanderer', at: 10 },
+      { name: 'Roamer', at: 50 },
+      { name: 'Trailblazer', at: 150 },
+      { name: 'Nomad', at: 500 },
+    ],
+  },
+  {
+    id: 'longhaul',
+    title: 'Long Haul',
+    icon: 'map',
+    blurb: 'Your longest single distance. How far can you go in one go?',
+    unit: 'km',
+    metric: 'longestKm',
+    tiers: [
+      { name: '5K', at: 5 },
+      { name: '10K', at: 10 },
+      { name: 'Half', at: 21 },
+      { name: 'Marathon', at: 42 },
+      { name: 'Ultra', at: 100 },
+    ],
+  },
+  {
+    id: 'devotion',
+    title: 'Devotion',
+    icon: 'calendar',
+    blurb: 'Total days you showed up for any pillar. Consistency is king.',
+    unit: 'active days',
+    metric: 'activeDays',
+    tiers: [
+      { name: 'Starter', at: 5 },
+      { name: 'Steady', at: 30 },
+      { name: 'Devoted', at: 100 },
+      { name: 'Relentless', at: 250 },
+      { name: 'Unstoppable', at: 365 },
+    ],
+  },
+  {
+    id: 'champion',
+    title: 'Champion',
+    icon: 'medal',
+    blurb: 'Challenges you have won. Beat your buddies to earn them.',
+    unit: 'wins',
+    metric: 'challengeWins',
+    tiers: [
+      { name: 'Winner', at: 1 },
+      { name: 'Rival', at: 3 },
+      { name: 'Victor', at: 5 },
+      { name: 'Dominator', at: 15 },
+      { name: 'Champion', at: 30 },
+    ],
+  },
+  {
+    id: 'archivist',
+    title: 'Archivist',
+    icon: 'images',
+    blurb: 'Photos and videos you have saved to your memories.',
+    unit: 'memories',
+    metric: 'memories',
+    tiers: [
+      { name: 'First Frame', at: 1 },
+      { name: 'Album', at: 25 },
+      { name: 'Collection', at: 100 },
+      { name: 'Archive', at: 250 },
+      { name: 'Vault', at: 500 },
+    ],
+  },
+  {
+    id: 'goalcrusher',
+    title: 'Goal Crusher',
+    icon: 'flag',
+    blurb: 'Savings goals you have fully reached. Finish what you start.',
+    unit: 'goals',
+    metric: 'goalsHit',
+    tiers: [
+      { name: 'Finisher', at: 1 },
+      { name: 'On a Roll', at: 3 },
+      { name: 'Closer', at: 5 },
+      { name: 'Machine', at: 10 },
+      { name: 'Legend', at: 25 },
+    ],
+  },
+  {
+    id: 'endurance',
+    title: 'Endurance',
+    icon: 'stopwatch',
+    blurb: 'Total time on the move across all your GPS activities.',
+    unit: 'hours',
+    metric: 'totalHours',
+    tiers: [
+      { name: 'Warmup', at: 1 },
+      { name: 'Grinder', at: 10 },
+      { name: 'Machine', at: 50 },
+      { name: 'Ironclad', at: 100 },
+      { name: 'Relentless', at: 500 },
+    ],
+  },
+  {
+    // EASY medal — starts Bronze and tops out at Gold.
+    id: 'explorer',
+    title: 'Explorer',
+    icon: 'location',
+    blurb: 'Places you have logged a memory from. Get out and see the world.',
+    unit: 'places',
+    metric: 'places',
+    startTier: 0,
+    tiers: [
+      { name: 'Wanderer', at: 1 },
+      { name: 'Tourist', at: 5 },
+      { name: 'Globetrotter', at: 15 },
+    ],
+  },
+  {
+    // HARD medal — every tier is Gold or above, because getting people who
+    // aren't on the app to actually join is a real feat.
+    id: 'ambassador',
+    title: 'Ambassador',
+    icon: 'megaphone',
+    blurb: 'Invite friends who are not on the app yet — you earn this when they join.',
+    unit: 'joined',
+    metric: 'invitesAccepted',
+    startTier: 2, // Gold from the very first tier
+    tiers: [
+      { name: 'Ambassador', at: 10 },
+      { name: 'Connector', at: 25 },
+      { name: 'Kingmaker', at: 50 },
+    ],
+  },
 ];
 
 export type MedalState = {
@@ -153,18 +319,37 @@ export function medalState(def: MedalDef, value: number): MedalState {
   };
 }
 
-/** Flex Points: tiers earned across all medals, weighted by tier. */
+/**
+ * Flex Points awarded for a medal, by the METAL it has reached. Deliberately
+ * steep — a Diamond is worth 20× a Bronze — so the late ranks demand real DEPTH
+ * (pushing medals to Platinum/Diamond), not just a pile of shallow bronzes.
+ * Bronze · Silver · Gold · Platinum · Diamond.
+ */
+export const METAL_POINTS = [15, 40, 90, 175, 300];
+
+/** Total Flex Points across a member's unlocked medals. */
 export function flexPoints(states: MedalState[]): number {
-  return states.reduce((sum, s) => sum + (s.tierIndex + 1) * 20, 0);
+  return states.reduce(
+    (sum, s) => sum + (s.unlocked ? METAL_POINTS[medalMetal(s.def, s.tierIndex)] : 0),
+    0,
+  );
 }
 
+// A steep, back-loaded curve: the ceiling is ~4,185 Flex Points (every medal at
+// Diamond + all missions). Early ranks come at a fair pace; the late badges
+// (Master → Mythical) are a serious grind — each jump is 600+ points, i.e. you
+// must be taking several medals to their top metals. Mythical ≈ 90% of the max.
 export const RANKS = [
   { name: 'Rookie', at: 0 },
-  { name: 'Regular', at: 60 },
-  { name: 'Committed', at: 140 },
-  { name: 'Elite', at: 260 },
-  { name: 'Legend', at: 420 },
-  { name: 'Mythical', at: 600 },
+  { name: 'Regular', at: 150 },
+  { name: 'Committed', at: 380 },
+  { name: 'Dedicated', at: 700 },
+  { name: 'Proven', at: 1120 },
+  { name: 'Elite', at: 1650 },
+  { name: 'Master', at: 2250 },
+  { name: 'Apex', at: 2850 },
+  { name: 'Legend', at: 3350 },
+  { name: 'Mythical', at: 3750 },
 ];
 
 export function rankFor(points: number): { name: string; next: { name: string; at: number } | null; progress: number } {

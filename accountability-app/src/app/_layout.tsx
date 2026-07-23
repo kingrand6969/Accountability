@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,30 +11,48 @@ import {
   Inter_800ExtraBold,
 } from '@expo-google-fonts/inter';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
+import { captureReferralFromLaunch, redeemPendingReferral } from '../profiles/referrals';
 import { ProProvider } from '../pro/ProProvider';
 import { ToastHost } from '../ui/Toast';
 import { ConfirmHost } from '../ui/ConfirmDialog';
+import { PostMenuHost } from '../feed/PostMenu';
+import { ModerationGate } from '../moderation/ModerationGate';
+import { colors } from '../ui/theme';
 import '../notifications/handler';
 import '../activity/locationTask';
 
-/** One tap back to the Feed from any pushed screen (menu, groups, search…). */
-function HomeButton() {
+/**
+ * A back control that never dead-ends: it pops the stack when there's somewhere
+ * to go, and otherwise sends you Home — so a fresh load or deep link into a
+ * secondary screen can always get back.
+ */
+function HeaderBack() {
   const router = useRouter();
   return (
     <Pressable
-      onPress={() => router.navigate('/')}
-      hitSlop={10}
-      style={({ pressed }) => [{ paddingHorizontal: 4 }, pressed && { opacity: 0.6 }]}
+      onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+      hitSlop={12}
       accessibilityRole="button"
-      accessibilityLabel="Go to your feed"
+      accessibilityLabel="Go back"
+      style={({ pressed }) => [{ paddingRight: 14, paddingVertical: 4 }, pressed && { opacity: 0.6 }]}
     >
-      <Ionicons name="home-outline" size={22} color="#2563eb" />
+      <Ionicons name="chevron-back" size={26} color={colors.text} />
     </Pressable>
   );
 }
 
 function RootNavigator() {
   const { session, loading } = useAuth();
+
+  // Referral attribution: remember an invite link on launch, then credit the
+  // inviter once this (new) account is signed in.
+  useEffect(() => {
+    captureReferralFromLaunch();
+  }, []);
+  useEffect(() => {
+    if (session) redeemPendingReferral();
+  }, [session]);
+
   const [fontsLoaded] = useFonts({
     Anton_400Regular,
     Inter_400Regular,
@@ -52,7 +71,7 @@ function RootNavigator() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, headerRight: () => <HomeButton /> }}>
+    <Stack screenOptions={{ headerShown: false, headerLeft: () => <HeaderBack /> }}>
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="(app)" />
         <Stack.Screen name="onboarding" />
@@ -75,6 +94,14 @@ function RootNavigator() {
         />
         <Stack.Screen name="debt-new" options={{ headerShown: true, title: 'Add debt' }} />
         <Stack.Screen
+          name="shared-goal-new"
+          options={{ headerShown: true, title: 'New shared goal' }}
+        />
+        <Stack.Screen
+          name="shared-goal/[id]"
+          options={{ headerShown: true, title: 'Saving Buddies' }}
+        />
+        <Stack.Screen
           name="add"
           options={{ headerShown: true, title: 'Add', presentation: 'modal' }}
         />
@@ -90,6 +117,7 @@ function RootNavigator() {
         <Stack.Screen name="buddy-map" options={{ headerShown: true, title: 'Buddy Location' }} />
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
         <Stack.Screen name="buddy-card/[id]" options={{ headerShown: true, title: 'Buddy' }} />
+        <Stack.Screen name="buddy-medals/[id]" options={{ headerShown: true, title: 'Medals' }} />
         <Stack.Screen
           name="buddy-card-edit"
           options={{ headerShown: true, title: 'Your Buddy Card' }}
@@ -102,6 +130,7 @@ function RootNavigator() {
         <Stack.Screen name="group/[id]" options={{ headerShown: true, title: 'Group' }} />
         <Stack.Screen name="group-new" options={{ headerShown: true, title: 'New Group' }} />
         <Stack.Screen name="menu" options={{ headerShown: true, title: 'Menu' }} />
+        <Stack.Screen name="help" options={{ headerShown: true, title: 'Help & Support' }} />
         <Stack.Screen name="memories" options={{ headerShown: true, title: 'Memories' }} />
         <Stack.Screen name="search" options={{ headerShown: true, title: 'Search' }} />
         <Stack.Screen name="pages" options={{ headerShown: true, title: 'Pages' }} />
@@ -115,7 +144,11 @@ function RootNavigator() {
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="sign-up" />
+        <Stack.Screen name="verify-email" />
+        <Stack.Screen name="forgot-password" />
       </Stack.Protected>
+      {/* Legal docs are reachable both signed-out (sign-up consent) and in-app (settings). */}
+      <Stack.Screen name="legal/[doc]" options={{ headerShown: true, title: 'Legal' }} />
     </Stack>
   );
 }
@@ -125,8 +158,10 @@ export default function RootLayout() {
     <AuthProvider>
       <ProProvider>
         <RootNavigator />
+        <ModerationGate />
         <ToastHost />
         <ConfirmHost />
+        <PostMenuHost />
       </ProProvider>
     </AuthProvider>
   );

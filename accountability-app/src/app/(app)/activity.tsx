@@ -22,7 +22,7 @@ import { font, radius, spacing } from '../../ui/theme';
 
 const INK = '#1e1b4b';
 const INK_SOFT = 'rgba(30,27,75,0.72)';
-const ACCENT = '#6d28d9';
+const ACCENT = '#2563eb';
 const PRIMARY = '#2563eb';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -54,7 +54,7 @@ const PILLARS: {
   {
     key: 'compete',
     icon: 'trophy-outline',
-    tint: '#6d28d9',
+    tint: '#2563eb',
     title: 'Compete & Leaderboards',
     sub: 'Rank by city, challenge buddies & more',
     route: '/compete',
@@ -201,11 +201,12 @@ export default function Track() {
               accessibilityLabel="Open your progress"
             >
               <View style={styles.dialRing} pointerEvents="none">
+                {/* visible ink track so the meter reads even at level 0 */}
                 <ProgressRing
                   size={172}
-                  strokeWidth={8}
+                  strokeWidth={9}
                   progress={(score ?? 0) / 100}
-                  trackColor="rgba(255,255,255,0.9)"
+                  trackColor="rgba(30,27,75,0.12)"
                   startColor="#f59e0b"
                   endColor="#fbbf24"
                 />
@@ -381,7 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayActive: { backgroundColor: 'rgba(109,40,217,0.14)', borderColor: 'rgba(109,40,217,0.25)' },
+  dayActive: { backgroundColor: 'rgba(37,99,235,0.14)', borderColor: 'rgba(37,99,235,0.25)' },
   dayToday: { backgroundColor: PRIMARY, borderColor: PRIMARY },
   dayPressed: { opacity: 0.7, transform: [{ scale: 0.94 }] },
   dayText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 13 },
@@ -392,7 +393,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(109,40,217,0.10)',
+    backgroundColor: 'rgba(37,99,235,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },

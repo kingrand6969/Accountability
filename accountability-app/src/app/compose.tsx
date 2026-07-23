@@ -45,6 +45,7 @@ export default function Compose() {
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [keepInMemories, setKeepInMemories] = useState(false);
+  const [showOnCard, setShowOnCard] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [buddies, setBuddies] = useState<Buddy[]>([]);
   const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
@@ -64,10 +65,12 @@ export default function Compose() {
   }, []);
 
   async function onPickPhoto() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to attach an image.');
-      return;
+    if (Platform.OS !== 'web') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Allow photo access to attach an image.');
+        return;
+      }
     }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -155,7 +158,7 @@ export default function Compose() {
     try {
       let imageUrl: string | null = null;
       if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
-      const postId = await createPost(postedText, imageUrl);
+      const postId = await createPost(postedText, imageUrl, null, null, null, showOnCard);
       if (tagIds.length > 0) await addPostTags(postId, tagIds).catch(() => {});
       if (keep && postedImageUri) {
         try {
@@ -236,6 +239,29 @@ export default function Compose() {
           multiline
           autoFocus
         />
+
+        {/* per-post grant: lets non-buddies see this post on your buddy card */}
+        <Pressable
+          style={({ pressed }) => [styles.cardOptRow, pressed && styles.pressed]}
+          onPress={() => setShowOnCard((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: showOnCard }}
+          accessibilityLabel="Show on Buddy Card"
+        >
+          <Ionicons
+            name={showOnCard ? 'checkbox' : 'square-outline'}
+            size={19}
+            color={showOnCard ? colors.primary : colors.textMuted}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.cardOptText, showOnCard && { color: colors.primary }]}>
+              Show on Buddy Card
+            </Text>
+            <Text style={styles.cardOptHint}>
+              People who aren&apos;t your buddy yet can see this post on your card
+            </Text>
+          </View>
+        </Pressable>
 
         {previewUri ? (
           <View style={styles.previewWrap}>
@@ -483,6 +509,15 @@ const styles = StyleSheet.create({
   photoOpts: { gap: 4 },
   optRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34 },
   optText: { fontFamily: font.semibold, fontSize: 13.5, color: colors.textMuted },
+  cardOptRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingVertical: 8,
+    minHeight: 44,
+  },
+  cardOptText: { fontFamily: font.semibold, fontSize: 13.5, color: colors.textMuted },
+  cardOptHint: { fontFamily: font.regular, fontSize: 12, color: colors.textFaint, marginTop: 1 },
   eventForm: { gap: spacing.sm },
   eventInput: {
     borderWidth: 1,

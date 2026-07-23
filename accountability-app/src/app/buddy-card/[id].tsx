@@ -9,30 +9,37 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   getBuddyCard,
   getBuddyStats,
-  haveIStarred,
-  setStar,
+  getBoardRank,
+  getCardMetrics,
   cardText,
-  CARD_BLUE,
+  listCardPosts,
+  type BoardRank,
   type BuddyCardView,
   type BuddyStats,
+  type CardMetrics,
+  type CardPost,
 } from '../../buddy/card';
-import { sendRequest } from '../../buddy/api';
-import { authorLabel } from '../../feed/format';
+import { BuddyCardFace } from '../../buddy/BuddyCardFace';
+import { sendRequest, listBuddies, blockUser, reportUser } from '../../buddy/api';
+import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
 import { colors, font, radius, shadow, spacing, contentMax } from '../../ui/theme';
 
 export default function BuddyCardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [view, setView] = useState<BuddyCardView | null>(null);
   const [stats, setStats] = useState<BuddyStats | null>(null);
-  const [starred, setStarred] = useState(false);
+  const [boardRank, setBoardRank] = useState<BoardRank | null>(null);
+  const [metrics, setMetrics] = useState<CardMetrics | null>(null);
+  const [posts, setPosts] = useState<CardPost[] | null>(null);
+  const [isBuddy, setIsBuddy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -40,29 +47,23 @@ export default function BuddyCardScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
-      Promise.all([getBuddyCard(id), getBuddyStats(id), haveIStarred(id)])
-        .then(([v, s, st]) => {
+      Promise.all([getBuddyCard(id), getBuddyStats(id), listBuddies()])
+        .then(([v, s, buddies]) => {
           setView(v);
           setStats(s);
-          setStarred(st);
+          const buddy = buddies.some((b) => b.id === id);
+          setIsBuddy(buddy);
+          getCardMetrics(id).then(setMetrics).catch(() => {});
+          // live board standing (shown automatically when they share location)
+          getBoardRank(id).then(setBoardRank).catch(() => {});
+          // Buddies get a fuller, Facebook-style view (their recent posts);
+          // non-buddies always see the posts the owner marked "Show on Buddy Card".
+          listCardPosts(id, buddy).then(setPosts).catch(() => setPosts([]));
         })
         .catch(() => {})
         .finally(() => setLoading(false));
     }, [id]),
   );
-
-  async function onToggleStar() {
-    if (!id || !stats) return;
-    const next = !starred;
-    setStarred(next);
-    setStats((s) => (s ? { ...s, stars: Math.max(0, s.stars + (next ? 1 : -1)) } : s));
-    try {
-      await setStar(id, next);
-    } catch {
-      setStarred(!next);
-      setStats((s) => (s ? { ...s, stars: Math.max(0, s.stars + (next ? -1 : 1)) } : s));
-    }
-  }
 
   async function onConnect() {
     if (!id) return;
@@ -76,6 +77,64 @@ export default function BuddyCardScreen() {
     } finally {
       setSending(false);
     }
+  }
+
+  function openOptions() {
+    if (!id || !view) return;
+    Alert.alert(authorLabel(view.name), undefined, [
+      { text: 'Block', style: 'destructive', onPress: confirmBlock },
+      { text: 'Report', onPress: confirmReport },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  function confirmBlock() {
+    if (!id || !view) return;
+    Alert.alert(
+      `Block ${authorLabel(view.name)}?`,
+      'They won’t be able to message you and you won’t see each other. You can undo this later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(id);
+              showToast('Blocked');
+              router.back();
+            } catch (e) {
+              Alert.alert('Could not block', String((e as Error).message ?? e));
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  function confirmReport() {
+    if (!id || !view) return;
+    Alert.alert(
+      `Report ${authorLabel(view.name)}?`,
+      'We’ll review this profile. Reporting also blocks them so they can’t reach you.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Report & block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await reportUser(id, 'Reported from profile');
+              await blockUser(id).catch(() => {});
+              showToast('Reported — thank you');
+              router.back();
+            } catch (e) {
+              Alert.alert('Could not report', String((e as Error).message ?? e));
+            }
+          },
+        },
+      ],
+    );
   }
 
   if (loading) {
@@ -101,75 +160,36 @@ export default function BuddyCardScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.scroll}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable
+              onPress={openOptions}
+              hitSlop={12}
+              accessibilityLabel="More options"
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingHorizontal: 4 })}
+            >
+              <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+            </Pressable>
+          ),
+        }}
+      />
       <View style={styles.card}>
-        {/* cover: big avatar LEFT · member-since top right · message under it */}
-        <View style={styles.coverFrame}>
-          {view.card.bg_url ? (
-            <Image source={{ uri: view.card.bg_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          ) : (
-            <LinearGradient
-              colors={CARD_BLUE}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-          )}
-          <View style={styles.coverRow}>
-            <View style={styles.avatarRing}>
-              {view.avatar ? (
-                <Image source={{ uri: view.avatar }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Ionicons name="person" size={48} color="#fff" />
-                </View>
-              )}
-            </View>
-            <View style={styles.coverRight}>
-              <View style={styles.sinceChip}>
-                <Ionicons name="ribbon-outline" size={12} color="#fff" />
-                <Text style={styles.sinceText}>Member since {memberSince}</Text>
-              </View>
-              {headline ? (
-                <View style={styles.msgChip}>
-                  <Text style={styles.msgLabel}>Focus: </Text>
-                  <Text style={styles.msgText}>{headline}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-        </View>
-
-        {/* name across */}
-        <Text style={styles.name}>{authorLabel(view.name)}</Text>
-        <Text style={styles.subtitle}>
-          {view.area ? `${view.area} · ` : ''}Accountability buddy
-        </Text>
-
-        {/* stats: stars · buddies · km ran · max lift */}
-        <View style={styles.statsRow}>
-          <Pressable
-            onPress={onToggleStar}
-            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
-            accessibilityLabel={starred ? 'Remove your star' : 'Give a star'}
-          >
-            <Ionicons name={starred ? 'star' : 'star-outline'} size={14} color="#f59e0b" />
-            <Text style={styles.statText}>{stats?.stars ?? 0}</Text>
-          </Pressable>
-          <View style={styles.stat}>
-            <Ionicons name="people-outline" size={14} color={colors.primary} />
-            <Text style={styles.statText}>{stats?.buddies ?? 0} buddies</Text>
-          </View>
-          <View style={styles.stat}>
-            <Ionicons name="walk-outline" size={14} color="#ea580c" />
-            <Text style={styles.statText}>{stats?.km ?? 0} km</Text>
-          </View>
-          {view.card.pr_weight?.trim() ? (
-            <View style={styles.stat}>
-              <Ionicons name="barbell-outline" size={14} color="#7c3aed" />
-              <Text style={styles.statText}>{view.card.pr_weight}</Text>
-            </View>
-          ) : null}
-        </View>
+        <BuddyCardFace
+          name={view.name}
+          area={view.area}
+          avatar={view.avatar}
+          memberSince={memberSince}
+          lastActive={view.last_active_at}
+          headline={headline}
+          card={view.card}
+          stats={stats}
+          boardRank={boardRank}
+          metrics={metrics}
+          onPressMedals={() =>
+            router.push({ pathname: '/buddy-medals/[id]', params: { id: id! } } as never)
+          }
+        />
       </View>
 
       {/* profile info below */}
@@ -180,14 +200,78 @@ export default function BuddyCardScreen() {
         </Text>
       </View>
 
-      <Button
-        title={sent ? 'Request sent ✓' : 'Connect as buddies'}
-        onPress={onConnect}
-        loading={sending}
-        disabled={sent}
-        style={styles.connect}
-      />
-      <Text style={styles.hint}>You&apos;ll only be linked if they accept — then you can chat.</Text>
+      {/* posts — buddies get a fuller feed, non-buddies only the public ones */}
+      {
+        <View style={styles.aboutCard}>
+          <Text style={styles.aboutTitle}>{isBuddy ? 'Recent posts' : 'Posts'}</Text>
+          {posts === null ? (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
+          ) : posts.length === 0 ? (
+            <Text style={styles.aboutText}>
+              {isBuddy
+                ? 'No posts yet.'
+                : 'Nothing shared with non-buddies yet — connect to see more.'}
+            </Text>
+          ) : (
+            <View style={{ gap: 4 }}>
+              {posts.map((p) => (
+                <Pressable
+                  key={p.id}
+                  onPress={() => router.push({ pathname: '/post/[id]', params: { id: p.id } })}
+                  style={({ pressed }) => [styles.postRow, pressed && { opacity: 0.75 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open post"
+                >
+                  {p.image_url ? (
+                    <Image source={{ uri: p.image_url }} style={styles.postThumb} />
+                  ) : (
+                    <View style={[styles.postThumb, styles.postThumbFallback]}>
+                      <Ionicons name="chatbox-ellipses-outline" size={20} color={colors.textFaint} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.postBody} numberOfLines={2}>
+                      {p.body || 'Photo'}
+                    </Text>
+                    <Text style={styles.postTime}>{timeAgo(p.created_at)}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          {!isBuddy && posts && posts.length > 0 ? (
+            <Text style={styles.postNote}>They chose to share these — connect to see it all.</Text>
+          ) : null}
+        </View>
+      }
+
+      {isBuddy ? (
+        <>
+          <View style={styles.buddyRow}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <Text style={styles.buddyLabel}>You&apos;re buddies</Text>
+          </View>
+          <Button
+            title="Message"
+            onPress={() => router.push({ pathname: '/buddy-chat/[id]', params: { id: id! } })}
+            icon={<Ionicons name="chatbubble-ellipses-outline" size={17} color="#fff" />}
+            style={styles.connect}
+          />
+        </>
+      ) : (
+        <>
+          <Button
+            title={sent ? 'Request sent ✓' : 'Connect as buddies'}
+            onPress={onConnect}
+            loading={sending}
+            disabled={sent}
+            style={styles.connect}
+          />
+          <Text style={styles.hint}>
+            You&apos;ll only be linked if they accept — then you can chat.
+          </Text>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -201,86 +285,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.xl,
     padding: spacing.md,
-    paddingBottom: spacing.lg,
     ...shadow.card,
   },
-  coverFrame: {
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    minHeight: 200,
-    justifyContent: 'center',
-  },
-  coverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  avatarRing: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    borderWidth: 5,
-    borderColor: 'rgba(255,255,255,0.9)',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  avatar: { width: 122, height: 122, borderRadius: 61 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  coverRight: { flex: 1, gap: spacing.sm, alignItems: 'flex-end' },
-  sinceChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    borderRadius: radius.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 11,
-  },
-  sinceText: { color: '#fff', fontFamily: font.semibold, fontSize: 11.5 },
-  msgChip: {
-    backgroundColor: 'rgba(15,23,42,0.62)',
-    borderRadius: radius.md,
-    padding: 10,
-    maxWidth: 170,
-  },
-  msgLabel: { color: '#fde68a', fontFamily: font.bold, fontSize: 12 },
-  msgText: { color: '#fff', fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
-  name: {
-    fontFamily: font.extrabold,
-    fontSize: 21,
-    color: colors.text,
-    marginTop: spacing.md,
-    marginHorizontal: spacing.xs,
-  },
-  subtitle: {
-    fontFamily: font.medium,
-    fontSize: 13.5,
-    color: colors.textMuted,
-    marginTop: 2,
-    marginHorizontal: spacing.xs,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    marginHorizontal: spacing.xs,
-  },
-  stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.pill,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    minHeight: 32,
-  },
-  statText: { fontFamily: font.bold, fontSize: 12.5, color: colors.text },
-  pressed: { opacity: 0.7 },
   aboutCard: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -290,7 +296,31 @@ const styles = StyleSheet.create({
   },
   aboutTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text, marginBottom: 6 },
   aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: colors.textSecondary },
-  connect: { marginTop: spacing.lg },
+  postRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: 8,
+  },
+  postThumb: { width: 48, height: 48, borderRadius: radius.sm, backgroundColor: colors.surface },
+  postThumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  postBody: { fontFamily: font.medium, fontSize: 13.5, color: colors.text, lineHeight: 19 },
+  postTime: { fontFamily: font.regular, fontSize: 11.5, color: colors.textMuted, marginTop: 1 },
+  postNote: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 8,
+  },
+  connect: { marginTop: spacing.md },
+  buddyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.lg,
+  },
+  buddyLabel: { fontFamily: font.semibold, fontSize: 13.5, color: colors.success },
   hint: {
     color: colors.textMuted,
     fontFamily: font.medium,

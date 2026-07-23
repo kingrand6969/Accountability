@@ -1,8 +1,19 @@
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabase';
+import { uploadToR2 } from '../lib/r2';
 
-/** Uploads a base64 image to the user's folder in the public post-images bucket. */
+/** Uploads a base64 image for a feed post. Prefers zero-egress Cloudflare R2;
+ *  falls back to Supabase Storage if R2 is unavailable, so posting never breaks. */
 export async function uploadPostImage(base64: string, ext: string): Promise<string> {
+  try {
+    return await uploadToR2(base64, 'post', ext);
+  } catch (e) {
+    console.warn('[uploadPostImage] R2 unavailable, using Supabase Storage:', e);
+    return uploadToSupabase(base64, ext);
+  }
+}
+
+async function uploadToSupabase(base64: string, ext: string): Promise<string> {
   const { data } = await supabase.auth.getUser();
   const uid = data.user?.id;
   if (!uid) throw new Error('Not signed in.');
