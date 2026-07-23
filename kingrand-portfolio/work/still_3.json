@@ -1,0 +1,29 @@
+[
+  {
+    "created_at": "2026-07-20T17:29:17.925702Z",
+    "display_name": "Seedream 4.5",
+    "id": "b5b61536-69f6-4720-ae23-2cbfba0b8512",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_172917_b5b61536-69f6-4720-ae23-2cbfba0b8512_min.webp",
+    "params": {
+      "aspect_ratio": "3:2",
+      "batch_size": 1,
+      "height": 3328,
+      "input_images": [
+        {
+          "id": "da0858e3-213e-4d58-a5a2-935fdf860e49",
+          "type": "media_input",
+          "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/da0858e3-213e-4d58-a5a2-935fdf860e49_resize.jpg"
+        }
+      ],
+      "prompt": "Cinematic miniature diorama, heroic armored-tech workshop aesthetic: glossy hot-rod red and gold metal plating with crisp panel lines and rivets, brushed gunmetal accents, warm tungsten garage lighting, subtle cool reactor-glow highlights, tilt-shift miniature photography look, isometric three-quarter aerial view, ultra detailed, empty, unoccupied, no people, architectural model quality. On a plain solid deep warm charcoal background with a soft contact shadow. Palette: hot-rod red #B91C1C, gold #D4A017, gunmetal #3F3F46, amber glow, warm white #FAF7F0. No text, no letters, no logos, centered composition. STRICT: no humanoid hero suits, no human figures, no faces anywhere. Subject: a circular team assembly hall with red and gold armored panel walls — a round command table at the center, a ring of glowing work stations around it, and recessed alcoves along the curved wall each holding one small faceless assistant robot identical to the reference image robots (rounded red torso with a single amber LED chest strip, smooth gunmetal head with NO face), tall plain banners bearing only a simple hexagon outline emblem.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 976703,
+      "use_unlim": false,
+      "width": 4992
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_172917_b5b61536-69f6-4720-ae23-2cbfba0b8512.png",
+    "status": "completed"
+  }
+]

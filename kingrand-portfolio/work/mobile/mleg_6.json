@@ -1,0 +1,39 @@
+[
+  {
+    "created_at": "2026-07-21T07:06:47.531396Z",
+    "display_name": "Kling v3.0",
+    "id": "4d638fc1-e088-4e93-8159-67b75b136234",
+    "job_type": "kling3_0",
+    "min_result_url": null,
+    "params": {
+      "aspect_ratio": "9:16",
+      "cfg_scale": 0.5,
+      "duration": 10,
+      "enhance_prompt": false,
+      "height": 1280,
+      "kling_element_ids": [],
+      "kling_elements": [],
+      "medias": [
+        {
+          "data": {
+            "id": "99e531fe-c953-4ae1-8a79-4eaca93916e6",
+            "type": "media_input",
+            "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/99e531fe-c953-4ae1-8a79-4eaca93916e6.png"
+          },
+          "role": "start_image"
+        }
+      ],
+      "mode": "std",
+      "multi_prompt": [],
+      "multi_shot_mode": "custom",
+      "multi_shots": false,
+      "prompt": "Vertical portrait composition, the scene centered in a tall 9:16 frame. Single continuous cinematic camera move, no cuts. Continue the same slow, steady forward glide rising up and out through the wide observation window into open golden-hour sky, then descending in a gentle arc toward the rooftop landing platform of the tower, where a single original armored guardian statue stands centered on the helipad: smooth featureless visor with one glowing horizontal amber light strip, swept-back crest fin on the helmet, red torso plating with brushed gunmetal limbs, gold trim, a hexagonal amber core glowing in the chest. The camera slowly circles the statue and comes to rest framing it against the miniature city skyline at sunset. Cinematic miniature diorama world, heroic armored-tech aesthetic, glossy hot-rod red and gold plating, brushed gunmetal, warm golden light, tilt-shift miniature model look. Smooth, graceful, slow motion, subtle parallax. No text, no captions.",
+      "reference_elements": [],
+      "sound": "off",
+      "width": 720
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_070647_4d638fc1-e088-4e93-8159-67b75b136234.mp4",
+    "status": "completed",
+    "thumbnail_url": "https://cdn.higgsfield.ai/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_070647_4d638fc1-e088-4e93-8159-67b75b136234_thumbnail.webp"
+  }
+]

@@ -1,0 +1,34 @@
+[
+  {
+    "created_at": "2026-07-21T19:23:40.721662Z",
+    "display_name": "Seedream 4.5",
+    "id": "baae766a-0e44-45af-9b5a-11e92dad6fc9",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_192340_baae766a-0e44-45af-9b5a-11e92dad6fc9_min.webp",
+    "params": {
+      "aspect_ratio": "3:4",
+      "batch_size": 1,
+      "height": 4608,
+      "input_images": [
+        {
+          "id": "225d6cff-5d22-4362-b678-c01bcd10dbdc",
+          "type": "media_input",
+          "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/225d6cff-5d22-4362-b678-c01bcd10dbdc.png"
+        },
+        {
+          "id": "bcc5ba15-7e8b-417a-aa67-19612f00f237",
+          "type": "media_input",
+          "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/bcc5ba15-7e8b-417a-aa67-19612f00f237_resize.jpg"
+        }
+      ],
+      "prompt": "Cinematic three-quarter hero portrait of the exact man in the first reference photo — same face, same facial features, faithful recognizable likeness, but with neat short black hair — wearing the original red and gold armored hero suit shown in the second reference image: red torso plating with a glowing hexagonal amber chest core, brushed gunmetal arms, gold trim (NO helmet on his head; the crest-finned helmet held casually under his left arm). He stands confidently on a skyscraper rooftop helipad at golden hour, miniature city skyline soft behind him, warm heroic movie-poster lighting, sharp focus on the face, photorealistic. No text, no letters, no logos.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 631273,
+      "use_unlim": false,
+      "width": 3456
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_192340_baae766a-0e44-45af-9b5a-11e92dad6fc9.png",
+    "status": "completed"
+  }
+]

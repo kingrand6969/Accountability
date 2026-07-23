@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>The Story — Quinn Camingue | KinGrand</title>
+  <meta name="description" content="Scroll to fly through Quinn Camingue's 13-year story — one continuous camera flight through a hand-directed AI world." />
+  <style>
+    :root, .sw-root {
+      --sw-bg: #14100E;
+      --sw-ink: #FAF7F0;
+      --sw-ink-soft: #C7BBAF;
+      --sw-accent: #D4A017;
+    }
+  </style>
+</head>
+<body>
+  <div id="top"></div>
+  <div id="world"></div>
+
+  <script src="assets/scrub-engine.js?v=6"></script>
+  <script>
+    mountScrollWorld(document.getElementById('world'), {
+      brand: { name: 'QUINN · KINGRAND', href: 'index.html' },
+      cta: { label: '← Résumé', href: 'index.html' },
+      hint: 'scroll to fly in',
+      diveScroll: 1.3,
+      connScroll: 0.9,
+      crossfade: 0.08,
+      sections: [
+        {
+          id: 'garage', label: 'The Origin',
+          still: 'assets/garage.webp?v=2',
+          clip: 'assets/vid/leg1.mp4',
+          clipMobile: 'assets/vid/leg1-m.mp4',
+          stillMobile: 'assets/garage-m.webp?v=2',
+          accent: '#D4A017',
+          scroll: 1.9, linger: 0.45,
+          intro: true,
+          photo: 'assets/quinn.jpg?v=4',
+          eyebrow: 'Quinn Grand Randolph Camingue',
+          title: 'Every hero starts on the line.',
+          body: 'Customer service & operations professional, 13 years in:',
+          detail: [
+            '6 yrs frontline support — eBay · Google · PayPal · UnitedHealth',
+            '7 yrs Amazon ops — CS VA → Senior Manager / Team Lead',
+            'VA agency founder — recruit · train · lead teams',
+            'AI · graphic design · video editing',
+          ],
+        },
+        {
+          id: 'hangar', label: 'Amazon Ops',
+          still: 'assets/hangar.webp?v=2',
+          clip: 'assets/vid/leg2.mp4',
+          clipMobile: 'assets/vid/leg2-m.mp4',
+          stillMobile: 'assets/hangar-m.webp?v=2',
+          accent: '#B91C1C',
+          scroll: 1.5, linger: 0.35,
+          eyebrow: 'Amazon · 2019 — present',
+          title: 'Seven years inside Amazon ops.',
+          body: 'Climbed every rung: Customer Service VA → Store Manager → Senior Manager / Team Lead.',
+          detail: [
+            'Listings, pricing, inventory & fulfillment coordination',
+            'Account health, escalations, returns & disputes',
+            'Led a team of VAs running day-to-day store performance',
+          ],
+        },
+        {
+          id: 'assembly', label: 'The Agency',
+          still: 'assets/assembly.webp?v=2',
+          clip: 'assets/vid/leg3.mp4',
+          clipMobile: 'assets/vid/leg3-m.mp4',
+          stillMobile: 'assets/assembly-m.webp?v=2',
+          accent: '#E0A93E',
+          scroll: 1.5, linger: 0.35,
+          eyebrow: 'VA Recruitment Supervisor · 2019 — present',
+          title: 'Now I assemble the team.',
+          body: 'My agency recruits, trains, and manages virtual assistants matched to your business.',
+          detail: [
+            'Customer service, admin & e-commerce VAs',
+            'Skill-matching to each client\'s exact needs',
+            'SOPs & workflows that keep everyone aligned',
+          ],
+        },
+        {
+          id: 'armory', label: 'The Craft',
+          still: 'assets/armory.webp?v=2',
+          clip: 'assets/vid/leg4.mp4',
+          clipMobile: 'assets/vid/leg4-m.mp4',
+          stillMobile: 'assets/armory-m.webp?v=2',
+          accent: '#B91C1C',
+          scroll: 1.4, linger: 0.3,
+          eyebrow: 'The craft',
+          title: 'Design, video & AI in the toolkit.',
+          body: 'The tech-savvy edge that sharpens everything else I do — this whole film included.',
+          detail: [
+            'Graphic design for social media & marketing',
+            'Short-form video editing for promos',
+            'AI power-user — Claude, ChatGPT, Higgsfield',
+          ],
+        },
+        {
+          id: 'command', label: 'KinGrand OS',
+          still: 'assets/command.webp?v=2',
+          clip: 'assets/vid/leg5.mp4',
+          clipMobile: 'assets/vid/leg5-m.mp4',
+          stillMobile: 'assets/command-m.webp?v=2',
+          accent: '#7DD3FC',
+          scroll: 1.5, linger: 0.35,
+          eyebrow: 'The flagship · app.kingrand.tech',
+          title: 'KinGrand OS — my marketing command center.',
+          body: 'The platform I\'m building to run it all from one map.',
+          detail: [
+            'Agency command map, Brand HQ & operations',
+            'PPC war room, SEO lab & analytics observatory',
+          ],
+        },
+        {
+          id: 'rooftop', label: 'Hire Me',
+          still: 'assets/rooftop.webp?v=2',
+          clip: 'assets/vid/leg6.mp4',
+          clipMobile: 'assets/vid/leg6-m.mp4',
+          stillMobile: 'assets/rooftop-m.webp?v=2',
+          accent: '#D4A017',
+          scroll: 1.8, linger: 0.45,
+          intro: true,
+          photo: 'assets/quinn.jpg?v=4',
+          eyebrow: 'Quinn Camingue · Las Piñas City, PH',
+          title: 'Assemble your team.',
+          body: 'That\'s the story. The résumé has the details.',
+          tags: [],
+          cta: {
+            primary: { label: 'Work with me', href: 'index.html#contact' },
+            secondary: { label: '← Back to résumé', href: 'index.html' },
+          },
+        },
+      ],
+      connectors: [],
+      connectorsMobile: [],
+    });
+  </script>
+</body>
+</html>

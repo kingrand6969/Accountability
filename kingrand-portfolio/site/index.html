@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Quinn Camingue — VA Team Lead &amp; Agency Founder | KinGrand</title>
+  <meta name="description" content="Quinn Grand Randolph Camingue — 13 years across customer service, Amazon store operations, and VA team leadership. Founder of the KinGrand VA agency and builder of KinGrand OS." />
+  <style>
+    :root {
+      --bg: #14100E; --ink: #FAF7F0; --soft: #C7BBAF; --accent: #D4A017; --line: #2E2620;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    a { color: var(--accent); }
+    .wrap { max-width: 1060px; margin: 0 auto; padding: 0 6vw; }
+    .kicker { color: var(--accent); text-transform: uppercase; letter-spacing: .18em; font-size: .78rem; font-weight: 600; }
+
+    /* ---------- HERO: credentials first ---------- */
+    .hero { display: grid; grid-template-columns: 1.25fr .9fr; gap: 48px; align-items: center;
+      padding: clamp(28px, 7vh, 80px) 0 clamp(28px, 6vh, 64px); }
+    .hero h1 { font-size: clamp(2.1rem, 4.6vw, 3.6rem); line-height: 1.04; margin: 10px 0 14px; letter-spacing: -.015em; }
+    .hero .role { color: var(--soft); font-size: clamp(1rem, 1.4vw, 1.18rem); line-height: 1.55; max-width: 56ch; }
+    .hero .role b { color: var(--ink); font-weight: 600; }
+    .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 26px; padding: 0; list-style: none; }
+    .stats li { border: 1px solid #3A2F26; background: #1B1512; border-radius: 999px; padding: 9px 16px; font-size: .88rem; }
+    .stats li b { color: var(--accent); }
+    .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn { display: inline-block; border-radius: 12px; padding: 13px 24px; text-decoration: none; font-weight: 600; font-size: .95rem; }
+    .btn--gold { background: var(--accent); color: #14100E; box-shadow: 0 10px 30px rgba(212,160,23,.25); }
+    .btn--ghost { color: var(--ink); border: 1px solid #4A3D30; }
+    .btn--film { color: var(--ink); border: 1px solid #4A3D30; background: linear-gradient(120deg, #201812, #1B1512); }
+    .hero .meta { color: var(--soft); font-size: .9rem; margin-top: 18px; }
+    .portrait { position: relative; justify-self: end; }
+    .portrait img { width: 100%; max-width: 380px; border-radius: 18px; display: block;
+      border: 1px solid #3A2F26; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
+    .portrait figcaption { position: absolute; left: 14px; bottom: 14px; background: rgba(20,16,14,.82);
+      backdrop-filter: blur(6px); border: 1px solid #3A2F26; border-radius: 10px; padding: 8px 13px;
+      font-size: .78rem; color: var(--soft); }
+
+    /* ---------- sections ---------- */
+    section { padding: clamp(30px, 7vh, 70px) 0; border-top: 1px solid #241D18; }
+    h2 { font-size: clamp(1.5rem, 2.8vw, 2.1rem); margin: 6px 0 8px; letter-spacing: -.01em; }
+    p.lede { color: var(--soft); line-height: 1.65; max-width: 70ch; }
+    .xp { display: grid; margin-top: 26px; }
+    .xp .job { display: grid; grid-template-columns: 150px 1fr; gap: 18px; padding: 17px 0 17px 22px;
+      border-left: 2px solid var(--line); position: relative; }
+    .xp .job::before { content: ""; position: absolute; left: -6px; top: 25px; width: 10px; height: 10px;
+      border-radius: 3px; background: var(--accent); }
+    .xp .when { color: var(--soft); font-size: .86rem; padding-top: 3px; }
+    .xp h3 { margin: 0; font-size: 1.05rem; }
+    .xp .org { color: var(--accent); font-size: .9rem; margin-top: 2px; }
+    .xp ul { margin: 8px 0 0; padding-left: 18px; color: var(--soft); font-size: .92rem; line-height: 1.55; }
+    .skills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding: 0; list-style: none; }
+    .skills li { border: 1px solid #3A2F26; border-radius: 999px; padding: 8px 16px; font-size: .88rem; background: #1B1512; }
+    .film-card { display: flex; gap: 26px; align-items: center; margin-top: 24px; border: 1px solid #3A2F26;
+      border-radius: 16px; overflow: hidden; background: #1B1512; text-decoration: none; color: var(--ink); }
+    .film-card img { width: 240px; height: 150px; object-fit: cover; display: block; flex-shrink: 0; }
+    .film-card .t { padding: 16px 20px 16px 0; }
+    .film-card .t small { color: var(--soft); display: block; margin-top: 6px; line-height: 1.5; }
+    .contact { text-align: center; }
+    .contact .btns { justify-content: center; margin-top: 24px; }
+    footer { text-align: center; color: #6E6157; font-size: .8rem; padding: 26px 0 34px; border-top: 1px solid #241D18; }
+
+    @media (max-width: 820px) {
+      .hero { grid-template-columns: 1fr; gap: 26px; }
+      .portrait { justify-self: center; order: -1; }
+      .portrait img { max-width: min(300px, 70vw); }
+      .xp .job { grid-template-columns: 1fr; gap: 4px; }
+      .film-card { flex-direction: column; align-items: stretch; }
+      .film-card img { width: 100%; height: 160px; }
+      .film-card .t { padding: 0 18px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- ============ CREDENTIALS FIRST ============ -->
+    <header class="hero">
+      <div>
+        <span class="kicker">Virtual Assistant Team Lead · Agency Founder</span>
+        <h1>Quinn Grand Randolph Camingue</h1>
+        <p class="role"><b>13 years</b> of customer service and operations: <b>6 years</b> on the front lines for
+          eBay, Google, PayPal &amp; UnitedHealth Group, <b>7 years</b> running Amazon stores up to
+          Senior Manager / Team Lead — now leading a <b>VA agency</b> and building
+          <a href="https://app.kingrand.tech">KinGrand OS</a>.</p>
+        <ul class="stats">
+          <li><b>13 yrs</b> experience</li>
+          <li><b>7 yrs</b> Amazon store ops</li>
+          <li><b>VA agency</b> recruit · train · lead</li>
+          <li><b>AI</b> · design · video</li>
+        </ul>
+        <div class="btns">
+          <a class="btn btn--gold" href="mailto:qgrc04@gmail.com">✉️ Hire me</a>
+          <a class="btn btn--ghost" href="assets/Quinn-Camingue-Resume.pdf" download>Résumé PDF</a>
+          <a class="btn btn--film" href="story.html">▶ Fly through my story</a>
+        </div>
+        <div class="meta">📍 Las Piñas City, Philippines · qgrc04@gmail.com · <a href="https://app.kingrand.tech">app.kingrand.tech</a></div>
+      </div>
+      <figure class="portrait">
+        <img src="assets/quinn-hero.jpg?v=4" alt="Quinn Camingue in the KinGrand hero armor" />
+        <figcaption>Armor &amp; world: designed + AI-generated by me</figcaption>
+      </figure>
+    </header>
+
+    <!-- ============ EXPERIENCE ============ -->
+    <section id="experience">
+      <span class="kicker">Experience</span>
+      <h2>13 years, three chapters</h2>
+      <div class="xp">
+        <div class="job"><div class="when">2019 — present</div><div>
+          <h3>VA Recruitment Supervisor &amp; Agency Lead</h3><div class="org">Freelance / KinGrand</div>
+          <ul><li>Recruit, train, and manage virtual assistants for client businesses across customer service, admin, and e-commerce.</li>
+              <li>Match VA skill sets to client needs; author SOPs and workflows that keep teams aligned.</li></ul>
+        </div></div>
+        <div class="job"><div class="when">2019 — present</div><div>
+          <h3>Amazon Store Senior Manager / Team Lead</h3><div class="org">Freelance — progressed from CS VA → Store Manager → Senior Manager</div>
+          <ul><li>Led a team of VAs across store operations, customer service, and order management.</li>
+              <li>Owned listings, pricing, inventory, fulfillment coordination, account health, and escalations.</li></ul>
+        </div></div>
+        <div class="job"><div class="when">2017 — 2018</div><div>
+          <h3>Healthcare CSR — Medicare Advantage</h3><div class="org">C3 Services</div>
+          <ul><li>Benefits, enrollment, and claims support in a regulated healthcare environment.</li></ul>
+        </div></div>
+        <div class="job"><div class="when">2016 — 2017</div><div>
+          <h3>Technical Support Representative — Google</h3><div class="org">Sykes Global</div>
+          <ul><li>Step-by-step technical troubleshooting for Google products with top CSAT scores.</li></ul>
+        </div></div>
+        <div class="job"><div class="when">2016</div><div>
+          <h3>Insurance Analyst</h3><div class="org">ISSI Corp.</div>
+          <ul><li>Health &amp; welfare benefits processing; billing resolution with full compliance.</li></ul>
+        </div></div>
+        <div class="job"><div class="when">2015 — 2016</div><div>
+          <h3>Healthcare Advocate</h3><div class="org">UnitedHealth Group</div>
+          <ul><li>Trusted point of contact for members' benefits, claims, and provider networks.</li></ul>
+        </div></div>
+        <div class="job"><div class="when">2014 — 2015</div><div>
+          <h3>Payroll Data Analyst B2B <span style="color:var(--soft);font-weight:400">(promoted from Health &amp; Welfare Analyst)</span></h3><div class="org">ADP Philippines</div>
+          <ul><li>Promoted for accuracy; high-volume client data processing with strict confidentiality.</li></ul>
+        </div></div>
+        <div class="job"><div class="when">2012 — 2014</div><div>
+          <h3>eBay Consultant / Customer Support</h3><div class="org">Sutherland Global Services</div>
+          <ul><li>Buyer &amp; seller accounts, order disputes, and policy escalations.</li></ul>
+        </div></div>
+      </div>
+    </section>
+
+    <!-- ============ SKILLS ============ -->
+    <section id="skills">
+      <span class="kicker">Skills</span>
+      <h2>What I bring</h2>
+      <ul class="skills">
+        <li>Customer Service &amp; Tech Support (Phone · Chat · Email)</li>
+        <li>Conflict Resolution &amp; De-escalation</li>
+        <li>Amazon Store Management</li>
+        <li>VA Recruitment, Training &amp; Team Leadership</li>
+        <li>Healthcare &amp; Medicare Advantage Support</li>
+        <li>Data Processing, Accuracy &amp; Confidentiality</li>
+        <li>AI Tools — Claude · ChatGPT · Higgsfield</li>
+        <li>Graphic Design</li>
+        <li>Video Editing</li>
+      </ul>
+    </section>
+
+    <!-- ============ THE FILM, DEMOTED TO A SHOWCASE CARD ============ -->
+    <section id="story">
+      <span class="kicker">Showcase</span>
+      <h2>My story as a scroll-through film</h2>
+      <p class="lede">I designed and AI-generated a miniature world — a garage, a drone hangar, a robot team hall,
+        an armory, a command deck, and a rooftop — and turned my career into one continuous camera flight through it.
+        It doubles as a demo of what I can build with AI, design, and video tools.</p>
+      <a class="film-card" href="story.html">
+        <img src="assets/rooftop.webp?v=2" alt="" />
+        <div class="t"><b>▶ Fly through my story</b>
+          <small>Scroll drives the camera — six scenes, one take, desktop &amp; mobile. ~1 minute.</small></div>
+      </a>
+    </section>
+
+    <!-- ============ CONTACT ============ -->
+    <section class="contact" id="contact">
+      <span class="kicker">Contact</span>
+      <h2>Assemble your team.</h2>
+      <p class="lede" style="margin-inline:auto">Need reliable support, a managed VA team, or an Amazon store in good hands?
+        Tell me what you need — I'll bring the people and the systems.</p>
+      <div class="btns">
+        <a class="btn btn--gold" href="mailto:qgrc04@gmail.com">✉️ qgrc04@gmail.com</a>
+        <a class="btn btn--ghost" href="assets/Quinn-Camingue-Resume.pdf" download>Download résumé (PDF)</a>
+        <a class="btn btn--ghost" href="https://app.kingrand.tech">KinGrand OS →</a>
+      </div>
+    </section>
+  </div>
+  <footer>© 2026 Quinn Camingue · KinGrand — armor, world &amp; film designed and AI-generated by Quinn.</footer>
+</body>
+</html>

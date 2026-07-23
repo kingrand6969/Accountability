@@ -1,0 +1,41 @@
+[
+  {
+    "created_at": "2026-07-20T22:12:43.280488Z",
+    "display_name": "Seedance 2.0",
+    "id": "c0d33964-e863-4381-83d4-03221c6d0f65",
+    "job_type": "seedance_2_0",
+    "min_result_url": null,
+    "params": {
+      "aspect_ratio": "16:9",
+      "bitrate_mode": "standard",
+      "duration": 8,
+      "generate_audio": true,
+      "genre": "auto",
+      "height": 1080,
+      "medias": [
+        {
+          "data": {
+            "id": "c90f0800-0f53-4ae5-8d46-41060f29cec9",
+            "type": "media_input",
+            "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/c90f0800-0f53-4ae5-8d46-41060f29cec9.png"
+          },
+          "role": "start_image"
+        }
+      ],
+      "mode": "std",
+      "model": "seedance_2_0",
+      "multi_prompt": [],
+      "multi_shot_mode": "custom",
+      "multi_shots": false,
+      "prompt": "Single continuous cinematic camera move, no cuts. Continue the same slow, steady forward glide through the sunlit doorway, crossing a short enclosed glass sky bridge high above the miniature city, and gliding into the command deck mission control room of the tower: tiered rows of consoles around a large central holographic map table showing a miniature glowing city of districts. The camera sweeps in a slow half-orbit around the holographic map table, keeping it centered, then continues past it. In the final second, settle back into a slow, steady forward glide toward the wide observation window ahead. STRICT: no humanoid suits, no mannequins, no figures. Cinematic miniature diorama, heroic armored-tech workshop aesthetic, glossy hot-rod red and gold plating, brushed gunmetal, warm tungsten lighting, tilt-shift miniature model look. Smooth, graceful, slow motion, subtle parallax. No text, no captions.",
+      "prompt_language": "en",
+      "reference_elements": [],
+      "resolution": "1080p",
+      "speedramp": "auto",
+      "width": 1920
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_221243_c0d33964-e863-4381-83d4-03221c6d0f65.mp4",
+    "status": "completed",
+    "thumbnail_url": "https://cdn.higgsfield.ai/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_221243_c0d33964-e863-4381-83d4-03221c6d0f65_thumbnail.webp"
+  }
+]

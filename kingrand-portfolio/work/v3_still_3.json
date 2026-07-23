@@ -1,0 +1,29 @@
+[
+  {
+    "created_at": "2026-07-20T17:19:12.161988Z",
+    "display_name": "Seedream 4.5",
+    "id": "fae9a723-1305-4ea6-91ad-4db6b88fb9c3",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171912_fae9a723-1305-4ea6-91ad-4db6b88fb9c3_min.webp",
+    "params": {
+      "aspect_ratio": "3:2",
+      "batch_size": 1,
+      "height": 3328,
+      "input_images": [
+        {
+          "id": "a5108edb-33c0-4d2a-a7d1-332870c7fad6",
+          "type": "media_input",
+          "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/a5108edb-33c0-4d2a-a7d1-332870c7fad6_resize.jpg"
+        }
+      ],
+      "prompt": "Cinematic miniature diorama, heroic armored-tech workshop aesthetic: glossy hot-rod red and gold metal plating with crisp panel lines and rivets, brushed gunmetal accents, warm tungsten garage lighting, subtle cool reactor-glow highlights, tilt-shift miniature photography look, isometric three-quarter aerial view, ultra detailed, empty, unoccupied, no people, architectural model quality. On a plain solid deep warm charcoal background with a soft contact shadow. Palette: hot-rod red #B91C1C, gold #D4A017, gunmetal #3F3F46, amber core glow, warm white #FAF7F0. No text, no letters, no logos, centered composition. STRICT: absolutely no faces, no helmet faces, no eye pairs, no mouth plates anywhere; any armor follows ONLY the reference image suit design (single horizontal amber visor slit, swept crest fin, hexagonal amber chest core); nothing may resemble Iron Man or any Marvel character. Subject: a circular team assembly hall, completely empty floor seen from above — a round command table at the center, a ring of glowing work stations around it, and recessed alcoves along the curved wall each holding one armored suit exactly matching the reference image design, distant and small in frame, tall plain banners bearing only a simple hexagon outline emblem.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 614782,
+      "use_unlim": false,
+      "width": 4992
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171912_fae9a723-1305-4ea6-91ad-4db6b88fb9c3.png",
+    "status": "completed"
+  }
+]

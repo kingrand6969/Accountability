@@ -1,0 +1,23 @@
+[
+  {
+    "created_at": "2026-07-20T16:45:46.070912Z",
+    "display_name": "Seedream 4.5",
+    "id": "20307be6-f077-464c-ac45-9e4b0ce90ba4",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_164546_20307be6-f077-464c-ac45-9e4b0ce90ba4_min.webp",
+    "params": {
+      "aspect_ratio": "3:2",
+      "batch_size": 1,
+      "height": 3328,
+      "input_images": [],
+      "prompt": "Cinematic miniature diorama, heroic armored-tech workshop aesthetic: glossy hot-rod red and gold metal plating with crisp panel lines and rivets, brushed gunmetal accents, warm tungsten garage lighting, subtle cool reactor-glow highlights, tilt-shift miniature photography look, isometric three-quarter aerial view, ultra detailed, empty, unoccupied, no people, architectural model quality. On a plain solid deep warm charcoal background with a soft contact shadow. Palette: hot-rod red #B91C1C, gold #D4A017, gunmetal #3F3F46, reactor glow #7DD3FC, warm white #FAF7F0. No text, no letters, no logos, centered composition. Subject: an armory design lab — drafting desks with unrolled blueprints, a paint bay where an armored suit shell hangs mid-spray in fresh red and gold, a wall of framed artwork posters, a video editing bay with multiple monitors glowing softly.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 793337,
+      "use_unlim": false,
+      "width": 4992
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_164546_20307be6-f077-464c-ac45-9e4b0ce90ba4.png",
+    "status": "completed"
+  }
+]

@@ -1,0 +1,23 @@
+[
+  {
+    "created_at": "2026-07-20T17:29:09.482495Z",
+    "display_name": "Seedream 4.5",
+    "id": "0067701b-cba7-428c-9d0b-c27cb4bcbad2",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_172909_0067701b-cba7-428c-9d0b-c27cb4bcbad2_min.webp",
+    "params": {
+      "aspect_ratio": "3:2",
+      "batch_size": 1,
+      "height": 3328,
+      "input_images": [],
+      "prompt": "Cinematic miniature diorama, heroic armored-tech workshop aesthetic: glossy hot-rod red and gold metal plating with crisp panel lines and rivets, brushed gunmetal accents, warm tungsten garage lighting, subtle cool reactor-glow highlights, tilt-shift miniature photography look, isometric three-quarter aerial view, ultra detailed, empty, unoccupied, no people, architectural model quality. On a plain solid deep warm charcoal background with a soft contact shadow. Palette: hot-rod red #B91C1C, gold #D4A017, gunmetal #3F3F46, amber glow, warm white #FAF7F0. No text, no letters, no logos, centered composition. STRICT: no figures, no suits, no robots, no humanoids anywhere in frame — machinery and architecture only. Subject: a command deck mission control room — tiered rows of consoles facing a large central holographic map table showing a miniature city of glowing districts, red and gold armored panel walls decorated only with a plain flat geometric hexagon relief, a wide observation window band showing soft warm light.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 975034,
+      "use_unlim": false,
+      "width": 4992
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_172909_0067701b-cba7-428c-9d0b-c27cb4bcbad2.png",
+    "status": "completed"
+  }
+]

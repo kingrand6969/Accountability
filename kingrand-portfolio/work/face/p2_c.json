@@ -1,0 +1,34 @@
+[
+  {
+    "created_at": "2026-07-21T20:45:16.363037Z",
+    "display_name": "Seedream 4.5",
+    "id": "67db0b5b-04b7-4db7-b143-672667f13c5d",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_204516_67db0b5b-04b7-4db7-b143-672667f13c5d_min.webp",
+    "params": {
+      "aspect_ratio": "3:4",
+      "batch_size": 1,
+      "height": 4608,
+      "input_images": [
+        {
+          "id": "8729a1c0-366c-44f6-95b4-80c7acc6b479",
+          "type": "media_input",
+          "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/8729a1c0-366c-44f6-95b4-80c7acc6b479.png"
+        },
+        {
+          "id": "955fb662-d9f3-4096-99ab-0c8c71a2952c",
+          "type": "media_input",
+          "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/955fb662-d9f3-4096-99ab-0c8c71a2952c_resize.jpg"
+        }
+      ],
+      "prompt": "Waist-up portrait, camera at shoulder height. Cinematic hero portrait of the exact man in the first reference photo — same face, same facial features, faithful recognizable likeness, neat short black hair — wearing the original red and gold armored hero suit from the second reference image: red torso plating with a glowing hexagonal amber chest core, brushed gunmetal arms, gold trim, crest-finned helmet held under his left arm. CRITICAL: correct realistic human anatomy and proportions — the head naturally and correctly sized relative to the broad armored shoulders and body, heroic 7.5-heads-tall figure, NOT a bobblehead, NOT an oversized head. He stands confidently on a skyscraper rooftop helipad at golden hour, city skyline soft behind him, warm heroic movie-poster lighting, photorealistic. No text, no letters, no logos.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 824961,
+      "use_unlim": false,
+      "width": 3456
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_204516_67db0b5b-04b7-4db7-b143-672667f13c5d.png",
+    "status": "completed"
+  }
+]

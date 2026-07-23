@@ -1,0 +1,41 @@
+[
+  {
+    "created_at": "2026-07-20T19:37:18.98399Z",
+    "display_name": "Seedance 2.0",
+    "id": "1dd0b141-2782-49fc-94eb-31f70626f72b",
+    "job_type": "seedance_2_0",
+    "min_result_url": null,
+    "params": {
+      "aspect_ratio": "16:9",
+      "bitrate_mode": "standard",
+      "duration": 8,
+      "generate_audio": true,
+      "genre": "auto",
+      "height": 1080,
+      "medias": [
+        {
+          "data": {
+            "id": "141d716e-9917-4baf-9578-edf7f3b51611",
+            "type": "media_input",
+            "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/141d716e-9917-4baf-9578-edf7f3b51611_resize.jpg"
+          },
+          "role": "start_image"
+        }
+      ],
+      "mode": "std",
+      "model": "seedance_2_0",
+      "multi_prompt": [],
+      "multi_shot_mode": "custom",
+      "multi_shots": false,
+      "prompt": "Single continuous cinematic camera move, no cuts. Continue the same slow, steady forward glide. The camera glides forward into the hero's origin garage workshop, pushing in close toward the workbench where a half-built armored gauntlet glows amber in its vise until it nearly fills the frame, then easing gently back out. In the final second, settle back into a slow, steady forward glide toward the large garage door at the far side of the room. Cinematic miniature diorama, heroic armored-tech workshop aesthetic, glossy hot-rod red and gold plating, brushed gunmetal, warm tungsten garage lighting, tilt-shift miniature look. Smooth, graceful, slow motion, subtle parallax. No text, no captions.",
+      "prompt_language": "en",
+      "reference_elements": [],
+      "resolution": "1080p",
+      "speedramp": "auto",
+      "width": 1920
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_193718_1dd0b141-2782-49fc-94eb-31f70626f72b.mp4",
+    "status": "completed",
+    "thumbnail_url": "https://cdn.higgsfield.ai/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_193718_1dd0b141-2782-49fc-94eb-31f70626f72b_thumbnail.webp"
+  }
+]

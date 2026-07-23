@@ -1,0 +1,29 @@
+[
+  {
+    "created_at": "2026-07-20T17:19:12.309011Z",
+    "display_name": "Seedream 4.5",
+    "id": "cf9fe6d0-34bb-45fe-95af-f2e2a005a872",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171912_cf9fe6d0-34bb-45fe-95af-f2e2a005a872_min.webp",
+    "params": {
+      "aspect_ratio": "3:2",
+      "batch_size": 1,
+      "height": 3328,
+      "input_images": [
+        {
+          "id": "eb477764-684b-4cda-a6c9-50de59ebcfd8",
+          "type": "media_input",
+          "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/eb477764-684b-4cda-a6c9-50de59ebcfd8_resize.jpg"
+        }
+      ],
+      "prompt": "Cinematic miniature diorama, heroic armored-tech workshop aesthetic: glossy hot-rod red and gold metal plating with crisp panel lines and rivets, brushed gunmetal accents, warm tungsten garage lighting, subtle cool reactor-glow highlights, tilt-shift miniature photography look, isometric three-quarter aerial view, ultra detailed, empty, unoccupied, no people, architectural model quality. On a plain solid deep warm charcoal background with a soft contact shadow. Palette: hot-rod red #B91C1C, gold #D4A017, gunmetal #3F3F46, amber core glow, warm white #FAF7F0. No text, no letters, no logos, centered composition. STRICT: absolutely no faces, no helmet faces, no eye pairs, no mouth plates anywhere; any armor follows ONLY the reference image suit design (single horizontal amber visor slit, swept crest fin, hexagonal amber chest core); nothing may resemble Iron Man or any Marvel character. Subject: a logistics hangar bay — rows of docked faceless armored cargo drones in red and gunmetal, each drone a smooth rounded hull with ONLY a single thin amber LED sensor strip on the front (no face, no eyes, no helmet), stacked shipping crates and parcels on conveyor belts, an overhead loading gantry crane, huge hangar doors half open with warm light spilling in.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 892659,
+      "use_unlim": false,
+      "width": 4992
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171912_cf9fe6d0-34bb-45fe-95af-f2e2a005a872.png",
+    "status": "completed"
+  }
+]

@@ -1,0 +1,23 @@
+[
+  {
+    "created_at": "2026-07-20T17:12:49.809076Z",
+    "display_name": "Seedream 4.5",
+    "id": "74ab1a7e-8160-4ab8-baf2-15fb79c28692",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171249_74ab1a7e-8160-4ab8-baf2-15fb79c28692_min.webp",
+    "params": {
+      "aspect_ratio": "3:2",
+      "batch_size": 1,
+      "height": 3328,
+      "input_images": [],
+      "prompt": "Cinematic miniature diorama, heroic armored-tech workshop aesthetic: glossy hot-rod red and gold metal plating with crisp panel lines and rivets, brushed gunmetal accents, warm tungsten garage lighting, subtle cool reactor-glow highlights, tilt-shift miniature photography look, isometric three-quarter aerial view, ultra detailed, empty, unoccupied, no people, architectural model quality. On a plain solid deep warm charcoal background with a soft contact shadow. Palette: hot-rod red #B91C1C, gold #D4A017, gunmetal #3F3F46, amber core glow, warm white #FAF7F0. No text, no letters, no logos, centered composition. IMPORTANT: any armor design must be an entirely original invented design, NOT resembling Iron Man or any Marvel or famous superhero. Subject: a circular team assembly hall — a round command table at the center, a ring of individual work stations arranged around it each glowing warmly, recessed alcoves along the curved wall each holding an original armored suit of unique invented design: full-face smooth featureless visor with a single glowing horizontal eye-slit and no mouth plate, angular swept-back helmet crest fin, hot-rod red torso plating, brushed gunmetal arms and legs, thin gold trim edges, a hexagonal amber power core embedded in the chest, tall plain red and gold banners bearing only a simple hexagon emblem.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 588130,
+      "use_unlim": false,
+      "width": 4992
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171249_74ab1a7e-8160-4ab8-baf2-15fb79c28692.png",
+    "status": "completed"
+  }
+]

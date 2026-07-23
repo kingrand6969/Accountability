@@ -1,0 +1,39 @@
+[
+  {
+    "created_at": "2026-07-21T05:59:10.657941Z",
+    "display_name": "Kling v3.0",
+    "id": "28897a17-5f26-4372-aad2-e4dc6d66fc2d",
+    "job_type": "kling3_0",
+    "min_result_url": null,
+    "params": {
+      "aspect_ratio": "16:9",
+      "cfg_scale": 0.5,
+      "duration": 10,
+      "enhance_prompt": false,
+      "height": 720,
+      "kling_element_ids": [],
+      "kling_elements": [],
+      "medias": [
+        {
+          "data": {
+            "id": "292f4e13-e30c-49cd-a131-1d5c878eee98",
+            "type": "media_input",
+            "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/292f4e13-e30c-49cd-a131-1d5c878eee98.png"
+          },
+          "role": "start_image"
+        }
+      ],
+      "mode": "std",
+      "multi_prompt": [],
+      "multi_shot_mode": "custom",
+      "multi_shots": false,
+      "prompt": "Single continuous cinematic camera move, no cuts. Continue the same slow, steady forward glide rising up and out through the wide observation window into open golden-hour sky, then descending in a gentle arc toward the rooftop landing platform of the tower, where a single original armored guardian statue stands centered on the helipad: smooth featureless visor with one glowing horizontal amber light strip, swept-back crest fin on the helmet, red torso plating with brushed gunmetal limbs, gold trim, a hexagonal amber core glowing in the chest. The camera slowly circles the statue and comes to rest framing it against the miniature city skyline at sunset. Cinematic miniature diorama world, heroic armored-tech aesthetic, glossy hot-rod red and gold plating, brushed gunmetal, warm golden light, tilt-shift miniature model look. Smooth, graceful, slow motion, subtle parallax. No text, no captions.",
+      "reference_elements": [],
+      "sound": "off",
+      "width": 1280
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_055910_28897a17-5f26-4372-aad2-e4dc6d66fc2d.mp4",
+    "status": "completed",
+    "thumbnail_url": "https://cdn.higgsfield.ai/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_055910_28897a17-5f26-4372-aad2-e4dc6d66fc2d_thumbnail.webp"
+  }
+]

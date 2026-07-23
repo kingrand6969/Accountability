@@ -1,0 +1,41 @@
+[
+  {
+    "created_at": "2026-07-20T20:02:14.298626Z",
+    "display_name": "Seedance 2.0",
+    "id": "c9e7170f-4415-4dab-8da1-5a6ffd6802f7",
+    "job_type": "seedance_2_0",
+    "min_result_url": null,
+    "params": {
+      "aspect_ratio": "16:9",
+      "bitrate_mode": "standard",
+      "duration": 8,
+      "generate_audio": true,
+      "genre": "auto",
+      "height": 1080,
+      "medias": [
+        {
+          "data": {
+            "id": "5e81b75c-94b6-44f8-91a5-3bb6a194f91b",
+            "type": "media_input",
+            "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/5e81b75c-94b6-44f8-91a5-3bb6a194f91b.png"
+          },
+          "role": "start_image"
+        }
+      ],
+      "mode": "std",
+      "model": "seedance_2_0",
+      "multi_prompt": [],
+      "multi_shot_mode": "custom",
+      "multi_shots": false,
+      "prompt": "Single continuous cinematic camera move, no cuts. Continue the same slow, steady forward glide through the opening garage door into a vast logistics hangar bay, then tracking low and level alongside rows of faceless red armored cargo drones and conveyor belts carrying parcels, foreground crates sliding past in parallax. In the final second, settle back into a slow, steady forward glide toward the wide doorway at the far end of the hangar. Cinematic miniature diorama, heroic armored-tech workshop aesthetic, glossy hot-rod red and gold plating, brushed gunmetal, warm tungsten lighting, tilt-shift miniature look. Smooth, graceful, slow motion, subtle parallax. No text, no captions.",
+      "prompt_language": "en",
+      "reference_elements": [],
+      "resolution": "1080p",
+      "speedramp": "auto",
+      "width": 1920
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_200214_c9e7170f-4415-4dab-8da1-5a6ffd6802f7.mp4",
+    "status": "completed",
+    "thumbnail_url": "https://cdn.higgsfield.ai/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_200214_c9e7170f-4415-4dab-8da1-5a6ffd6802f7_thumbnail.webp"
+  }
+]

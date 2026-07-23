@@ -1,0 +1,23 @@
+[
+  {
+    "created_at": "2026-07-20T17:12:49.667544Z",
+    "display_name": "Seedream 4.5",
+    "id": "3e2093b7-cdaa-4144-b983-4e2abfc7fa6d",
+    "job_type": "seedream_v4_5",
+    "min_result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171249_3e2093b7-cdaa-4144-b983-4e2abfc7fa6d_min.webp",
+    "params": {
+      "aspect_ratio": "3:2",
+      "batch_size": 1,
+      "height": 3328,
+      "input_images": [],
+      "prompt": "Cinematic miniature diorama, heroic armored-tech workshop aesthetic: glossy hot-rod red and gold metal plating with crisp panel lines and rivets, brushed gunmetal accents, warm tungsten garage lighting, subtle cool reactor-glow highlights, tilt-shift miniature photography look, isometric three-quarter aerial view, ultra detailed, empty, unoccupied, no people, architectural model quality. On a plain solid deep warm charcoal background with a soft contact shadow. Palette: hot-rod red #B91C1C, gold #D4A017, gunmetal #3F3F46, amber core glow, warm white #FAF7F0. No text, no letters, no logos, centered composition. IMPORTANT: any armor design must be an entirely original invented design, NOT resembling Iron Man or any Marvel or famous superhero. Subject: a logistics hangar bay — rows of docked faceless armored cargo drones in red and gunmetal with a single amber sensor bar instead of a face, stacked shipping crates and parcels moving on conveyor belts, an overhead loading gantry crane, huge hangar doors half open with warm light spilling in.",
+      "quality": "high",
+      "reference_elements": [],
+      "seed": 527234,
+      "use_unlim": false,
+      "width": 4992
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260720_171249_3e2093b7-cdaa-4144-b983-4e2abfc7fa6d.png",
+    "status": "completed"
+  }
+]

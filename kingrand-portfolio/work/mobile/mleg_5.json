@@ -1,0 +1,39 @@
+[
+  {
+    "created_at": "2026-07-21T07:03:58.370535Z",
+    "display_name": "Kling v3.0",
+    "id": "ea9d1340-26ea-49eb-b2dd-ff23f43c559b",
+    "job_type": "kling3_0",
+    "min_result_url": null,
+    "params": {
+      "aspect_ratio": "9:16",
+      "cfg_scale": 0.5,
+      "duration": 10,
+      "enhance_prompt": false,
+      "height": 1280,
+      "kling_element_ids": [],
+      "kling_elements": [],
+      "medias": [
+        {
+          "data": {
+            "id": "36ac4443-f6ba-4f47-8a6d-d2bc8e758378",
+            "type": "media_input",
+            "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/36ac4443-f6ba-4f47-8a6d-d2bc8e758378.png"
+          },
+          "role": "start_image"
+        }
+      ],
+      "mode": "std",
+      "multi_prompt": [],
+      "multi_shot_mode": "custom",
+      "multi_shots": false,
+      "prompt": "Vertical portrait composition, the scene centered in a tall 9:16 frame. Single continuous cinematic camera move, no cuts. Continue the same slow, steady forward glide through the sunlit doorway, crossing a short enclosed glass sky bridge high above the miniature city, and gliding into the command deck mission control room of the tower: tiered rows of consoles around a large central holographic map table showing a miniature glowing city of districts. The camera sweeps in a slow half-orbit around the holographic map table, keeping it centered, then continues past it. In the final second, settle back into a slow, steady forward glide toward the wide observation window ahead. STRICT: no humanoid suits, no mannequins, no figures. Cinematic miniature diorama, heroic armored-tech workshop aesthetic, glossy hot-rod red and gold plating, brushed gunmetal, warm tungsten lighting, tilt-shift miniature model look. Smooth, graceful, slow motion, subtle parallax. No text, no captions.",
+      "reference_elements": [],
+      "sound": "off",
+      "width": 720
+    },
+    "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_070358_ea9d1340-26ea-49eb-b2dd-ff23f43c559b.mp4",
+    "status": "completed",
+    "thumbnail_url": "https://cdn.higgsfield.ai/user_39JJ9h03mLtcZW7rWSpIeMIPBka/hf_20260721_070358_ea9d1340-26ea-49eb-b2dd-ff23f43c559b_thumbnail.webp"
+  }
+]
