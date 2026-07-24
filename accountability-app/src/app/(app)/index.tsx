@@ -37,36 +37,13 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 // a sponsored card every N posts for free members (Pro sees none)
 const AD_EVERY = 5;
-type FeedRow =
-  | { kind: 'post'; post: FeedPost }
-  | { kind: 'ad'; id: string }
-  | { kind: 'day'; id: string; label: string };
+type FeedRow = { kind: 'post'; post: FeedPost } | { kind: 'ad'; id: string };
 
-// warm hairline — a hair warmer than the cool UI border, so the borderless
-// feed reads human rather than clinical (the Twitter/Threads divider is cold).
+// warm hairline for subtle in-post lines (content ↔ actions).
 const HAIRLINE = '#ece9e3';
-
-/** A stable per-calendar-day key for grouping the feed into a timeline. */
-function dayKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-/** "Today" / "Yesterday" / "Mon, Jul 21" — the journal rhythm that sets this
- *  feed apart from an endless flat stream. */
-function dayLabel(iso: string): string {
-  const now = new Date();
-  const k = dayKey(iso);
-  if (k === dayKey(now.toISOString())) return 'Today';
-  const y = new Date(now);
-  y.setDate(now.getDate() - 1);
-  if (k === dayKey(y.toISOString())) return 'Yesterday';
-  return new Date(iso).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
+// between-post divider — thicker + a visible light grey so the separation
+// actually reads on a phone (the near-white hairline vanished).
+const DIVIDER = '#d8dce2';
 
 /** The left activity spine colour, derived from what the post actually is.
  *  Muted on purpose. (True per-workout colour needs activity metadata on the
@@ -307,13 +284,7 @@ export default function Feed() {
   // interleave a sponsored card every AD_EVERY posts (free members only)
   const feedData = useMemo<FeedRow[]>(() => {
     const rows: FeedRow[] = [];
-    let lastDay: string | null = null;
     posts.forEach((p, i) => {
-      const k = dayKey(p.created_at);
-      if (k !== lastDay) {
-        rows.push({ kind: 'day', id: `day-${k}`, label: dayLabel(p.created_at) });
-        lastDay = k;
-      }
       rows.push({ kind: 'post', post: p });
       if (!isPro && (i + 1) % AD_EVERY === 0) rows.push({ kind: 'ad', id: `ad-${p.id}` });
     });
@@ -411,13 +382,6 @@ export default function Feed() {
             </View>
           }
           renderItem={({ item: row }) => {
-            if (row.kind === 'day') {
-              return (
-                <View style={styles.dayDivider}>
-                  <Text style={styles.dayLabel}>{row.label}</Text>
-                </View>
-              );
-            }
             if (row.kind === 'ad') {
               return (
                 <View style={styles.adWrap}>
@@ -797,31 +761,16 @@ const styles = StyleSheet.create({
   // borderless timeline: posts are one continuous white surface split by
   // day dividers + hairlines — no floating tiles, no gap.
   list: { paddingBottom: 110, ...contentMax },
-  dayDivider: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 7,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: HAIRLINE,
-  },
-  dayLabel: {
-    fontFamily: font.bold,
-    fontSize: 11.5,
-    letterSpacing: 1,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-  },
   post: {
     flexDirection: 'row',
     backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: HAIRLINE,
+    borderBottomWidth: 2,
+    borderBottomColor: DIVIDER,
   },
   spine: { width: 3, alignSelf: 'stretch' },
   postBody: { flex: 1, padding: spacing.lg, gap: spacing.sm },
   avRing: { borderRadius: 999, borderWidth: 1.5, padding: 2 },
-  adWrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: HAIRLINE },
+  adWrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 2, borderBottomColor: DIVIDER },
   footerSpinner: { paddingVertical: spacing.lg },
   emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
   emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
