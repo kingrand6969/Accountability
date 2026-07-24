@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useIsPro } from '../pro/ProProvider';
+import { CHECKOUT_ENABLED } from '../pro/monetization';
 import { Button } from '../ui/Button';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
 
@@ -61,6 +62,7 @@ export default function Paywall() {
         ))}
       </View>
 
+      {CHECKOUT_ENABLED && !isPro && (
       <View style={styles.prices}>
         <Pressable
           style={({ pressed }) => [
@@ -90,23 +92,33 @@ export default function Paywall() {
           <Text style={styles.priceNote}>per month</Text>
         </Pressable>
       </View>
+      )}
 
       {isPro ? (
         <View style={styles.proActive}>
           <Ionicons name="star" size={17} color={colors.pro} />
           <Text style={styles.proActiveText}>You&apos;re on Pro</Text>
         </View>
-      ) : (
+      ) : CHECKOUT_ENABLED ? (
         <Button
           title={plan === 'yearly' ? 'Start Pro — $19.99/yr' : 'Start Pro — $3.99/mo'}
           onPress={onUpgrade}
           style={styles.cta}
         />
+      ) : (
+        <View style={styles.comingSoon}>
+          <Ionicons name="sparkles-outline" size={17} color={colors.pro} />
+          <Text style={styles.comingSoonText}>
+            Pro is launching soon — these features are on the way.
+          </Text>
+        </View>
       )}
 
-      <Text style={styles.devNote}>
-        Subscriptions launch with the store release — checkout opens here. Cancel anytime.
-      </Text>
+      {CHECKOUT_ENABLED && (
+        <Text style={styles.devNote}>
+          Subscriptions launch with the store release — checkout opens here. Cancel anytime.
+        </Text>
+      )}
     </ScrollView>
   );
 }
@@ -192,6 +204,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   proActiveText: { fontSize: 16, fontFamily: font.bold, color: colors.pro },
+  comingSoon: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.proSoft,
+    borderColor: colors.pro,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  comingSoonText: { fontSize: 14, fontFamily: font.bold, color: colors.pro, flexShrink: 1 },
   devNote: {
     color: colors.textFaint,
     fontFamily: font.regular,

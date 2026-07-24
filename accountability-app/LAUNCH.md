@@ -105,17 +105,22 @@ eas init            # links the project, writes extra.eas.projectId into app.jso
 eas credentials     # let Expo manage signing keys (choose the auto option)
 ```
 
-### 6. Monetization wiring (only if you launch Pro / ads on day 1)
-Pro and ads are built in the UI, but the _billing_ side needs store products + an SDK.
-- [ ] **In-app purchases (Pro)**: create the subscription products in App Store Connect +
-      Play Console, then wire **RevenueCat** (free tier) — it's the standard Expo path and
-      handles both stores. Tell me when the products exist and I'll wire the SDK + paywall
-      to real entitlements.
-- [ ] **Ads (free tier)**: create an **AdMob** account, get iOS + Android app IDs and ad
-      unit IDs, then I'll add `react-native-google-mobile-ads` config + the ATT prompt.
-- [ ] If ads use the advertising ID, iOS needs **App Tracking Transparency** — I'll add
-      `NSUserTrackingUsageDescription` to `app.json` once you confirm ads are in for launch.
-> You _can_ launch free-only (no IAP, no ads) to simplify v1 and add these in v1.1. Your call.
+### 6. Monetization — DECIDED: free v1, Pro/ads flip on later
+**Chosen path (Google Play first): ship free, keep Pro built and comp-able, turn on paid
+Pro in v1.1.** Both money surfaces are now switched **off** behind one file —
+`src/pro/monetization.ts` (`CHECKOUT_ENABLED` and `ADS_ENABLED`, both `false`). The paywall
+shows a tasteful "Pro is launching soon" card (no non-working purchase button, which is what
+store review rejects), and the feed shows no ad slots. Nothing was deleted — it's a flip.
+
+To make money in **v1.1** (no re-architecture needed):
+- [ ] **Turn on Pro**: once your Play account is live, create the subscription products in
+      Play Console, then tell me — I'll wire **RevenueCat** (free tier) so purchases set
+      `is_pro`, and set `CHECKOUT_ENABLED = true`. Meanwhile, comp Pro to yourself and early
+      users via `admin_grant_pro` (already built) to learn which features convert.
+- [ ] **Turn on ads (optional, only at real scale)**: create an **AdMob** account + ad
+      units, then I'll wire `react-native-google-mobile-ads`, update the data-safety labels
+      to declare ad tracking, and set `ADS_ENABLED = true`. (No iOS ATT needed while
+      Google-only; I'll add `NSUserTrackingUsageDescription` when you add iOS.)
 
 ### 7. Build, test, submit
 After 3–6:

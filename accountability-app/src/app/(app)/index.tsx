@@ -21,6 +21,7 @@ import { attendEvent } from '../../events/api';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
 import { AdCard } from '../../pro/AdCard';
+import { ADS_ENABLED } from '../../pro/monetization';
 import { useIsPro } from '../../pro/ProProvider';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
@@ -286,7 +287,7 @@ export default function Feed() {
     const rows: FeedRow[] = [];
     posts.forEach((p, i) => {
       rows.push({ kind: 'post', post: p });
-      if (!isPro && (i + 1) % AD_EVERY === 0) rows.push({ kind: 'ad', id: `ad-${p.id}` });
+      if (ADS_ENABLED && !isPro && (i + 1) % AD_EVERY === 0) rows.push({ kind: 'ad', id: `ad-${p.id}` });
     });
     return rows;
   }, [posts, isPro]);
