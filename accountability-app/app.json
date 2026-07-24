@@ -8,6 +8,7 @@
     "scheme": "accountabilityapp",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.awldesk.accountability",
       "supportsTablet": true,
       "icon": "./assets/expo.icon",
       "infoPlist": {
@@ -17,6 +18,7 @@
       }
     },
     "android": {
+      "package": "com.awldesk.accountability",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFC",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
