@@ -347,6 +347,13 @@ Notification links open the dashboard but never approve an action directly.
 - Signed provider callbacks with replay protection
 - Immutable candidate identifiers and append-only audit log
 - Production action logs must not contain credentials or user content
+- Agent-submitted summaries, release notes, test output, and filenames are untrusted plain text
+- Release content is never inserted as raw HTML and never executes Markdown HTML
+- Evidence images live in a private storage bucket and use short-lived signed URLs
+- Evidence uploads are restricted by MIME type, decoded file signature, file size, pixel dimensions, and per-release count
+- SVG, HTML, executable files, and active document formats are rejected as release evidence
+- Provider status is re-read server-side immediately before approval; browser-displayed status is never trusted
+- Every production action fails closed when identity, MFA, manifest integrity, monitoring, audit persistence, or provider state cannot be verified
 
 ## Accessibility and Responsive Behavior
 
