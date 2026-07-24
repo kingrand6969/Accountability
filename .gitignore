@@ -12,3 +12,6 @@ dist/
 *.log
 .env
 .env.local
+
+# Isolated agent worktrees
+.worktrees/
