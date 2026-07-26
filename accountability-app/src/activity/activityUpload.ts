@@ -70,7 +70,7 @@ export async function uploadForAuthenticatedOwner(
   }
 
   const payload = activityInsertPayload(entry);
-  let result: { data: unknown; error: unknown };
+  let result: { data: unknown; error: unknown; status: number };
   try {
     result = await supabase
       .from('activities')
@@ -90,13 +90,13 @@ export async function uploadForAuthenticatedOwner(
   }
 
   if (result.error) {
-    const classified = classifyDatabaseError(result.error);
+    const classified = classifyDatabaseError(result.error, result.status);
     if (
       getErrorCode(result.error) === '23505' ||
       classified.category === 'network' ||
       classified.category === 'server'
     ) {
-      return confirmAmbiguousInsert(entry, result.error);
+      return confirmAmbiguousInsert(entry, result.error, result.status);
     }
     throw classified;
   }
@@ -170,13 +170,15 @@ function activityInsertPayload(entry: QueuedActivity) {
 async function findExistingActivity(
   id: string,
 ): Promise<ExistingActivity> {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('activities')
     .select(ACTIVITY_COLUMNS)
     .eq('id', id)
     .maybeSingle();
 
-  if (error && getErrorCode(error) !== 'PGRST116') throw error;
+  if (error && getErrorCode(error) !== 'PGRST116') {
+    throw classifyDatabaseError(error, status);
+  }
   if (data == null || getErrorCode(error) === 'PGRST116') {
     return { kind: 'absent' };
   }
@@ -191,6 +193,7 @@ async function findExistingActivity(
 async function confirmAmbiguousInsert(
   entry: QueuedActivity,
   originalCause: unknown,
+  responseStatus?: number,
 ): Promise<string> {
   const original =
     getErrorCode(originalCause) === '23505'
@@ -201,7 +204,7 @@ async function confirmAmbiguousInsert(
           originalCause,
           '23505',
         )
-      : classifyDatabaseError(originalCause);
+      : classifyDatabaseError(originalCause, responseStatus);
 
   try {
     const confirmation = await findExistingActivity(entry.id);
@@ -324,11 +327,14 @@ function classifyAuthenticationError(cause: unknown): ActivityUploadError {
   );
 }
 
-function classifyDatabaseError(cause: unknown): ActivityUploadError {
+function classifyDatabaseError(
+  cause: unknown,
+  responseStatus?: number,
+): ActivityUploadError {
   if (cause instanceof ActivityUploadError) return cause;
 
   const code = getErrorCode(cause);
-  const status = getErrorStatus(cause);
+  const status = responseStatus ?? getErrorStatus(cause);
   if (isNetworkError(cause)) {
     return new ActivityUploadError(
       'network',
@@ -338,7 +344,13 @@ function classifyDatabaseError(cause: unknown): ActivityUploadError {
       code,
     );
   }
-  if (status === 401 || status === 403) {
+  if (
+    status === 401 ||
+    status === 403 ||
+    code === 'PGRST301' ||
+    code === 'PGRST302' ||
+    code === '42501'
+  ) {
     return new ActivityUploadError(
       'auth',
       'Sign in again to upload this activity.',
@@ -348,10 +360,13 @@ function classifyDatabaseError(cause: unknown): ActivityUploadError {
     );
   }
   if (
+    status === 429 ||
     (status !== undefined && status >= 500) ||
     code === 'PGRST000' ||
     code === 'PGRST001' ||
     code === 'PGRST002' ||
+    code === 'PGRST300' ||
+    code === 'PGRSTX00' ||
     code?.startsWith('08')
   ) {
     return new ActivityUploadError(

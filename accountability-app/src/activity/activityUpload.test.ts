@@ -39,6 +39,11 @@ const mockedRandomUUID = Crypto.randomUUID as jest.MockedFunction<
 type DatabaseResult = {
   data: unknown;
   error: unknown;
+  status: number;
+};
+
+type DatabaseResultInput = Omit<DatabaseResult, 'status'> & {
+  status?: number;
 };
 
 function queuedActivity(
@@ -85,15 +90,23 @@ function storedActivity(
   };
 }
 
-function queryResult(result: DatabaseResult) {
-  const maybeSingle = jest.fn(async () => result);
+function queryResult(result: DatabaseResultInput) {
+  const response: DatabaseResult = {
+    ...result,
+    status: result.status ?? (result.error ? 400 : 200),
+  };
+  const maybeSingle = jest.fn(async () => response);
   const eq = jest.fn(() => ({ maybeSingle }));
   const select = jest.fn(() => ({ eq }));
   return { builder: { select }, select, eq, maybeSingle };
 }
 
-function insertResult(result: DatabaseResult) {
-  const single = jest.fn(async () => result);
+function insertResult(result: DatabaseResultInput) {
+  const response: DatabaseResult = {
+    ...result,
+    status: result.status ?? (result.error ? 400 : 201),
+  };
+  const single = jest.fn(async () => response);
   const select = jest.fn(() => ({ single }));
   const insert = jest.fn(() => ({ select }));
   return { builder: { insert }, insert, select, single };
@@ -299,6 +312,7 @@ describe('uploadQueuedActivity', () => {
   it('treats a PGRST116 no-row result as definitively absent and inserts', async () => {
     const missing = queryResult({
       data: null,
+      status: 406,
       error: {
         code: 'PGRST116',
         message: 'JSON object requested, multiple (or no) rows returned',
@@ -320,6 +334,7 @@ describe('uploadQueuedActivity', () => {
     const missing = queryResult({ data: null, error: null });
     const duplicate = insertResult({
       data: null,
+      status: 409,
       error: { code: '23505', message: 'duplicate key value' },
     });
     const confirmation = queryResult({
@@ -337,6 +352,7 @@ describe('uploadQueuedActivity', () => {
     const missing = queryResult({ data: null, error: null });
     const duplicate = insertResult({
       data: null,
+      status: 409,
       error: { code: '23505', message: 'duplicate key value' },
     });
     const confirmation = queryResult({
@@ -354,6 +370,7 @@ describe('uploadQueuedActivity', () => {
     const missing = queryResult({ data: null, error: null });
     const responseLost = insertResult({
       data: null,
+      status: 0,
       error: new TypeError('Failed to fetch'),
     });
     const confirmation = queryResult({
@@ -375,13 +392,15 @@ describe('uploadQueuedActivity', () => {
     const missing = queryResult({ data: null, error: null });
     const responseLost = insertResult({
       data: null,
+      status: 0,
       error: Object.assign(new Error('Request timed out'), {
         code: 'ETIMEDOUT',
       }),
     });
     const unavailable = queryResult({
       data: null,
-      error: { status: 503, message: 'Service unavailable' },
+      status: 503,
+      error: { code: 'PGRST002', message: 'Service unavailable' },
     });
     arrangeDatabase(
       missing.builder,
@@ -398,7 +417,8 @@ describe('uploadQueuedActivity', () => {
     const missing = queryResult({ data: null, error: null });
     const failed = insertResult({
       data: null,
-      error: { status: 503, code: 'PGRST002', message: 'Unavailable' },
+      status: 503,
+      error: { code: 'PGRST002', message: 'Unavailable' },
     });
     const absent = queryResult({ data: null, error: null });
     arrangeDatabase(missing.builder, failed.builder, absent.builder);
@@ -412,7 +432,8 @@ describe('uploadQueuedActivity', () => {
     const missing = queryResult({ data: null, error: null });
     const invalid = insertResult({
       data: null,
-      error: { status: 400, code: '23514', message: 'check violation' },
+      status: 400,
+      error: { code: '23514', message: 'check violation' },
     });
     arrangeDatabase(missing.builder, invalid.builder);
 
@@ -420,6 +441,69 @@ describe('uploadQueuedActivity', () => {
       expectUploadError('validation', false, '23514'),
     );
     expect(mockedSupabase.from).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['invalid JWT', 401, 'PGRST301'],
+    ['missing bearer authentication', 401, 'PGRST302'],
+    ['insufficient database privilege', 403, '42501'],
+  ])(
+    'classifies a response-level %s failure as non-transient auth',
+    async (_label, status, code) => {
+      const failed = queryResult({
+        data: null,
+        status,
+        error: { code, message: 'Request not authorized' },
+      });
+      arrangeDatabase(failed.builder);
+
+      await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+        expectUploadError('auth', false, code),
+      );
+      expect(mockedSupabase.from).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('classifies PGRST300 with its response-level 500 as transient server', async () => {
+    const failed = queryResult({
+      data: null,
+      status: 500,
+      error: { code: 'PGRST300', message: 'JWT secret unavailable' },
+    });
+    arrangeDatabase(failed.builder);
+
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('server', true, 'PGRST300'),
+    );
+  });
+
+  it('uses response-level 401 for an unrecognized auth response body', async () => {
+    const failed = queryResult({
+      data: null,
+      status: 401,
+      error: { code: 'upstream_auth', message: 'Authorization failed' },
+    });
+    arrangeDatabase(failed.builder);
+
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('auth', false, 'upstream_auth'),
+    );
+  });
+
+  it('classifies response-level 429 as transient server and confirms the insert', async () => {
+    const missing = queryResult({ data: null, error: null });
+    const limited = insertResult({
+      data: null,
+      status: 429,
+      error: { code: '23514', message: 'Rate limited' },
+    });
+    const absent = queryResult({ data: null, error: null });
+    arrangeDatabase(missing.builder, limited.builder, absent.builder);
+
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('server', true, '23514'),
+    );
+    expect(mockedSupabase.from).toHaveBeenCalledTimes(3);
   });
 
   it('does not confirm a synchronously thrown permanent insert failure', async () => {
