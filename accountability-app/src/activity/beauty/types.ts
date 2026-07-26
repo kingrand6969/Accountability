@@ -108,16 +108,46 @@ export function normalizeBeautySettings(value: unknown): BeautySettings {
   };
 }
 
+/**
+ * Resolves Overall into renderer-ready natural beauty controls.
+ *
+ * The renderer must call this exactly once and must not scale the five beauty
+ * controls again. Overall affects beauty only; color look and strength remain
+ * independent.
+ */
+export function effectiveBeautySettings(
+  settings: BeautySettings,
+): BeautySettings {
+  const normalized = normalizeBeautySettings(settings);
+  const multiplier = normalized.enabled
+    ? normalized.overall / DEFAULT_BEAUTY.overall
+    : 0;
+
+  return {
+    ...normalized,
+    smooth: scaledControl(normalized.smooth, multiplier, 60),
+    blemish: scaledControl(normalized.blemish, multiplier, 60),
+    shine: scaledControl(normalized.shine, multiplier, 50),
+    underEye: scaledControl(normalized.underEye, multiplier, 40),
+    lighting: scaledControl(normalized.lighting, multiplier, 40),
+  };
+}
+
 function ownValue(value: unknown, key: keyof BeautySettings): unknown {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    Array.isArray(value) ||
-    !Object.prototype.hasOwnProperty.call(value, key)
-  ) {
+  if (typeof value !== 'object' || value === null) {
     return undefined;
   }
-  return (value as Record<string, unknown>)[key];
+
+  try {
+    if (Array.isArray(value)) return undefined;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor &&
+      Object.prototype.hasOwnProperty.call(descriptor, 'value')
+      ? descriptor.value
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function booleanOrDefault(value: unknown, fallback: boolean): boolean {
@@ -132,6 +162,14 @@ function boundedInteger(
 ): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.min(maximum, Math.max(minimum, Math.round(value)));
+}
+
+function scaledControl(
+  value: number,
+  multiplier: number,
+  maximum: number,
+): number {
+  return Math.min(maximum, Math.max(0, Math.round(value * multiplier)));
 }
 
 function colorLookOrDefault(
