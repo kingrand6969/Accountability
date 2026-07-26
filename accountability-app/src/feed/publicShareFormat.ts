@@ -1,4 +1,4 @@
-export const PUBLIC_SHARE_ORIGIN = 'https://kingrand.io';
+export const PUBLIC_SHARE_ORIGIN = 'https://joinaccountability.app';
 
 export function publicShareUrl(id: string): string {
   return `${PUBLIC_SHARE_ORIGIN}/s/${encodeURIComponent(id)}`;

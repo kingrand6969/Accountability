@@ -80,7 +80,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
     const title = post.body?.trim() || 'A win worth sharing';
     Alert.alert(
       'Share outside AccountAbility?',
-      `${title}\n\nA revocable kingrand.io preview will be created. Your private ID and storage address will not appear in the message.`,
+      `${title}\n\nA revocable joinaccountability.app preview will be created. Your private ID and storage address will not appear in the message.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
