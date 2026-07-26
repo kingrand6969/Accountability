@@ -32,6 +32,28 @@ export type Memory = {
   url: string; // signed
 };
 
+export type MemorySaveConfirmation = {
+  path: string;
+  bytes: number;
+};
+
+export async function confirmMemoryRowAfterInsertError(
+  expected: MemorySaveConfirmation,
+  insertError: unknown,
+  confirmByPath: (path: string) => Promise<MemorySaveConfirmation | null>,
+): Promise<MemorySaveConfirmation> {
+  try {
+    const confirmed = await confirmByPath(expected.path);
+    if (confirmed) return confirmed;
+  } catch (confirmationError) {
+    throw new AggregateError(
+      [insertError, confirmationError],
+      'The memory upload may have succeeded, but its database row could not be confirmed.',
+    );
+  }
+  throw insertError;
+}
+
 async function me(): Promise<string> {
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
@@ -102,7 +124,7 @@ async function uploadBuffer(
   kind: 'image' | 'video',
   location: string | null,
   tagged: string[] | null,
-): Promise<{ path: string; bytes: number }> {
+): Promise<MemorySaveConfirmation> {
   const uid = await me();
   if (buf.byteLength > MAX_FILE_BYTES) {
     throw new Error(`That file is too big (max ${formatBytes(MAX_FILE_BYTES)}).`);
@@ -121,9 +143,20 @@ async function uploadBuffer(
     .from('memories')
     .insert({ path, kind, bytes: buf.byteLength, location, tagged });
   if (rowError) {
-    // quota trigger said no — don't leave an orphan file behind
-    await supabase.storage.from('memories').remove([path]).catch(() => {});
-    throw rowError;
+    return confirmMemoryRowAfterInsertError(
+      { path, bytes: buf.byteLength },
+      rowError,
+      async (candidatePath) => {
+        const { data, error: confirmationError } = await supabase
+          .from('memories')
+          .select('path,bytes')
+          .eq('path', candidatePath)
+          .maybeSingle();
+        if (confirmationError) throw confirmationError;
+        if (!data) return null;
+        return { path: data.path as string, bytes: Number(data.bytes) };
+      },
+    );
   }
   return { path, bytes: buf.byteLength };
 }
@@ -133,7 +166,7 @@ export async function saveImageToMemories(
   localUri: string,
   location: string | null = null,
   tagged: string[] | null = null,
-): Promise<{ path: string; bytes: number }> {
+): Promise<MemorySaveConfirmation> {
   const shrunk = await ImageManipulator.manipulateAsync(
     localUri,
     [{ resize: { width: MAX_IMAGE_DIM } }],

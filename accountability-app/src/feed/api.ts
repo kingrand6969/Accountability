@@ -1,14 +1,15 @@
 import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
-import type { FeedPost, PostComment } from './types';
+import type { FeedPost, PostAudience, PostComment, PostType } from './types';
 
 async function currentUserId(): Promise<string | null> {
-  const { data } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
   return data.user?.id ?? null;
 }
 
 const POST_SELECT =
-  'id,body,image_url,created_at,user_id,post_likes(count),post_comments(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
+  'id,body,image_url,created_at,user_id,audience,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
 
 function mapPost(
   row: any,
@@ -27,6 +28,10 @@ function mapPost(
     like_count: row.post_likes?.[0]?.count ?? 0,
     comment_count: row.post_comments?.[0]?.count ?? 0,
     liked_by_me: likedSet.has(row.id),
+    audience: row.audience ?? 'buddies',
+    post_type: row.post_type ?? (row.event ? 'event' : row.image_url ? 'photo' : 'post'),
+    share_data: row.share_data ?? {},
+    activity_id: row.activity_id ?? null,
     tagged: ((row.post_tags ?? []) as any[]).map((t) => ({
       id: t.user_id,
       name: profiles.get(t.user_id)?.display_name ?? null,
@@ -95,6 +100,17 @@ export async function reportPost(post: { id: string; user_id: string; body: stri
 }
 
 export const FEED_PAGE_SIZE = 20;
+export type FeedMode = 'buddies' | 'discover';
+
+async function myBuddyIds(me: string | null): Promise<string[]> {
+  if (!me) return [];
+  const { data, error } = await supabase
+    .from('buddy_links')
+    .select('user_a,user_b')
+    .or(`user_a.eq.${me},user_b.eq.${me}`);
+  if (error) throw error;
+  return (data ?? []).map((link: any) => (link.user_a === me ? link.user_b : link.user_a));
+}
 
 /**
  * Newest-first page; pass the oldest loaded created_at to fetch the next page.
@@ -105,9 +121,10 @@ export async function listFeed(
   beforeCreatedAt?: string,
   groupId?: string,
   pageId?: string,
+  mode: FeedMode = 'buddies',
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
-  const hidden = await myHiddenPostIds(me);
+  const [hidden, buddyIds] = await Promise.all([myHiddenPostIds(me), myBuddyIds(me)]);
   let query = supabase
     .from('posts')
     .select(POST_SELECT)
@@ -120,6 +137,15 @@ export async function listFeed(
     query = query.eq('page_id', pageId);
   } else {
     query = query.is('group_id', null).is('page_id', null);
+    const known = me ? [me, ...buddyIds] : buddyIds;
+    if (mode === 'discover') {
+      query = query.eq('audience', 'public');
+      if (known.length > 0) query = query.not('user_id', 'in', `(${known.join(',')})`);
+    } else if (known.length > 0) {
+      query = query.in('user_id', known);
+    } else {
+      return [];
+    }
   }
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
   const { data, error } = await query;
@@ -148,6 +174,92 @@ export async function getPost(id: string): Promise<FeedPost | null> {
   return mapPost(data, likedSet, profiles);
 }
 
+export type IdempotentPostResult = {
+  postId: string;
+  created: boolean;
+};
+
+export async function executeIdempotentPost(deps: {
+  findExisting(): Promise<string | null>;
+  insert(): Promise<string>;
+}): Promise<IdempotentPostResult> {
+  const existingPostId = await deps.findExisting();
+  if (existingPostId) return { postId: existingPostId, created: false };
+
+  try {
+    return { postId: await deps.insert(), created: true };
+  } catch (insertError) {
+    try {
+      const confirmedPostId = await deps.findExisting();
+      if (confirmedPostId) return { postId: confirmedPostId, created: false };
+    } catch (confirmationError) {
+      throw new AggregateError(
+        [insertError, confirmationError],
+        'The post may have been created, but its operation could not be confirmed.',
+      );
+    }
+    throw insertError;
+  }
+}
+
+async function postIdForOperation(
+  userId: string,
+  operationId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('client_operation_id', operationId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.id as string | undefined) ?? null;
+}
+
+export async function findMyPostByOperationId(operationId: string): Promise<string | null> {
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  return postIdForOperation(me, operationId);
+}
+
+export async function createRunPostIdempotent(input: {
+  body: string;
+  imageUrl: string | null;
+  operationId: string;
+  audience: Exclude<PostAudience, 'group'>;
+  activityId: string;
+  shareData: Record<string, unknown>;
+}): Promise<IdempotentPostResult> {
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+
+  return executeIdempotentPost({
+    findExisting: () => postIdForOperation(me, input.operationId),
+    insert: async () => {
+      const { data, error } = await supabase
+        .from('posts')
+        .insert({
+          user_id: me,
+          body: input.body,
+          image_url: input.imageUrl,
+          group_id: null,
+          page_id: null,
+          event_id: null,
+          show_on_card: false,
+          audience: input.audience,
+          post_type: 'run',
+          share_data: input.shareData,
+          activity_id: input.activityId,
+          client_operation_id: input.operationId,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return data.id as string;
+    },
+  });
+}
+
 export async function createPost(
   body: string,
   imageUrl: string | null = null,
@@ -155,6 +267,12 @@ export async function createPost(
   pageId: string | null = null,
   eventId: string | null = null,
   showOnCard = false,
+  options: {
+    audience?: PostAudience;
+    postType?: PostType;
+    shareData?: Record<string, unknown>;
+    activityId?: string | null;
+  } = {},
 ): Promise<string> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
@@ -168,11 +286,25 @@ export async function createPost(
       page_id: pageId,
       event_id: eventId,
       show_on_card: showOnCard,
+      audience: groupId ? 'group' : pageId ? 'public' : (options.audience ?? 'buddies'),
+      post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
+      share_data: options.shareData ?? {},
+      activity_id: options.activityId ?? null,
     })
     .select('id')
     .single();
   if (error) throw error;
   return data.id as string;
+}
+
+export async function updatePost(postId: string, body: string): Promise<void> {
+  const { error } = await supabase.from('posts').update({ body }).eq('id', postId);
+  if (error) throw error;
+}
+
+export async function updatePostAudience(postId: string, audience: Exclude<PostAudience, 'group'>): Promise<void> {
+  const { error } = await supabase.from('posts').update({ audience }).eq('id', postId);
+  if (error) throw error;
 }
 
 /** Tag buddies on a post (author-only; RLS also requires they're your buddies). */

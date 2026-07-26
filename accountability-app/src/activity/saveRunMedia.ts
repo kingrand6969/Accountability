@@ -10,6 +10,7 @@ export type RunMediaDestination = 'memories' | 'phone' | 'share' | 'feed';
 export type RunMediaPersistResult = {
   destination: RunMediaDestination;
   persisted: boolean;
+  newlyPersisted: boolean;
 };
 
 export type RunMediaPersistenceDependencies = {
@@ -19,14 +20,26 @@ export type RunMediaPersistenceDependencies = {
   requestPhonePermission(): Promise<{ granted: boolean }>;
   saveToPhone(uri: string): Promise<unknown>;
   share(uri: string): Promise<unknown>;
+  findExistingFeedPost(): Promise<string | null>;
   uploadToFeed(uri: string): Promise<string>;
-  createFeedPost(imageUrl: string): Promise<unknown>;
+  createFeedPost(imageUrl: string): Promise<{ postId: string; created: boolean }>;
 };
 
 export type RunMediaStagingDependencies = {
   copyToManagedCache(uri: string): Promise<string>;
   register(uri: string, owner: MediaOwner): Promise<RunMediaCacheItem>;
 };
+
+export type RunMediaGenerationStageDependencies = {
+  capture(): Promise<string | null>;
+  currentGeneration(): number;
+  stage(uri: string): Promise<RunMediaCacheItem>;
+  release(id: string, owner: MediaOwner): Promise<void>;
+};
+
+export type RunMediaGenerationStageResult =
+  | { status: 'ready'; item: RunMediaCacheItem }
+  | { status: 'stale' };
 
 export type RunMediaCompletionEffects = {
   complete(
@@ -37,6 +50,14 @@ export type RunMediaCompletionEffects = {
 };
 
 export const runMediaCache = createRunMediaCache();
+
+export function createRunMediaOperationId(random: () => number = Math.random): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+    const value = Math.floor(random() * 16);
+    const nibble = token === 'x' ? value : (value & 0x3) | 0x8;
+    return nibble.toString(16);
+  });
+}
 
 const ownerByDestination: Record<RunMediaDestination, MediaOwner> = {
   memories: 'memories',
@@ -119,6 +140,22 @@ export async function stageRunMedia(
   return deps.register(managedUri, 'editor');
 }
 
+export async function stageRunMediaForGeneration(
+  generation: number,
+  deps: RunMediaGenerationStageDependencies,
+): Promise<RunMediaGenerationStageResult> {
+  const uri = await deps.capture();
+  if (deps.currentGeneration() !== generation) return { status: 'stale' };
+  if (!uri) throw new Error('Could not render the run image.');
+
+  const item = await deps.stage(uri);
+  if (deps.currentGeneration() !== generation) {
+    await deps.release(item.id, 'editor');
+    return { status: 'stale' };
+  }
+  return { status: 'ready', item };
+}
+
 export async function persistRunMedia(
   destination: RunMediaDestination,
   item: RunMediaCacheItem,
@@ -126,29 +163,52 @@ export async function persistRunMedia(
 ): Promise<RunMediaPersistResult> {
   const owner = ownerByDestination[destination];
   await deps.retain(item.id, owner);
+  let newlyPersisted = destination !== 'share';
 
-  switch (destination) {
-    case 'memories':
-      await deps.saveToMemories(item.uri);
-      break;
-    case 'phone': {
-      const permission = await deps.requestPhonePermission();
-      if (!permission.granted) {
-        throw new Error('Photo library permission is required to save this run image.');
+  try {
+    switch (destination) {
+      case 'memories':
+        await deps.saveToMemories(item.uri);
+        break;
+      case 'phone': {
+        const permission = await deps.requestPhonePermission();
+        if (!permission.granted) {
+          throw new Error('Photo library permission is required to save this run image.');
+        }
+        await deps.saveToPhone(item.uri);
+        break;
       }
-      await deps.saveToPhone(item.uri);
-      break;
+      case 'share':
+        await deps.share(item.uri);
+        break;
+      case 'feed': {
+        const existingPostId = await deps.findExistingFeedPost();
+        if (existingPostId) {
+          newlyPersisted = false;
+          break;
+        }
+        const imageUrl = await deps.uploadToFeed(item.uri);
+        const post = await deps.createFeedPost(imageUrl);
+        newlyPersisted = post.created;
+        break;
+      }
     }
-    case 'share':
-      await deps.share(item.uri);
-      break;
-    case 'feed': {
-      const imageUrl = await deps.uploadToFeed(item.uri);
-      await deps.createFeedPost(imageUrl);
-      break;
+  } catch (operationError) {
+    try {
+      await deps.release(item.id, owner);
+    } catch (releaseError) {
+      throw new AggregateError(
+        [operationError, releaseError],
+        `The ${destination} action failed and its temporary lease could not be released.`,
+      );
     }
+    throw operationError;
   }
 
   await deps.release(item.id, owner);
-  return { destination, persisted: destination !== 'share' };
+  return {
+    destination,
+    persisted: destination !== 'share',
+    newlyPersisted,
+  };
 }

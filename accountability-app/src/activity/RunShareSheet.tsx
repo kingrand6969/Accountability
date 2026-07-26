@@ -20,7 +20,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { RunCard } from './RunCard';
 import { formatDurationLong, formatKm, formatPace, trimRouteEnds, type Pt } from './geo';
 import type { ActivityType } from './api';
-import { createPost } from '../feed/api';
+import {
+  createRunPostIdempotent,
+  findMyPostByOperationId,
+} from '../feed/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { promptCrossShare } from '../feed/crossShare';
 import { recordRunSelfie } from '../achievements/api';
@@ -38,10 +41,12 @@ import { saveImageToMemories } from '../memories/api';
 import { RunMediaActions } from './RunMediaActions';
 import {
   createRunMediaCompletionEffects,
+  createRunMediaOperationId,
   persistRunMedia,
   runMediaCache,
   runMediaRenderSizeKey,
   stageRunMedia,
+  stageRunMediaForGeneration,
   type RunMediaDestination,
 } from './saveRunMedia';
 import type { RunMediaCacheItem } from './runMediaCache';
@@ -73,6 +78,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
   const cardRef = useRef<View>(null);
   const stagedMedia = useRef<RunMediaCacheItem | null>(null);
+  const renderGeneration = useRef(0);
+  const feedOperationId = useRef<string | null>(null);
   const hasPersistentDestination = useRef(false);
   const shareOperationGate = useRef(createShareOperationGate()).current;
   const completionEffects = useMemo(
@@ -114,6 +121,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   // A changed card must never reuse an older staged export. Release only that
   // item's editor owner; a failed destination keeps its own retry ownership.
   useEffect(() => {
+    renderGeneration.current += 1;
+    feedOperationId.current = null;
     const stale = stagedMedia.current;
     stagedMedia.current = null;
     if (stale) void runMediaCache.release(stale.id, 'editor').catch(() => {});
@@ -173,22 +182,34 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
   async function currentRunMedia(): Promise<RunMediaCacheItem> {
     if (stagedMedia.current) return stagedMedia.current;
-    const uri = await capture('tmpfile');
-    if (!uri) throw new Error('Could not render the run image.');
-    const item = await stageRunMedia(uri);
-    stagedMedia.current = item;
-    return item;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const generation = renderGeneration.current;
+      const result = await stageRunMediaForGeneration(generation, {
+        capture: () => capture('tmpfile'),
+        currentGeneration: () => renderGeneration.current,
+        stage: (uri) => stageRunMedia(uri),
+        release: runMediaCache.release,
+      });
+      if (result.status === 'stale') continue;
+
+      stagedMedia.current = result.item;
+      return result.item;
+    }
+    throw new Error('The run image changed while rendering. Try again.');
   }
 
   async function discardStagedEditorMedia(): Promise<void> {
     const item = stagedMedia.current;
     stagedMedia.current = null;
+    feedOperationId.current = null;
     if (item) await runMediaCache.release(item.id, 'editor');
   }
 
   async function closeEditor() {
     await runMediaCache.discardEditorSession().catch(() => {});
     stagedMedia.current = null;
+    feedOperationId.current = null;
     onClose();
   }
 
@@ -201,6 +222,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             'Save a real GPS activity on your phone before posting a verified Run card.',
           );
         }
+        const operationId =
+          destination === 'feed'
+            ? (feedOperationId.current ??= createRunMediaOperationId())
+            : null;
 
         // react-native-view-shot cannot provide a managed local file on web.
         // Preserve the existing text-share and image-less Feed behavior there.
@@ -213,15 +238,19 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             return;
           }
           if (destination === 'feed') {
-            await createPost(caption, null, null, null, null, false, {
+            const post = await createRunPostIdempotent({
+              body: caption,
+              imageUrl: null,
+              operationId: operationId!,
               audience,
-              postType: 'run',
-              activityId: run.activityId,
+              activityId: run.activityId!,
               shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
             });
-            void completionEffects
-              .complete('feed', photoKind === 'selfie', run.distance / 1000)
-              .catch(() => {});
+            if (post.created) {
+              void completionEffects
+                .complete('feed', photoKind === 'selfie', run.distance / 1000)
+                .catch(() => {});
+            }
             Alert.alert('Posted 🎉', 'Your run is on your feed.');
             await closeEditor();
             return;
@@ -230,6 +259,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         }
 
         const item = await currentRunMedia();
+        if (operationId && !feedOperationId.current) {
+          feedOperationId.current = operationId;
+        }
         const result = await persistRunMedia(destination, item, {
           retain: runMediaCache.retain,
           release: runMediaCache.release,
@@ -246,20 +278,29 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             }
             await Share.share({ message: `${caption}\n\n#accountability` });
           },
-          uploadToFeed: async (uri) => uploadPostImage(await new File(uri).base64(), 'jpg'),
+          findExistingFeedPost: () =>
+            operationId
+              ? findMyPostByOperationId(operationId)
+              : Promise.resolve(null),
+          uploadToFeed: async (uri) =>
+            uploadPostImage(await new File(uri).base64(), 'jpg', operationId ?? undefined),
           createFeedPost: (imageUrl) =>
-            createPost(caption, imageUrl, null, null, null, false, {
+            createRunPostIdempotent({
+              body: caption,
+              imageUrl,
+              operationId: operationId!,
               audience,
-              postType: 'run',
-              activityId: run.activityId,
+              activityId: run.activityId!,
               shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
             }),
         });
 
         if (result.persisted) hasPersistentDestination.current = true;
-        void completionEffects
-          .complete(destination, photoKind === 'selfie', run.distance / 1000)
-          .catch(() => {});
+        if (result.newlyPersisted) {
+          void completionEffects
+            .complete(destination, photoKind === 'selfie', run.distance / 1000)
+            .catch(() => {});
+        }
 
         if (destination === 'share' && !hasPersistentDestination.current) {
           await discardStagedEditorMedia();
@@ -319,7 +360,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             disabled={busy}
             style={[styles.formatChip, format === item.id && styles.formatChipActive]}
             accessibilityRole="button"
-            accessibilityState={{ selected: format === item.id }}
+            accessibilityState={{ selected: format === item.id, disabled: busy }}
             accessibilityLabel={`${item.label}, ${item.short}`}
           >
             <Text style={[styles.formatLabel, format === item.id && styles.formatLabelActive]}>
@@ -335,9 +376,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       {mode === 'photo' ? (
         <Pressable
           onPress={() => setMediaFit((fit) => (fit === 'cover' ? 'contain' : 'cover'))}
-          style={styles.fitControl}
+          disabled={busy}
+          style={[styles.fitControl, busy && styles.dim]}
           accessibilityRole="switch"
-          accessibilityState={{ checked: mediaFit === 'contain' }}
+          accessibilityState={{ checked: mediaFit === 'contain', disabled: busy }}
           accessibilityLabel="Fit the whole photo inside the selected orientation"
         >
           <Ionicons name={mediaFit === 'cover' ? 'crop-outline' : 'scan-outline'} size={15} color="#cbd5e1" />
@@ -351,7 +393,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         onPress={() => setShowEnds((v) => !v)}
         disabled={busy}
         accessibilityRole="switch"
-        accessibilityState={{ checked: showEnds }}
+        accessibilityState={{ checked: showEnds, disabled: busy }}
         accessibilityLabel="Show start and end points"
       >
         <Ionicons

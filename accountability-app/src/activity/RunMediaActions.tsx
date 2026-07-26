@@ -49,7 +49,7 @@ const actions: readonly {
     destination: 'share',
     label: 'Share',
     progressLabel: 'Opening Share…',
-    successLabel: 'Share completed',
+    successLabel: 'Share sheet closed',
     icon: 'share-social-outline',
   },
   {
@@ -74,6 +74,12 @@ export function feedDisabledReasonFor(
 ): string | null {
   if (feedDisabledReason) return feedDisabledReason;
   return activityQueued ? 'Post to Feed is available after this activity syncs.' : null;
+}
+
+export function runMediaErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : String(error ?? 'Something went wrong');
 }
 
 export function RunMediaActions({
@@ -103,7 +109,7 @@ export function RunMediaActions({
         ...current,
         [destination]: {
           status: 'error',
-          error: String((error as Error).message ?? error),
+          error: runMediaErrorMessage(error),
         },
       }));
     }
