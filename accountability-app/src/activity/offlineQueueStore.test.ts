@@ -8,8 +8,10 @@ import {
 import {
   enqueueActivity,
   getQueuedActivity,
+  listQueueIssues,
   listQueuedActivities,
   MAX_OFFLINE_QUEUE_INDEX_BYTES,
+  MAX_OFFLINE_QUEUE_TOTAL_BYTES,
   MAX_QUEUED_ACTIVITY_BYTES,
   patchQueuedActivity,
   recoverQueue,
@@ -30,6 +32,8 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 const INDEX_KEY = 'activity:offline:index:v1';
 const ENTRY_PREFIX = 'activity:offline:entry:';
+const TOMBSTONE_PREFIX = 'activity:offline:tombstone:';
+const QUARANTINE_KEY = 'activity:offline:quarantine:v1';
 const OWNER_A = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const OWNER_B = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 const ID_A = '11111111-1111-4111-8111-111111111111';
@@ -52,12 +56,13 @@ function entry(
   id: string,
   ownerId = OWNER_A,
   createdAt = '2026-07-26T01:02:04.000Z',
+  queuedActivity = activity,
 ): QueuedActivity {
   return {
     schema: 1,
     id,
     ownerId,
-    activity,
+    activity: queuedActivity,
     createdAt,
     status: 'saved',
     attemptCount: 0,
@@ -74,6 +79,10 @@ function generatedId(sequence: number): string {
   return `00000000-0000-4000-8000-${sequence
     .toString(16)
     .padStart(12, '0')}`;
+}
+
+function recoverySummary(queuedCount: number, issueCount = 0) {
+  return { queuedCount, issueCount };
 }
 
 beforeEach(() => {
@@ -99,7 +108,9 @@ beforeEach(() => {
 describe('enqueueActivity', () => {
   it('writes the full entry before its index and emits only after both are durable', async () => {
     const observed: string[] = [];
-    const unsubscribe = subscribeToQueue(() => observed.push('emit'));
+    const unsubscribe = subscribeToQueue(() => {
+      observed.push('emit');
+    });
     mockedStorage.setItem.mockImplementation(async (key, value) => {
       observed.push(key);
       stored.set(key, value);
@@ -169,13 +180,100 @@ describe('enqueueActivity', () => {
     expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(false);
     expect(stored.get(INDEX_KEY)).toBe(serializedIndex);
   });
+
+  it('returns an exact canonical ID collision idempotently without overwriting it', async () => {
+    const existing = entry(ID_A);
+    seedEntry(existing);
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+
+    const result = await enqueueActivity(OWNER_A, { ...activity }, ID_A);
+
+    expect(result).toEqual(existing);
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('rejects a different or corrupt existing ID collision without overwriting it', async () => {
+    const conflicting = entry(ID_A, OWNER_B);
+    const key = `${ENTRY_PREFIX}${ID_A}`;
+    seedEntry(conflicting);
+
+    await expect(enqueueActivity(OWNER_A, activity, ID_A)).rejects.toThrow(
+      'Activity ID collision',
+    );
+    expect(stored.get(key)).toBe(JSON.stringify(conflicting));
+
+    stored.set(key, '{broken');
+    await expect(enqueueActivity(OWNER_A, activity, ID_A)).rejects.toThrow(
+      'Activity ID collision',
+    );
+    expect(stored.get(key)).toBe('{broken');
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tombstoned ID without overwriting or resurrecting it', async () => {
+    stored.set(
+      `${TOMBSTONE_PREFIX}${ID_A}`,
+      JSON.stringify({ schema: 1, id: ID_A, ownerId: OWNER_A }),
+    );
+
+    await expect(enqueueActivity(OWNER_A, activity, ID_A)).rejects.toThrow(
+      'Activity ID is pending deletion',
+    );
+
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(false);
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('rejects a queue-total overflow before writing the new entry', async () => {
+    const largeActivity: NewActivity = {
+      ...activity,
+      route: Array.from({ length: 9_000 }, () => ({
+        lat: 89.12345678901234,
+        lon: 179.12345678901234,
+      })),
+    };
+    const sample = JSON.stringify(entry(generatedId(0), OWNER_A, undefined, largeActivity));
+    const sampleBytes = new TextEncoder().encode(sample).byteLength;
+    expect(sampleBytes).toBeLessThanOrEqual(MAX_QUEUED_ACTIVITY_BYTES);
+    const existingCount = Math.floor(
+      MAX_OFFLINE_QUEUE_TOTAL_BYTES / sampleBytes,
+    );
+    const ids: string[] = [];
+    for (let index = 0; index < existingCount; index += 1) {
+      const id = generatedId(index);
+      ids.push(id);
+      seedEntry(entry(id, OWNER_A, undefined, largeActivity));
+    }
+    stored.set(INDEX_KEY, JSON.stringify(ids));
+
+    await expect(
+      enqueueActivity(OWNER_A, largeActivity, ID_A),
+    ).rejects.toThrow(
+      `${MAX_OFFLINE_QUEUE_TOTAL_BYTES}-byte total storage limit`,
+    );
+
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(false);
+  });
+
+  it('continues serialized mutations after a rejected operation', async () => {
+    mockedStorage.setItem.mockImplementationOnce(async () => {
+      throw new Error('entry write failed');
+    });
+
+    await expect(enqueueActivity(OWNER_A, activity, ID_A)).rejects.toThrow(
+      'entry write failed',
+    );
+    await expect(
+      enqueueActivity(OWNER_A, activity, ID_B),
+    ).resolves.toMatchObject({ id: ID_B });
+  });
 });
 
 describe('recovery and reads', () => {
   it('recovers a valid orphan after an interrupted index write', async () => {
     seedEntry(entry(ID_A));
 
-    await expect(recoverQueue()).resolves.toEqual([entry(ID_A)]);
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(1));
     expect(JSON.parse(stored.get(INDEX_KEY)!)).toEqual([ID_A]);
   });
 
@@ -203,7 +301,7 @@ describe('recovery and reads', () => {
       return originalParse(value);
     });
 
-    await expect(recoverQueue()).resolves.toEqual([]);
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0, 1));
 
     expect(parseSpy).not.toHaveBeenCalledWith(oversized);
     expect(stored.get(key)).toBe(oversized);
@@ -215,7 +313,7 @@ describe('recovery and reads', () => {
     stored.set(key, '{broken');
     stored.set(INDEX_KEY, JSON.stringify([ID_A]));
 
-    await expect(recoverQueue()).resolves.toEqual([]);
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0, 1));
 
     expect(stored.get(key)).toBe('{broken');
     expect(stored.get(INDEX_KEY)).toBe('[]');
@@ -228,14 +326,14 @@ describe('recovery and reads', () => {
 
     const recovered = await recoverQueue();
 
-    expect(recovered.map((item) => item.id)).toEqual([ID_A, ID_B]);
+    expect(recovered).toEqual(recoverySummary(2));
     expect(JSON.parse(stored.get(INDEX_KEY)!)).toEqual([ID_A, ID_B]);
   });
 
   it('persists an empty repair when an existing index is corrupt', async () => {
     stored.set(INDEX_KEY, '{broken');
 
-    await expect(recoverQueue()).resolves.toEqual([]);
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0));
 
     expect(stored.get(INDEX_KEY)).toBe('[]');
     expect(mockedStorage.setItem).toHaveBeenCalledWith(INDEX_KEY, '[]');
@@ -252,7 +350,7 @@ describe('recovery and reads', () => {
       return originalParse(value);
     });
 
-    await expect(recoverQueue()).resolves.toEqual([]);
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0));
 
     expect(parseSpy).not.toHaveBeenCalledWith(oversizedIndex);
     expect(stored.get(INDEX_KEY)).toBe('[]');
@@ -282,7 +380,7 @@ describe('recovery and reads', () => {
     seedEntry(entry(ID_A));
     stored.set(INDEX_KEY, JSON.stringify([ID_A, ID_B]));
 
-    await expect(recoverQueue()).resolves.toEqual([entry(ID_A)]);
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(1));
     expect(JSON.parse(stored.get(INDEX_KEY)!)).toEqual([ID_A]);
     expect(mockedStorage.removeItem).not.toHaveBeenCalled();
   });
@@ -293,7 +391,8 @@ describe('recovery and reads', () => {
     seedEntry(entry(ID_A, OWNER_A, '2026-07-26T01:00:00.000Z'));
     stored.set(INDEX_KEY, JSON.stringify([ID_C, ID_B, ID_A]));
 
-    const recovered = await recoverQueue();
+    await recoverQueue();
+    const recovered = await listQueuedActivities(OWNER_A);
 
     expect(recovered.map((item) => item.id)).toEqual([ID_A, ID_B, ID_C]);
   });
@@ -301,8 +400,97 @@ describe('recovery and reads', () => {
   it('returns null for invalid quarantined entries', async () => {
     stored.set(`${ENTRY_PREFIX}${ID_A}`, '{broken');
 
-    await expect(getQueuedActivity(ID_A)).resolves.toBeNull();
+    await expect(getQueuedActivity(OWNER_A, ID_A)).resolves.toBeNull();
     expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(true);
+  });
+
+  it('uses the index for normal owner reads without a full storage scan', async () => {
+    seedEntry(entry(ID_A));
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+
+    await expect(listQueuedActivities(OWNER_A)).resolves.toHaveLength(1);
+
+    expect(mockedStorage.getAllKeys).not.toHaveBeenCalled();
+    expect(mockedStorage.multiGet).toHaveBeenCalled();
+  });
+
+  it('returns null to the wrong owner without exposing private fields', async () => {
+    seedEntry(entry(ID_A));
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+
+    await expect(getQueuedActivity(OWNER_B, ID_A)).resolves.toBeNull();
+    await expect(listQueuedActivities(OWNER_B)).resolves.toEqual([]);
+  });
+
+  it('returns only a redacted recovery summary', async () => {
+    seedEntry(entry(ID_A));
+
+    const summary = await recoverQueue();
+
+    expect(summary).toEqual(recoverySummary(1));
+    expect(summary).not.toHaveProperty('entries');
+    expect(JSON.stringify(summary)).not.toContain(OWNER_A);
+    expect(JSON.stringify(summary)).not.toContain('distance_m');
+  });
+
+  it('persists privacy-safe issue metadata idempotently for quarantined bytes', async () => {
+    const key = `${ENTRY_PREFIX}${ID_A}`;
+    const privateInvalidBytes =
+      '{"route":[{"lat":-31.95}],"distance_m":987654,"started_at":"secret"}';
+    stored.set(key, privateInvalidBytes);
+
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0, 1));
+    const first = await listQueueIssues();
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0, 1));
+    const second = await listQueueIssues();
+
+    expect(first).toEqual([
+      {
+        id: ID_A,
+        storageKey: key,
+        category: 'needs_attention',
+        reason: 'invalid_schema',
+        detectedAt: expect.any(String),
+      },
+    ]);
+    expect(second).toEqual(first);
+    expect(stored.get(key)).toBe(privateInvalidBytes);
+    const serializedIssues = stored.get(QUARANTINE_KEY)!;
+    expect(serializedIssues).not.toContain('route');
+    expect(serializedIssues).not.toContain('987654');
+    expect(serializedIssues).not.toContain('secret');
+  });
+
+  it('suppresses but does not delete bytes behind a corrupt tombstone', async () => {
+    seedEntry(entry(ID_A));
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+    stored.set(`${TOMBSTONE_PREFIX}${ID_A}`, '{broken');
+
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0, 1));
+
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(true);
+    expect(stored.get(`${TOMBSTONE_PREFIX}${ID_A}`)).toBe('{broken');
+    await expect(listQueuedActivities(OWNER_A)).resolves.toEqual([]);
+    await expect(listQueueIssues()).resolves.toEqual([
+      expect.objectContaining({
+        id: ID_A,
+        storageKey: `${TOMBSTONE_PREFIX}${ID_A}`,
+        category: 'needs_attention',
+        reason: 'invalid_tombstone',
+      }),
+    ]);
+  });
+
+  it('returns deep copies rather than mutable aliases', async () => {
+    const queued = await enqueueActivity(OWNER_A, activity, ID_A);
+    queued.activity.route[0].lat = 0;
+
+    const first = await getQueuedActivity(OWNER_A, ID_A);
+    expect(first?.activity.route[0].lat).toBe(-31.9523);
+    first!.activity.route[0].lat = 1;
+
+    const second = await listQueuedActivities(OWNER_A);
+    expect(second[0].activity.route[0].lat).toBe(-31.9523);
   });
 });
 
@@ -311,13 +499,15 @@ describe('patchQueuedActivity', () => {
     seedEntry(entry(ID_A));
     stored.set(INDEX_KEY, JSON.stringify([ID_A]));
     const observed: string[] = [];
-    const unsubscribe = subscribeToQueue(() => observed.push('emit'));
+    const unsubscribe = subscribeToQueue(() => {
+      observed.push('emit');
+    });
     mockedStorage.setItem.mockImplementation(async (key, value) => {
       observed.push(key);
       stored.set(key, value);
     });
 
-    const updated = await patchQueuedActivity(ID_A, {
+    const updated = await patchQueuedActivity(OWNER_A, ID_A, {
       status: 'waiting_network',
       attemptCount: 1,
       nextAttemptAt: 123,
@@ -340,12 +530,13 @@ describe('patchQueuedActivity', () => {
     seedEntry(entry(ID_A));
 
     await expect(
-      patchQueuedActivity(ID_A, { attemptCount: -1 }),
+      patchQueuedActivity(OWNER_A, ID_A, { attemptCount: -1 }),
     ).rejects.toThrow('Invalid queued activity patch');
     await expect(
       patchQueuedActivity(
+        OWNER_A,
         ID_A,
-        { ownerId: OWNER_B } as Parameters<typeof patchQueuedActivity>[1],
+        { ownerId: OWNER_B } as Parameters<typeof patchQueuedActivity>[2],
       ),
     ).rejects.toThrow('Invalid queued activity patch');
     expect(mockedStorage.setItem).not.toHaveBeenCalled();
@@ -353,23 +544,38 @@ describe('patchQueuedActivity', () => {
 
   it('throws a clear error for missing or quarantined entries', async () => {
     await expect(
-      patchQueuedActivity(ID_A, { status: 'uploading' }),
+      patchQueuedActivity(OWNER_A, ID_A, { status: 'uploading' }),
     ).rejects.toThrow('Queued activity not found or invalid');
 
     stored.set(`${ENTRY_PREFIX}${ID_A}`, '{broken');
     await expect(
-      patchQueuedActivity(ID_A, { status: 'uploading' }),
+      patchQueuedActivity(OWNER_A, ID_A, { status: 'uploading' }),
     ).rejects.toThrow('Queued activity not found or invalid');
     expect(stored.get(`${ENTRY_PREFIX}${ID_A}`)).toBe('{broken');
+  });
+
+  it('rejects a wrong-owner patch without changing the entry', async () => {
+    const existing = entry(ID_A);
+    seedEntry(existing);
+
+    await expect(
+      patchQueuedActivity(OWNER_B, ID_A, { status: 'uploading' }),
+    ).rejects.toThrow('Queued activity owner mismatch');
+    expect(stored.get(`${ENTRY_PREFIX}${ID_A}`)).toBe(
+      JSON.stringify(existing),
+    );
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
   });
 });
 
 describe('removeQueuedActivity', () => {
-  it('updates the index before removing the entry and emits after both', async () => {
+  it('persists deletion intent before index and entry cleanup', async () => {
     seedEntry(entry(ID_A));
     stored.set(INDEX_KEY, JSON.stringify([ID_A]));
     const observed: string[] = [];
-    const unsubscribe = subscribeToQueue(() => observed.push('emit'));
+    const unsubscribe = subscribeToQueue(() => {
+      observed.push('emit');
+    });
     mockedStorage.setItem.mockImplementation(async (key, value) => {
       observed.push(`set:${key}`);
       stored.set(key, value);
@@ -379,27 +585,108 @@ describe('removeQueuedActivity', () => {
       stored.delete(key);
     });
 
-    await removeQueuedActivity(ID_A);
+    await removeQueuedActivity(OWNER_A, ID_A);
 
     expect(observed).toEqual([
+      `set:${TOMBSTONE_PREFIX}${ID_A}`,
       `set:${INDEX_KEY}`,
       `remove:${ENTRY_PREFIX}${ID_A}`,
+      `remove:${TOMBSTONE_PREFIX}${ID_A}`,
       'emit',
     ]);
     expect(stored.get(INDEX_KEY)).toBe('[]');
+    expect(stored.has(`${TOMBSTONE_PREFIX}${ID_A}`)).toBe(false);
     unsubscribe();
   });
 
   it('is idempotent when the activity is already missing', async () => {
-    const listener = jest.fn();
+    const listener = jest.fn<() => void>();
     const unsubscribe = subscribeToQueue(listener);
 
-    await removeQueuedActivity(ID_A);
-    await removeQueuedActivity(ID_A);
+    await removeQueuedActivity(OWNER_A, ID_A);
+    await removeQueuedActivity(OWNER_A, ID_A);
 
     expect(listener).not.toHaveBeenCalled();
     expect(mockedStorage.removeItem).not.toHaveBeenCalled();
     unsubscribe();
+  });
+
+  it('rejects a wrong-owner removal before writing a tombstone', async () => {
+    seedEntry(entry(ID_A));
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+
+    await expect(removeQueuedActivity(OWNER_B, ID_A)).rejects.toThrow(
+      'Queued activity owner mismatch',
+    );
+
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(true);
+  });
+
+  it('does not resurrect after failure following the tombstone write', async () => {
+    seedEntry(entry(ID_A));
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+    mockedStorage.setItem.mockImplementation(async (key, value) => {
+      if (key === INDEX_KEY) throw new Error('index failed');
+      stored.set(key, value);
+    });
+
+    await expect(removeQueuedActivity(OWNER_A, ID_A)).rejects.toThrow(
+      'index failed',
+    );
+    await expect(getQueuedActivity(OWNER_A, ID_A)).resolves.toBeNull();
+
+    mockedStorage.setItem.mockImplementation(async (key, value) => {
+      stored.set(key, value);
+    });
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0));
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(false);
+    expect(stored.has(`${TOMBSTONE_PREFIX}${ID_A}`)).toBe(false);
+  });
+
+  it('does not resurrect after failure following the index write', async () => {
+    seedEntry(entry(ID_A));
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+    mockedStorage.removeItem.mockImplementation(async (key) => {
+      if (key === `${ENTRY_PREFIX}${ID_A}`) throw new Error('entry failed');
+      stored.delete(key);
+    });
+
+    await expect(removeQueuedActivity(OWNER_A, ID_A)).rejects.toThrow(
+      'entry failed',
+    );
+    await expect(getQueuedActivity(OWNER_A, ID_A)).resolves.toBeNull();
+
+    mockedStorage.removeItem.mockImplementation(async (key) => {
+      stored.delete(key);
+    });
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0));
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(false);
+    expect(stored.has(`${TOMBSTONE_PREFIX}${ID_A}`)).toBe(false);
+  });
+
+  it('does not resurrect after failure following the entry deletion', async () => {
+    seedEntry(entry(ID_A));
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+    mockedStorage.removeItem.mockImplementation(async (key) => {
+      if (key === `${TOMBSTONE_PREFIX}${ID_A}`) {
+        throw new Error('tombstone cleanup failed');
+      }
+      stored.delete(key);
+    });
+
+    await expect(removeQueuedActivity(OWNER_A, ID_A)).rejects.toThrow(
+      'tombstone cleanup failed',
+    );
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(false);
+    expect(stored.has(`${TOMBSTONE_PREFIX}${ID_A}`)).toBe(true);
+    await expect(getQueuedActivity(OWNER_A, ID_A)).resolves.toBeNull();
+
+    mockedStorage.removeItem.mockImplementation(async (key) => {
+      stored.delete(key);
+    });
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0));
+    await expect(listQueuedActivities(OWNER_A)).resolves.toEqual([]);
   });
 });
 
@@ -408,7 +695,7 @@ describe('subscribeToQueue', () => {
     const throwingListener = jest.fn(() => {
       throw new Error('listener failed');
     });
-    const healthyListener = jest.fn();
+    const healthyListener = jest.fn<() => void>();
     const unsubscribeThrowing = subscribeToQueue(throwingListener);
     const unsubscribeHealthy = subscribeToQueue(healthyListener);
 
@@ -422,5 +709,22 @@ describe('subscribeToQueue', () => {
     await enqueueActivity(OWNER_A, activity, ID_B);
     expect(throwingListener).toHaveBeenCalledTimes(1);
     expect(healthyListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('catches rejected listener promises without blocking other listeners', async () => {
+    const rejectingListener = jest.fn(async () => {
+      throw new Error('async listener failed');
+    });
+    const healthyListener = jest.fn<() => void>();
+    const unsubscribeRejecting = subscribeToQueue(rejectingListener);
+    const unsubscribeHealthy = subscribeToQueue(healthyListener);
+
+    await expect(enqueueActivity(OWNER_A, activity, ID_A)).resolves.toBeDefined();
+    await Promise.resolve();
+
+    expect(rejectingListener).toHaveBeenCalledTimes(1);
+    expect(healthyListener).toHaveBeenCalledTimes(1);
+    unsubscribeRejecting();
+    unsubscribeHealthy();
   });
 });
