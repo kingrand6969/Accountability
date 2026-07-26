@@ -99,6 +99,12 @@ Static migration review completed on 2026-07-27:
 - Android EAS preview build: finished successfully on 2026-07-27.
 - APK availability check: HTTP 200 with an Android artifact response and a
   content length of 245,781,737 bytes.
+- Standard Expo ESLint baseline: completed; 136 errors and 51 warnings remain
+  across the existing codebase. These are recorded as a production-candidate
+  cleanup gate rather than being auto-fixed.
+- Dependency audit: no critical advisories. Production dependency tree reports
+  3 high and 13 moderate transitive advisories. The automatic force fix proposes
+  incompatible framework downgrades and was not applied.
 
 These checks were run against the current staging workspace. They must be rerun
 after the working tree is committed and before a production candidate is
@@ -142,6 +148,11 @@ Capture on the founder's Android device:
   connector rejected its source-upload credential.
 - The custom domain cannot be attached until the share website is published.
 - Physical-device evidence is not yet captured.
+- The newly established lint baseline is not clean; production release requires
+  triage of errors affecting changed or critical paths, followed by a documented
+  baseline policy for legacy findings.
+- Production dependency advisories require Expo-compatible remediation rather
+  than npm's proposed breaking downgrade.
 - Store listings are not yet available, so public fallbacks cannot be verified
   against final Google Play and Apple App Store URLs.
 
