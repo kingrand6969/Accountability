@@ -177,3 +177,30 @@ export function recordingDetailView(
     points: details.points,
   };
 }
+
+export function recordingTypeView(
+  type: NewActivity['type'],
+  recordingOwnerId: string | null,
+  currentOwnerId: string | null,
+  recoveryState: RecordingRecoveryReadState,
+): {
+  title: string;
+  selectedType: NewActivity['type'] | null;
+  selectorAccessibilityHidden: boolean;
+} {
+  const visible =
+    recoveryState === 'ready' &&
+    !!recordingOwnerId &&
+    recordingOwnerId === currentOwnerId;
+  return visible
+    ? {
+        title: type,
+        selectedType: type,
+        selectorAccessibilityHidden: false,
+      }
+    : {
+        title: 'Activity',
+        selectedType: null,
+        selectorAccessibilityHidden: true,
+      };
+}

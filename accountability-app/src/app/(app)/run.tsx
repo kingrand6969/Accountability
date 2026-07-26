@@ -44,6 +44,7 @@ import { enqueueActivity } from '../../activity/offlineQueueStore';
 import {
   completeRecordedActivity,
   recordingDetailView,
+  recordingTypeView,
   type RecordingRecoveryReadState,
   type PendingRecordedActivity,
 } from '../../activity/runCompletion';
@@ -549,6 +550,18 @@ export default function ActivityTrack() {
     recoveryReadState !== 'ready' ||
     recoveryNotice !== null ||
     (detailOwnerId !== null && !detailView.visible);
+  const typeIsProtected = detailOwnerId !== null || recoveryBlocked;
+  const privateTypeView = recordingTypeView(
+    type,
+    detailOwnerId,
+    session?.user.id ?? null,
+    recoveryReadState,
+  );
+  const selectedType = typeIsProtected
+    ? privateTypeView.selectedType
+    : type;
+  const typeAccessibilityHidden =
+    typeIsProtected && privateTypeView.selectorAccessibilityHidden;
   const kcal = estimateCalories(type, shownDist);
 
   // live route is pushed via the map ref while tracking (no reload); a finished
@@ -560,7 +573,12 @@ export default function ActivityTrack() {
       : [];
   // keep the floating UI in a centered column on wide screens (map stays full-bleed)
   const sideInset = Math.max(16, (W - contentMaxWidth(W)) / 2);
-  const title = `${timeOfDay()} ${TYPES.find((t) => t.value === type)?.label ?? 'run'}`;
+  const title =
+    typeIsProtected && privateTypeView.title === 'Activity'
+      ? 'Activity'
+      : `${timeOfDay()} ${
+          TYPES.find((t) => t.value === selectedType)?.label ?? 'run'
+        }`;
   const when = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const timeLabel = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
@@ -588,16 +606,38 @@ export default function ActivityTrack() {
         <Pressable style={styles.circleBtn} onPress={() => router.back()} accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </Pressable>
-        <View style={styles.typeSwitch}>
+        <View
+          style={styles.typeSwitch}
+          accessibilityElementsHidden={typeAccessibilityHidden}
+          importantForAccessibility={
+            typeAccessibilityHidden ? 'no-hide-descendants' : 'auto'
+          }
+        >
           {TYPES.map((t) => (
             <Pressable
               key={t.value}
-              onPress={() => !tracking && !pending && setType(t.value)}
-              disabled={tracking || !!pending}
-              style={[styles.typePill, type === t.value && styles.typePillActive]}
+              onPress={() =>
+                !tracking &&
+                !pending &&
+                !recoveryBlocked &&
+                setType(t.value)
+              }
+              disabled={tracking || !!pending || recoveryBlocked}
+              style={[
+                styles.typePill,
+                selectedType === t.value && styles.typePillActive,
+              ]}
               accessibilityLabel={t.label}
+              accessibilityState={{
+                selected: selectedType === t.value,
+                disabled: tracking || !!pending || recoveryBlocked,
+              }}
             >
-              <Ionicons name={t.icon} size={15} color={type === t.value ? '#101319' : '#cbd5e1'} />
+              <Ionicons
+                name={t.icon}
+                size={15}
+                color={selectedType === t.value ? '#101319' : '#cbd5e1'}
+              />
             </Pressable>
           ))}
         </View>

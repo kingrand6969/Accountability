@@ -4,6 +4,7 @@ import { ActivityUploadError } from './activityUpload';
 import {
   completeRecordedActivity,
   recordingDetailView,
+  recordingTypeView,
   runFeedAvailability,
   runSyncPresentation,
   type PendingRecordedActivity,
@@ -497,6 +498,11 @@ describe('owner-tagged recording details', () => {
       elapsed: 0,
       points: [],
     });
+    expect(recordingTypeView('run', OWNER_A, OWNER_B, 'ready')).toEqual({
+      title: 'Activity',
+      selectedType: null,
+      selectorAccessibilityHidden: true,
+    });
   });
 
   it('keeps prior details redacted after a storage recovery rejection', () => {
@@ -506,6 +512,11 @@ describe('owner-tagged recording details', () => {
       elapsed: 0,
       points: [],
     });
+    expect(recordingTypeView('walk', OWNER_A, OWNER_A, 'error')).toEqual({
+      title: 'Activity',
+      selectedType: null,
+      selectorAccessibilityHidden: true,
+    });
   });
 
   it('reveals details only for the tagged owner after recovery succeeds', () => {
@@ -514,6 +525,11 @@ describe('owner-tagged recording details', () => {
       distance: 1_500,
       elapsed: 420,
       points: details.points,
+    });
+    expect(recordingTypeView('ride', OWNER_A, OWNER_A, 'ready')).toEqual({
+      title: 'ride',
+      selectedType: 'ride',
+      selectorAccessibilityHidden: false,
     });
   });
 });
