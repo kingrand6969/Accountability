@@ -3,8 +3,13 @@ import { describe, expect, jest, test } from '@jest/globals';
 import {
   BEAUTY_CONTROL_METADATA,
   BEAUTY_EDITOR_COPY,
+  beautyAccessibilityValueAfterAction,
+  createBeautyActionMutex,
+  createBeautyCaptureLeaseSlot,
   createBeautyEditorModel,
+  createBeautyPreviewScheduler,
   createBeautyRenderCoordinator,
+  createBeautySheetExportController,
   type BeautyEditorRenderResult,
 } from './BeautyEditor';
 import { COLOR_LOOK_PRESETS, DEFAULT_BEAUTY } from './types';
@@ -24,6 +29,17 @@ function result(id: string): BeautyEditorRenderResult {
   return {
     cacheItemId: id,
     uri: `file:///cache/run-share/${id}.jpg`,
+  };
+}
+
+function source(id: string) {
+  return {
+    cacheItemId: id,
+    sourceUri: `file:///cache/run-share/${id}.jpg`,
+    imageSize: { width: 1200, height: 1600 },
+    orientation: 0 as const,
+    mirrored: false as const,
+    faces: null,
   };
 }
 
@@ -275,9 +291,121 @@ describe('BeautyEditor render and lease orchestration', () => {
     );
   });
 
-  test('Clean then Golden Hour opens the share gate twice with new managed output keys', async () => {
+  test('Done rejects after disposal and never transfers', async () => {
+    const transfer =
+      jest.fn<(value: BeautyEditorRenderResult) => void>();
+    const coordinator = createBeautyRenderCoordinator({
+      sourceCacheItemId: 'source',
+      ownerToken: 'owner-a',
+      currentOwnerToken: () => 'owner-a',
+      render: async () => result('processed'),
+      release: async () => undefined,
+      transfer,
+    });
+    await coordinator.request(DEFAULT_BEAUTY);
+    await coordinator.dispose();
+
+    await expect(coordinator.done()).rejects.toThrow('closed');
+    expect(transfer).not.toHaveBeenCalled();
+  });
+
+  test('suppresses preview, error, and processing callbacks after disposal', async () => {
+    const pending = deferred<BeautyEditorRenderResult>();
+    const onPreview = jest.fn();
+    const onError = jest.fn();
+    const onProcessing = jest.fn();
+    const coordinator = createBeautyRenderCoordinator({
+      sourceCacheItemId: 'source',
+      ownerToken: 'owner-a',
+      currentOwnerToken: () => 'owner-a',
+      render: () => pending.promise,
+      release: async () => undefined,
+      onPreview,
+      onError,
+      onProcessing,
+    });
+    coordinator.request(DEFAULT_BEAUTY);
+    expect(onProcessing).toHaveBeenCalledWith(true);
+    onProcessing.mockClear();
+
+    const disposing = coordinator.dispose();
+    pending.resolve(result('stale-after-close'));
+    await disposing;
+
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(onProcessing).not.toHaveBeenCalled();
+  });
+
+  test('retries a failed managed release during disposal', async () => {
+    const releases = new Map<string, number>();
+    const release = jest.fn(async (id: string) => {
+      const attempt = (releases.get(id) ?? 0) + 1;
+      releases.set(id, attempt);
+      if (id === 'clean' && attempt === 1) {
+        throw new Error('temporary file lock');
+      }
+    });
+    const coordinator = createBeautyRenderCoordinator({
+      sourceCacheItemId: 'source',
+      ownerToken: 'owner-a',
+      currentOwnerToken: () => 'owner-a',
+      render: async (settings) =>
+        result(settings.colorLook === 'clean' ? 'clean' : 'golden'),
+      release,
+    });
+    await coordinator.request({ ...DEFAULT_BEAUTY, colorLook: 'clean' });
+    await coordinator.request({ ...DEFAULT_BEAUTY, colorLook: 'golden' });
+    expect(releases.get('clean')).toBe(1);
+
+    await coordinator.dispose();
+
+    expect(releases.get('clean')).toBe(2);
+  });
+
+  test('shares one in-flight release across concurrent disposal calls', async () => {
+    const releasing = deferred<void>();
+    const release =
+      jest.fn<(id: string, owner: 'editor') => Promise<void>>(
+        () => releasing.promise,
+      );
+    const coordinator = createBeautyRenderCoordinator({
+      sourceCacheItemId: 'source',
+      ownerToken: 'owner-a',
+      currentOwnerToken: () => 'owner-a',
+      render: async () => result('processed'),
+      release,
+    });
+    await coordinator.request(DEFAULT_BEAUTY);
+
+    const first = coordinator.dispose();
+    const second = coordinator.dispose();
+    await Promise.resolve();
+    expect(
+      release.mock.calls.filter(([id]) => id === 'processed'),
+    ).toHaveLength(1);
+    releasing.resolve();
+    await Promise.all([first, second]);
+  });
+
+  test('Clean then Golden Hour invalidates real sheet staging and opens the gate twice', async () => {
     const gate = createShareOperationGate();
     const shared: Array<{ uri: string; exportKey: string }> = [];
+    let generation = 0;
+    let staged: { id: string } | null = null;
+    const release = jest.fn(async () => undefined);
+    const exports = createBeautySheetExportController({
+      advanceGeneration: () => {
+        generation += 1;
+        return generation;
+      },
+      takeStaged: () => {
+        const item = staged;
+        staged = null;
+        return item;
+      },
+      release,
+    });
     const transferAndShare = async (
       sourceId: string,
       look: 'clean' | 'golden',
@@ -302,10 +430,12 @@ describe('BeautyEditor render and lease orchestration', () => {
       const output = transferred as BeautyEditorRenderResult | null;
       if (!output) throw new Error('processed output was not transferred');
       const accepted = output;
+      staged = { id: `staged-before-${look}` };
+      const acceptedExport = exports.acceptProcessed(accepted);
       const opened = await gate.run(async () => {
         shared.push({
           uri: accepted.uri,
-          exportKey: accepted.cacheItemId ?? accepted.uri,
+          exportKey: acceptedExport.exportKey,
         });
       });
       expect(opened).toBe(true);
@@ -318,13 +448,154 @@ describe('BeautyEditor render and lease orchestration', () => {
     expect(shared).toEqual([
       {
         uri: 'file:///cache/run-share/processed-clean.jpg',
-        exportKey: 'processed-clean',
+        exportKey:
+          '1:processed-clean:file:///cache/run-share/processed-clean.jpg',
       },
       {
         uri: 'file:///cache/run-share/processed-golden.jpg',
-        exportKey: 'processed-golden',
+        exportKey:
+          '2:processed-golden:file:///cache/run-share/processed-golden.jpg',
       },
+    ]);
+    expect(release.mock.calls).toEqual([
+      ['staged-before-clean', 'editor'],
+      ['staged-before-golden', 'editor'],
     ]);
   });
 
+});
+
+describe('BeautyEditor interaction hardening', () => {
+  test('capture lease is synchronously retained before mount and released on owner mismatch', async () => {
+    const release = jest.fn(async () => undefined);
+    const leases = createBeautyCaptureLeaseSlot(release);
+
+    const accepting = leases.accept(source('captured'));
+    expect(leases.current()?.cacheItemId).toBe('captured');
+    await accepting;
+    await leases.releaseAll();
+    await leases.releaseAll();
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith('captured', 'editor');
+  });
+
+  test('capture replacement releases the old source and transfers the new source exactly once', async () => {
+    const oldRelease = deferred<void>();
+    const release = jest.fn((id: string) =>
+      id === 'old-source' ? oldRelease.promise : Promise.resolve(),
+    );
+    const leases = createBeautyCaptureLeaseSlot(release);
+    await leases.accept(source('old-source'));
+
+    const replacing = leases.accept(source('new-source'));
+    expect(leases.current()?.cacheItemId).toBe('new-source');
+    oldRelease.resolve();
+    await replacing;
+    expect(leases.transferToEditor(source('new-source'))).toBe(true);
+    await leases.releaseAll();
+
+    expect(release.mock.calls).toEqual([['old-source', 'editor']]);
+  });
+
+  test('account-switch release wins the pre-mount transfer race', async () => {
+    const releasing = deferred<void>();
+    const release = jest.fn(() => releasing.promise);
+    const leases = createBeautyCaptureLeaseSlot(release);
+    const captured = source('race-source');
+    await leases.accept(captured);
+
+    const ownerSwitch = leases.releaseAll();
+    expect(leases.transferToEditor(captured)).toBe(false);
+    releasing.resolve();
+    await ownerSwitch;
+    await leases.releaseAll();
+
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  test('preview scheduler debounces changes, flushes latest for Done, and cancels cleanup', async () => {
+    jest.useFakeTimers();
+    const request = jest.fn(async () => undefined);
+    const scheduler = createBeautyPreviewScheduler(request, 120);
+    const clean = { ...DEFAULT_BEAUTY, colorLook: 'clean' as const };
+    const golden = { ...DEFAULT_BEAUTY, colorLook: 'golden' as const };
+
+    scheduler.schedule(clean);
+    scheduler.schedule(golden);
+    jest.advanceTimersByTime(119);
+    expect(request).not.toHaveBeenCalled();
+    await scheduler.flush();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(golden);
+
+    scheduler.schedule(clean);
+    scheduler.dispose();
+    jest.runAllTimers();
+    expect(request).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  test('Done can flush and wait while the latest preview is processing', async () => {
+    const rendering = deferred<BeautyEditorRenderResult>();
+    const transferred: string[] = [];
+    const coordinator = createBeautyRenderCoordinator({
+      sourceCacheItemId: 'source',
+      ownerToken: 'owner-a',
+      currentOwnerToken: () => 'owner-a',
+      render: () => rendering.promise,
+      release: async () => undefined,
+      transfer: (value) => {
+        transferred.push(value.cacheItemId!);
+      },
+    });
+    const scheduler = createBeautyPreviewScheduler(
+      (settings) => coordinator.request(settings),
+      120,
+    );
+    scheduler.schedule({ ...DEFAULT_BEAUTY, colorLook: 'golden' });
+
+    const done = scheduler.flush().then(() => coordinator.done());
+    await Promise.resolve();
+    expect(transferred).toEqual([]);
+    rendering.resolve(result('golden'));
+    await done;
+    expect(transferred).toEqual(['golden']);
+  });
+
+  test('action mutex rejects double Done and Done-versus-Retake synchronously', async () => {
+    const pending = deferred<void>();
+    const mutex = createBeautyActionMutex();
+    const done = mutex.run('done', () => pending.promise);
+
+    expect(mutex.run('done', async () => undefined)).toBeNull();
+    expect(mutex.run('retake', async () => undefined)).toBeNull();
+    pending.resolve();
+    await done;
+
+    expect(mutex.run('retake', async () => undefined)).not.toBeNull();
+  });
+
+  test('disabled adjustable actions cannot change their value', () => {
+    expect(
+      beautyAccessibilityValueAfterAction({
+        actionName: 'increment',
+        disabled: true,
+        maximum: 100,
+        minimum: 0,
+        step: 5,
+        value: 20,
+      }),
+    ).toBeNull();
+    expect(
+      beautyAccessibilityValueAfterAction({
+        actionName: 'increment',
+        disabled: false,
+        maximum: 100,
+        minimum: 0,
+        step: 5,
+        value: 20,
+      }),
+    ).toBe(25);
+  });
 });

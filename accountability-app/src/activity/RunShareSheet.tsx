@@ -70,6 +70,8 @@ import type { UploadStatus } from './offlineQueueTypes';
 import type { BeautyCameraProps } from './beauty/BeautyCamera.native';
 import {
   BeautyEditor,
+  createBeautyCaptureLeaseSlot,
+  createBeautySheetExportController,
   type BeautyEditorRenderResult,
 } from './beauty/BeautyEditor';
 import type { BeautyCaptureSource } from './beauty/cameraMode';
@@ -107,6 +109,7 @@ type RunFeedOperationMetadata = {
 type RunEditorSafeCloserDependencies = {
   takeStaged: () => { id: string } | null;
   takeProcessedPhoto?: () => { id: string } | null;
+  releaseCapturedSource?: () => Promise<void>;
   release: (id: string, owner: 'editor') => Promise<void>;
   clearLocal: () => void;
   onClose: () => void;
@@ -115,6 +118,7 @@ type RunEditorSafeCloserDependencies = {
 export function createRunEditorSafeCloser({
   takeStaged,
   takeProcessedPhoto = () => null,
+  releaseCapturedSource = async () => undefined,
   release,
   clearLocal,
   onClose,
@@ -127,9 +131,12 @@ export function createRunEditorSafeCloser({
     clearLocal();
     closing = (async () => {
       await Promise.all(
-        [staged, processedPhoto]
-          .filter((item): item is { id: string } => item !== null)
-          .map((item) => release(item.id, 'editor').catch(() => {})),
+        [
+          ...[staged, processedPhoto]
+            .filter((item): item is { id: string } => item !== null)
+            .map((item) => release(item.id, 'editor').catch(() => {})),
+          releaseCapturedSource().catch(() => {}),
+        ],
       );
       onClose();
     })();
@@ -178,8 +185,34 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const stagedMedia = useRef<RunMediaCacheItem | null>(null);
   const processedPhotoMedia = useRef<RunMediaCacheItem | null>(null);
   const renderGeneration = useRef(0);
+  const capturedSourceLeases = useRef<ReturnType<
+    typeof createBeautyCaptureLeaseSlot
+  > | null>(null);
+  if (!capturedSourceLeases.current) {
+    capturedSourceLeases.current = createBeautyCaptureLeaseSlot(
+      runMediaCache.release,
+    );
+  }
+  const beautyExportController = useRef<ReturnType<
+    typeof createBeautySheetExportController
+  > | null>(null);
+  if (!beautyExportController.current) {
+    beautyExportController.current = createBeautySheetExportController({
+      advanceGeneration: () => {
+        renderGeneration.current += 1;
+        return renderGeneration.current;
+      },
+      takeStaged: () => {
+        const item = stagedMedia.current;
+        stagedMedia.current = null;
+        return item;
+      },
+      release: runMediaCache.release,
+    });
+  }
   const feedOperation = useRef<FeedOperationContext<RunFeedOperationMetadata> | null>(null);
   const hasPersistentDestination = useRef(false);
+  const editorLifecycleActive = useRef(true);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const currentOwnerToken = useCallback(() => currentOwnerRef.current, []);
@@ -196,8 +229,11 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         processedPhotoMedia.current = null;
         return item;
       },
+      releaseCapturedSource: () =>
+        capturedSourceLeases.current!.releaseAll(),
       release: runMediaCache.release,
       clearLocal: () => {
+        editorLifecycleActive.current = false;
         renderGeneration.current += 1;
         feedOperation.current = null;
         hasPersistentDestination.current = false;
@@ -283,7 +319,11 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   }, [run.activityId, run.ownerId, currentOwnerId]);
 
   useEffect(() => {
-    if (ownerMatches) return;
+    if (ownerMatches) {
+      editorLifecycleActive.current = true;
+      return;
+    }
+    editorLifecycleActive.current = false;
     renderGeneration.current += 1;
     const staged = stagedMedia.current;
     stagedMedia.current = null;
@@ -297,6 +337,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         .release(processedPhoto.id, 'editor')
         .catch(() => {});
     }
+    void capturedSourceLeases.current!.releaseAll();
     feedOperation.current = null;
     hasPersistentDestination.current = false;
     setActiveDestination(null);
@@ -353,15 +394,11 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     `· ${formatPace(run.distance, run.elapsed)} /km`;
 
   function invalidateStagedBeautyExport(): void {
-    renderGeneration.current += 1;
-    const stale = stagedMedia.current;
-    stagedMedia.current = null;
-    if (stale) {
-      void runMediaCache.release(stale.id, 'editor').catch(() => {});
-    }
+    beautyExportController.current!.invalidate();
   }
 
   function openBeautyCamera(): void {
+    if (!editorLifecycleActive.current) return;
     ownerBoundary().assertOwned();
     setBeautySource(null);
     setBeautyStage('camera');
@@ -370,9 +407,25 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   async function acceptBeautyCapture(
     source: BeautyCaptureSource,
   ): Promise<void> {
-    ownerBoundary().assertOwned();
-    setBeautySource(source);
-    setBeautyStage('editor');
+    const boundary = ownerBoundary();
+    const accepting = capturedSourceLeases.current!.accept(source);
+    try {
+      if (!editorLifecycleActive.current) {
+        await capturedSourceLeases.current!.releaseAll();
+        return;
+      }
+      boundary.assertOwned();
+      await accepting;
+      if (!editorLifecycleActive.current) {
+        await capturedSourceLeases.current!.releaseAll();
+        return;
+      }
+      boundary.assertOwned();
+      setBeautySource(source);
+      setBeautyStage('editor');
+    } catch {
+      await capturedSourceLeases.current!.releaseAll();
+    }
   }
 
   async function acceptProcessedBeautyPhoto(
@@ -380,6 +433,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     processed: BeautyEditorRenderResult,
   ): Promise<void> {
     const boundary = ownerBoundary();
+    if (!editorLifecycleActive.current) {
+      throw new Error('Run editor is closed.');
+    }
     boundary.assertOwned();
     const previous = processedPhotoMedia.current;
     processedPhotoMedia.current = processed.cacheItemId
@@ -395,7 +451,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     setMode('photo');
     setBeautyStage(null);
     setBeautySource(null);
-    invalidateStagedBeautyExport();
+    beautyExportController.current!.acceptProcessed(processed);
     await Promise.resolve();
     boundary.assertOwned();
     if (previous && previous.id !== processed.cacheItemId) {
@@ -740,6 +796,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         source={beautySource}
         ownerToken={run.ownerId!}
         currentOwnerToken={currentOwnerToken}
+        onSourceLeaseAccepted={() =>
+          capturedSourceLeases.current!.transferToEditor(beautySource)
+        }
         onDone={(processed) =>
           acceptProcessedBeautyPhoto(beautySource, processed)
         }

@@ -62,6 +62,221 @@ export type BeautyEditorRenderResult = Readonly<{
   uri: string;
 }>;
 
+type EditorRelease = (
+  id: string,
+  owner: 'editor',
+) => Promise<void>;
+
+function createEditorReleaseTracker(release: EditorRelease) {
+  const heldIds = new Set<string>();
+  const releasedIds = new Set<string>();
+  const inFlight = new Map<string, Promise<boolean>>();
+
+  function track(id: string | null): void {
+    if (id && !releasedIds.has(id)) heldIds.add(id);
+  }
+
+  function transfer(id: string | null): void {
+    if (id) heldIds.delete(id);
+  }
+
+  function releaseOnce(id: string | null): Promise<boolean> {
+    if (!id || releasedIds.has(id)) return Promise.resolve(true);
+    track(id);
+    const existing = inFlight.get(id);
+    if (existing) return existing;
+    const pending = release(id, 'editor')
+      .then(() => {
+        releasedIds.add(id);
+        heldIds.delete(id);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        if (inFlight.get(id) === pending) inFlight.delete(id);
+      });
+    inFlight.set(id, pending);
+    return pending;
+  }
+
+  async function releaseHeld(maxAttempts = 2): Promise<void> {
+    const attempts = Math.max(1, Math.min(2, Math.round(maxAttempts)));
+    for (let attempt = 0; attempt < attempts && heldIds.size > 0; attempt += 1) {
+      await Promise.all([...heldIds].map((id) => releaseOnce(id)));
+    }
+  }
+
+  return { track, transfer, releaseOnce, releaseHeld };
+}
+
+export function createBeautyCaptureLeaseSlot(release: EditorRelease) {
+  const releases = createEditorReleaseTracker(release);
+  let currentSource: BeautyCaptureSource | null = null;
+  let releaseAllPromise: Promise<void> | null = null;
+
+  async function accept(source: BeautyCaptureSource): Promise<void> {
+    const previous = currentSource;
+    currentSource = source;
+    releases.track(source.cacheItemId);
+    if (
+      previous?.cacheItemId &&
+      previous.cacheItemId !== source.cacheItemId
+    ) {
+      await releases.releaseOnce(previous.cacheItemId);
+    }
+  }
+
+  function transferToEditor(source: BeautyCaptureSource): boolean {
+    if (
+      releaseAllPromise ||
+      !currentSource ||
+      currentSource.cacheItemId !== source.cacheItemId ||
+      currentSource.sourceUri !== source.sourceUri
+    ) {
+      return false;
+    }
+    currentSource = null;
+    releases.transfer(source.cacheItemId);
+    return true;
+  }
+
+  function releaseAll(): Promise<void> {
+    if (releaseAllPromise) return releaseAllPromise;
+    const sourceAtRelease = currentSource;
+    releases.track(sourceAtRelease?.cacheItemId ?? null);
+    const pending = releases.releaseHeld().then(() => {
+      if (currentSource === sourceAtRelease) currentSource = null;
+    });
+    const wrapped = pending.finally(() => {
+      if (releaseAllPromise === wrapped) releaseAllPromise = null;
+    });
+    releaseAllPromise = wrapped;
+    return releaseAllPromise;
+  }
+
+  return {
+    accept,
+    transferToEditor,
+    releaseAll,
+    current: () => currentSource,
+  };
+}
+
+export function createBeautyPreviewScheduler(
+  request: (settings: BeautySettings) => Promise<void>,
+  debounceMs = 140,
+) {
+  const delay = Math.max(0, Math.min(500, Math.round(debounceMs)));
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: BeautySettings | null = null;
+  let disposed = false;
+
+  function clearTimer(): void {
+    if (timer) clearTimeout(timer);
+    timer = null;
+  }
+
+  function flush(): Promise<void> {
+    if (disposed || !pending) return Promise.resolve();
+    clearTimer();
+    const settings = pending;
+    pending = null;
+    return request(settings);
+  }
+
+  function schedule(settings: BeautySettings): void {
+    if (disposed) return;
+    pending = normalizeBeautySettings(settings);
+    clearTimer();
+    timer = setTimeout(() => {
+      timer = null;
+      void flush();
+    }, delay);
+  }
+
+  function dispose(): void {
+    disposed = true;
+    pending = null;
+    clearTimer();
+  }
+
+  return { schedule, flush, dispose };
+}
+
+export function createBeautyActionMutex() {
+  let active: 'done' | 'retake' | null = null;
+  return {
+    run<T>(
+      action: 'done' | 'retake',
+      operation: () => Promise<T>,
+    ): Promise<T> | null {
+      if (active) return null;
+      active = action;
+      let pending: Promise<T>;
+      try {
+        pending = operation();
+      } catch (error) {
+        active = null;
+        return Promise.reject(error);
+      }
+      void pending.then(
+        () => {
+          if (active === action) active = null;
+        },
+        () => {
+          if (active === action) active = null;
+        },
+      );
+      return pending;
+    },
+    active: () => active,
+  };
+}
+
+export function beautyAccessibilityValueAfterAction(input: Readonly<{
+  actionName: string;
+  disabled: boolean;
+  maximum: number;
+  minimum: number;
+  step: number;
+  value: number;
+}>): number | null {
+  if (input.disabled) return null;
+  if (input.actionName === 'increment') {
+    return Math.min(input.maximum, input.value + input.step);
+  }
+  if (input.actionName === 'decrement') {
+    return Math.max(input.minimum, input.value - input.step);
+  }
+  return null;
+}
+
+export function createBeautySheetExportController(dependencies: Readonly<{
+  advanceGeneration: () => number;
+  takeStaged: () => { id: string } | null;
+  release: EditorRelease;
+}>) {
+  function invalidate(): number {
+    const generation = dependencies.advanceGeneration();
+    const stale = dependencies.takeStaged();
+    if (stale) {
+      void dependencies.release(stale.id, 'editor').catch(() => {});
+    }
+    return generation;
+  }
+
+  function acceptProcessed(result: BeautyEditorRenderResult) {
+    const generation = invalidate();
+    return {
+      generation,
+      uri: result.uri,
+      exportKey: `${generation}:${result.cacheItemId ?? 'external'}:${result.uri}`,
+    };
+  }
+
+  return { invalidate, acceptProcessed };
+}
+
 export function createBeautyEditorModel(
   initial: BeautySettings = { ...DEFAULT_BEAUTY },
 ) {
@@ -130,32 +345,26 @@ export function createBeautyRenderCoordinator(
     Math.min(2, Math.round(dependencies.maxAttempts ?? 2)),
   );
   const waiters = new Map<number, VersionWaiter>();
-  const releasedIds = new Set<string>();
+  const releases = createEditorReleaseTracker(dependencies.release);
   let desiredVersion = 0;
   let desiredSettings: BeautySettings | null = null;
   let activePromise: Promise<void> | null = null;
   let activeAbort: AbortController | null = null;
   let currentResult: BeautyEditorRenderResult | null = null;
   let currentResultVersion = 0;
-  let sourceReleased = false;
   let currentTransferred = false;
   let transferPromise: Promise<void> | null = null;
+  let disposePromise: Promise<void> | null = null;
+  let completed = false;
   let disposed = false;
+  releases.track(dependencies.sourceCacheItemId);
 
   function owned(): boolean {
     return dependencies.currentOwnerToken() === dependencies.ownerToken;
   }
 
-  async function releaseOnce(id: string | null): Promise<void> {
-    if (!id || releasedIds.has(id)) return;
-    releasedIds.add(id);
-    await dependencies.release(id, 'editor').catch(() => {});
-  }
-
   async function releaseSource(): Promise<void> {
-    if (sourceReleased) return;
-    sourceReleased = true;
-    await releaseOnce(dependencies.sourceCacheItemId);
+    await releases.releaseOnce(dependencies.sourceCacheItemId);
   }
 
   function waiter(version: number): VersionWaiter {
@@ -177,7 +386,7 @@ export function createBeautyRenderCoordinator(
   }
 
   async function pump(): Promise<void> {
-    dependencies.onProcessing?.(true);
+    if (!disposed && owned()) dependencies.onProcessing?.(true);
     try {
       while (!disposed && desiredSettings) {
         const version = desiredVersion;
@@ -208,23 +417,28 @@ export function createBeautyRenderCoordinator(
         }
 
         const stale = disposed || version !== desiredVersion || !owned();
+        releases.track(rendered?.cacheItemId ?? null);
         if (rendered && stale) {
-          await releaseOnce(rendered.cacheItemId);
+          await releases.releaseOnce(rendered.cacheItemId);
         } else if (rendered) {
           const previous = currentResult;
           currentResult = rendered;
           currentResultVersion = version;
           currentTransferred = false;
-          dependencies.onError?.(null);
-          dependencies.onPreview?.(rendered);
+          if (!disposed && owned()) {
+            dependencies.onError?.(null);
+            dependencies.onPreview?.(rendered);
+          }
           if (
             previous?.cacheItemId &&
             previous.cacheItemId !== rendered.cacheItemId
           ) {
-            await releaseOnce(previous.cacheItemId);
+            await releases.releaseOnce(previous.cacheItemId);
           }
         } else if (failed && !stale) {
-          dependencies.onError?.(SAFE_RENDER_ERROR);
+          if (!disposed && owned()) {
+            dependencies.onError?.(SAFE_RENDER_ERROR);
+          }
         }
 
         settleWaiter(version);
@@ -233,7 +447,7 @@ export function createBeautyRenderCoordinator(
     } finally {
       activeAbort = null;
       activePromise = null;
-      dependencies.onProcessing?.(false);
+      if (!disposed && owned()) dependencies.onProcessing?.(false);
       if (!disposed && desiredSettings && waiters.has(desiredVersion)) {
         activePromise = pump();
       }
@@ -257,6 +471,9 @@ export function createBeautyRenderCoordinator(
 
   async function done(): Promise<BeautyEditorRenderResult> {
     await ensureLatest();
+    if (disposed || completed) {
+      throw new Error('Beauty editor is closed.');
+    }
     if (!owned()) throw new Error('Recording owner changed.');
     if (!currentResult || currentResultVersion !== desiredVersion) {
       throw new Error(SAFE_RENDER_ERROR);
@@ -265,6 +482,7 @@ export function createBeautyRenderCoordinator(
     const pendingTransfer = Promise.resolve(dependencies.transfer?.(result)).then(
       () => {
         currentTransferred = true;
+        releases.transfer(result.cacheItemId);
       },
     );
     transferPromise = pendingTransfer;
@@ -274,22 +492,25 @@ export function createBeautyRenderCoordinator(
       if (transferPromise === pendingTransfer) transferPromise = null;
     }
     await releaseSource();
+    completed = true;
     return result;
   }
 
-  async function dispose(): Promise<void> {
-    if (!disposed) {
+  function dispose(): Promise<void> {
+    if (disposePromise) return disposePromise;
+    disposePromise = (async () => {
       disposed = true;
       activeAbort?.abort();
-    }
-    if (activePromise) await activePromise.catch(() => {});
-    if (transferPromise) await transferPromise.catch(() => {});
-    if (!currentTransferred) {
-      await releaseOnce(currentResult?.cacheItemId ?? null);
-    }
-    await releaseSource();
-    for (const pending of waiters.values()) pending.resolve();
-    waiters.clear();
+      if (activePromise) await activePromise.catch(() => {});
+      if (transferPromise) await transferPromise.catch(() => {});
+      if (!currentTransferred) {
+        releases.track(currentResult?.cacheItemId ?? null);
+      }
+      await releases.releaseHeld();
+      for (const pending of waiters.values()) pending.resolve();
+      waiters.clear();
+    })();
+    return disposePromise;
   }
 
   return {
@@ -305,6 +526,7 @@ export type BeautyEditorProps = Readonly<{
   source: BeautyCaptureSource;
   ownerToken: string;
   currentOwnerToken: () => string | null;
+  onSourceLeaseAccepted?: () => boolean;
   onDone: (result: BeautyEditorRenderResult) => Promise<void> | void;
   onRetake: () => void;
   onSettingsChange?: (settings: BeautySettings) => void;
@@ -314,6 +536,7 @@ export function BeautyEditor({
   source,
   ownerToken,
   currentOwnerToken,
+  onSourceLeaseAccepted,
   onDone,
   onRetake,
   onSettingsChange,
@@ -331,13 +554,37 @@ export function BeautyEditor({
   const coordinatorRef = useRef<ReturnType<
     typeof createBeautyRenderCoordinator
   > | null>(null);
+  const previewSchedulerRef = useRef<ReturnType<
+    typeof createBeautyPreviewScheduler
+  > | null>(null);
+  const actionMutexRef = useRef(createBeautyActionMutex());
+  const mountedRef = useRef(true);
   const latestSettings = useRef(settings);
   const onDoneRef = useRef(onDone);
+  const onRetakeRef = useRef(onRetake);
+  const onSettingsChangeRef = useRef(onSettingsChange);
+  const onSourceLeaseAcceptedRef = useRef(onSourceLeaseAccepted);
   const originalUri = source.sourceUri;
   latestSettings.current = settings;
   onDoneRef.current = onDone;
+  onRetakeRef.current = onRetake;
+  onSettingsChangeRef.current = onSettingsChange;
+  onSourceLeaseAcceptedRef.current = onSourceLeaseAccepted;
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const leaseAccepted = onSourceLeaseAcceptedRef.current?.() ?? true;
+    if (!leaseAccepted) {
+      setProcessing(false);
+      setError(SAFE_RENDER_ERROR);
+      return;
+    }
     if (Platform.OS === 'web') {
       setProcessing(false);
       return;
@@ -361,13 +608,25 @@ export function BeautyEditor({
       },
       release: runMediaCache.release,
       transfer: (result) => onDoneRef.current(result),
-      onPreview: (result) => setPreviewUri(result.uri),
-      onProcessing: setProcessing,
-      onError: setError,
+      onPreview: (result) => {
+        if (mountedRef.current) setPreviewUri(result.uri);
+      },
+      onProcessing: (value) => {
+        if (mountedRef.current) setProcessing(value);
+      },
+      onError: (value) => {
+        if (mountedRef.current) setError(value);
+      },
     });
+    const scheduler = createBeautyPreviewScheduler(
+      (next) => coordinator.request(next),
+    );
     coordinatorRef.current = coordinator;
+    previewSchedulerRef.current = scheduler;
     void coordinator.request(latestSettings.current);
     return () => {
+      scheduler.dispose();
+      previewSchedulerRef.current = null;
       coordinatorRef.current = null;
       void coordinator.dispose();
     };
@@ -378,12 +637,13 @@ export function BeautyEditor({
   const renderingUnavailable = Platform.OS === 'web';
 
   function commitSettings(next: BeautySettings): void {
+    if (actionMutexRef.current.active()) return;
     const normalized = normalizeBeautySettings(next);
     setSettings(normalized);
     latestSettings.current = normalized;
-    onSettingsChange?.(normalized);
+    onSettingsChangeRef.current?.(normalized);
     if (!renderingUnavailable) {
-      void coordinatorRef.current?.request(normalized);
+      previewSchedulerRef.current?.schedule(normalized);
     }
   }
 
@@ -398,30 +658,45 @@ export function BeautyEditor({
     commitSettings({ ...latestSettings.current, [metadata.key]: bounded });
   }
 
-  async function finish(): Promise<void> {
-    if (disabled || processing) return;
-    setBusyAction('done');
-    setError(null);
-    try {
-      if (renderingUnavailable) {
-        await onDoneRef.current({
-          cacheItemId: null,
-          uri: source.sourceUri,
-        });
-      } else {
-        await coordinatorRef.current?.done();
+  function finish(): void {
+    const pending = actionMutexRef.current.run('done', async () => {
+      if (!mountedRef.current) return;
+      setBusyAction('done');
+      setError(null);
+      try {
+        if (renderingUnavailable) {
+          if (!mountedRef.current) return;
+          await onDoneRef.current({
+            cacheItemId: null,
+            uri: source.sourceUri,
+          });
+        } else {
+          const scheduler = previewSchedulerRef.current;
+          const coordinator = coordinatorRef.current;
+          if (!scheduler || !coordinator) throw new Error(SAFE_RENDER_ERROR);
+          await scheduler.flush();
+          await coordinator.done();
+        }
+        if (mountedRef.current) setBusyAction(null);
+      } catch {
+        if (mountedRef.current) {
+          setError(SAFE_RENDER_ERROR);
+          setBusyAction(null);
+        }
       }
-    } catch {
-      setError(SAFE_RENDER_ERROR);
-      setBusyAction(null);
-    }
+    });
+    if (pending) void pending;
   }
 
-  async function retake(): Promise<void> {
-    if (disabled) return;
-    setBusyAction('retake');
-    await coordinatorRef.current?.dispose();
-    onRetake();
+  function retake(): void {
+    const pending = actionMutexRef.current.run('retake', async () => {
+      if (!mountedRef.current) return;
+      setBusyAction('retake');
+      previewSchedulerRef.current?.dispose();
+      await coordinatorRef.current?.dispose();
+      if (mountedRef.current) onRetakeRef.current();
+    });
+    if (pending) void pending;
   }
 
   return (
@@ -431,7 +706,7 @@ export function BeautyEditor({
           accessibilityRole="button"
           accessibilityState={{ disabled }}
           disabled={disabled}
-          onPress={() => void retake()}
+          onPress={retake}
           style={styles.headerAction}
         >
           <Text style={styles.headerActionText}>Retake</Text>
@@ -441,10 +716,13 @@ export function BeautyEditor({
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ busy: busyAction === 'done', disabled: disabled || processing }}
-          disabled={disabled || processing}
-          onPress={() => void finish()}
-          style={[styles.done, (disabled || processing) && styles.dim]}
+          accessibilityState={{
+            busy: busyAction === 'done' || processing,
+            disabled,
+          }}
+          disabled={disabled}
+          onPress={finish}
+          style={[styles.done, disabled && styles.dim]}
         >
           {busyAction === 'done' ? (
             <ActivityIndicator color="#101319" />
@@ -618,20 +896,28 @@ function PercentControl({
 }) {
   const step = 5;
   const updateFromAccessibility = (event: AccessibilityActionEvent) => {
-    if (event.nativeEvent.actionName === 'increment') {
-      onCommit(metadata, value + step);
-    } else if (event.nativeEvent.actionName === 'decrement') {
-      onCommit(metadata, value - step);
-    }
+    const nextValue = beautyAccessibilityValueAfterAction({
+      actionName: event.nativeEvent.actionName,
+      disabled,
+      maximum: metadata.maximum,
+      minimum: metadata.minimum,
+      step,
+      value,
+    });
+    if (nextValue !== null) onCommit(metadata, nextValue);
   };
   return (
     <View style={styles.controlRow}>
       <Text style={styles.controlLabel}>{metadata.label}</Text>
       <View
-        accessibilityActions={[
-          { name: 'increment', label: `Increase ${metadata.label}` },
-          { name: 'decrement', label: `Decrease ${metadata.label}` },
-        ]}
+        accessibilityActions={
+          disabled
+            ? undefined
+            : [
+                { name: 'increment', label: `Increase ${metadata.label}` },
+                { name: 'decrement', label: `Decrease ${metadata.label}` },
+              ]
+        }
         accessibilityLabel={metadata.label}
         accessibilityRole="adjustable"
         accessibilityState={{ disabled }}
@@ -641,7 +927,9 @@ function PercentControl({
           now: value,
           text: `${value}%`,
         }}
-        onAccessibilityAction={updateFromAccessibility}
+        onAccessibilityAction={
+          disabled ? undefined : updateFromAccessibility
+        }
         style={styles.adjuster}
       >
         <Pressable
