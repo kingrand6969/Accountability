@@ -1,14 +1,17 @@
 import { describe, expect, jest, test } from '@jest/globals';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { cwd } from 'node:process';
+import { dirname, join } from 'node:path';
 import { TextDecoder as NodeTextDecoder } from 'node:util';
-import type { CanvasKit } from 'canvaskit-wasm';
+import CanvasKitInit from 'canvaskit-wasm';
 import { DEFAULT_BEAUTY, type BeautySettings, type ColorLook } from './types';
 import {
   BEAUTY_RUNTIME_EFFECT,
+  BEAUTY_SHADER_CHILDREN,
   buildBeautyShaderUniforms,
+  colorGains,
   colorUniforms,
+  referenceBeautyPixel,
+  unpremultiplyPixel,
+  type ColorGainUniforms,
 } from './beautyShader';
 
 const COLOR_TARGET_CASES: [
@@ -23,18 +26,22 @@ const COLOR_TARGET_CASES: [
   ['mono', [0, 1.2, 1.04]],
 ];
 
-type CanvasKitInitializer = (options: {
-  locateFile(file: string): string;
-}) => Promise<CanvasKit>;
+const COLOR_GAIN_CASES: [
+  look: ColorLook,
+  gains: ColorGainUniforms,
+][] = [
+  ['natural', [1, 1, 1, 0]],
+  ['clean', [0.99, 1.01, 1.025, 0.01]],
+  ['golden', [1.1, 1.02, 0.9, 0.02]],
+  ['energy', [1.06, 1.015, 0.97, 0.01]],
+  ['night', [0.94, 1.01, 1.1, 0.12]],
+  ['mono', [1, 1, 1, 0]],
+];
 
-const requireFromProject = createRequire(
-  join(cwd(), 'beauty-shader-runtime-test.cjs'),
-);
-const initializeCanvasKit = requireFromProject(
-  'canvaskit-wasm/bin/full/canvaskit',
-) as CanvasKitInitializer;
-const canvasKitWasmPath = requireFromProject.resolve(
-  'canvaskit-wasm/bin/full/canvaskit.wasm',
+const canvasKitModulePath = require.resolve('canvaskit-wasm');
+const canvasKitWasmPath = join(
+  dirname(canvasKitModulePath),
+  'canvaskit.wasm',
 );
 
 describe('colorUniforms', () => {
@@ -86,6 +93,46 @@ describe('colorUniforms', () => {
   });
 });
 
+describe('colorGains', () => {
+  test.each(COLOR_GAIN_CASES)(
+    '%s maps to its exact gain target at full strength',
+    (look, gains) => {
+      expect(colorGains(look, 100)).toEqual(gains);
+    },
+  );
+
+  test.each(COLOR_GAIN_CASES)(
+    '%s is neutral at zero strength',
+    (look) => {
+      expect(colorGains(look, 0)).toEqual([1, 1, 1, 0]);
+    },
+  );
+
+  test('interpolates warm and cool looks at half strength', () => {
+    expect(colorGains('golden', 50)).toEqual([1.05, 1.01, 0.95, 0.01]);
+    expect(colorGains('night', 50)).toEqual([0.97, 1.005, 1.05, 0.06]);
+  });
+
+  test('makes Golden and Energy warm, and Clean and Night cool', () => {
+    const golden = colorGains('golden', 100);
+    const energy = colorGains('energy', 100);
+    const clean = colorGains('clean', 100);
+    const night = colorGains('night', 100);
+
+    expect(golden[0]).toBeGreaterThan(golden[2]);
+    expect(energy[0]).toBeGreaterThan(energy[2]);
+    expect(clean[2]).toBeGreaterThan(clean[0]);
+    expect(night[2]).toBeGreaterThan(night[0]);
+    expect(night[3]).toBeGreaterThan(0);
+    expect(night[3]).toBeLessThanOrEqual(0.12);
+  });
+
+  test('safely handles invalid runtime values', () => {
+    expect(colorGains('unknown' as ColorLook, 100)).toEqual([1, 1, 1, 0]);
+    expect(colorGains('night', Number.NaN)).toEqual([1, 1, 1, 0]);
+  });
+});
+
 describe('buildBeautyShaderUniforms', () => {
   test('combines the normalized default beauty and color uniforms', () => {
     expect(buildBeautyShaderUniforms(DEFAULT_BEAUTY)).toEqual({
@@ -97,6 +144,10 @@ describe('buildBeautyShaderUniforms', () => {
       saturation: 0.972,
       contrast: 1.028,
       brightness: 1.0245,
+      redGain: 0.9965,
+      greenGain: 1.0035,
+      blueGain: 1.00875,
+      highlightCompression: 0.0035,
     });
   });
 
@@ -117,6 +168,10 @@ describe('buildBeautyShaderUniforms', () => {
       saturation: 0.5,
       contrast: 1.1,
       brightness: 1.02,
+      redGain: 1,
+      greenGain: 1,
+      blueGain: 1,
+      highlightCompression: 0,
     });
   });
 
@@ -152,6 +207,14 @@ describe('buildBeautyShaderUniforms', () => {
     expect(uniforms.contrast).toBeLessThanOrEqual(1.22);
     expect(uniforms.brightness).toBeGreaterThanOrEqual(0.88);
     expect(uniforms.brightness).toBeLessThanOrEqual(1.07);
+    expect(uniforms.redGain).toBeGreaterThanOrEqual(0.94);
+    expect(uniforms.redGain).toBeLessThanOrEqual(1.1);
+    expect(uniforms.greenGain).toBeGreaterThanOrEqual(1);
+    expect(uniforms.greenGain).toBeLessThanOrEqual(1.02);
+    expect(uniforms.blueGain).toBeGreaterThanOrEqual(0.9);
+    expect(uniforms.blueGain).toBeLessThanOrEqual(1.1);
+    expect(uniforms.highlightCompression).toBeGreaterThanOrEqual(0);
+    expect(uniforms.highlightCompression).toBeLessThanOrEqual(0.12);
   });
 
   test('is deterministic without mutating settings', () => {
@@ -165,7 +228,149 @@ describe('buildBeautyShaderUniforms', () => {
   });
 });
 
+describe('reference beauty pixel semantics', () => {
+  const neutralUniforms = buildBeautyShaderUniforms({
+    ...DEFAULT_BEAUTY,
+    enabled: false,
+    colorLook: 'natural',
+    colorStrength: 0,
+  });
+
+  test('unpremultiplies semi-transparent samples and zeros transparent RGB', () => {
+    expect(unpremultiplyPixel([0.2, 0.1, 0.05, 0.5])).toEqual([
+      0.4, 0.2, 0.1,
+    ]);
+    expect(unpremultiplyPixel([1, 0.5, 0.25, 0])).toEqual([0, 0, 0]);
+
+    expect(
+      referenceBeautyPixel({
+        original: [0.2, 0.1, 0.05, 0.5],
+        skinMask: 1,
+        underEyeMask: 0,
+        uniforms: neutralUniforms,
+        neighborhood: [],
+      }).pixel,
+    ).toEqual([0.2, 0.1, 0.05, 0.5]);
+    expect(
+      referenceBeautyPixel({
+        original: [1, 0.5, 0.25, 0],
+        skinMask: 1,
+        underEyeMask: 1,
+        uniforms: { ...neutralUniforms, underEyeAmount: 0.15 },
+        neighborhood: [],
+      }).pixel,
+    ).toEqual([0, 0, 0, 0]);
+  });
+
+  test('rejects excluded and transparent taps and renormalizes accepted skin', () => {
+    const result = referenceBeautyPixel({
+      original: [0.2, 0.2, 0.2, 1],
+      skinMask: 1,
+      underEyeMask: 0,
+      uniforms: {
+        ...neutralUniforms,
+        smoothAmount: 0.36,
+        blemishAmount: 0.24,
+      },
+      neighborhood: [
+        { pixel: [0.4, 0.4, 0.4, 1], skinMask: 1, weight: 1 },
+        { pixel: [1, 0, 0, 1], skinMask: 0, weight: 100 },
+        { pixel: [0, 1, 0, 0], skinMask: 1, weight: 100 },
+      ],
+    });
+
+    expect(result.sampledNeighbors).toBe(3);
+    expect(result.acceptedNeighbors).toBe(1);
+    expect(result.pixel[0]).toBeCloseTo(result.pixel[1], 6);
+    expect(result.pixel[1]).toBeCloseTo(result.pixel[2], 6);
+    expect(result.pixel[0]).toBeGreaterThan(0.2);
+    expect(result.pixel[0]).toBeLessThan(0.4);
+  });
+
+  test('brightens dark pixels only inside the dedicated under-eye mask', () => {
+    const uniforms = { ...neutralUniforms, underEyeAmount: 0.15 };
+    const outside = referenceBeautyPixel({
+      original: [0.1, 0.1, 0.1, 1],
+      skinMask: 1,
+      underEyeMask: 0,
+      uniforms,
+      neighborhood: [],
+    });
+    const inside = referenceBeautyPixel({
+      original: [0.1, 0.1, 0.1, 1],
+      skinMask: 1,
+      underEyeMask: 1,
+      uniforms,
+      neighborhood: [],
+    });
+
+    expect(outside.pixel).toEqual([0.1, 0.1, 0.1, 1]);
+    expect(inside.pixel[0]).toBeGreaterThan(outside.pixel[0]);
+    expect(inside.pixel[1]).toBeGreaterThan(outside.pixel[1]);
+    expect(inside.pixel[2]).toBeGreaterThan(outside.pixel[2]);
+  });
+
+  test('skips all neighborhood samples outside skin or at zero soften', () => {
+    const tap = [{ pixel: [1, 0, 0, 1] as const, skinMask: 1, weight: 1 }];
+    const outside = referenceBeautyPixel({
+      original: [0.2, 0.2, 0.2, 1],
+      skinMask: 0,
+      underEyeMask: 0,
+      uniforms: { ...neutralUniforms, smoothAmount: 0.36 },
+      neighborhood: tap,
+    });
+    const zeroSoften = referenceBeautyPixel({
+      original: [0.2, 0.2, 0.2, 1],
+      skinMask: 1,
+      underEyeMask: 0,
+      uniforms: neutralUniforms,
+      neighborhood: tap,
+    });
+
+    expect(outside.sampledNeighbors).toBe(0);
+    expect(zeroSoften.sampledNeighbors).toBe(0);
+    expect(outside.pixel).toEqual([0.2, 0.2, 0.2, 1]);
+    expect(zeroSoften.pixel).toEqual([0.2, 0.2, 0.2, 1]);
+  });
+
+  test('applies bounded Night highlight compression in straight RGB', () => {
+    const night = buildBeautyShaderUniforms({
+      ...DEFAULT_BEAUTY,
+      enabled: false,
+      colorLook: 'night',
+      colorStrength: 100,
+    });
+    const compressed = referenceBeautyPixel({
+      original: [0.8, 0.8, 0.8, 1],
+      skinMask: 0,
+      underEyeMask: 0,
+      uniforms: night,
+      neighborhood: [],
+    });
+    const withoutCompression = referenceBeautyPixel({
+      original: [0.8, 0.8, 0.8, 1],
+      skinMask: 0,
+      underEyeMask: 0,
+      uniforms: { ...night, highlightCompression: 0 },
+      neighborhood: [],
+    });
+
+    expect(compressed.pixel[0]).toBeLessThan(withoutCompression.pixel[0]);
+    expect(compressed.pixel[1]).toBeLessThan(withoutCompression.pixel[1]);
+    expect(compressed.pixel[2]).toBeLessThan(withoutCompression.pixel[2]);
+    expect(compressed.pixel[3]).toBe(1);
+  });
+});
+
 describe('BEAUTY_RUNTIME_EFFECT', () => {
+  test('publishes the typed child-shader binding contract', () => {
+    expect(BEAUTY_SHADER_CHILDREN).toEqual([
+      'image',
+      'skinMask',
+      'underEyeMask',
+    ]);
+  });
+
   test(
     'compiles in the installed headless CanvasKit runtime',
     async () => {
@@ -177,7 +382,7 @@ describe('BEAUTY_RUNTIME_EFFECT', () => {
       });
 
       try {
-        const canvasKit = await initializeCanvasKit({
+        const canvasKit = await CanvasKitInit({
           locateFile: (file) => {
             expect(file).toBe('canvaskit.wasm');
             return canvasKitWasmPath;
@@ -215,6 +420,7 @@ describe('BEAUTY_RUNTIME_EFFECT', () => {
   test.each([
     'uniform shader image;',
     'uniform shader skinMask;',
+    'uniform shader underEyeMask;',
     'uniform float smoothAmount;',
     'uniform float blemishAmount;',
     'uniform float shineAmount;',
@@ -223,13 +429,21 @@ describe('BEAUTY_RUNTIME_EFFECT', () => {
     'uniform float saturation;',
     'uniform float contrast;',
     'uniform float brightness;',
+    'uniform float redGain;',
+    'uniform float greenGain;',
+    'uniform float blueGain;',
+    'uniform float highlightCompression;',
   ])('declares %s', (declaration) => {
     expect(BEAUTY_RUNTIME_EFFECT).toContain(declaration);
   });
 
   test('uses a fixed neighborhood and no loops or coordinate deformation', () => {
-    expect(BEAUTY_RUNTIME_EFFECT).toContain('sampleNeighborhood');
-    expect(BEAUTY_RUNTIME_EFFECT).not.toContain('sampleNeighborhood(shader');
+    expect(BEAUTY_RUNTIME_EFFECT).toContain('sampleSkinNeighborhood');
+    expect(BEAUTY_RUNTIME_EFFECT).toContain('weightedSkinTap');
+    expect(BEAUTY_RUNTIME_EFFECT).toContain('skinMask.eval(tapXy)');
+    expect(BEAUTY_RUNTIME_EFFECT).not.toContain(
+      'sampleSkinNeighborhood(shader',
+    );
     expect(BEAUTY_RUNTIME_EFFECT).not.toMatch(/\b(for|while|do)\s*\(/);
     expect(BEAUTY_RUNTIME_EFFECT).not.toMatch(
       /\b(warp|reshape|distort|displace|transform|matrix)\b/i,
@@ -249,12 +463,46 @@ describe('BEAUTY_RUNTIME_EFFECT', () => {
     expect(BEAUTY_RUNTIME_EFFECT).toMatch(
       /shineAmount\s*\*\s*shineGate\s*\*\s*mask/,
     );
-    expect(BEAUTY_RUNTIME_EFFECT).toContain('original.a');
+    expect(BEAUTY_RUNTIME_EFFECT).toContain(
+      'half underEye = clamp(underEyeMask.eval(xy).a',
+    );
+    expect(BEAUTY_RUNTIME_EFFECT).toMatch(
+      /underEyeAmount\s*\*\s*shadowGate\s*\*\s*underEye/,
+    );
+    expect(BEAUTY_RUNTIME_EFFECT).toContain(
+      'half4(colored * original.a, original.a)',
+    );
+  });
+
+  test('uses a neighborhood fast path and straight-alpha processing', () => {
+    expect(BEAUTY_RUNTIME_EFFECT).toContain(
+      'if (mask > 0.001 && soften > 0.001)',
+    );
+    expect(
+      BEAUTY_RUNTIME_EFFECT.match(/image\.eval\(xy\)/g),
+    ).toHaveLength(1);
+    expect(
+      BEAUTY_RUNTIME_EFFECT.match(/skinMask\.eval\(xy\)/g),
+    ).toHaveLength(1);
+    expect(
+      BEAUTY_RUNTIME_EFFECT.lastIndexOf(
+        'sampleSkinNeighborhood(xy, original, mask)',
+      ),
+    ).toBeGreaterThan(
+      BEAUTY_RUNTIME_EFFECT.indexOf(
+        'if (mask > 0.001 && soften > 0.001)',
+      ),
+    );
+    expect(BEAUTY_RUNTIME_EFFECT).toContain('straightRgb(original)');
+    expect(BEAUTY_RUNTIME_EFFECT).toContain('straightRgb(tap)');
   });
 
   test('implements mono-compatible luma saturation and clamps RGB output', () => {
     expect(BEAUTY_RUNTIME_EFFECT).toContain(
-      'mix(half3(luma), color.rgb, saturationValue)',
+      'mix(half3(luma), color, saturationValue)',
+    );
+    expect(BEAUTY_RUNTIME_EFFECT).toContain(
+      'rgb *= half3(redGain, greenGain, blueGain)',
     );
     expect(BEAUTY_RUNTIME_EFFECT).toContain(
       'clamp(rgb, half3(0.0), half3(1.0))',
