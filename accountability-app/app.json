@@ -14,7 +14,8 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "location"
-        ]
+        ],
+        "NSCameraUsageDescription": "AccountAbility uses the front camera for a private on-device beauty preview."
       }
     },
     "android": {
@@ -25,7 +26,13 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "output": "single",
@@ -58,7 +65,19 @@
         "expo-image-picker",
         {
           "cameraPermission": "AccountAbility uses your camera for selfies, run cards, stories and profile photos.",
-          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories."
+          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories.",
+          "savePhotosPermission": "AccountAbility needs permission to save photos and videos to your media library.",
+          "granularPermissions": [
+            "photo",
+            "video"
+          ]
         }
       ]
     ],
