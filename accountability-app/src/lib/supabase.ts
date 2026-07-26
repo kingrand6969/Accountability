@@ -26,14 +26,34 @@ type AuthLifecycleSubscription = {
   remove: () => void;
 };
 
+type AuthLifecycleRegistration = {
+  client: typeof supabase;
+  subscription: AuthLifecycleSubscription;
+  stopAutoRefresh: () => void;
+};
+
 type AuthLifecycleGlobal = typeof globalThis & {
+  __accountabilityAuthLifecycle?: AuthLifecycleRegistration;
   __accountabilityAuthLifecycleSubscription?: AuthLifecycleSubscription;
 };
 
-if (Platform.OS !== 'web') {
-  const lifecycleGlobal = globalThis as AuthLifecycleGlobal;
-  lifecycleGlobal.__accountabilityAuthLifecycleSubscription?.remove();
+const lifecycleGlobal = globalThis as AuthLifecycleGlobal;
 
+// Clean up the subscription shape used by earlier Fast Refresh evaluations.
+lifecycleGlobal.__accountabilityAuthLifecycleSubscription?.remove();
+lifecycleGlobal.__accountabilityAuthLifecycleSubscription = undefined;
+
+const previousLifecycle = lifecycleGlobal.__accountabilityAuthLifecycle;
+previousLifecycle?.subscription.remove();
+if (
+  previousLifecycle &&
+  (previousLifecycle.client !== supabase || Platform.OS === 'web')
+) {
+  previousLifecycle.stopAutoRefresh();
+}
+lifecycleGlobal.__accountabilityAuthLifecycle = undefined;
+
+if (Platform.OS !== 'web') {
   const updateAutoRefresh = (state: AppStateStatus) => {
     if (state === 'active') {
       supabase.auth.startAutoRefresh();
@@ -43,6 +63,9 @@ if (Platform.OS !== 'web') {
   };
 
   updateAutoRefresh(AppState.currentState);
-  lifecycleGlobal.__accountabilityAuthLifecycleSubscription =
-    AppState.addEventListener('change', updateAutoRefresh);
+  lifecycleGlobal.__accountabilityAuthLifecycle = {
+    client: supabase,
+    subscription: AppState.addEventListener('change', updateAutoRefresh),
+    stopAutoRefresh: () => supabase.auth.stopAutoRefresh(),
+  };
 }

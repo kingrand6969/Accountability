@@ -137,13 +137,25 @@ describe('Supabase React Native authentication lifecycle', () => {
     expect(startAutoRefresh).toHaveBeenCalledTimes(2);
   });
 
-  it('does not attach native lifecycle handling on web', () => {
-    const addEventListener = jest.fn();
-    const auth = {
+  it('stops the previous native client before activating a reloaded client', () => {
+    const firstAuth = {
       startAutoRefresh: jest.fn(),
       stopAutoRefresh: jest.fn(),
     };
-    const createClient = jest.fn(() => ({ auth }));
+    const secondAuth = {
+      startAutoRefresh: jest.fn(),
+      stopAutoRefresh: jest.fn(),
+    };
+    const firstRemove = jest.fn();
+    const secondRemove = jest.fn();
+    const addEventListener = jest
+      .fn()
+      .mockReturnValueOnce({ remove: firstRemove })
+      .mockReturnValueOnce({ remove: secondRemove });
+    const createClient = jest
+      .fn()
+      .mockReturnValueOnce({ auth: firstAuth })
+      .mockReturnValueOnce({ auth: secondAuth });
 
     jest.doMock('@supabase/supabase-js', () => ({
       createClient,
@@ -152,16 +164,64 @@ describe('Supabase React Native authentication lifecycle', () => {
     jest.doMock('@react-native-async-storage/async-storage', () => ({}));
     jest.doMock('react-native', () => ({
       AppState: { currentState: 'active', addEventListener },
-      Platform: { OS: 'web' },
+      Platform: { OS: 'ios' },
     }));
     jest.doMock('react-native-url-polyfill/auto', () => ({}));
 
     jest.isolateModules(() => {
       require('../lib/supabase');
     });
+    jest.isolateModules(() => {
+      require('../lib/supabase');
+    });
 
-    expect(addEventListener).not.toHaveBeenCalled();
-    expect(auth.startAutoRefresh).not.toHaveBeenCalled();
-    expect(auth.stopAutoRefresh).not.toHaveBeenCalled();
+    expect(firstRemove).toHaveBeenCalledTimes(1);
+    expect(firstAuth.stopAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(secondAuth.startAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(secondAuth.stopAutoRefresh).not.toHaveBeenCalled();
+    expect(addEventListener).toHaveBeenCalledTimes(2);
+  });
+
+  it('cleans native refresh handling when reloaded on web', () => {
+    const nativeAuth = {
+      startAutoRefresh: jest.fn(),
+      stopAutoRefresh: jest.fn(),
+    };
+    const webAuth = {
+      startAutoRefresh: jest.fn(),
+      stopAutoRefresh: jest.fn(),
+    };
+    const remove = jest.fn();
+    const addEventListener = jest.fn(() => ({ remove }));
+    const createClient = jest
+      .fn()
+      .mockReturnValueOnce({ auth: nativeAuth })
+      .mockReturnValueOnce({ auth: webAuth });
+    const platform = { OS: 'ios' };
+
+    jest.doMock('@supabase/supabase-js', () => ({
+      createClient,
+      processLock: jest.fn(),
+    }));
+    jest.doMock('@react-native-async-storage/async-storage', () => ({}));
+    jest.doMock('react-native', () => ({
+      AppState: { currentState: 'active', addEventListener },
+      Platform: platform,
+    }));
+    jest.doMock('react-native-url-polyfill/auto', () => ({}));
+
+    jest.isolateModules(() => {
+      require('../lib/supabase');
+    });
+    platform.OS = 'web';
+    jest.isolateModules(() => {
+      require('../lib/supabase');
+    });
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(nativeAuth.stopAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(addEventListener).toHaveBeenCalledTimes(1);
+    expect(webAuth.startAutoRefresh).not.toHaveBeenCalled();
+    expect(webAuth.stopAutoRefresh).not.toHaveBeenCalled();
   });
 });
