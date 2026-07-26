@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 import type { Pt } from './geo';
+import { uploadQueuedActivity } from './activityUpload';
+import { createActivityId, type QueuedActivity } from './offlineQueueTypes';
 
 export type ActivityType = 'run' | 'walk' | 'ride';
 
@@ -16,18 +18,18 @@ export async function saveActivity(a: NewActivity): Promise<string> {
   if (authError) throw authError;
   const uid = data.user?.id;
   if (!uid) throw new Error('Not signed in.');
-  const { data: saved, error } = await supabase
-    .from('activities')
-    .insert({
-      user_id: uid,
-      type: a.type,
-      distance_m: Math.round(a.distance_m),
-      duration_s: Math.round(a.duration_s),
-      route: a.route,
-      started_at: a.started_at,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
-  return saved.id as string;
+
+  const now = Date.now();
+  const entry: QueuedActivity = {
+    schema: 1,
+    id: createActivityId(),
+    ownerId: uid,
+    activity: a,
+    createdAt: new Date(now).toISOString(),
+    status: 'saved',
+    attemptCount: 0,
+    nextAttemptAt: now,
+    lastError: null,
+  };
+  return uploadQueuedActivity(entry);
 }
