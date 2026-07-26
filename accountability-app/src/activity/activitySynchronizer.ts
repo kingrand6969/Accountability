@@ -16,6 +16,13 @@ const MAX_RETRY_DELAY_MS = 30 * 60_000;
 const MAX_ERROR_MESSAGE_LENGTH = 4_096;
 const OWNER_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const PERSISTED_ERROR_MESSAGES: Record<UploadErrorCategory, string> = {
+  network: 'Check your internet connection and try again.',
+  auth: 'Sign in to upload this activity.',
+  server: 'The activity service is temporarily unavailable.',
+  validation: 'This activity needs review before it can upload.',
+  storage: 'Offline activity storage failed.',
+};
 
 type QueuePatch = Partial<
   Pick<
@@ -78,7 +85,14 @@ export function createActivitySynchronizer(
     ...defaultDependencies,
     ...overrides,
   };
-  const activeByOwner = new Map<string, Promise<void>>();
+  const activeByOwner = new Map<
+    string,
+    {
+      promise: Promise<void>;
+      rerunRequested: boolean;
+      forceRequested: boolean;
+    }
+  >();
   let operationTail: Promise<void> = Promise.resolve();
 
   return {
@@ -96,27 +110,48 @@ export function createActivitySynchronizer(
       }
 
       const active = activeByOwner.get(ownerId);
-      if (active) return active;
+      if (active) {
+        active.rerunRequested = true;
+        active.forceRequested ||= force;
+        return active.promise;
+      }
 
-      const operation = operationTail.then(() =>
-        drainOnce(ownerId, force, dependencies),
-      );
+      const state = {
+        promise: Promise.resolve(),
+        rerunRequested: false,
+        forceRequested: false,
+      };
+      const operation = operationTail.then(async () => {
+        let passForce = force;
+
+        while (true) {
+          let rerunAfterPass = state.rerunRequested;
+          state.rerunRequested = false;
+          await drainOnce(ownerId, passForce, dependencies);
+          rerunAfterPass ||= state.rerunRequested;
+          state.rerunRequested = false;
+          if (!rerunAfterPass) return;
+          passForce = state.forceRequested;
+          state.forceRequested = false;
+        }
+      });
       let publicPromise: Promise<void>;
       publicPromise = operation.then(
         () => {
-          if (activeByOwner.get(ownerId) === publicPromise) {
+          if (activeByOwner.get(ownerId) === state) {
             activeByOwner.delete(ownerId);
           }
         },
         (cause) => {
-          if (activeByOwner.get(ownerId) === publicPromise) {
+          if (activeByOwner.get(ownerId) === state) {
             activeByOwner.delete(ownerId);
           }
           throw cause;
         },
       );
 
-      activeByOwner.set(ownerId, publicPromise);
+      state.promise = publicPromise;
+      activeByOwner.set(ownerId, state);
       operationTail = publicPromise.catch(() => undefined);
       return publicPromise;
     },
@@ -159,11 +194,9 @@ async function drainOnce(
 
   for (const storedEntry of entries) {
     const now = safeNow(dependencies.now);
-    if (
-      (!force && storedEntry.nextAttemptAt > now) ||
-      (!force && storedEntry.status === 'needs_attention')
-    ) {
-      continue;
+    if (!force) {
+      if (storedEntry.status === 'needs_attention') continue;
+      if (storedEntry.nextAttemptAt > now) break;
     }
 
     let uploading: QueuedActivity;
@@ -180,85 +213,102 @@ async function drainOnce(
       throw classifyQueueError(cause);
     }
 
+    let confirmedId: string;
     try {
-      const confirmedId = await dependencies.upload(uploading);
-      if (confirmedId !== uploading.id) {
-        throw new ActivityUploadError(
+      confirmedId = await dependencies.upload(uploading);
+    } catch (cause) {
+      const shouldStop = await recordUploadFailure(
+        ownerId,
+        uploading,
+        classifyUploadError(cause),
+        dependencies,
+      );
+      if (shouldStop) return;
+      continue;
+    }
+
+    if (confirmedId !== uploading.id) {
+      const shouldStop = await recordUploadFailure(
+        ownerId,
+        uploading,
+        new ActivityUploadError(
           'validation',
           'Activity upload confirmation did not match the queued activity.',
           false,
           undefined,
           'confirmation_id_mismatch',
-        );
-      }
-
-      try {
-        await dependencies.remove(ownerId, uploading.id);
-      } catch (cause) {
-        throw classifyQueueError(cause);
-      }
-    } catch (cause) {
-      if (
-        cause instanceof ActivityUploadError &&
-        (cause.category === 'storage' ||
-          cause.code?.startsWith('queue_') === true)
-      ) {
-        throw cause;
-      }
-
-      const error = classifyUploadError(cause);
-      const attemptCount = incrementAttempt(uploading.attemptCount);
-      const errorAt = safeNow(dependencies.now);
-
-      if (
-        error.category === 'network' ||
-        (error.category === 'server' && error.transient)
-      ) {
-        await patchFailure(
-          ownerId,
-          uploading.id,
-          {
-            status: 'waiting_network',
-            attemptCount,
-            nextAttemptAt: addDelay(
-              errorAt,
-              retryDelayMs(attemptCount, dependencies.random),
-            ),
-            lastError: queueError(error),
-          },
-          dependencies,
-        );
-        return;
-      }
-
-      if (error.category === 'auth') {
-        await patchFailure(
-          ownerId,
-          uploading.id,
-          {
-            status: 'needs_sign_in',
-            attemptCount,
-            nextAttemptAt: errorAt,
-            lastError: queueError(error),
-          },
-          dependencies,
-        );
-        return;
-      }
-
-      await patchFailure(
-        ownerId,
-        uploading.id,
-        {
-          status: 'needs_attention',
-          attemptCount,
-          nextAttemptAt: errorAt,
-          lastError: queueError(error),
-        },
+        ),
         dependencies,
       );
+      if (shouldStop) return;
+      continue;
+    }
+
+    try {
+      await dependencies.remove(ownerId, uploading.id);
+    } catch (cause) {
+      throw classifyQueueError(cause);
     }
   }
+}
+
+async function recordUploadFailure(
+  ownerId: string,
+  uploading: QueuedActivity,
+  error: ActivityUploadError,
+  dependencies: ActivitySynchronizerDependencies,
+): Promise<boolean> {
+  const attemptCount = incrementAttempt(uploading.attemptCount);
+  const errorAt = safeNow(dependencies.now);
+
+  if (
+    error.category === 'network' ||
+    (error.category === 'server' && error.transient)
+  ) {
+    await patchFailure(
+      ownerId,
+      uploading.id,
+      {
+        status: 'waiting_network',
+        attemptCount,
+        nextAttemptAt: addDelay(
+          errorAt,
+          retryDelayMs(attemptCount, dependencies.random),
+        ),
+        lastError: queueError(error),
+      },
+      dependencies,
+    );
+    return true;
+  }
+
+  if (error.category === 'auth') {
+    await patchFailure(
+      ownerId,
+      uploading.id,
+      {
+        status: 'needs_sign_in',
+        attemptCount,
+        nextAttemptAt: errorAt,
+        lastError: queueError(error),
+      },
+      dependencies,
+    );
+    return true;
+  }
+
+  await patchFailure(
+    ownerId,
+    uploading.id,
+    {
+      status: 'needs_attention',
+      attemptCount,
+      nextAttemptAt: errorAt,
+      lastError: queueError(error),
+    },
+    dependencies,
+  );
+  return false;
 }
 
 async function patchFailure(
@@ -328,7 +378,10 @@ function queueError(
 ): QueuedActivity['lastError'] {
   return {
     category: error.category,
-    message: safeMessage(error, 'Activity upload failed.'),
+    message: PERSISTED_ERROR_MESSAGES[error.category].slice(
+      0,
+      MAX_ERROR_MESSAGE_LENGTH,
+    ),
   };
 }
 

@@ -119,12 +119,23 @@ function harness(initial: QueuedActivity[]) {
 function uploadError(
   category: UploadErrorCategory,
   transient: boolean,
+  message = `${category} upload failure`,
 ): ActivityUploadError {
   return new ActivityUploadError(
     category,
-    `${category} upload failure`,
+    message,
     transient,
   );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (cause?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 describe('retryDelayMs', () => {
@@ -188,6 +199,82 @@ describe('createActivitySynchronizer', () => {
     expect(setup.upload).toHaveBeenCalledTimes(1);
   });
 
+  it('reruns an active owner and uploads entries added after its first snapshot', async () => {
+    const setup = harness([entry(ID_A)]);
+    const uploadStarted = deferred<void>();
+    const releaseUpload = deferred<string>();
+    setup.upload.mockImplementationOnce(async () => {
+      uploadStarted.resolve();
+      return releaseUpload.promise;
+    });
+
+    const first = setup.synchronizer.drain(OWNER_A);
+    await uploadStarted.promise;
+    setup.records.set(
+      ID_B,
+      entry(ID_B, { createdAt: '2026-07-26T01:30:00.000Z' }),
+    );
+    const second = setup.synchronizer.drain(OWNER_A);
+
+    expect(second).toBe(first);
+    releaseUpload.resolve(ID_A);
+    await first;
+    expect(setup.list).toHaveBeenCalledTimes(2);
+    expect(setup.upload.mock.calls.map(([item]) => item.id)).toEqual([
+      ID_A,
+      ID_B,
+    ]);
+  });
+
+  it('coalesces repeated active-owner requests into one follow-up pass', async () => {
+    const setup = harness([entry(ID_A)]);
+    const uploadStarted = deferred<void>();
+    const releaseUpload = deferred<string>();
+    setup.upload.mockImplementationOnce(async () => {
+      uploadStarted.resolve();
+      return releaseUpload.promise;
+    });
+
+    const shared = setup.synchronizer.drain(OWNER_A);
+    await uploadStarted.promise;
+    expect(setup.synchronizer.drain(OWNER_A)).toBe(shared);
+    expect(setup.synchronizer.drain(OWNER_A)).toBe(shared);
+    expect(setup.synchronizer.drain(OWNER_A)).toBe(shared);
+    releaseUpload.resolve(ID_A);
+
+    await shared;
+    expect(setup.list).toHaveBeenCalledTimes(2);
+  });
+
+  it('upgrades an active non-force drain with a forced follow-up pass', async () => {
+    const setup = harness([
+      entry(ID_A),
+      entry(ID_B, {
+        createdAt: '2026-07-26T01:30:00.000Z',
+        nextAttemptAt: NOW + 60_000,
+      }),
+    ]);
+    const uploadStarted = deferred<void>();
+    const releaseUpload = deferred<string>();
+    setup.upload.mockImplementationOnce(async () => {
+      uploadStarted.resolve();
+      return releaseUpload.promise;
+    });
+
+    const normal = setup.synchronizer.drain(OWNER_A);
+    await uploadStarted.promise;
+    const forced = setup.synchronizer.drain(OWNER_A, true);
+
+    expect(forced).toBe(normal);
+    releaseUpload.resolve(ID_A);
+    await normal;
+    expect(setup.list).toHaveBeenCalledTimes(2);
+    expect(setup.upload.mock.calls.map(([item]) => item.id)).toEqual([
+      ID_A,
+      ID_B,
+    ]);
+  });
+
   it('serializes different owners without sharing or mixing their drains', async () => {
     const setup = harness([
       entry(ID_A, { ownerId: OWNER_A }),
@@ -212,6 +299,31 @@ describe('createActivitySynchronizer', () => {
     ]);
   });
 
+  it('reruns an owner requested again while queued behind another owner', async () => {
+    const setup = harness([
+      entry(ID_A, { ownerId: OWNER_A }),
+      entry(ID_B, { ownerId: OWNER_B }),
+    ]);
+    const uploadStarted = deferred<void>();
+    const releaseUpload = deferred<string>();
+    setup.upload.mockImplementationOnce(async () => {
+      uploadStarted.resolve();
+      return releaseUpload.promise;
+    });
+
+    const ownerA = setup.synchronizer.drain(OWNER_A);
+    await uploadStarted.promise;
+    const firstOwnerB = setup.synchronizer.drain(OWNER_B);
+    const secondOwnerB = setup.synchronizer.drain(OWNER_B);
+
+    expect(secondOwnerB).toBe(firstOwnerB);
+    releaseUpload.resolve(ID_A);
+    await Promise.all([ownerA, firstOwnerB]);
+    expect(
+      setup.list.mock.calls.filter(([ownerId]) => ownerId === OWNER_B),
+    ).toHaveLength(2);
+  });
+
   it('skips future retries and needs-attention entries unless forced', async () => {
     const setup = harness([
       entry(ID_A, { nextAttemptAt: NOW + 60_000 }),
@@ -226,6 +338,20 @@ describe('createActivitySynchronizer', () => {
       ID_A,
       ID_B,
     ]);
+  });
+
+  it('does not overtake the oldest retry that is not due', async () => {
+    const setup = harness([
+      entry(ID_A, { nextAttemptAt: NOW + 60_000 }),
+      entry(ID_B, {
+        createdAt: '2026-07-26T01:30:00.000Z',
+        nextAttemptAt: 0,
+      }),
+    ]);
+
+    await setup.synchronizer.drain(OWNER_A);
+
+    expect(setup.upload).not.toHaveBeenCalled();
   });
 
   it('schedules a network retry and stops to preserve queue order', async () => {
@@ -247,6 +373,47 @@ describe('createActivitySynchronizer', () => {
     );
     expect(setup.remove).not.toHaveBeenCalled();
   });
+
+  it.each<[UploadErrorCategory, boolean, string]>([
+    [
+      'network',
+      true,
+      'Check your internet connection and try again.',
+    ],
+    ['auth', false, 'Sign in to upload this activity.'],
+    [
+      'server',
+      true,
+      'The activity service is temporarily unavailable.',
+    ],
+    [
+      'validation',
+      false,
+      'This activity needs review before it can upload.',
+    ],
+    ['storage', false, 'Offline activity storage failed.'],
+  ])(
+    'persists only approved %s failure copy',
+    async (category, transient, expectedMessage) => {
+      const setup = harness([entry(ID_A)]);
+      const secret =
+        'Bearer secret-token https://private.example/path?token=secret';
+      setup.upload.mockRejectedValueOnce(
+        uploadError(category, transient, secret),
+      );
+
+      await setup.synchronizer.drain(OWNER_A);
+
+      const failurePatch = setup.patch.mock.calls.at(-1)?.[2];
+      expect(failurePatch?.lastError).toEqual({
+        category,
+        message: expectedMessage,
+      });
+      expect(JSON.stringify(failurePatch)).not.toContain('secret');
+      expect(JSON.stringify(failurePatch)).not.toContain('http');
+      expect(JSON.stringify(failurePatch)).not.toContain('Bearer');
+    },
+  );
 
   it('marks an auth failure as needing sign-in and stops', async () => {
     const setup = harness([entry(ID_A), entry(ID_B)]);
@@ -390,6 +557,45 @@ describe('createActivitySynchronizer', () => {
 
     expect(setup.list).toHaveBeenCalledTimes(2);
     expect(setup.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets after a rerun failure and lets a queued owner continue', async () => {
+    const setup = harness([
+      entry(ID_A, { ownerId: OWNER_A }),
+      entry(ID_B, { ownerId: OWNER_B }),
+    ]);
+    const uploadStarted = deferred<void>();
+    const releaseUpload = deferred<string>();
+    setup.upload.mockImplementationOnce(async () => {
+      uploadStarted.resolve();
+      return releaseUpload.promise;
+    });
+    let ownerALists = 0;
+    setup.list.mockImplementation(async (ownerId) => {
+      if (ownerId === OWNER_A) {
+        ownerALists += 1;
+        if (ownerALists === 2) throw new Error('Storage unavailable');
+      }
+      return [...setup.records.values()]
+        .filter((item) => item.ownerId === ownerId)
+        .map((item) => structuredClone(item));
+    });
+
+    const ownerA = setup.synchronizer.drain(OWNER_A);
+    await uploadStarted.promise;
+    expect(setup.synchronizer.drain(OWNER_A)).toBe(ownerA);
+    const ownerB = setup.synchronizer.drain(OWNER_B);
+    releaseUpload.resolve(ID_A);
+
+    await expect(ownerA).rejects.toEqual(
+      expect.objectContaining({ category: 'storage' }),
+    );
+    await expect(ownerB).resolves.toBeUndefined();
+    await expect(setup.synchronizer.drain(OWNER_A)).resolves.toBeUndefined();
+    expect(setup.upload.mock.calls.map(([item]) => item.ownerId)).toEqual([
+      OWNER_A,
+      OWNER_B,
+    ]);
   });
 
   it('rejects non-canonical and cross-owner queue input before upload', async () => {
