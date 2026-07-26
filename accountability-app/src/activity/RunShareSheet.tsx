@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from 'react';
 import {
   Alert,
   BackHandler,
@@ -60,6 +67,13 @@ import {
   runSyncPresentation,
 } from './runCompletion';
 import type { UploadStatus } from './offlineQueueTypes';
+import type { BeautyCameraProps } from './beauty/BeautyCamera.native';
+import {
+  BeautyEditor,
+  type BeautyEditorRenderResult,
+} from './beauty/BeautyEditor';
+import type { BeautyCaptureSource } from './beauty/cameraMode';
+import { DEFAULT_BEAUTY } from './beauty/types';
 
 const LIME = '#c6f24e';
 
@@ -92,6 +106,7 @@ type RunFeedOperationMetadata = {
 /** Full-screen overlay shown after Stop & Save — turn the run into a shareable card. */
 type RunEditorSafeCloserDependencies = {
   takeStaged: () => { id: string } | null;
+  takeProcessedPhoto?: () => { id: string } | null;
   release: (id: string, owner: 'editor') => Promise<void>;
   clearLocal: () => void;
   onClose: () => void;
@@ -99,6 +114,7 @@ type RunEditorSafeCloserDependencies = {
 
 export function createRunEditorSafeCloser({
   takeStaged,
+  takeProcessedPhoto = () => null,
   release,
   clearLocal,
   onClose,
@@ -107,9 +123,14 @@ export function createRunEditorSafeCloser({
   return () => {
     if (closing) return closing;
     const staged = takeStaged();
+    const processedPhoto = takeProcessedPhoto();
     clearLocal();
     closing = (async () => {
-      if (staged) await release(staged.id, 'editor').catch(() => {});
+      await Promise.all(
+        [staged, processedPhoto]
+          .filter((item): item is { id: string } => item !== null)
+          .map((item) => release(item.id, 'editor').catch(() => {})),
+      );
       onClose();
     })();
     return closing;
@@ -148,19 +169,31 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
   const [activeDestination, setActiveDestination] = useState<RunMediaDestination | null>(null);
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
+  const [beautyStage, setBeautyStage] = useState<'camera' | 'editor' | null>(
+    null,
+  );
+  const [beautySource, setBeautySource] =
+    useState<BeautyCaptureSource | null>(null);
   const cardRef = useRef<View>(null);
   const stagedMedia = useRef<RunMediaCacheItem | null>(null);
+  const processedPhotoMedia = useRef<RunMediaCacheItem | null>(null);
   const renderGeneration = useRef(0);
   const feedOperation = useRef<FeedOperationContext<RunFeedOperationMetadata> | null>(null);
   const hasPersistentDestination = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const currentOwnerToken = useCallback(() => currentOwnerRef.current, []);
   const safeCloseRef = useRef<(() => Promise<void>) | null>(null);
   if (!safeCloseRef.current) {
     safeCloseRef.current = createRunEditorSafeCloser({
       takeStaged: () => {
         const item = stagedMedia.current;
         stagedMedia.current = null;
+        return item;
+      },
+      takeProcessedPhoto: () => {
+        const item = processedPhotoMedia.current;
+        processedPhotoMedia.current = null;
         return item;
       },
       release: runMediaCache.release,
@@ -178,6 +211,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         setMediaFit('cover');
         setAudience('buddies');
         setShowEnds(false);
+        setBeautyStage(null);
+        setBeautySource(null);
       },
       onClose: () => onCloseRef.current(),
     });
@@ -255,6 +290,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     if (staged) {
       void runMediaCache.release(staged.id, 'editor').catch(() => {});
     }
+    const processedPhoto = processedPhotoMedia.current;
+    processedPhotoMedia.current = null;
+    if (processedPhoto) {
+      void runMediaCache
+        .release(processedPhoto.id, 'editor')
+        .catch(() => {});
+    }
     feedOperation.current = null;
     hasPersistentDestination.current = false;
     setActiveDestination(null);
@@ -263,6 +305,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     setOriginalRatio(null);
     setMode('map');
     setShowEnds(false);
+    setBeautyStage(null);
+    setBeautySource(null);
   }, [ownerMatches]);
 
   // size the 4:5 card to fit BOTH the width and the space left after the
@@ -308,7 +352,70 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     `🏃 ${run.title} · ${formatKm(run.distance)} km in ${formatDurationLong(run.elapsed)} ` +
     `· ${formatPace(run.distance, run.elapsed)} /km`;
 
+  function invalidateStagedBeautyExport(): void {
+    renderGeneration.current += 1;
+    const stale = stagedMedia.current;
+    stagedMedia.current = null;
+    if (stale) {
+      void runMediaCache.release(stale.id, 'editor').catch(() => {});
+    }
+  }
+
+  function openBeautyCamera(): void {
+    ownerBoundary().assertOwned();
+    setBeautySource(null);
+    setBeautyStage('camera');
+  }
+
+  async function acceptBeautyCapture(
+    source: BeautyCaptureSource,
+  ): Promise<void> {
+    ownerBoundary().assertOwned();
+    setBeautySource(source);
+    setBeautyStage('editor');
+  }
+
+  async function acceptProcessedBeautyPhoto(
+    source: BeautyCaptureSource,
+    processed: BeautyEditorRenderResult,
+  ): Promise<void> {
+    const boundary = ownerBoundary();
+    boundary.assertOwned();
+    const previous = processedPhotoMedia.current;
+    processedPhotoMedia.current = processed.cacheItemId
+      ? { id: processed.cacheItemId, uri: processed.uri }
+      : null;
+    setPhotoUri(processed.uri);
+    setOriginalRatio(
+      source.imageSize.width > 0 && source.imageSize.height > 0
+        ? source.imageSize.width / source.imageSize.height
+        : null,
+    );
+    setPhotoKind('selfie');
+    setMode('photo');
+    setBeautyStage(null);
+    setBeautySource(null);
+    invalidateStagedBeautyExport();
+    await Promise.resolve();
+    boundary.assertOwned();
+    if (previous && previous.id !== processed.cacheItemId) {
+      await runMediaCache.release(previous.id, 'editor').catch(() => {});
+    }
+  }
+
+  function releaseProcessedPhotoAfterReplacement(): void {
+    const previous = processedPhotoMedia.current;
+    processedPhotoMedia.current = null;
+    if (previous) {
+      void runMediaCache.release(previous.id, 'editor').catch(() => {});
+    }
+  }
+
   async function addPhoto(kind: 'selfie' | 'place') {
+    if (kind === 'selfie') {
+      openBeautyCamera();
+      return;
+    }
     const boundary = ownerBoundary();
     boundary.assertOwned();
     try {
@@ -316,7 +423,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.85,
-        cameraType: kind === 'selfie' ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+        cameraType: ImagePicker.CameraType.back,
       };
       let res: ImagePicker.ImagePickerResult;
       // web has no camera and needs the picker to open synchronously (an
@@ -338,6 +445,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         setOriginalRatio(asset.width && asset.height ? asset.width / asset.height : null);
         setPhotoKind(kind);
         setMode('photo');
+        releaseProcessedPhotoAfterReplacement();
       }
     } catch {
       try {
@@ -589,6 +697,61 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     );
   }
 
+  if (beautyStage === 'camera') {
+    return (
+      <View style={styles.beautyOverlay}>
+        <View style={styles.beautyCameraHeader}>
+          <Pressable
+            accessibilityLabel="Cancel selfie"
+            accessibilityRole="button"
+            onPress={() => {
+              setBeautyStage(null);
+              setBeautySource(null);
+            }}
+            style={styles.beautyCancel}
+          >
+            <Text style={styles.beautyCancelText}>Cancel</Text>
+          </Pressable>
+          <Text accessibilityRole="header" style={styles.headerTitle}>
+            Take a selfie
+          </Text>
+          <View style={styles.beautyHeaderSpacer} />
+        </View>
+        <View style={styles.beautyCamera}>
+          <PlatformBeautyCamera
+            settings={{ ...DEFAULT_BEAUTY }}
+            onCapture={acceptBeautyCapture}
+            onError={(error: Error) =>
+              Alert.alert(
+                'Camera unavailable',
+                error.message ||
+                  'Try again, or use Photo to choose from your gallery.',
+              )
+            }
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (beautyStage === 'editor' && beautySource) {
+    return (
+      <BeautyEditor
+        source={beautySource}
+        ownerToken={run.ownerId!}
+        currentOwnerToken={currentOwnerToken}
+        onDone={(processed) =>
+          acceptProcessedBeautyPhoto(beautySource, processed)
+        }
+        onRetake={() => {
+          setBeautySource(null);
+          setBeautyStage('camera');
+        }}
+        onSettingsChange={invalidateStagedBeautyExport}
+      />
+    );
+  }
+
   return (
     <View style={styles.overlay}>
       <View style={styles.header}>
@@ -712,6 +875,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             setPhotoUri(null);
             setPhotoKind(null);
             setMode('map');
+            releaseProcessedPhotoAfterReplacement();
           }}
           disabled={busy}
         />
@@ -778,7 +942,45 @@ function ModeBtn({
   );
 }
 
+function PlatformBeautyCamera(props: BeautyCameraProps) {
+  // Kept lazy so pure RunShareSheet helper tests never initialize native camera
+  // modules. Metro resolves this path to .native or .web for the app bundle.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const CameraComponent = (
+    require('./beauty/BeautyCamera') as {
+      BeautyCamera: ComponentType<BeautyCameraProps>;
+    }
+  ).BeautyCamera;
+  return <CameraComponent {...props} />;
+}
+
 const styles = StyleSheet.create({
+  beautyOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#0b0e14',
+    paddingTop: 42,
+    zIndex: 30,
+  },
+  beautyCameraHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 54,
+    paddingHorizontal: 16,
+  },
+  beautyCancel: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 72,
+  },
+  beautyCancelText: {
+    color: '#e2e8f0',
+    fontFamily: font.bold,
+    fontSize: 14,
+  },
+  beautyHeaderSpacer: { minHeight: 44, minWidth: 72 },
+  beautyCamera: { flex: 1 },
   overlay: {
     position: 'absolute',
     top: 0,
