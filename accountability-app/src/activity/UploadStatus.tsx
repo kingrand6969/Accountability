@@ -155,6 +155,33 @@ export function uploadIssueCopy(count: number) {
   };
 }
 
+export const ACTIVITY_UPLOAD_PREVIEW_LIMIT = 8;
+
+export function activityUploadsPreview(
+  queued: readonly QueuedActivity[],
+): {
+  items: QueuedActivity[];
+  remainingCount: number;
+} {
+  const ordered = [...queued].sort((left, right) => {
+    const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
+    return byCreatedAt !== 0
+      ? byCreatedAt
+      : left.id.localeCompare(right.id);
+  });
+  return {
+    items: ordered.slice(0, ACTIVITY_UPLOAD_PREVIEW_LIMIT),
+    remainingCount: Math.max(
+      0,
+      ordered.length - ACTIVITY_UPLOAD_PREVIEW_LIMIT,
+    ),
+  };
+}
+
+export function remainingUploadsCopy(count: number): string {
+  return `${Math.max(0, Math.floor(count))} more uploads will continue automatically`;
+}
+
 export function shouldShowUploadsPanel({
   queuedCount,
   issueCount,
@@ -261,6 +288,7 @@ export function ActivityUploadsPanel({
   const [retrying, setRetrying] = useState(false);
   const retryingRef = useRef(false);
   const retryCopy = retryButtonCopy(retrying);
+  const preview = activityUploadsPreview(queued);
   const hasCurrentOwnerUploads = queued.length > 0;
   const hasAggregateItems =
     issueCount > 0 || otherAccountPendingCount > 0;
@@ -344,7 +372,7 @@ export function ActivityUploadsPanel({
         </Text>
       ) : null}
 
-      {queued.map((entry) => {
+      {preview.items.map((entry) => {
         const summary = safeQueuedActivitySummary(entry);
         return (
           <View key={entry.id} style={styles.uploadRow}>
@@ -361,6 +389,27 @@ export function ActivityUploadsPanel({
           </View>
         );
       })}
+
+      {preview.remainingCount > 0 ? (
+        <View
+          accessible
+          role="status"
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={remainingUploadsCopy(
+            preview.remainingCount,
+          )}
+          style={styles.remainingNotice}
+        >
+          <Ionicons
+            name="ellipsis-horizontal-circle-outline"
+            size={19}
+            color={colors.primary}
+          />
+          <Text style={styles.remainingText}>
+            {remainingUploadsCopy(preview.remainingCount)}
+          </Text>
+        </View>
+      ) : null}
 
       {otherAccountPendingCount > 0 ? (
         <AggregateNotice
@@ -539,6 +588,24 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: font.regular,
     fontSize: 12,
+  },
+  remainingNotice: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  remainingText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontFamily: font.semibold,
+    fontSize: 12.5,
   },
   aggregateNotice: {
     minHeight: 52,

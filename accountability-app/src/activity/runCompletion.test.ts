@@ -4,6 +4,7 @@ import { ActivityUploadError } from './activityUpload';
 import {
   completeRecordedActivity,
   acquireSynchronousLock,
+  createDurableCompletionController,
   createOwnerBoundary,
   recordingDetailView,
   recordingTypeView,
@@ -60,6 +61,16 @@ const OWNER_A = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const OWNER_B = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 const ACTIVITY_ID = '11111111-1111-4111-8111-111111111111';
 const STARTED_AT = '2026-07-26T01:00:00.000Z';
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 function pending(): PendingRecordedActivity {
   return {
@@ -196,6 +207,141 @@ describe('completeRecordedActivity', () => {
       recording.activity,
       ACTIVITY_ID,
     );
+  });
+});
+
+describe('createDurableCompletionController', () => {
+  it('confirms the exact queued ID and status only after completion resolves', async () => {
+    const enqueue = deferred<QueuedActivity>();
+    const onConfirm = jest.fn();
+    const controller = createDurableCompletionController({
+      enqueueActivity: () => enqueue.promise,
+      clearRecording: async () => undefined,
+      onConfirm,
+      onReset: jest.fn(),
+    });
+
+    const completion = controller.complete(pending());
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    enqueue.resolve(queued(pending(), 'waiting_network'));
+    await expect(completion).resolves.toMatchObject({
+      id: ACTIVITY_ID,
+      status: 'waiting_network',
+    });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm).toHaveBeenCalledWith({
+      activityId: ACTIVITY_ID,
+      status: 'waiting_network',
+    });
+  });
+
+  it('never confirms when durable completion rejects', async () => {
+    const enqueue = deferred<QueuedActivity>();
+    const onConfirm = jest.fn();
+    const controller = createDurableCompletionController({
+      enqueueActivity: () => enqueue.promise,
+      clearRecording: async () => undefined,
+      onConfirm,
+      onReset: jest.fn(),
+    });
+    const completion = controller.complete(pending());
+
+    enqueue.reject(new Error('queue unavailable'));
+
+    await expect(completion).rejects.toThrow('queue unavailable');
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('shares a rapid retry with the one in-flight completion call', async () => {
+    const enqueue = deferred<QueuedActivity>();
+    const enqueueActivity = jest.fn(() => enqueue.promise);
+    const onConfirm = jest.fn();
+    const controller = createDurableCompletionController({
+      enqueueActivity,
+      clearRecording: async () => undefined,
+      onConfirm,
+      onReset: jest.fn(),
+    });
+
+    const first = controller.complete(pending());
+    const retry = controller.complete(pending());
+
+    expect(retry).toBe(first);
+    expect(enqueueActivity).toHaveBeenCalledTimes(1);
+
+    enqueue.resolve(queued());
+    await Promise.all([first, retry]);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('reset clears confirmation and prevents the superseded completion from confirming late', async () => {
+    const enqueue = deferred<QueuedActivity>();
+    let confirmation: {
+      activityId: string;
+      status: QueuedActivity['status'];
+    } | null = {
+      activityId: ACTIVITY_ID,
+      status: 'saved',
+    };
+    const resetReasons: string[] = [];
+    const controller = createDurableCompletionController({
+      enqueueActivity: () => enqueue.promise,
+      clearRecording: async () => undefined,
+      onConfirm: (value) => {
+        confirmation = value;
+      },
+      onReset: (reason) => {
+        confirmation = null;
+        resetReasons.push(reason);
+      },
+    });
+    const completion = controller.complete(pending());
+
+    controller.reset('recovery');
+    expect(confirmation).toBeNull();
+
+    enqueue.resolve(queued());
+    await completion;
+    expect(confirmation).toBeNull();
+
+    for (const reason of [
+      'new_recording',
+      'stop',
+      'discard',
+      'auth_owner_change',
+      'current_run_cleared',
+    ] as const) {
+      controller.reset(reason);
+    }
+    expect(resetReasons).toEqual([
+      'recovery',
+      'new_recording',
+      'stop',
+      'discard',
+      'auth_owner_change',
+      'current_run_cleared',
+    ]);
+  });
+
+  it('dispose prevents a late callback without creating an unhandled rejection', async () => {
+    const enqueue = deferred<QueuedActivity>();
+    const onConfirm = jest.fn();
+    const controller = createDurableCompletionController({
+      enqueueActivity: () => enqueue.promise,
+      clearRecording: async () => undefined,
+      onConfirm,
+      onReset: jest.fn(),
+    });
+    const completion = controller.complete(pending());
+
+    controller.dispose();
+    enqueue.resolve(queued());
+
+    await expect(completion).resolves.toMatchObject({
+      id: ACTIVITY_ID,
+    });
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });
 

@@ -1,15 +1,94 @@
 import { describe, expect, it, test } from '@jest/globals';
 import type { QueuedActivity, UploadStatus } from './offlineQueueTypes';
 import {
+  activityUploadsPreview,
   activityUploadBadgeStatus,
   OTHER_ACCOUNT_UPLOADS_TITLE,
   otherAccountUploadCopy,
+  remainingUploadsCopy,
   retryButtonCopy,
   safeQueuedActivitySummary,
   shouldShowUploadsPanel,
   uploadIssueCopy,
   uploadStatusCopy,
 } from './UploadStatus';
+
+function previewEntry(index: number): QueuedActivity {
+  const suffix = String(index).padStart(12, '0');
+  return {
+    schema: 1,
+    id: `11111111-1111-4111-8111-${suffix}`,
+    ownerId: '22222222-2222-4222-8222-222222222222',
+    activity: {
+      type: 'run',
+      distance_m: index,
+      duration_s: 60,
+      route: [],
+      started_at: new Date(index * 1_000).toISOString(),
+    },
+    createdAt: new Date(index * 1_000).toISOString(),
+    status: 'saved',
+    attemptCount: 0,
+    nextAttemptAt: 0,
+    lastError: null,
+  };
+}
+
+describe('activity uploads preview model', () => {
+  it('renders no rows or remainder for an empty queue', () => {
+    expect(activityUploadsPreview([])).toEqual({
+      items: [],
+      remainingCount: 0,
+    });
+  });
+
+  it('renders all eight rows at the preview limit', () => {
+    const queued = Array.from({ length: 8 }, (_, index) =>
+      previewEntry(index),
+    );
+
+    expect(activityUploadsPreview(queued)).toEqual({
+      items: queued,
+      remainingCount: 0,
+    });
+  });
+
+  it('caps nine rows at eight and reports the exact remainder', () => {
+    const queued = Array.from({ length: 9 }, (_, index) =>
+      previewEntry(8 - index),
+    );
+    const preview = activityUploadsPreview(queued);
+
+    expect(preview.items).toHaveLength(8);
+    expect(
+      preview.items.map((entry) => entry.createdAt),
+    ).toEqual(
+      [...queued]
+        .sort((left, right) =>
+          left.createdAt.localeCompare(right.createdAt),
+        )
+        .slice(0, 8)
+        .map((entry) => entry.createdAt),
+    );
+    expect(preview.remainingCount).toBe(1);
+    expect(remainingUploadsCopy(preview.remainingCount)).toBe(
+      '1 more uploads will continue automatically',
+    );
+  });
+
+  it('never renders more than eight rows for thousands of uploads', () => {
+    const queued = Array.from({ length: 3_257 }, (_, index) =>
+      previewEntry(index),
+    );
+    const preview = activityUploadsPreview(queued);
+
+    expect(preview.items).toHaveLength(8);
+    expect(preview.remainingCount).toBe(3_249);
+    expect(remainingUploadsCopy(preview.remainingCount)).toBe(
+      '3249 more uploads will continue automatically',
+    );
+  });
+});
 
 describe('durable queue confirmation badge', () => {
   const activityId = '11111111-1111-4111-8111-111111111111';

@@ -29,7 +29,6 @@ import { RunShareSheet, type FinishedRun } from '../../activity/RunShareSheet';
 import {
   ActivityUploadBadge,
   activityUploadBadgeStatus,
-  type DurableQueueConfirmation,
 } from '../../activity/UploadStatus';
 import {
   beginTrackRecording,
@@ -49,12 +48,14 @@ import {
 import { type ActivityType } from '../../activity/api';
 import { enqueueActivity } from '../../activity/offlineQueueStore';
 import {
-  completeRecordedActivity,
   acquireSynchronousLock,
+  createDurableCompletionController,
   recordingDetailView,
   recordingTypeView,
   releaseSynchronousLock,
   shouldApplyOwnerAsyncResult,
+  type DurableCompletionController,
+  type DurableQueueConfirmation,
   type RecordingRecoveryReadState,
   type PendingRecordedActivity,
 } from '../../activity/runCompletion';
@@ -140,6 +141,20 @@ export default function ActivityTrack() {
   const [shareRun, setShareRun] = useState<FinishedRun | null>(null);
   const [durableQueueConfirmation, setDurableQueueConfirmation] =
     useState<DurableQueueConfirmation | null>(null);
+  const completionControllerRef =
+    useRef<DurableCompletionController | null>(null);
+  const getCompletionController = useCallback(() => {
+    if (!completionControllerRef.current) {
+      completionControllerRef.current =
+        createDurableCompletionController({
+          enqueueActivity,
+          clearRecording: clearTrackRecording,
+          onConfirm: setDurableQueueConfirmation,
+          onReset: () => setDurableQueueConfirmation(null),
+        });
+    }
+    return completionControllerRef.current;
+  }, []);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<string>('');
@@ -148,6 +163,9 @@ export default function ActivityTrack() {
   const startingRef = useRef(false);
   const avatarRevisionRef = useRef(0);
   const authOwnerRef = useRef<string | null>(session?.user.id ?? null);
+  const completionOwnerRef = useRef<string | null>(
+    session?.user.id ?? null,
+  );
   authOwnerRef.current = session?.user.id ?? null;
   const pulse = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<OsmMapHandle>(null);
@@ -209,13 +227,24 @@ export default function ActivityTrack() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      completionControllerRef.current?.dispose();
+      completionControllerRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     if (authLoading) return;
+    const ownerId = session?.user.id ?? null;
+    if (completionOwnerRef.current !== ownerId) {
+      getCompletionController().reset('auth_owner_change');
+      completionOwnerRef.current = ownerId;
+    }
+  }, [authLoading, getCompletionController, session?.user.id]);
+
+  useEffect(() => {
+    if (authLoading) return;
     let active = true;
-    setDurableQueueConfirmation(null);
+    getCompletionController().reset('recovery');
     setRecoveryReadState('checking');
     void recoverTrackRecording(session?.user.id ?? null, 'run')
       .then(async (recovery) => {
@@ -238,7 +267,7 @@ export default function ActivityTrack() {
     return () => {
       active = false;
     };
-  }, [authLoading, session?.user.id]);
+  }, [authLoading, getCompletionController, session?.user.id]);
 
   // hide the floating tab bar while actually recording or sharing, so the run
   // stays immersive; show it (highlighted) in the idle pre-start state
@@ -281,7 +310,7 @@ export default function ActivityTrack() {
   function restorePausedRecovery(
     recovery: Extract<TrackRecordingRecovery, { kind: 'active' }>,
   ) {
-    setDurableQueueConfirmation(null);
+    getCompletionController().reset('recovery');
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     recordingRef.current = {
@@ -300,7 +329,7 @@ export default function ActivityTrack() {
   }
 
   function restoreRecovery(recovery: TrackRecordingRecovery) {
-    setDurableQueueConfirmation(null);
+    getCompletionController().reset('recovery');
     setRecoveryReadState('ready');
     if (recovery.kind === 'legacy_unclaimed') {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -432,7 +461,7 @@ export default function ActivityTrack() {
 
   async function onStart() {
     if (!acquireSynchronousLock(startingRef)) return;
-    setDurableQueueConfirmation(null);
+    getCompletionController().reset('new_recording');
     setStarting(true);
     try {
     hapticImpact();
@@ -530,14 +559,7 @@ export default function ActivityTrack() {
     setSaving(true);
     try {
       await persistCompletedTrackRecording(p);
-      const queued = await completeRecordedActivity(p, {
-        enqueueActivity,
-        clearRecording: clearTrackRecording,
-      });
-      setDurableQueueConfirmation({
-        activityId: queued.id,
-        status: queued.status,
-      });
+      const queued = await getCompletionController().complete(p);
       setPending(null);
       recordingRef.current = null;
       setDetailOwnerId(null);
@@ -564,7 +586,7 @@ export default function ActivityTrack() {
   }
 
   async function onStop() {
-    setDurableQueueConfirmation(null);
+    getCompletionController().reset('stop');
     hapticImpact();
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
@@ -615,7 +637,7 @@ export default function ActivityTrack() {
         text: 'Discard',
         style: 'destructive',
         onPress: async () => {
-          setDurableQueueConfirmation(null);
+          getCompletionController().reset('discard');
           setPending(null);
           await resetTrackPoints();
           recordingRef.current = null;
@@ -936,7 +958,7 @@ export default function ActivityTrack() {
         <RunShareSheet
           run={shareRun}
           onClose={() => {
-            setDurableQueueConfirmation(null);
+            getCompletionController().reset('current_run_cleared');
             setShareRun(null);
             router.navigate('/today' as never);
           }}

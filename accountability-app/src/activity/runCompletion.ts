@@ -36,6 +36,95 @@ export async function completeRecordedActivity(
   return queued;
 }
 
+export type DurableQueueConfirmation = {
+  activityId: string;
+  status: UploadStatus;
+};
+
+export type DurableCompletionResetReason =
+  | 'recovery'
+  | 'new_recording'
+  | 'stop'
+  | 'discard'
+  | 'auth_owner_change'
+  | 'current_run_cleared';
+
+export type DurableCompletionController = {
+  complete: (
+    recording: PendingRecordedActivity,
+  ) => Promise<QueuedActivity>;
+  reset: (reason: DurableCompletionResetReason) => void;
+  dispose: () => void;
+};
+
+export function createDurableCompletionController(
+  dependencies: RunCompletionDependencies & {
+    onConfirm: (confirmation: DurableQueueConfirmation) => void;
+    onReset: (reason: DurableCompletionResetReason) => void;
+  },
+): DurableCompletionController {
+  let disposed = false;
+  let revision = 0;
+  let inFlight: {
+    activityId: string;
+    promise: Promise<QueuedActivity>;
+  } | null = null;
+
+  const complete = (
+    recording: PendingRecordedActivity,
+  ): Promise<QueuedActivity> => {
+    if (disposed) {
+      return Promise.reject(
+        new Error('Durable completion controller is disposed.'),
+      );
+    }
+    if (inFlight) {
+      if (inFlight.activityId === recording.activityId) {
+        return inFlight.promise;
+      }
+      return Promise.reject(
+        new Error('Another activity completion is already in progress.'),
+      );
+    }
+
+    const expectedRevision = revision;
+    const promise = completeRecordedActivity(recording, dependencies)
+      .then((queued) => {
+        if (!disposed && revision === expectedRevision) {
+          dependencies.onConfirm({
+            activityId: queued.id,
+            status: queued.status,
+          });
+        }
+        return queued;
+      })
+      .finally(() => {
+        if (inFlight?.promise === promise) {
+          inFlight = null;
+        }
+      });
+    inFlight = {
+      activityId: recording.activityId,
+      promise,
+    };
+    return promise;
+  };
+
+  return {
+    complete,
+    reset: (reason) => {
+      if (disposed) return;
+      revision += 1;
+      dependencies.onReset(reason);
+    },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      revision += 1;
+    },
+  };
+}
+
 export type RunSyncPresentation = {
   queued: boolean;
   status: UploadStatus | null;
