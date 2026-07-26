@@ -63,6 +63,25 @@ export function uploadStatusCopy(status: UploadStatus): UploadStatusCopy {
   return STATUS_COPY[status];
 }
 
+export type DurableQueueConfirmation = {
+  activityId: string;
+  status: UploadStatus;
+};
+
+export function activityUploadBadgeStatus(
+  currentActivityId: string | null,
+  confirmation: DurableQueueConfirmation | null,
+): UploadStatus | null {
+  if (
+    !currentActivityId ||
+    !confirmation ||
+    confirmation.activityId !== currentActivityId
+  ) {
+    return null;
+  }
+  return confirmation.status;
+}
+
 export type SafeQueuedActivitySummary = {
   type: string;
   localStart: string;

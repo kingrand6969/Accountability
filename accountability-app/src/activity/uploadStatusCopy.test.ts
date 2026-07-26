@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from '@jest/globals';
 import type { QueuedActivity, UploadStatus } from './offlineQueueTypes';
 import {
+  activityUploadBadgeStatus,
   OTHER_ACCOUNT_UPLOADS_TITLE,
   otherAccountUploadCopy,
   retryButtonCopy,
@@ -9,6 +10,63 @@ import {
   uploadIssueCopy,
   uploadStatusCopy,
 } from './UploadStatus';
+
+describe('durable queue confirmation badge', () => {
+  const activityId = '11111111-1111-4111-8111-111111111111';
+
+  it('does not infer a badge before persistence starts', () => {
+    expect(
+      activityUploadBadgeStatus(activityId, null),
+    ).toBeNull();
+  });
+
+  it('keeps the badge absent when enqueue rejects', async () => {
+    let confirmation: {
+      activityId: string;
+      status: UploadStatus;
+    } | null = null;
+
+    await Promise.reject(new Error('queue storage failed')).catch(
+      () => undefined,
+    );
+
+    expect(activityUploadBadgeStatus(activityId, confirmation)).toBeNull();
+  });
+
+  it('shows the confirmed queue status only after enqueue resolves', async () => {
+    let confirmation: {
+      activityId: string;
+      status: UploadStatus;
+    } | null = null;
+    const queued = await Promise.resolve({
+      activityId,
+      status: 'saved' as const,
+    });
+    confirmation = queued;
+
+    expect(activityUploadBadgeStatus(activityId, confirmation)).toBe(
+      'saved',
+    );
+  });
+
+  it('does not label a restored completed-but-unqueued recording', () => {
+    const restoredCompletedId =
+      '33333333-3333-4333-8333-333333333333';
+
+    expect(
+      activityUploadBadgeStatus(restoredCompletedId, null),
+    ).toBeNull();
+  });
+
+  it('does not reuse confirmation from a different recording', () => {
+    expect(
+      activityUploadBadgeStatus(activityId, {
+        activityId: '44444444-4444-4444-8444-444444444444',
+        status: 'saved',
+      }),
+    ).toBeNull();
+  });
+});
 
 describe('uploadStatusCopy', () => {
   const expected: Record<

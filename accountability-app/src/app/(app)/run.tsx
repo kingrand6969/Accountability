@@ -26,7 +26,11 @@ import {
 } from '../../activity/geo';
 import { OsmMap, type OsmMapHandle } from '../../ui/OsmMap';
 import { RunShareSheet, type FinishedRun } from '../../activity/RunShareSheet';
-import { ActivityUploadBadge } from '../../activity/UploadStatus';
+import {
+  ActivityUploadBadge,
+  activityUploadBadgeStatus,
+  type DurableQueueConfirmation,
+} from '../../activity/UploadStatus';
 import {
   beginTrackRecording,
   claimLegacyTrackRecording,
@@ -134,6 +138,8 @@ export default function ActivityTrack() {
   const [starting, setStarting] = useState(false);
   // shareable run card, shown after a successful save
   const [shareRun, setShareRun] = useState<FinishedRun | null>(null);
+  const [durableQueueConfirmation, setDurableQueueConfirmation] =
+    useState<DurableQueueConfirmation | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<string>('');
@@ -209,6 +215,7 @@ export default function ActivityTrack() {
   useEffect(() => {
     if (authLoading) return;
     let active = true;
+    setDurableQueueConfirmation(null);
     setRecoveryReadState('checking');
     void recoverTrackRecording(session?.user.id ?? null, 'run')
       .then(async (recovery) => {
@@ -274,6 +281,7 @@ export default function ActivityTrack() {
   function restorePausedRecovery(
     recovery: Extract<TrackRecordingRecovery, { kind: 'active' }>,
   ) {
+    setDurableQueueConfirmation(null);
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     recordingRef.current = {
@@ -292,6 +300,7 @@ export default function ActivityTrack() {
   }
 
   function restoreRecovery(recovery: TrackRecordingRecovery) {
+    setDurableQueueConfirmation(null);
     setRecoveryReadState('ready');
     if (recovery.kind === 'legacy_unclaimed') {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -423,6 +432,7 @@ export default function ActivityTrack() {
 
   async function onStart() {
     if (!acquireSynchronousLock(startingRef)) return;
+    setDurableQueueConfirmation(null);
     setStarting(true);
     try {
     hapticImpact();
@@ -524,6 +534,10 @@ export default function ActivityTrack() {
         enqueueActivity,
         clearRecording: clearTrackRecording,
       });
+      setDurableQueueConfirmation({
+        activityId: queued.id,
+        status: queued.status,
+      });
       setPending(null);
       recordingRef.current = null;
       setDetailOwnerId(null);
@@ -550,6 +564,7 @@ export default function ActivityTrack() {
   }
 
   async function onStop() {
+    setDurableQueueConfirmation(null);
     hapticImpact();
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
@@ -600,6 +615,7 @@ export default function ActivityTrack() {
         text: 'Discard',
         style: 'destructive',
         onPress: async () => {
+          setDurableQueueConfirmation(null);
           setPending(null);
           await resetTrackPoints();
           recordingRef.current = null;
@@ -637,6 +653,13 @@ export default function ActivityTrack() {
   const shownPoints = detailView.points;
   const visiblePending = detailView.visible ? pending : null;
   const visibleTracking = detailView.visible && tracking;
+  const confirmedBadgeStatus = activityUploadBadgeStatus(
+    shareRun?.activityId ??
+      visiblePending?.activityId ??
+      recordingRef.current?.activityId ??
+      null,
+    durableQueueConfirmation,
+  );
   const recoveryBlocked =
     recoveryReadState !== 'ready' ||
     recoveryNotice !== null ||
@@ -755,6 +778,10 @@ export default function ActivityTrack() {
 
       {/* floating bottom card */}
       <View
+        accessibilityElementsHidden={!!shareRun}
+        importantForAccessibility={
+          shareRun ? 'no-hide-descendants' : 'auto'
+        }
         style={[
           styles.bottom,
           // lift the controls clear of the floating bar when it's showing
@@ -861,9 +888,9 @@ export default function ActivityTrack() {
           </View>
         ) : null}
 
-        {visiblePending ? (
+        {confirmedBadgeStatus ? (
           <ActivityUploadBadge
-            status="saved"
+            status={confirmedBadgeStatus}
             dark
             style={styles.uploadBadge}
           />
@@ -909,6 +936,7 @@ export default function ActivityTrack() {
         <RunShareSheet
           run={shareRun}
           onClose={() => {
+            setDurableQueueConfirmation(null);
             setShareRun(null);
             router.navigate('/today' as never);
           }}
