@@ -10,7 +10,11 @@ import {
   type DetectedFace,
   type ImageSize,
 } from './BeautyEngine';
-import { buildBeautyShaderUniforms, BEAUTY_RUNTIME_EFFECT } from './beautyShader';
+import {
+  BEAUTY_SHADER_CHILDREN,
+  buildBeautyShaderUniforms,
+  BEAUTY_RUNTIME_EFFECT,
+} from './beautyShader';
 import {
   isFaceSnapshotFresh,
   mapFacesToImage,
@@ -20,11 +24,21 @@ import {
 } from './cameraMode';
 import { normalizeBeautySettings, type BeautySettings } from './types';
 
-export const BEAUTY_RENDER_CHILDREN = Object.freeze([
-  'image',
-  'skinMask',
-  'underEyeMask',
-] as const);
+export const BEAUTY_RENDER_CHILDREN = BEAUTY_SHADER_CHILDREN;
+
+/**
+ * A 4 MP image occupies 16 MB as RGBA. The renderer can hold the decoded
+ * source, two mask surfaces, two mask snapshots, the output surface, and its
+ * snapshot concurrently: 7 * 16 MB = 112 MB. Allowing two 20 MB encoded
+ * source copies plus a 10 MB output keeps the peak under a 176 MB envelope.
+ */
+export const BEAUTY_MEMORY_BUDGET = Object.freeze({
+  maxPixels: 4_000_000,
+  maxDimension: 2_560,
+  maxSourceBytes: 20 * 1024 * 1024,
+  maxOutputBytes: 10 * 1024 * 1024,
+  rgbaBuffers: 7,
+});
 
 export const BEAUTY_RENDER_UNIFORMS = Object.freeze([
   'smoothAmount',
@@ -79,6 +93,19 @@ export type BeautyRenderPlan = Readonly<{
   underEyeMaskFaces: readonly DetectedFace[];
 }>;
 
+type RasterRect = Readonly<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}>;
+
+export type BeautyMaskRasterPlan = Readonly<{
+  skin: readonly RasterRect[];
+  exclusions: readonly RasterRect[];
+  underEyes: readonly RasterRect[];
+}>;
+
 export function buildBeautyRenderPlan(
   faces: readonly DetectedFace[],
 ): BeautyRenderPlan {
@@ -90,6 +117,169 @@ export function buildBeautyRenderPlan(
       (face) => face.leftEye != null || face.rightEye != null,
     ),
   };
+}
+
+export function buildMaskRasterPlan(
+  faces: readonly DetectedFace[],
+): BeautyMaskRasterPlan {
+  const skin: RasterRect[] = [];
+  const exclusions: RasterRect[] = [];
+  const underEyes: RasterRect[] = [];
+  for (const face of faces.slice(0, MAX_BEAUTY_FACES)) {
+    skin.push(face.bounds);
+    addExclusion(exclusions, face.leftEye, face.bounds.width * 0.13);
+    addExclusion(exclusions, face.rightEye, face.bounds.width * 0.13);
+    addExclusion(exclusions, face.leftEyebrow, face.bounds.width * 0.14);
+    addExclusion(exclusions, face.rightEyebrow, face.bounds.width * 0.14);
+    addExclusion(exclusions, face.mouth, face.bounds.width * 0.18);
+    exclusions.push(...(face.facialHair ?? []));
+
+    const eyeWidth = face.bounds.width * 0.22;
+    const eyeHeight = face.bounds.height * 0.1;
+    for (const eye of [face.leftEye, face.rightEye]) {
+      if (!eye) continue;
+      underEyes.push({
+        x: eye.x - eyeWidth / 2,
+        y: eye.y + eyeHeight * 0.15,
+        width: eyeWidth,
+        height: eyeHeight,
+      });
+    }
+  }
+  return { skin, exclusions, underEyes };
+}
+
+export function estimateBeautyWorkingBytes(pixelCount: number): number {
+  if (!Number.isFinite(pixelCount) || pixelCount < 0) return 0;
+  return Math.ceil(pixelCount) * 4 * BEAUTY_MEMORY_BUDGET.rgbaBuffers;
+}
+
+export function planBeautyResize(size: ImageSize): ImageSize | null {
+  if (!validImageSize(size)) {
+    throw new Error('The photo dimensions are invalid.');
+  }
+  const dimensionScale =
+    BEAUTY_MEMORY_BUDGET.maxDimension / Math.max(size.width, size.height);
+  const pixelScale = Math.sqrt(
+    BEAUTY_MEMORY_BUDGET.maxPixels / (size.width * size.height),
+  );
+  const scale = Math.min(1, dimensionScale, pixelScale);
+  if (scale >= 1) return null;
+  return {
+    width: Math.max(1, Math.floor(size.width * scale)),
+    height: Math.max(1, Math.floor(size.height * scale)),
+  };
+}
+
+export function assertBeautySourceBytes(bytes: number): void {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    throw new Error('The photo size could not be verified safely.');
+  }
+  if (bytes > BEAUTY_MEMORY_BUDGET.maxSourceBytes) {
+    throw new Error('This photo is too large for safe beauty rendering.');
+  }
+}
+
+export function assertBeautyOutputBytes(bytes: number): void {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    throw new Error('The rendered photo size could not be verified safely.');
+  }
+  if (bytes > BEAUTY_MEMORY_BUDGET.maxOutputBytes) {
+    throw new Error('The rendered photo is too large to save safely.');
+  }
+}
+
+export function createBeautyResourceScope() {
+  const resources: { dispose(): void }[] = [];
+  return {
+    track<T extends { dispose(): void } | null>(resource: T): T {
+      if (resource) resources.push(resource);
+      return resource;
+    },
+    dispose(): void {
+      while (resources.length > 0) disposeQuietly(resources.pop());
+    },
+  };
+}
+
+export async function commitBeautyOutput(input: Readonly<{
+  outputUri: string;
+  encodedBytes: Uint8Array;
+  signal?: AbortSignal;
+  write(bytes: Uint8Array): void | Promise<void>;
+  register(uri: string): Promise<{ id: string; uri: string }>;
+  releaseRegistered(id: string): void | Promise<void>;
+  deleteOutput(uri: string): void | Promise<void>;
+}>): Promise<{ id: string; uri: string }> {
+  assertBeautyOutputBytes(input.encodedBytes.byteLength);
+  throwIfAborted(input.signal);
+  let writeAttempted = false;
+  let registered: { id: string; uri: string } | null = null;
+  try {
+    writeAttempted = true;
+    await input.write(input.encodedBytes);
+    throwIfAborted(input.signal);
+    registered = await input.register(input.outputUri);
+    throwIfAborted(input.signal);
+    return registered;
+  } catch (error) {
+    if (registered) {
+      try {
+        await input.releaseRegistered(registered.id);
+      } catch {
+        // The managed cache keeps a failed release tracked for retry.
+      }
+    } else if (writeAttempted) {
+      try {
+        await input.deleteOutput(input.outputUri);
+      } catch {
+        // Managed cache cleanup can retry an operation-owned orphan later.
+      }
+    }
+    throw error;
+  }
+}
+
+function addExclusion(
+  exclusions: RasterRect[],
+  point: DetectedFace['leftEye'],
+  radius: number,
+): void {
+  if (!point) return;
+  exclusions.push({
+    x: point.x - radius,
+    y: point.y - radius * 0.6,
+    width: radius * 2,
+    height: radius * 1.2,
+  });
+}
+
+function validImageSize(size: ImageSize): boolean {
+  return (
+    Number.isFinite(size.width) &&
+    Number.isFinite(size.height) &&
+    size.width > 0 &&
+    size.height > 0
+  );
+}
+
+function requireVerifiedFileSize(size: number | null): number {
+  if (size === null) {
+    throw new Error('The photo size could not be verified safely.');
+  }
+  return size;
+}
+
+function assertNormalizedImage(size: ImageSize, bytes: number): void {
+  assertBeautySourceBytes(bytes);
+  if (
+    !validImageSize(size) ||
+    size.width > BEAUTY_MEMORY_BUDGET.maxDimension ||
+    size.height > BEAUTY_MEMORY_BUDGET.maxDimension ||
+    size.width * size.height > BEAUTY_MEMORY_BUDGET.maxPixels
+  ) {
+    throw new Error('The normalized photo exceeds the safe render budget.');
+  }
 }
 
 export function createBeautyOutputUri(
@@ -112,6 +302,7 @@ export async function renderBeautyImage(
     require('expo-file-system') as typeof import('expo-file-system');
   const { manipulateAsync, SaveFormat } =
     require('expo-image-manipulator') as typeof import('expo-image-manipulator');
+  const { Image } = require('react-native') as typeof import('react-native');
   const {
     BlendMode,
     BlurStyle,
@@ -127,18 +318,18 @@ export async function renderBeautyImage(
 
   throwIfAborted(input.signal);
   const sourceUri = requireLocalSourceUri(input.sourceUri);
-  const normalized = await manipulateAsync(sourceUri, [], {
-    compress: 1,
-    format: SaveFormat.JPEG,
-  });
-  const normalizedFile = new File(normalized.uri);
-  const outputDirectory = new Directory(Paths.cache, 'run-share');
-  outputDirectory.create({ idempotent: true, intermediates: true });
-  const outputFile = new File(
-    createBeautyOutputUri(Paths.cache.uri, Date.now(), Math.random),
+  const sourceFile = new File(sourceUri);
+  assertBeautySourceBytes(requireVerifiedFileSize(sourceFile.size));
+  const sourceSize = await Image.getSize(sourceUri);
+  const resize = planBeautyResize(sourceSize);
+  throwIfAborted(input.signal);
+  const normalized = await manipulateAsync(
+    sourceUri,
+    resize ? [{ resize }] : [],
+    { compress: 1, format: SaveFormat.JPEG },
   );
-  let outputCreated = false;
-  let registered = false;
+  const normalizedFile = new File(normalized.uri);
+  const resources = createBeautyResourceScope();
 
   let data: ReturnType<typeof Skia.Data.fromBytes> | null = null;
   let image: SkImage | null = null;
@@ -156,36 +347,45 @@ export async function renderBeautyImage(
   let renderedImage: SkImage | null = null;
 
   try {
+    const outputDirectory = new Directory(Paths.cache, 'run-share');
+    outputDirectory.create({ idempotent: true, intermediates: true });
+    const outputFile = new File(
+      createBeautyOutputUri(Paths.cache.uri, Date.now(), Math.random),
+    );
+    assertNormalizedImage(
+      { width: normalized.width, height: normalized.height },
+      requireVerifiedFileSize(normalizedFile.size),
+    );
     throwIfAborted(input.signal);
     const bytes = await normalizedFile.bytes();
-    data = Skia.Data.fromBytes(bytes);
-    image = Skia.Image.MakeImageFromEncoded(data);
+    data = resources.track(Skia.Data.fromBytes(bytes));
+    image = resources.track(Skia.Image.MakeImageFromEncoded(data));
     if (!image) throw new Error('The captured photo could not be decoded.');
 
     const imageSize = { width: image.width(), height: image.height() };
     const faces = await resolveFaces(input, normalized.uri, imageSize);
     throwIfAborted(input.signal);
-    const plan = buildBeautyRenderPlan(faces);
+    const rasterPlan = buildMaskRasterPlan(faces);
 
-    skinMaskSurface = Skia.Surface.MakeOffscreen(
+    skinMaskSurface = resources.track(Skia.Surface.MakeOffscreen(
       imageSize.width,
       imageSize.height,
-    );
-    underEyeMaskSurface = Skia.Surface.MakeOffscreen(
+    ));
+    underEyeMaskSurface = resources.track(Skia.Surface.MakeOffscreen(
       imageSize.width,
       imageSize.height,
-    );
-    outputSurface = Skia.Surface.MakeOffscreen(
+    ));
+    outputSurface = resources.track(Skia.Surface.MakeOffscreen(
       imageSize.width,
       imageSize.height,
-    );
+    ));
     if (!skinMaskSurface || !underEyeMaskSurface || !outputSurface) {
       throw new Error('This device could not allocate the beauty renderer.');
     }
 
     drawSkinMask(
       skinMaskSurface,
-      plan.skinMaskFaces,
+      rasterPlan,
       imageSize,
       Skia,
       BlurStyle.Normal,
@@ -193,47 +393,51 @@ export async function renderBeautyImage(
     );
     drawUnderEyeMask(
       underEyeMaskSurface,
-      plan.underEyeMaskFaces,
+      rasterPlan,
       imageSize,
       Skia,
       BlurStyle.Normal,
     );
     skinMaskSurface.flush();
     underEyeMaskSurface.flush();
-    skinMaskImage = skinMaskSurface.makeImageSnapshot();
-    underEyeMaskImage = underEyeMaskSurface.makeImageSnapshot();
-
-    sourceShader = image.makeShaderOptions(
-      TileMode.Clamp,
-      TileMode.Clamp,
-      FilterMode.Linear,
-      MipmapMode.None,
-    );
-    skinMaskShader = skinMaskImage.makeShaderOptions(
-      TileMode.Clamp,
-      TileMode.Clamp,
-      FilterMode.Linear,
-      MipmapMode.None,
-    );
-    underEyeMaskShader = underEyeMaskImage.makeShaderOptions(
-      TileMode.Clamp,
-      TileMode.Clamp,
-      FilterMode.Linear,
-      MipmapMode.None,
+    skinMaskImage = resources.track(skinMaskSurface.makeImageSnapshot());
+    underEyeMaskImage = resources.track(
+      underEyeMaskSurface.makeImageSnapshot(),
     );
 
-    runtimeEffect = Skia.RuntimeEffect.Make(BEAUTY_RUNTIME_EFFECT);
+    sourceShader = resources.track(image.makeShaderOptions(
+      TileMode.Clamp,
+      TileMode.Clamp,
+      FilterMode.Linear,
+      MipmapMode.None,
+    ));
+    skinMaskShader = resources.track(skinMaskImage.makeShaderOptions(
+      TileMode.Clamp,
+      TileMode.Clamp,
+      FilterMode.Linear,
+      MipmapMode.None,
+    ));
+    underEyeMaskShader = resources.track(underEyeMaskImage.makeShaderOptions(
+      TileMode.Clamp,
+      TileMode.Clamp,
+      FilterMode.Linear,
+      MipmapMode.None,
+    ));
+
+    runtimeEffect = resources.track(
+      Skia.RuntimeEffect.Make(BEAUTY_RUNTIME_EFFECT),
+    );
     if (!runtimeEffect) {
       throw new Error('The beauty effect is not supported on this device.');
     }
     assertRuntimeEffectContract(runtimeEffect);
     const settings = normalizeBeautySettings(input.settings);
     const uniforms = buildBeautyShaderUniforms(settings);
-    runtimeShader = runtimeEffect.makeShaderWithChildren(
+    runtimeShader = resources.track(runtimeEffect.makeShaderWithChildren(
       BEAUTY_RENDER_UNIFORMS.map((name) => uniforms[name]),
       [sourceShader, skinMaskShader, underEyeMaskShader],
-    );
-    outputPaint = Skia.Paint();
+    ));
+    outputPaint = resources.track(Skia.Paint());
     outputPaint.setAntiAlias(true);
     outputPaint.setShader(runtimeShader);
 
@@ -244,14 +448,19 @@ export async function renderBeautyImage(
       outputPaint,
     );
     outputSurface.flush();
-    renderedImage = outputSurface.makeImageSnapshot();
+    renderedImage = resources.track(outputSurface.makeImageSnapshot());
     const jpeg = renderedImage.encodeToBytes(ImageFormat.JPEG, 94);
-    throwIfAborted(input.signal);
-    outputFile.write(jpeg);
-    outputCreated = true;
-
-    const cacheItem = await runMediaCache.register(outputFile.uri, 'editor');
-    registered = true;
+    const cacheItem = await commitBeautyOutput({
+      outputUri: outputFile.uri,
+      encodedBytes: jpeg,
+      signal: input.signal,
+      write: (bytesToWrite) => outputFile.write(bytesToWrite),
+      register: (uri) => runMediaCache.register(uri, 'editor'),
+      releaseRegistered: (id) => runMediaCache.release(id, 'editor'),
+      deleteOutput: () => {
+        if (outputFile.exists) outputFile.delete();
+      },
+    });
     return {
       sourceUri,
       uri: cacheItem.uri,
@@ -263,33 +472,13 @@ export async function renderBeautyImage(
       capabilities: NATIVE_BEAUTY_RENDER_CAPABILITIES,
     };
   } finally {
-    disposeQuietly(renderedImage);
-    disposeQuietly(outputPaint);
-    disposeQuietly(runtimeShader);
-    disposeQuietly(runtimeEffect);
-    disposeQuietly(underEyeMaskShader);
-    disposeQuietly(skinMaskShader);
-    disposeQuietly(sourceShader);
-    disposeQuietly(underEyeMaskImage);
-    disposeQuietly(skinMaskImage);
-    disposeQuietly(outputSurface);
-    disposeQuietly(underEyeMaskSurface);
-    disposeQuietly(skinMaskSurface);
-    disposeQuietly(image);
-    disposeQuietly(data);
+    resources.dispose();
 
     if (normalizedFile.exists) {
       try {
         normalizedFile.delete();
       } catch {
         // Cache cleanup will remove an abandoned normalization copy later.
-      }
-    }
-    if (outputCreated && !registered && outputFile.exists) {
-      try {
-        outputFile.delete();
-      } catch {
-        // Cache cleanup will remove an abandoned failed output later.
       }
     }
   }
@@ -335,7 +524,7 @@ async function detectFacesFromUri(uri: string): Promise<unknown> {
 
 function drawSkinMask(
   surface: SkSurface,
-  faces: readonly DetectedFace[],
+  plan: BeautyMaskRasterPlan,
   imageSize: ImageSize,
   Skia: typeof import('@shopify/react-native-skia')['Skia'],
   blurStyle: import('@shopify/react-native-skia').BlurStyle,
@@ -366,23 +555,22 @@ function drawSkinMask(
     fill.setMaskFilter(fillBlur);
     clear.setMaskFilter(clearBlur);
 
-    for (const face of faces) {
-      const { bounds } = face;
+    for (const bounds of plan.skin) {
       canvas.drawOval(
         Skia.XYWHRect(bounds.x, bounds.y, bounds.width, bounds.height),
         fill,
       );
-      clearLandmark(canvas, Skia, clear, face.leftEye, bounds.width * 0.13);
-      clearLandmark(canvas, Skia, clear, face.rightEye, bounds.width * 0.13);
-      clearLandmark(canvas, Skia, clear, face.leftEyebrow, bounds.width * 0.14);
-      clearLandmark(canvas, Skia, clear, face.rightEyebrow, bounds.width * 0.14);
-      clearLandmark(canvas, Skia, clear, face.mouth, bounds.width * 0.18);
-      for (const region of face.facialHair ?? []) {
-        canvas.drawOval(
-          Skia.XYWHRect(region.x, region.y, region.width, region.height),
-          clear,
-        );
-      }
+    }
+    for (const exclusion of plan.exclusions) {
+      canvas.drawOval(
+        Skia.XYWHRect(
+          exclusion.x,
+          exclusion.y,
+          exclusion.width,
+          exclusion.height,
+        ),
+        clear,
+      );
     }
   } finally {
     disposeQuietly(clear);
@@ -394,7 +582,7 @@ function drawSkinMask(
 
 function drawUnderEyeMask(
   surface: SkSurface,
-  faces: readonly DetectedFace[],
+  plan: BeautyMaskRasterPlan,
   imageSize: ImageSize,
   Skia: typeof import('@shopify/react-native-skia')['Skia'],
   blurStyle: import('@shopify/react-native-skia').BlurStyle,
@@ -412,45 +600,21 @@ function drawUnderEyeMask(
       false,
     );
     paint.setMaskFilter(blur);
-    for (const face of faces) {
-      const eyeWidth = face.bounds.width * 0.22;
-      const eyeHeight = face.bounds.height * 0.1;
-      for (const eye of [face.leftEye, face.rightEye]) {
-        if (!eye) continue;
-        canvas.drawOval(
-          Skia.XYWHRect(
-            eye.x - eyeWidth / 2,
-            eye.y + eyeHeight * 0.15,
-            eyeWidth,
-            eyeHeight,
-          ),
-          paint,
-        );
-      }
+    for (const underEye of plan.underEyes) {
+      canvas.drawOval(
+        Skia.XYWHRect(
+          underEye.x,
+          underEye.y,
+          underEye.width,
+          underEye.height,
+        ),
+        paint,
+      );
     }
   } finally {
     disposeQuietly(paint);
     disposeQuietly(blur);
   }
-}
-
-function clearLandmark(
-  canvas: ReturnType<SkSurface['getCanvas']>,
-  Skia: typeof import('@shopify/react-native-skia')['Skia'],
-  paint: SkPaint,
-  point: DetectedFace['leftEye'],
-  radius: number,
-): void {
-  if (!point) return;
-  canvas.drawOval(
-    Skia.XYWHRect(
-      point.x - radius,
-      point.y - radius * 0.6,
-      radius * 2,
-      radius * 1.2,
-    ),
-    paint,
-  );
 }
 
 function assertRuntimeEffectContract(

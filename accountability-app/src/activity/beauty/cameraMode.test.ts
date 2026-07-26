@@ -1,7 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  BEAUTY_CAPTURE_TARGET_RESOLUTION,
   beautyCameraModeAllowsCapture,
+  canRequestCameraPermission,
+  createCaptureLeaseTransaction,
+  createPermissionAttemptController,
   createSingleFlightCapture,
+  createWebPhotoPickerInteraction,
   isFaceSnapshotFresh,
   mapFacesToImage,
   resolveBeautyCameraMode,
@@ -134,5 +139,147 @@ describe('createSingleFlightCapture', () => {
     await expect(a).resolves.toBe('first');
     await expect(capture()).resolves.toBe('second');
     expect(calls).toBe(2);
+  });
+});
+
+describe('capture ownership transfer', () => {
+  it('releases once and never dispatches when unmounted during registration', async () => {
+    let resolveRegister!: (item: { id: string; uri: string }) => void;
+    const register = new Promise<{ id: string; uri: string }>((resolve) => {
+      resolveRegister = resolve;
+    });
+    let alive = true;
+    const released: string[] = [];
+    const captured: string[] = [];
+    const transaction = createCaptureLeaseTransaction({
+      register: () => register,
+      isAlive: () => alive,
+      buildSource: (item) => ({
+        cacheItemId: item.id,
+        sourceUri: item.uri,
+        imageSize: { width: 100, height: 100 },
+        orientation: 0,
+        mirrored: false,
+        faces: null,
+      }),
+      dispatch: async (source) => {
+        captured.push(source.sourceUri);
+      },
+      release: async (id) => {
+        released.push(id);
+      },
+    });
+
+    const pending = transaction();
+    alive = false;
+    resolveRegister({ id: 'lease-1', uri: 'file:///capture.jpg' });
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(released).toEqual(['lease-1']);
+    expect(captured).toEqual([]);
+  });
+
+  it('transfers the exact lease after successful callback dispatch', async () => {
+    const captured: string[] = [];
+    const released: string[] = [];
+    const source = await createCaptureLeaseTransaction({
+      register: async () => ({ id: 'lease-2', uri: 'file:///capture.jpg' }),
+      isAlive: () => true,
+      buildSource: (item) => ({
+        cacheItemId: item.id,
+        sourceUri: item.uri,
+        imageSize: { width: 100, height: 100 },
+        orientation: 0,
+        mirrored: false,
+        faces: null,
+      }),
+      dispatch: async (value) => {
+        if (value.cacheItemId) captured.push(value.cacheItemId);
+      },
+      release: async (id) => {
+        released.push(id);
+      },
+    })();
+
+    expect(source.cacheItemId).toBe('lease-2');
+    expect(captured).toEqual(['lease-2']);
+    expect(released).toEqual([]);
+  });
+});
+
+describe('permission request gating', () => {
+  it('requires focus and an active app', () => {
+    const base = {
+      permissionStatus: 'not-determined' as const,
+      requestStarted: false,
+      hasError: false,
+    };
+    expect(
+      canRequestCameraPermission({
+        ...base,
+        isFocused: false,
+        appState: 'active',
+      }),
+    ).toBe(false);
+    expect(
+      canRequestCameraPermission({
+        ...base,
+        isFocused: true,
+        appState: 'background',
+      }),
+    ).toBe(false);
+    expect(
+      canRequestCameraPermission({
+        ...base,
+        isFocused: true,
+        appState: 'active',
+      }),
+    ).toBe(true);
+  });
+
+  it('allows one attempt per retry nonce and clears in-flight on rejection', () => {
+    const controller = createPermissionAttemptController();
+    expect(controller.begin(0)).toBe(true);
+    expect(controller.begin(0)).toBe(false);
+    controller.settle(0);
+    expect(controller.isRequestStarted()).toBe(false);
+    expect(controller.begin(0)).toBe(false);
+    expect(controller.begin(1)).toBe(true);
+  });
+});
+
+describe('bounded camera capture', () => {
+  it('uses an installed VC5 target below the render pixel and dimension caps', () => {
+    expect(BEAUTY_CAPTURE_TARGET_RESOLUTION).toEqual({
+      width: 1440,
+      height: 1920,
+    });
+  });
+});
+
+describe('web picker interaction', () => {
+  it('is single-flight and reports safe errors', async () => {
+    let calls = 0;
+    let rejectPick!: (error: Error) => void;
+    const picking = new Promise<never>((_, reject) => {
+      rejectPick = reject;
+    });
+    const errors: string[] = [];
+    const choose = createWebPhotoPickerInteraction({
+      pick: () => {
+        calls += 1;
+        return picking;
+      },
+      dispatch: async () => {},
+      onError: (error) => errors.push(error.message),
+    });
+
+    const first = choose();
+    const second = choose();
+    expect(first).toBe(second);
+    expect(calls).toBe(1);
+    rejectPick(new Error('Picker failed'));
+    await expect(first).resolves.toBeUndefined();
+    expect(errors).toEqual(['Picker failed']);
   });
 });

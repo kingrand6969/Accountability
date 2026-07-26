@@ -31,13 +31,20 @@ import {
   type BeautyCameraCapability,
 } from './cameraCapability';
 import {
+  BEAUTY_CAPTURE_TARGET_RESOLUTION,
+  canRequestCameraPermission,
+  createCaptureLeaseTransaction,
+  createPermissionAttemptController,
   createSingleFlightCapture,
   resolveBeautyCameraMode,
   type BeautyCameraFeatureCapabilities,
   type BeautyCameraMode,
   type BeautyCaptureSource,
 } from './cameraMode';
-import { NATIVE_BEAUTY_RENDER_CAPABILITIES } from './renderBeautyImage.native';
+import {
+  assertBeautySourceBytes,
+  NATIVE_BEAUTY_RENDER_CAPABILITIES,
+} from './renderBeautyImage.native';
 import type { BeautySettings } from './types';
 
 const DEVICE_LOOKUP_GRACE_MS = 1_500;
@@ -70,10 +77,13 @@ export function BeautyCamera({
     containerFormat: 'jpeg',
     quality: 1,
     qualityPrioritization: 'quality',
+    targetResolution: BEAUTY_CAPTURE_TARGET_RESOLUTION,
   });
   const isFocused = useIsFocused();
   const mounted = useRef(true);
   const permissionRequestStarted = useRef(false);
+  const permissionController = useRef(createPermissionAttemptController());
+  const captureLifecycleActive = useRef(false);
   const captureAbort = useRef<AbortController | null>(null);
   const captureImplementation = useRef<() => Promise<BeautyCaptureSource>>(
     async () => {
@@ -87,7 +97,9 @@ export function BeautyCamera({
   );
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraAttempt, setCameraAttempt] = useState(0);
+  const [permissionAttemptNonce, setPermissionAttemptNonce] = useState(0);
   const [isCapturing, setIsCapturing] = useState(false);
+  captureLifecycleActive.current = isFocused && appState === 'active';
 
   useEffect(() => {
     mounted.current = true;
@@ -106,14 +118,27 @@ export function BeautyCamera({
           ? value
           : new Error(fallback);
       const safeError = new Error(error.message || fallback);
-      if (mounted.current) setCameraError(safeError.message);
-      onError?.(safeError);
+      if (mounted.current) {
+        setCameraError(safeError.message);
+        onError?.(safeError);
+      }
     },
     [onError],
   );
 
   const requestCameraAccess = useCallback(() => {
-    if (permissionRequestStarted.current) return;
+    if (
+      !canRequestCameraPermission({
+        permissionStatus,
+        isFocused,
+        appState,
+        requestStarted: permissionRequestStarted.current,
+        hasError: cameraError !== null,
+      }) ||
+      !permissionController.current.begin(permissionAttemptNonce)
+    ) {
+      return;
+    }
     permissionRequestStarted.current = true;
     setIsRequestingPermission(true);
     void requestPermission()
@@ -124,13 +149,23 @@ export function BeautyCamera({
         );
       })
       .finally(() => {
+        permissionRequestStarted.current = false;
+        permissionController.current.settle(permissionAttemptNonce);
         if (mounted.current) setIsRequestingPermission(false);
       });
-  }, [reportError, requestPermission]);
+  }, [
+    appState,
+    cameraError,
+    isFocused,
+    permissionAttemptNonce,
+    permissionStatus,
+    reportError,
+    requestPermission,
+  ]);
 
   useEffect(() => {
-    if (permissionStatus === 'not-determined') requestCameraAccess();
-  }, [permissionStatus, requestCameraAccess]);
+    requestCameraAccess();
+  }, [requestCameraAccess]);
 
   useEffect(() => {
     if (permissionStatus !== 'authorized') {
@@ -191,7 +226,6 @@ export function BeautyCamera({
     captureAbort.current?.abort();
     captureAbort.current = controller;
     let photo: Photo | null = null;
-    let cacheItemId: string | null = null;
     let savedOutput: File | null = null;
     try {
       photo = await photoOutput.capturePhoto(
@@ -218,24 +252,29 @@ export function BeautyCamera({
       );
       await photo.saveToFileAsync(fileUriToPath(output.uri));
       savedOutput = output;
+      assertBeautySourceBytes(output.size ?? Number.NaN);
       throwIfCancelled(controller.signal, mounted.current);
-      const cacheItem = await runMediaCache.register(output.uri, 'editor');
-      cacheItemId = cacheItem.id;
-      const source: BeautyCaptureSource = {
-        sourceUri: cacheItem.uri,
-        imageSize,
-        orientation,
-        mirrored: false,
-        faces: null,
-      };
-      await onCapture(source);
-      cacheItemId = null;
+      const source = await createCaptureLeaseTransaction({
+        register: () => runMediaCache.register(output.uri, 'editor'),
+        isAlive: () =>
+          mounted.current &&
+          captureLifecycleActive.current &&
+          !controller.signal.aborted,
+        buildSource: (cacheItem) => ({
+          cacheItemId: cacheItem.id,
+          sourceUri: cacheItem.uri,
+          imageSize,
+          orientation,
+          mirrored: false,
+          faces: null,
+        }),
+        dispatch: onCapture,
+        release: (id) => runMediaCache.release(id, 'editor'),
+      })();
       savedOutput = null;
       return source;
     } catch (error) {
-      if (cacheItemId) {
-        await runMediaCache.release(cacheItemId, 'editor').catch(() => {});
-      } else if (savedOutput?.exists) {
+      if (savedOutput?.exists) {
         try {
           savedOutput.delete();
         } catch {
@@ -272,6 +311,7 @@ export function BeautyCamera({
   const handleRetry = useCallback(() => {
     setCameraError(null);
     setCameraAttempt((attempt) => attempt + 1);
+    setPermissionAttemptNonce((nonce) => nonce + 1);
   }, []);
 
   if (!cameraCapability.canRenderCamera || !frontDevice) {

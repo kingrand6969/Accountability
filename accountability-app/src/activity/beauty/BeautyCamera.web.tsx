@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import type { BeautyCameraProps, BeautyCameraStatus } from './BeautyCamera.native';
-import type { BeautyCaptureSource } from './cameraMode';
+import {
+  createWebPhotoPickerInteraction,
+  type BeautyCaptureSource,
+} from './cameraMode';
 
 export const WEB_BEAUTY_CAMERA_STATUS = Object.freeze({
   camera: {
@@ -30,33 +33,34 @@ export function BeautyCamera({
     onCapabilityChange?.(WEB_BEAUTY_CAMERA_STATUS);
   }, [onCapabilityChange]);
 
-  const choosePhoto = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 1,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (!asset?.uri || !asset.width || !asset.height) {
-        throw new Error('That photo could not be opened.');
-      }
-      const source: BeautyCaptureSource = {
-        sourceUri: asset.uri,
-        imageSize: { width: asset.width, height: asset.height },
-        orientation: 0,
-        mirrored: false,
-        faces: null,
-      };
-      await onCapture(source);
-    } catch (error) {
-      onError?.(
-        error instanceof Error
-          ? error
-          : new Error('That photo could not be opened.'),
-      );
-    }
-  };
+  const choosePhoto = useMemo(
+    () =>
+      createWebPhotoPickerInteraction({
+        pick: async () => {
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 1,
+          });
+          if (result.canceled) return null;
+          const asset = result.assets[0];
+          if (!asset?.uri || !asset.width || !asset.height) {
+            throw new Error('That photo could not be opened.');
+          }
+          const source: BeautyCaptureSource = {
+            cacheItemId: null,
+            sourceUri: asset.uri,
+            imageSize: { width: asset.width, height: asset.height },
+            orientation: 0,
+            mirrored: false,
+            faces: null,
+          };
+          return source;
+        },
+        dispatch: onCapture,
+        onError: (error) => onError?.(error),
+      }),
+    [onCapture, onError],
+  );
 
   return (
     <View style={styles.container}>

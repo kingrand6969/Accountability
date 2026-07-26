@@ -27,6 +27,7 @@ export type FaceSnapshot = Readonly<{
 }>;
 
 export type BeautyCaptureSource = Readonly<{
+  cacheItemId: string | null;
   sourceUri: string;
   imageSize: ImageSize;
   orientation: ImageOrientation;
@@ -35,6 +36,13 @@ export type BeautyCaptureSource = Readonly<{
 }>;
 
 const DEFAULT_MAX_SNAPSHOT_AGE_MS = 500;
+
+// VC5's installed FHD_4_3 target. 2.76 MP stays below the renderer's 4 MP
+// ceiling while preserving a camera-native 4:3 capture aspect ratio.
+export const BEAUTY_CAPTURE_TARGET_RESOLUTION = Object.freeze({
+  width: 1_440,
+  height: 1_920,
+});
 
 export function resolveBeautyCameraMode(
   capabilities: Pick<
@@ -193,6 +201,95 @@ export function createSingleFlightCapture<T>(
     void pending.then(clear, clear);
     return pending;
   };
+}
+
+export type CaptureLeaseItem = Readonly<{ id: string; uri: string }>;
+
+export function createCaptureLeaseTransaction(
+  dependencies: Readonly<{
+    register(): Promise<CaptureLeaseItem>;
+    isAlive(): boolean;
+    buildSource(item: CaptureLeaseItem): BeautyCaptureSource;
+    dispatch(source: BeautyCaptureSource): void | Promise<void>;
+    release(id: string): Promise<void>;
+  }>,
+): () => Promise<BeautyCaptureSource> {
+  return async () => {
+    const item = await dependencies.register();
+    let transferred = false;
+    try {
+      if (!dependencies.isAlive()) throw abortError('Camera capture was cancelled.');
+      const source = dependencies.buildSource(item);
+      if (!dependencies.isAlive()) throw abortError('Camera capture was cancelled.');
+      await dependencies.dispatch(source);
+      transferred = true;
+      return source;
+    } finally {
+      if (!transferred) await dependencies.release(item.id);
+    }
+  };
+}
+
+export function canRequestCameraPermission(input: Readonly<{
+  permissionStatus: string;
+  isFocused: boolean;
+  appState: string;
+  requestStarted: boolean;
+  hasError: boolean;
+}>): boolean {
+  return (
+    input.permissionStatus === 'not-determined' &&
+    input.isFocused &&
+    input.appState === 'active' &&
+    !input.requestStarted &&
+    !input.hasError
+  );
+}
+
+export function createPermissionAttemptController() {
+  let activeNonce: number | null = null;
+  let attemptedNonce: number | null = null;
+  return {
+    begin(nonce: number): boolean {
+      if (activeNonce !== null || attemptedNonce === nonce) return false;
+      activeNonce = nonce;
+      attemptedNonce = nonce;
+      return true;
+    },
+    settle(nonce: number): void {
+      if (activeNonce === nonce) activeNonce = null;
+    },
+    isRequestStarted(): boolean {
+      return activeNonce !== null;
+    },
+  };
+}
+
+export function createWebPhotoPickerInteraction(
+  dependencies: Readonly<{
+    pick(): Promise<BeautyCaptureSource | null>;
+    dispatch(source: BeautyCaptureSource): void | Promise<void>;
+    onError(error: Error): void;
+  }>,
+): () => Promise<void> {
+  return createSingleFlightCapture(async () => {
+    try {
+      const source = await dependencies.pick();
+      if (source) await dependencies.dispatch(source);
+    } catch (error) {
+      dependencies.onError(
+        error instanceof Error
+          ? new Error(error.message || 'That photo could not be opened.')
+          : new Error('That photo could not be opened.'),
+      );
+    }
+  });
+}
+
+function abortError(message: string): Error {
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
 }
 
 function copyPoint(value: unknown): Point | undefined {
