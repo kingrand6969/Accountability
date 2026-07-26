@@ -1,11 +1,18 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import {
+  createRunMediaCompletionEffects,
   persistRunMedia,
+  runMediaRenderSizeKey,
   stageRunMedia,
   type RunMediaPersistenceDependencies,
   type RunMediaStagingDependencies,
 } from './saveRunMedia';
-import type { MediaOwner, RunMediaCacheItem } from './runMediaCache';
+import {
+  createRunMediaCache,
+  type MediaOwner,
+  type RunMediaCacheItem,
+  type RunMediaFileSystem,
+} from './runMediaCache';
 import { feedDisabledReasonFor } from './RunMediaActions';
 
 const item: RunMediaCacheItem = {
@@ -119,6 +126,44 @@ describe('persistRunMedia', () => {
     expect(deps.release).not.toHaveBeenCalled();
   });
 
+  test('retrying the same destination succeeds without accumulating owner retains', async () => {
+    const deleted: string[] = [];
+    const fs: RunMediaFileSystem = {
+      cacheDirectory: 'file:///cache',
+      list: async () => [],
+      delete: async (uri) => {
+        deleted.push(uri);
+      },
+    };
+    const cache = createRunMediaCache(fs);
+    const retryItem = await cache.register(
+      'file:///cache/run-share/retry.jpg',
+      'editor',
+    );
+    let attempts = 0;
+    const deps = dependencies({
+      retain: cache.retain,
+      release: cache.release,
+      saveToMemories: jest.fn(async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('temporary upload failure');
+        return { path: 'member/retry.jpg', bytes: 42 };
+      }),
+    });
+
+    await expect(persistRunMedia('memories', retryItem, deps)).rejects.toThrow(
+      'temporary upload failure',
+    );
+    await expect(persistRunMedia('memories', retryItem, deps)).resolves.toEqual({
+      destination: 'memories',
+      persisted: true,
+    });
+    await cache.release(retryItem.id, 'editor');
+
+    expect(attempts).toBe(2);
+    expect(deleted).toEqual([retryItem.uri]);
+  });
+
   test('feed release waits for both image upload and post creation confirmation', async () => {
     const uploaded = deferred<string>();
     const posted = deferred<string>();
@@ -188,5 +233,48 @@ describe('RunMediaActions feed availability', () => {
       'Verified activities only.',
     );
     expect(feedDisabledReasonFor(false)).toBeNull();
+  });
+});
+
+describe('RunShareSheet completion effects', () => {
+  test('external Share completion performs no selfie achievement cloud write', async () => {
+    const recordSelfie = jest.fn(async () => undefined);
+    const effects = createRunMediaCompletionEffects(recordSelfie);
+
+    await effects.complete('share', true, 5);
+
+    expect(recordSelfie).not.toHaveBeenCalled();
+  });
+
+  test('records a selfie once after a confirmed persistent in-app destination', async () => {
+    const recordSelfie = jest.fn(async () => undefined);
+    const effects = createRunMediaCompletionEffects(recordSelfie);
+
+    await effects.complete('phone', true, 5);
+    await effects.complete('memories', true, 5);
+    await effects.complete('feed', true, 5);
+
+    expect(recordSelfie).toHaveBeenCalledTimes(1);
+    expect(recordSelfie).toHaveBeenCalledWith(5);
+  });
+});
+
+describe('run-media render-size key', () => {
+  test('changes when viewport, preview, or export dimensions change', () => {
+    const size = {
+      viewportWidth: 390,
+      viewportHeight: 844,
+      previewWidth: 320,
+      exportWidth: 1080,
+      exportHeight: 1350,
+    };
+    const original = runMediaRenderSizeKey(size);
+
+    expect(runMediaRenderSizeKey({ ...size, viewportWidth: 844 })).not.toBe(original);
+    expect(runMediaRenderSizeKey({ ...size, viewportHeight: 390 })).not.toBe(original);
+    expect(runMediaRenderSizeKey({ ...size, previewWidth: 321 })).not.toBe(original);
+    expect(
+      runMediaRenderSizeKey({ ...size, exportWidth: 1350, exportHeight: 1080 }),
+    ).not.toBe(original);
   });
 });

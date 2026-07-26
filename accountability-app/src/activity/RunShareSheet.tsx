@@ -37,8 +37,10 @@ import { createShareOperationGate } from './shareOperationGate';
 import { saveImageToMemories } from '../memories/api';
 import { RunMediaActions } from './RunMediaActions';
 import {
+  createRunMediaCompletionEffects,
   persistRunMedia,
   runMediaCache,
+  runMediaRenderSizeKey,
   stageRunMedia,
   type RunMediaDestination,
 } from './saveRunMedia';
@@ -73,6 +75,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const stagedMedia = useRef<RunMediaCacheItem | null>(null);
   const hasPersistentDestination = useRef(false);
   const shareOperationGate = useRef(createShareOperationGate()).current;
+  const completionEffects = useMemo(
+    () => createRunMediaCompletionEffects(recordRunSelfie),
+    [],
+  );
   const busy = activeDestination !== null;
 
   // size the 4:5 card to fit BOTH the width and the space left after the
@@ -80,6 +86,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const cardRatio = runShareRatio(format, originalRatio);
   const maxPreviewHeight = Math.max(170, height - 520);
   const cardWidth = Math.max(170, Math.min(width - 40, 340, Math.floor(maxPreviewHeight * cardRatio)));
+  const exportSize = runShareExportSize(format, originalRatio);
+  const renderSizeKey = runMediaRenderSizeKey({
+    viewportWidth: width,
+    viewportHeight: height,
+    previewWidth: cardWidth,
+    exportWidth: exportSize.width,
+    exportHeight: exportSize.height,
+  });
 
   // the shared route hides its true start/end by default (privacy zone); the
   // user can opt to reveal them, and the full route always stays in the saved activity
@@ -103,7 +117,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     const stale = stagedMedia.current;
     stagedMedia.current = null;
     if (stale) void runMediaCache.release(stale.id, 'editor').catch(() => {});
-  }, [format, mediaFit, showEnds, mode, photoUri, originalRatio, run]);
+  }, [format, mediaFit, showEnds, mode, photoUri, originalRatio, run, renderSizeKey]);
 
   const caption =
     `🏃 ${run.title} · ${formatKm(run.distance)} km in ${formatDurationLong(run.elapsed)} ` +
@@ -145,13 +159,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     try {
       // 4:5 at 1080×1350 — Instagram/FB portrait HD; near-lossless jpg so the
       // stats stay crisp (the on-screen preview renders small)
-      const output = runShareExportSize(format, originalRatio);
       return await captureRef(cardRef, {
         format: 'jpg',
         quality: 0.97,
         result,
-        width: output.width,
-        height: output.height,
+        width: exportSize.width,
+        height: exportSize.height,
       });
     } catch {
       return null;
@@ -194,9 +207,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         if (Platform.OS === 'web') {
           if (destination === 'share') {
             await Share.share({ message: `${caption}\n\n#accountability` });
-            if (photoKind === 'selfie') {
-              recordRunSelfie(run.distance / 1000).catch(() => {});
-            }
+            void completionEffects
+              .complete('share', photoKind === 'selfie', run.distance / 1000)
+              .catch(() => {});
             return;
           }
           if (destination === 'feed') {
@@ -206,9 +219,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               activityId: run.activityId,
               shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
             });
-            if (photoKind === 'selfie') {
-              recordRunSelfie(run.distance / 1000).catch(() => {});
-            }
+            void completionEffects
+              .complete('feed', photoKind === 'selfie', run.distance / 1000)
+              .catch(() => {});
             Alert.alert('Posted 🎉', 'Your run is on your feed.');
             await closeEditor();
             return;
@@ -244,7 +257,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         });
 
         if (result.persisted) hasPersistentDestination.current = true;
-        if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
+        void completionEffects
+          .complete(destination, photoKind === 'selfie', run.distance / 1000)
+          .catch(() => {});
 
         if (destination === 'share' && !hasPersistentDestination.current) {
           await discardStagedEditorMedia();

@@ -28,6 +28,14 @@ export type RunMediaStagingDependencies = {
   register(uri: string, owner: MediaOwner): Promise<RunMediaCacheItem>;
 };
 
+export type RunMediaCompletionEffects = {
+  complete(
+    destination: RunMediaDestination,
+    isSelfie: boolean,
+    distanceKm: number,
+  ): Promise<void>;
+};
+
 export const runMediaCache = createRunMediaCache();
 
 const ownerByDestination: Record<RunMediaDestination, MediaOwner> = {
@@ -57,6 +65,51 @@ const stagingDependencies: RunMediaStagingDependencies = {
   copyToManagedCache,
   register: runMediaCache.register,
 };
+
+export function runMediaRenderSizeKey(
+  size: {
+    viewportWidth: number;
+    viewportHeight: number;
+    previewWidth: number;
+    exportWidth: number;
+    exportHeight: number;
+  },
+): string {
+  return [
+    `${size.viewportWidth}x${size.viewportHeight}`,
+    size.previewWidth,
+    `${size.exportWidth}x${size.exportHeight}`,
+  ].join(':');
+}
+
+export function createRunMediaCompletionEffects(
+  recordSelfie: (distanceKm: number) => Promise<void>,
+): RunMediaCompletionEffects {
+  let selfieRecorded = false;
+  let selfieRecording: Promise<void> | null = null;
+
+  return {
+    complete(destination, isSelfie, distanceKm) {
+      if (
+        !isSelfie ||
+        (destination !== 'memories' && destination !== 'feed') ||
+        selfieRecorded
+      ) {
+        return Promise.resolve();
+      }
+      if (selfieRecording) return selfieRecording;
+
+      selfieRecording = recordSelfie(distanceKm)
+        .then(() => {
+          selfieRecorded = true;
+        })
+        .finally(() => {
+          selfieRecording = null;
+        });
+      return selfieRecording;
+    },
+  };
+}
 
 export async function stageRunMedia(
   uri: string,
