@@ -278,7 +278,12 @@ function MedalSheet({
                   {state.next ? `${state.next.at - Math.floor(state.value)} more ${state.def.unit} to unlock` : ''}
                 </Text>
               )}
-              <Pressable onPress={onClose} style={styles.doneBtn} accessibilityLabel="Close">
+              <Pressable
+                onPress={onClose}
+                style={styles.doneBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Close Trophy Case details"
+              >
                 <Text style={styles.doneText}>{celebrate ? 'Nice!' : 'Close'}</Text>
               </Pressable>
             </>

@@ -89,6 +89,7 @@ export default function Menu() {
       <Pressable
         style={({ pressed }) => [styles.profileWrap, pressed && styles.pressed]}
         onPress={() => router.push('/profile')}
+        accessibilityRole="button"
         accessibilityLabel="View your profile"
       >
         <LinearGradient
@@ -116,6 +117,7 @@ export default function Menu() {
       <Pressable
         style={({ pressed }) => [styles.trophyRow, pressed && styles.pressed]}
         onPress={() => router.push('/achievements' as never)}
+        accessibilityRole="button"
         accessibilityLabel="Open your Trophy Case"
       >
         <View style={styles.trophyIcon}>
@@ -132,6 +134,7 @@ export default function Menu() {
       <Pressable
         style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
         onPress={inviteFriends}
+        accessibilityRole="button"
         accessibilityLabel="Invite friends to AccountAbility"
       >
         <View style={styles.inviteIcon}>
@@ -158,6 +161,7 @@ export default function Menu() {
                 key={s.key}
                 style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}
                 onPress={() => router.push(s.route as never)}
+                accessibilityRole="button"
                 accessibilityLabel={s.title}
               >
                 {s.image ? (
@@ -184,6 +188,7 @@ export default function Menu() {
             key={item.title}
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
             onPress={() => router.push(item.route as never)}
+            accessibilityRole="button"
             accessibilityLabel={item.title}
           >
             <View style={[styles.cardIcon, { backgroundColor: `${item.tint}15` }]}>
@@ -197,6 +202,7 @@ export default function Menu() {
       <Pressable
         style={({ pressed }) => [styles.helpRow, pressed && styles.pressed]}
         onPress={() => router.push('/help')}
+        accessibilityRole="button"
         accessibilityLabel="Help and Support"
       >
         <View style={styles.helpIcon}>
@@ -210,13 +216,23 @@ export default function Menu() {
       </Pressable>
 
       <View style={styles.legalRow}>
-        <Text style={styles.legalLink} onPress={() => router.push('/legal/terms')}>
-          Terms of Service
-        </Text>
+        <Pressable
+          onPress={() => router.push('/legal/terms')}
+          accessibilityRole="link"
+          accessibilityLabel="Terms of Service"
+          hitSlop={10}
+        >
+          <Text style={styles.legalLink}>Terms of Service</Text>
+        </Pressable>
         <Text style={styles.legalDot}>·</Text>
-        <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy')}>
-          Privacy Policy
-        </Text>
+        <Pressable
+          onPress={() => router.push('/legal/privacy')}
+          accessibilityRole="link"
+          accessibilityLabel="Privacy Policy"
+          hitSlop={10}
+        >
+          <Text style={styles.legalLink}>Privacy Policy</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );

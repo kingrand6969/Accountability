@@ -29,6 +29,9 @@ export default function MoneyAdd() {
   const [date, setDate] = useState(() => todayDate());
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
 
   const cats = categoriesFor(kind);
 
@@ -71,18 +74,21 @@ export default function MoneyAdd() {
   async function onSave() {
     const amt = parseFloat(amount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      Alert.alert('Enter an amount', 'How much was it?');
+      setAmountError('Enter an amount greater than zero.');
       return;
     }
+    setAmountError(null);
     if (!category) {
-      Alert.alert('Pick a category', 'Choose a category for this.');
+      setCategoryError('Choose a category before saving.');
       return;
     }
-    const dateError = validateDateString(date);
-    if (dateError) {
-      Alert.alert('Check the date', dateError);
+    setCategoryError(null);
+    const nextDateError = validateDateString(date);
+    if (nextDateError) {
+      setDateError(nextDateError);
       return;
     }
+    setDateError(null);
     setSaving(true);
     try {
       await addTransaction({
@@ -134,7 +140,10 @@ export default function MoneyAdd() {
             onPress={() => {
               setKind(k);
               setCategory(null);
+              setCategoryError(null);
             }}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: kind === k }}
           >
             <Text style={[styles.kindText, kind === k && styles.kindTextActive]}>
               {k === 'expense' ? 'Expense' : 'Income'}
@@ -150,8 +159,13 @@ export default function MoneyAdd() {
         placeholderTextColor={colors.textFaint}
         keyboardType="decimal-pad"
         value={amount}
-        onChangeText={setAmount}
+        onChangeText={(value) => {
+          setAmount(value);
+          if (amountError) setAmountError(null);
+        }}
+        accessibilityLabel="Transaction amount"
       />
+      {amountError ? <Text style={styles.error} accessibilityRole="alert">{amountError}</Text> : null}
 
       <Text style={styles.label}>Category</Text>
       <View style={styles.chips}>
@@ -165,7 +179,12 @@ export default function MoneyAdd() {
                 selected && styles.chipSelected,
                 pressed && styles.pressed,
               ]}
-              onPress={() => setCategory(c.value)}
+              onPress={() => {
+                setCategory(c.value);
+                setCategoryError(null);
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
             >
               <View style={[styles.chipIconCircle, selected && styles.chipIconCircleSelected]}>
                 <Ionicons
@@ -179,6 +198,7 @@ export default function MoneyAdd() {
           );
         })}
       </View>
+      {categoryError ? <Text style={styles.error} accessibilityRole="alert">{categoryError}</Text> : null}
 
       <Text style={styles.label}>Note (optional)</Text>
       <TextInput
@@ -196,8 +216,13 @@ export default function MoneyAdd() {
         placeholderTextColor={colors.textFaint}
         autoCapitalize="none"
         value={date}
-        onChangeText={setDate}
+        onChangeText={(value) => {
+          setDate(value);
+          if (dateError) setDateError(null);
+        }}
+        accessibilityLabel="Transaction date"
       />
+      {dateError ? <Text style={styles.error} accessibilityRole="alert">{dateError}</Text> : null}
 
       <Button
         title="Save"
@@ -250,6 +275,7 @@ const styles = StyleSheet.create({
   kindText: { fontFamily: font.bold, color: colors.textSecondary },
   kindTextActive: { color: colors.onPrimary },
   pressed: { opacity: 0.7 },
+  error: { color: colors.danger, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
   label: { fontSize: 14, fontFamily: font.semibold, color: colors.textSecondary, marginTop: spacing.md },
   amountInput: {
     borderWidth: 1,
