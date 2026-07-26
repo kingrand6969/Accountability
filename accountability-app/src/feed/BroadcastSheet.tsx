@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +17,11 @@ import { listBuddies, sendMessage, type Buddy } from '../buddy/api';
 import { hapticTap } from '../ui/haptics';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { listGroups, type Group } from '../groups/api';
+import { createPost } from './api';
+import { addStory } from '../stories/api';
+import { encode } from 'base64-arraybuffer';
+import { createPublicPostShare, publicShareMessage } from './publicShare';
 
 /** What a broadcast message/share says — the post body plus provenance. */
 function broadcastText(post: FeedPost): string {
@@ -31,14 +37,27 @@ function broadcastText(post: FeedPost): string {
 export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClose: () => void }) {
   const [buddies, setBuddies] = useState<Buddy[] | null>(null);
   const [sent, setSent] = useState<Set<string>>(new Set());
+  const [groups, setGroups] = useState<Group[] | null>(null);
+  const [sharedGroups, setSharedGroups] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState<string | null>(null);
+  const [addingToDay, setAddingToDay] = useState(false);
+  const [addedToDay, setAddedToDay] = useState(false);
+  const [sharingExternal, setSharingExternal] = useState(false);
 
   useEffect(() => {
     if (!post) return;
     setSent(new Set());
-    listBuddies()
-      .then(setBuddies)
-      .catch(() => setBuddies([]));
+    setSharedGroups(new Set());
+    setAddedToDay(false);
+    Promise.all([listBuddies(), listGroups()])
+      .then(([buddyRows, groupRows]) => {
+        setBuddies(buddyRows);
+        setGroups(groupRows.filter((group) => group.is_member));
+      })
+      .catch(() => {
+        setBuddies([]);
+        setGroups([]);
+      });
   }, [post]);
 
   async function onSendToBuddy(b: Buddy) {
@@ -57,12 +76,66 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
   }
 
   async function onShareExternal() {
-    if (!post) return;
+    if (!post || sharingExternal) return;
+    const title = post.body?.trim() || 'A win worth sharing';
+    Alert.alert(
+      'Share outside AccountAbility?',
+      `${title}\n\nA revocable kingrand.io preview will be created. Your private ID and storage address will not appear in the message.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create & share',
+          onPress: async () => {
+            setSharingExternal(true);
+            try {
+              const url = await createPublicPostShare(post.id);
+              await Share.share({ message: publicShareMessage(title, url) });
+            } catch (error) {
+              Alert.alert('Could not share', String((error as Error).message || 'Please try again.'));
+            } finally {
+              setSharingExternal(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  async function onAddToMyDay() {
+    if (!post?.image_url || addingToDay || addedToDay) return;
+    setAddingToDay(true);
     try {
-      await Share.share({ message: broadcastText(post) });
+      const response = await fetch(post.image_url);
+      if (!response.ok) throw new Error('Could not read that image.');
+      const bytes = await response.arrayBuffer();
+      const ext = post.image_url.split('?')[0].toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+      await addStory(encode(bytes), ext, post.body);
+      setAddedToDay(true);
+      hapticTap();
+      showToast('Added to My Day');
     } catch {
-      // user dismissed, or web without navigator.share
-      showToast('Sharing is available on your phone');
+      showToast('Could not add to My Day');
+    } finally {
+      setAddingToDay(false);
+    }
+  }
+
+  async function onShareToGroup(group: Group) {
+    if (!post || sending || sharedGroups.has(group.id)) return;
+    setSending(group.id);
+    try {
+      await createPost(
+        `${post.body?.trim() || 'A win worth sharing'}\n\nShared from ${post.author_name ?? 'AccountAbility'}`,
+        post.image_url,
+        group.id,
+      );
+      setSharedGroups((current) => new Set(current).add(group.id));
+      hapticTap();
+      showToast(`Shared to ${group.name}`);
+    } catch {
+      showToast('Could not share to that group');
+    } finally {
+      setSending(null);
     }
   }
 
@@ -119,18 +192,68 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
             </ScrollView>
           )}
 
+          <Text style={styles.section}>Share inside AccountAbility</Text>
+          <View style={styles.internalRow}>
+            <Pressable
+              onPress={onAddToMyDay}
+              disabled={!post?.image_url || addingToDay || addedToDay}
+              style={({ pressed }) => [
+                styles.internalBtn,
+                !post?.image_url && styles.disabled,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={post?.image_url ? 'Add to My Day' : 'My Day requires a photo'}
+              accessibilityState={{ disabled: !post?.image_url || addingToDay || addedToDay, busy: addingToDay }}
+            >
+              {addingToDay ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name={addedToDay ? 'checkmark-circle' : 'add-circle-outline'} size={20} color={colors.primary} />
+              )}
+              <Text style={styles.internalText}>{addedToDay ? 'Added' : 'My Day'}</Text>
+            </Pressable>
+          </View>
+
+          {groups && groups.length > 0 ? (
+            <>
+              <Text style={styles.section}>Share to a group</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupRow}>
+                {groups.map((group) => {
+                  const done = sharedGroups.has(group.id);
+                  return (
+                    <Pressable
+                      key={group.id}
+                      onPress={() => onShareToGroup(group)}
+                      disabled={done || sending === group.id}
+                      style={({ pressed }) => [styles.groupBtn, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Share to ${group.name}`}
+                      accessibilityState={{ disabled: done || sending === group.id, busy: sending === group.id }}
+                    >
+                      <Ionicons name={done ? 'checkmark-circle' : 'people-circle-outline'} size={22} color={done ? colors.success : colors.primary} />
+                      <Text style={styles.groupName} numberOfLines={1}>{done ? 'Shared' : group.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </>
+          ) : null}
+
           <Text style={styles.section}>Everywhere else</Text>
           <Pressable
             onPress={onShareExternal}
+            disabled={sharingExternal}
             style={({ pressed }) => [styles.externalBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Share to other apps"
+            accessibilityState={{ disabled: sharingExternal, busy: sharingExternal }}
           >
             <Ionicons name="share-social" size={19} color="#fff" />
             <Text style={styles.externalText}>Facebook, TikTok, WhatsApp & more…</Text>
           </Pressable>
 
-          <Pressable onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close">
+          <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
             <Text style={styles.closeText}>Done</Text>
           </Pressable>
         </Pressable>
@@ -175,6 +298,34 @@ const styles = StyleSheet.create({
   buddyRow: { gap: spacing.md, paddingVertical: 4 },
   buddy: { alignItems: 'center', gap: 5, width: 64 },
   buddyName: { fontFamily: font.medium, fontSize: 11.5, color: colors.textSecondary },
+  internalRow: { flexDirection: 'row', gap: spacing.sm },
+  internalBtn: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  internalText: { color: colors.text, fontFamily: font.bold, fontSize: 13.5 },
+  disabled: { opacity: 0.45 },
+  groupRow: { gap: spacing.sm, paddingVertical: 2 },
+  groupBtn: {
+    minHeight: 46,
+    maxWidth: 150,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  groupName: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 12.5, maxWidth: 105 },
   sentBadge: {
     position: 'absolute',
     right: -2,
@@ -199,6 +350,6 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   externalText: { fontFamily: font.bold, fontSize: 14.5, color: '#fff' },
-  closeBtn: { alignItems: 'center', paddingVertical: 10 },
+  closeBtn: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
   closeText: { fontFamily: font.bold, fontSize: 14, color: colors.textMuted },
 });
