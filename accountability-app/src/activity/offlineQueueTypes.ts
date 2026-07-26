@@ -1,18 +1,34 @@
+import * as Crypto from 'expo-crypto';
 import type { NewActivity } from './api';
 
-export type UploadStatus =
-  | 'saved'
-  | 'uploading'
-  | 'waiting_network'
-  | 'needs_sign_in'
-  | 'needs_attention';
+export const UPLOAD_STATUSES = [
+  'saved',
+  'uploading',
+  'waiting_network',
+  'needs_sign_in',
+  'needs_attention',
+] as const;
 
-export type UploadErrorCategory =
-  | 'network'
-  | 'auth'
-  | 'server'
-  | 'validation'
-  | 'storage';
+export type UploadStatus = (typeof UPLOAD_STATUSES)[number];
+
+export const UPLOAD_ERROR_CATEGORIES = [
+  'network',
+  'auth',
+  'server',
+  'validation',
+  'storage',
+] as const;
+
+export type UploadErrorCategory = (typeof UPLOAD_ERROR_CATEGORIES)[number];
+
+/** PostgreSQL `integer` upper bound used by activities.duration_s. */
+export const MAX_ACTIVITY_DURATION_S = 2_147_483_647;
+/** Largest distance that remains an exact integer in a JSON/JavaScript number. */
+export const MAX_ACTIVITY_DISTANCE_M = Number.MAX_SAFE_INTEGER;
+/** More than 27 hours of one-point-per-second GPS samples. */
+export const MAX_ROUTE_POINTS = 100_000;
+/** Keeps a single persisted failure useful without allowing unbounded messages. */
+export const MAX_LAST_ERROR_MESSAGE_LENGTH = 4_096;
 
 export type QueuedActivity = {
   schema: 1;
@@ -27,41 +43,25 @@ export type QueuedActivity = {
 };
 
 const UUID_V4 =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-const UPLOAD_STATUSES: readonly UploadStatus[] = [
-  'saved',
-  'uploading',
-  'waiting_network',
-  'needs_sign_in',
-  'needs_attention',
-];
+const OWNER_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-const ERROR_CATEGORIES: readonly UploadErrorCategory[] = [
-  'network',
-  'auth',
-  'server',
-  'validation',
-  'storage',
-];
-
-/**
- * Math.random is the cross-platform fallback currently available in this app.
- * Replace it with a platform-secure random source when one is added; injection
- * keeps generation deterministic in tests and allows callers to supply one.
- */
-export function createActivityId(random: () => number = Math.random): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
-    const sample = random();
-    const bounded = Number.isFinite(sample)
-      ? Math.min(Math.max(sample, 0), 1 - Number.EPSILON)
-      : 0;
-    const nibble = Math.floor(bounded * 16);
-    const value = token === 'x' ? nibble : (nibble & 0x3) | 0x8;
-    return value.toString(16);
-  });
+export function createActivityId(
+  uuidProvider: () => unknown = Crypto.randomUUID,
+): string {
+  const id = uuidProvider();
+  if (typeof id !== 'string' || !UUID_V4.test(id)) {
+    throw new Error('Invalid activity UUID');
+  }
+  return id;
 }
 
+/**
+ * Validates the in-memory schema. The queue storage layer must enforce its
+ * serialized byte limit before calling this parser.
+ */
 export function parseQueuedActivity(value: unknown): QueuedActivity {
   if (!isRecord(value)) invalid();
 
@@ -82,15 +82,11 @@ export function parseQueuedActivity(value: unknown): QueuedActivity {
     typeof id !== 'string' ||
     !UUID_V4.test(id) ||
     typeof ownerId !== 'string' ||
-    ownerId.trim().length === 0 ||
+    !OWNER_UUID.test(ownerId) ||
     !isValidDate(createdAt) ||
     !isUploadStatus(status) ||
-    typeof attemptCount !== 'number' ||
-    !Number.isInteger(attemptCount) ||
-    attemptCount < 0 ||
-    typeof nextAttemptAt !== 'number' ||
-    !Number.isFinite(nextAttemptAt) ||
-    nextAttemptAt < 0
+    !isNonNegativeSafeInteger(attemptCount) ||
+    !isNonNegativeSafeInteger(nextAttemptAt)
   ) {
     invalid();
   }
@@ -117,9 +113,16 @@ function parseActivity(value: unknown): NewActivity {
   const { type, distance_m, duration_s, route, started_at } = value;
   if (
     (type !== 'run' && type !== 'walk' && type !== 'ride') ||
-    !isNonNegativeFiniteNumber(distance_m) ||
-    !isNonNegativeFiniteNumber(duration_s) ||
+    !isBoundedNonNegativeSafeInteger(
+      distance_m,
+      MAX_ACTIVITY_DISTANCE_M,
+    ) ||
+    !isBoundedNonNegativeSafeInteger(
+      duration_s,
+      MAX_ACTIVITY_DURATION_S,
+    ) ||
     !Array.isArray(route) ||
+    route.length > MAX_ROUTE_POINTS ||
     !isValidDate(started_at)
   ) {
     invalid();
@@ -162,7 +165,8 @@ function parseLastError(
   if (
     !isErrorCategory(category) ||
     typeof message !== 'string' ||
-    message.trim().length === 0
+    message.trim().length === 0 ||
+    message.length > MAX_LAST_ERROR_MESSAGE_LENGTH
   ) {
     invalid();
   }
@@ -182,8 +186,19 @@ function isValidDate(value: unknown): value is string {
   );
 }
 
-function isNonNegativeFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+function isBoundedNonNegativeSafeInteger(
+  value: unknown,
+  maximum: number,
+): value is number {
+  return isNonNegativeSafeInteger(value) && value <= maximum;
 }
 
 function isUploadStatus(value: unknown): value is UploadStatus {
@@ -196,7 +211,7 @@ function isUploadStatus(value: unknown): value is UploadStatus {
 function isErrorCategory(value: unknown): value is UploadErrorCategory {
   return (
     typeof value === 'string' &&
-    (ERROR_CATEGORIES as readonly string[]).includes(value)
+    (UPLOAD_ERROR_CATEGORIES as readonly string[]).includes(value)
   );
 }
 

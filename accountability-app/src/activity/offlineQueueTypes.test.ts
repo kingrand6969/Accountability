@@ -1,21 +1,34 @@
-import { describe, expect, it } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import * as Crypto from 'expo-crypto';
 import {
   createActivityId,
+  MAX_ACTIVITY_DISTANCE_M,
+  MAX_ACTIVITY_DURATION_S,
+  MAX_LAST_ERROR_MESSAGE_LENGTH,
+  MAX_ROUTE_POINTS,
   parseQueuedActivity,
   type QueuedActivity,
 } from './offlineQueueTypes';
 
+jest.mock('expo-crypto', () => ({
+  randomUUID: jest.fn(),
+}));
+
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+const mockedRandomUUID = Crypto.randomUUID as jest.MockedFunction<
+  typeof Crypto.randomUUID
+>;
 
 function validEntry(): QueuedActivity {
   return {
     schema: 1,
     id: '12345678-1234-4123-8123-123456789abc',
-    ownerId: 'owner-123',
+    ownerId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     activity: {
       type: 'run',
-      distance_m: 1500.5,
+      distance_m: 1501,
       duration_s: 420,
       route: [
         { lat: -31.9523, lon: 115.8613 },
@@ -32,28 +45,48 @@ function validEntry(): QueuedActivity {
 }
 
 describe('createActivityId', () => {
-  it('creates RFC 4122 version-4 IDs with the correct variant', () => {
-    expect(createActivityId(() => 0.5)).toMatch(UUID_V4);
+  beforeEach(() => {
+    mockedRandomUUID.mockReset();
   });
 
-  it('creates distinct IDs from distinct deterministic random streams', () => {
-    let first = 0;
-    let second = 0;
+  it('uses the platform CSPRNG by default', () => {
+    const secureId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    mockedRandomUUID.mockReturnValue(secureId);
 
-    const firstId = createActivityId(() => ((first++ * 17 + 3) % 256) / 256);
-    const secondId = createActivityId(
-      () => ((second++ * 29 + 11) % 256) / 256,
-    );
-
-    expect(firstId).toMatch(UUID_V4);
-    expect(secondId).toMatch(UUID_V4);
-    expect(firstId).not.toBe(secondId);
+    expect(createActivityId()).toBe(secureId);
+    expect(mockedRandomUUID).toHaveBeenCalledTimes(1);
   });
 
-  it.each([1, -1, Number.NaN, Number.POSITIVE_INFINITY])(
-    'defensively handles a random value of %p',
+  it('accepts an injected deterministic UUID provider', () => {
+    const deterministicId = '12345678-1234-4123-8123-123456789abc';
+
+    expect(createActivityId(() => deterministicId)).toBe(deterministicId);
+    expect(deterministicId).toMatch(UUID_V4);
+  });
+
+  it('validates UUID output from the platform provider', () => {
+    mockedRandomUUID.mockReturnValue('not-a-uuid');
+
+    expect(() => createActivityId()).toThrow('Invalid activity UUID');
+    expect(mockedRandomUUID).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    'not-a-uuid',
+    '12345678-1234-1123-8123-123456789abc',
+    '12345678-1234-4123-7123-123456789abc',
+    '12345678-1234-4123-8123-123456789ABC',
+    '',
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    -1,
+    1,
+  ])(
+    'throws when a UUID provider returns %p',
     (value) => {
-      expect(createActivityId(() => value)).toMatch(UUID_V4);
+      expect(() =>
+        createActivityId(() => value as never),
+      ).toThrow('Invalid activity UUID');
     },
   );
 });
@@ -77,6 +110,26 @@ describe('parseQueuedActivity', () => {
     ).toThrow('Invalid queued activity');
   });
 
+  it.each([
+    '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+    '6ba7b810-9dad-51d1-80b4-00c04fd430c8',
+    '018f78d2-a4d7-7b10-8a9b-123456789abc',
+  ])('accepts canonical Supabase-compatible owner UUID %s', (ownerId) => {
+    expect(parseQueuedActivity({ ...validEntry(), ownerId }).ownerId).toBe(
+      ownerId,
+    );
+  });
+
+  it.each([
+    'owner-123',
+    ' AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE ',
+    'aaaaaaaa-bbbb-4ccc-7ddd-eeeeeeeeeeee-extra',
+  ])('rejects non-canonical owner ID %s', (ownerId) => {
+    expect(() =>
+      parseQueuedActivity({ ...validEntry(), ownerId }),
+    ).toThrow('Invalid queued activity');
+  });
+
   it('accepts null as an explicit no-error state', () => {
     expect(
       parseQueuedActivity({ ...validEntry(), lastError: null }),
@@ -91,8 +144,14 @@ describe('parseQueuedActivity', () => {
     ['status', { status: 'pending' }],
     ['attempt count', { attemptCount: -1 }],
     ['fractional attempt count', { attemptCount: 1.5 }],
+    ['unsafe attempt count', { attemptCount: Number.MAX_SAFE_INTEGER + 1 }],
     ['next attempt', { nextAttemptAt: Number.NaN }],
     ['negative next attempt', { nextAttemptAt: -1 }],
+    ['fractional next attempt', { nextAttemptAt: 1.5 }],
+    [
+      'unsafe next attempt',
+      { nextAttemptAt: Number.MAX_SAFE_INTEGER + 1 },
+    ],
   ])('rejects an invalid %s', (_label, patch) => {
     expect(() => parseQueuedActivity({ ...validEntry(), ...patch })).toThrow(
       'Invalid queued activity',
@@ -112,6 +171,10 @@ describe('parseQueuedActivity', () => {
   it.each([
     ['unknown type', { type: 'swim' }],
     ['negative distance', { distance_m: -1 }],
+    ['fractional distance', { distance_m: 1.5 }],
+    ['excessive distance', { distance_m: MAX_ACTIVITY_DISTANCE_M + 1 }],
+    ['fractional duration', { duration_s: 1.5 }],
+    ['excessive duration', { duration_s: MAX_ACTIVITY_DURATION_S + 1 }],
     ['non-finite duration', { duration_s: Number.POSITIVE_INFINITY }],
     ['invalid start date', { started_at: 'soon' }],
     ['non-array route', { route: {} }],
@@ -121,6 +184,32 @@ describe('parseQueuedActivity', () => {
       parseQueuedActivity({
         ...validEntry(),
         activity: { ...validEntry().activity, ...activityPatch },
+      }),
+    ).toThrow('Invalid queued activity');
+  });
+
+  it('caps route point count for durable queue entries', () => {
+    const route = Array.from(
+      { length: MAX_ROUTE_POINTS + 1 },
+      () => ({ lat: 0, lon: 0 }),
+    );
+
+    expect(() =>
+      parseQueuedActivity({
+        ...validEntry(),
+        activity: { ...validEntry().activity, route },
+      }),
+    ).toThrow('Invalid queued activity');
+  });
+
+  it('caps persisted error messages', () => {
+    expect(() =>
+      parseQueuedActivity({
+        ...validEntry(),
+        lastError: {
+          category: 'network',
+          message: 'x'.repeat(MAX_LAST_ERROR_MESSAGE_LENGTH + 1),
+        },
       }),
     ).toThrow('Invalid queued activity');
   });
@@ -187,6 +276,30 @@ describe('parseQueuedActivity', () => {
       category: 'network',
       message: 'Offline',
     });
+  });
+
+  it('returns a deep non-aliased copy of mutable input data', () => {
+    const input = {
+      ...validEntry(),
+      activity: {
+        ...validEntry().activity,
+        route: [{ lat: -31.9523, lon: 115.8613 }],
+      },
+      lastError: { category: 'network', message: 'Offline' },
+    };
+
+    const parsed = parseQueuedActivity(input);
+
+    expect(parsed).not.toBe(input);
+    expect(parsed.activity).not.toBe(input.activity);
+    expect(parsed.activity.route).not.toBe(input.activity.route);
+    expect(parsed.activity.route[0]).not.toBe(input.activity.route[0]);
+    expect(parsed.lastError).not.toBe(input.lastError);
+
+    input.activity.route[0].lat = 0;
+    input.lastError.message = 'Changed';
+    expect(parsed.activity.route[0].lat).toBe(-31.9523);
+    expect(parsed.lastError?.message).toBe('Offline');
   });
 
   it('accepts every supported status and error category', () => {
