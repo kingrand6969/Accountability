@@ -27,16 +27,28 @@ import {
 import { OsmMap, type OsmMapHandle } from '../../ui/OsmMap';
 import { RunShareSheet, type FinishedRun } from '../../activity/RunShareSheet';
 import {
+  beginTrackRecording,
+  clearTrackRecording,
   LOCATION_TASK_NAME,
+  persistCompletedTrackRecording,
+  readPendingCompletedTrackRecording,
+  readTrackRecording,
   readTrackPoints,
   resetTrackPoints,
+  type TrackRecordingIdentity,
 } from '../../activity/locationTask';
-import { saveActivity, type ActivityType } from '../../activity/api';
+import { type ActivityType } from '../../activity/api';
+import { enqueueActivity } from '../../activity/offlineQueueStore';
+import {
+  completeRecordedActivity,
+  type PendingRecordedActivity,
+} from '../../activity/runCompletion';
 import { getMyProfile } from '../../profiles/api';
 import { floatingTabBarStyle, FLOATING_BAR_CLEARANCE } from '../../ui/floatingTabBar';
 import { font } from '../../ui/theme';
 import { hapticImpact } from '../../ui/haptics';
 import { contentMaxWidth } from '../../ui/responsive';
+import { useAuth } from '../../auth/AuthProvider';
 
 const LIME = '#c6f24e';
 const BG = '#101319';
@@ -62,13 +74,7 @@ const SAMPLE_ROUTE: Pt[] = [
   { lat: 14.4992, lon: 121.0003 },
 ];
 
-type PendingSave = {
-  type: ActivityType;
-  distance: number;
-  elapsed: number;
-  points: Pt[];
-  startedAt: string;
-};
+type PendingSave = PendingRecordedActivity;
 
 function timeOfDay(): string {
   const h = new Date().getHours();
@@ -88,6 +94,7 @@ async function stopUpdatesIfRunning() {
 
 export default function ActivityTrack() {
   const router = useRouter();
+  const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { width: W, height: H } = useWindowDimensions();
@@ -105,6 +112,7 @@ export default function ActivityTrack() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
+  const recordingRef = useRef<TrackRecordingIdentity | null>(null);
   const pulse = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<OsmMapHandle>(null);
   // where to centre the idle map — the user's last-known spot (no prompt)
@@ -135,6 +143,31 @@ export default function ActivityTrack() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void readPendingCompletedTrackRecording()
+      .then((recording) => {
+        if (!active || !recording) return;
+        recordingRef.current = {
+          activityId: recording.activityId,
+          ownerId: recording.ownerId,
+          startedAt: recording.activity.started_at,
+        };
+        startedAtRef.current = recording.activity.started_at;
+        setType(recording.activity.type);
+        setDistance(recording.activity.distance_m);
+        setElapsed(recording.activity.duration_s);
+        setLivePoints(recording.activity.route);
+        setPending(recording);
+      })
+      .catch(() => {
+        // Keep a recoverable raw blob untouched when local storage is busy.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // hide the floating tab bar while actually recording or sharing, so the run
   // stays immersive; show it (highlighted) in the idle pre-start state
   const immersive = tracking || !!shareRun;
@@ -162,6 +195,9 @@ export default function ActivityTrack() {
     if (Platform.OS === 'web') {
       // no GPS in a browser — let the user preview the shareable run card
       setShareRun({
+        activityId: null,
+        ownerId: null,
+        syncStatus: null,
         type,
         distance: totalDistanceMeters(SAMPLE_ROUTE),
         elapsed: 31 * 60 + 12,
@@ -170,17 +206,35 @@ export default function ActivityTrack() {
       });
       return;
     }
+    const ownerId = session?.user.id;
+    if (!ownerId) {
+      Alert.alert(
+        'Sign in required',
+        'Sign in before starting so this activity stays with the right account.',
+      );
+      return;
+    }
     const fg = await Location.requestForegroundPermissionsAsync();
     if (fg.status !== 'granted') {
       Alert.alert('Location needed', 'Allow location access to track your activity.');
       return;
     }
     await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
-    await resetTrackPoints();
+    let recording: TrackRecordingIdentity;
+    try {
+      recording = await beginTrackRecording(ownerId);
+    } catch {
+      Alert.alert(
+        'Could not save on this phone',
+        'Free some storage and try starting again.',
+      );
+      return;
+    }
     setDistance(0);
     setElapsed(0);
     setLivePoints([]);
-    startedAtRef.current = new Date().toISOString();
+    recordingRef.current = recording;
+    startedAtRef.current = recording.startedAt;
     startMsRef.current = Date.now();
     try {
       await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
@@ -195,6 +249,8 @@ export default function ActivityTrack() {
         },
       });
     } catch (e) {
+      recordingRef.current = null;
+      await resetTrackPoints().catch(() => undefined);
       Alert.alert('Could not start tracking', String((e as Error).message ?? e));
       return;
     }
@@ -214,26 +270,30 @@ export default function ActivityTrack() {
   async function persist(p: PendingSave) {
     setSaving(true);
     try {
-      await saveActivity({
-        type: p.type,
-        distance_m: p.distance,
-        duration_s: p.elapsed,
-        route: p.points,
-        started_at: p.startedAt,
+      await persistCompletedTrackRecording(p);
+      const queued = await completeRecordedActivity(p, {
+        enqueueActivity,
+        clearRecording: clearTrackRecording,
       });
       setPending(null);
-      await resetTrackPoints();
+      recordingRef.current = null;
       // saved to the log — now offer the shareable run card
       setShareRun({
-        type: p.type,
-        distance: p.distance,
-        elapsed: p.elapsed,
-        points: p.points,
-        title: `${timeOfDay()} ${TYPES.find((t) => t.value === p.type)?.label ?? 'run'}`,
+        activityId: queued.id,
+        ownerId: queued.ownerId,
+        syncStatus: queued.status,
+        type: p.activity.type,
+        distance: p.activity.distance_m,
+        elapsed: p.activity.duration_s,
+        points: p.activity.route,
+        title: `${timeOfDay()} ${TYPES.find((t) => t.value === p.activity.type)?.label ?? 'run'}`,
       });
     } catch (e) {
       setPending(p);
-      Alert.alert('Could not save', `${String((e as Error).message ?? e)}\n\nYour recording is safe — tap "Retry save".`);
+      Alert.alert(
+        'Could not save on this phone',
+        `${String((e as Error).message ?? e)}\n\nYour recording is safe — tap Retry.`,
+      );
     } finally {
       setSaving(false);
     }
@@ -254,9 +314,32 @@ export default function ActivityTrack() {
     if (finalElapsed < 3 && finalDistance < 5) {
       Alert.alert('Too short', 'That activity was too short to save.');
       await resetTrackPoints();
+      recordingRef.current = null;
       return;
     }
-    await persist({ type, distance: finalDistance, elapsed: finalElapsed, points, startedAt: startedAtRef.current });
+    const identity =
+      recordingRef.current ??
+      (await readTrackRecording(session?.user.id).catch(() => null));
+    if (!identity) {
+      Alert.alert(
+        'Could not save on this phone',
+        'Your route is still on this phone. Reopen this screen and tap Retry.',
+      );
+      return;
+    }
+    const nextPending: PendingSave = {
+      activityId: identity.activityId,
+      ownerId: identity.ownerId,
+      activity: {
+        type,
+        distance_m: finalDistance,
+        duration_s: finalElapsed,
+        route: points,
+        started_at: identity.startedAt,
+      },
+    };
+    setPending(nextPending);
+    await persist(nextPending);
   }
 
   function onDiscard() {
@@ -268,6 +351,7 @@ export default function ActivityTrack() {
         onPress: async () => {
           setPending(null);
           await resetTrackPoints();
+          recordingRef.current = null;
           setDistance(0);
           setElapsed(0);
           setLivePoints([]);
@@ -276,9 +360,9 @@ export default function ActivityTrack() {
     ]);
   }
 
-  const shownDist = pending ? pending.distance : distance;
-  const shownElapsed = pending ? pending.elapsed : elapsed;
-  const shownPoints = pending ? pending.points : livePoints;
+  const shownDist = pending ? pending.activity.distance_m : distance;
+  const shownElapsed = pending ? pending.activity.duration_s : elapsed;
+  const shownPoints = pending ? pending.activity.route : livePoints;
   const kcal = estimateCalories(type, shownDist);
 
   // live route is pushed via the map ref while tracking (no reload); a finished
@@ -392,7 +476,7 @@ export default function ActivityTrack() {
         {pending ? (
           <View style={styles.pendingRow}>
             <Pressable style={[styles.actionBtn, styles.retryBtn]} onPress={() => persist(pending)} disabled={saving}>
-              <Text style={styles.retryText}>{saving ? 'Saving…' : 'Retry save'}</Text>
+              <Text style={styles.retryText}>{saving ? 'Saving…' : 'Retry'}</Text>
             </Pressable>
           </View>
         ) : tracking ? (

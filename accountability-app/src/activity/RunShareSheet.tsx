@@ -52,11 +52,17 @@ import {
   type RunMediaDestination,
 } from './saveRunMedia';
 import type { RunMediaCacheItem } from './runMediaCache';
+import { useActivitySync } from './ActivitySyncProvider';
+import { useAuth } from '../auth/AuthProvider';
+import { runSyncPresentation } from './runCompletion';
+import type { UploadStatus } from './offlineQueueTypes';
 
 const LIME = '#c6f24e';
 
 export type FinishedRun = {
   activityId: string | null;
+  ownerId: string | null;
+  syncStatus: UploadStatus | null;
   type: ActivityType;
   distance: number;
   elapsed: number;
@@ -81,7 +87,13 @@ type RunFeedOperationMetadata = {
 
 /** Full-screen overlay shown after Stop & Save — turn the run into a shareable card. */
 export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () => void }) {
+  const { session } = useAuth();
+  const {
+    queued,
+    refreshQueue,
+  } = useActivitySync();
   const { width, height } = useWindowDimensions();
+  const [queueReady, setQueueReady] = useState(run.activityId === null);
   const [mode, setMode] = useState<Mode>('map');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | null>(null);
@@ -102,6 +114,47 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     [],
   );
   const busy = activeDestination !== null;
+  const liveQueued = run.activityId
+    ? queued.some((entry) => entry.id === run.activityId)
+    : false;
+  const syncPresentation =
+    run.activityId && run.syncStatus
+      ? runSyncPresentation(run.activityId, run.syncStatus, queued)
+      : null;
+  const ownerMismatch =
+    !!run.ownerId &&
+    !!session?.user.id &&
+    run.ownerId !== session.user.id;
+  const activityQueued =
+    !!run.activityId &&
+    (liveQueued || !queueReady || ownerMismatch);
+  const feedDisabledReason = ownerMismatch
+    ? 'Sign in to the account that recorded this activity.'
+    : activityQueued
+      ? syncPresentation?.feedDisabledReason ??
+        'Uploads automatically when online'
+      : run.activityId
+        ? undefined
+        : 'Save a real GPS activity before posting a verified Run card.';
+  const syncDetail = ownerMismatch
+    ? 'Sign in to the recording account to upload'
+    : !queueReady && !liveQueued
+      ? 'Uploads automatically when online'
+      : syncPresentation?.detail;
+
+  useEffect(() => {
+    if (!run.activityId) return;
+    let active = true;
+    setQueueReady(false);
+    void refreshQueue().finally(() => {
+      if (active) setQueueReady(true);
+    });
+    return () => {
+      active = false;
+    };
+    // Refresh once for this completed activity; live queue events update later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run.activityId]);
 
   // size the 4:5 card to fit BOTH the width and the space left after the
   // header/mode-picker/buttons, so it never clips on short screens
@@ -231,9 +284,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     const ran = await shareOperationGate.run(async () => {
       setActiveDestination(destination);
       try {
-        if (destination === 'feed' && !run.activityId) {
+        if (destination === 'feed' && (!run.activityId || activityQueued)) {
           throw new Error(
-            'Save a real GPS activity on your phone before posting a verified Run card.',
+            feedDisabledReason ??
+              'Save a real GPS activity on your phone before posting a verified Run card.',
           );
         }
         const feedContext =
@@ -369,6 +423,16 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         </Pressable>
       </View>
 
+      {syncPresentation ? (
+        <View style={styles.savedStatus} accessibilityLiveRegion="polite">
+          <Ionicons name="phone-portrait-outline" size={15} color={LIME} />
+          <View>
+            <Text style={styles.savedTitle}>{syncPresentation.title}</Text>
+            <Text style={styles.savedDetail}>{syncDetail}</Text>
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.preview}>
         <RunCard
           ref={cardRef}
@@ -498,11 +562,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       <RunMediaActions
         onDestination={onDestination}
         disabled={busy}
-        feedDisabledReason={
-          run.activityId
-            ? undefined
-            : 'Save a real GPS activity before posting a verified Run card.'
-        }
+        activityQueued={activityQueued}
+        feedDisabledReason={feedDisabledReason}
       />
     </View>
   );
@@ -560,6 +621,20 @@ const styles = StyleSheet.create({
     maxWidth: 560,
   },
   headerTitle: { color: '#fff', fontFamily: font.extrabold, fontSize: 18 },
+  savedStatus: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: 560,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(198,242,78,0.1)',
+  },
+  savedTitle: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
+  savedDetail: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11 },
   skip: { color: '#94a3b8', fontFamily: font.bold, fontSize: 15 },
   skipBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   preview: { justifyContent: 'center' },
