@@ -298,6 +298,30 @@ export type MedalState = {
   progress: number;
 };
 
+export type PrestigeState = {
+  rings: 0 | 1 | 2 | 3;
+  next: { ring: 1 | 2 | 3; at: number } | null;
+  progress: number;
+};
+
+/** Long-term progression after Diamond without reducing existing awards. */
+export function prestigeState(def: MedalDef, value: number): PrestigeState {
+  const top = def.tiers[def.tiers.length - 1]?.at ?? 0;
+  const targets = [top * 2, top * 5, top * 10] as const;
+  let rings: 0 | 1 | 2 | 3 = 0;
+  targets.forEach((target, index) => {
+    if (value >= target) rings = (index + 1) as 1 | 2 | 3;
+  });
+  const nextTarget = targets[rings];
+  if (!nextTarget) return { rings, next: null, progress: 1 };
+  const floor = rings === 0 ? top : targets[rings - 1];
+  return {
+    rings,
+    next: { ring: (rings + 1) as 1 | 2 | 3, at: nextTarget },
+    progress: clamp((value - floor) / (nextTarget - floor)),
+  };
+}
+
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 
 export function medalState(def: MedalDef, value: number): MedalState {

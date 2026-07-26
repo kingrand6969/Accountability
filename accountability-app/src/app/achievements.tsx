@@ -31,6 +31,7 @@ import {
   flexPoints,
   medalMetal,
   medalState,
+  prestigeState,
   rankFor,
   type MedalState,
 } from '../achievements/catalog';
@@ -179,6 +180,9 @@ export default function Achievements() {
                 </Text>
                 <Text style={[styles.cellTier, s.unlocked && { color: ACCENT }]} numberOfLines={1}>
                   {s.tierName ?? 'Locked'}
+                  {prestigeState(s.def, s.value).rings > 0
+                    ? ` · ${'◉'.repeat(prestigeState(s.def, s.value).rings)}`
+                    : ''}
                 </Text>
                 <View style={styles.miniTrack}>
                   <View style={[styles.miniFill, { width: `${Math.round(s.progress * 100)}%` }]} />
