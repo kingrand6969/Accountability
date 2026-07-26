@@ -71,6 +71,18 @@ describe('parseQueuedActivity', () => {
     ).toThrow('Invalid queued activity');
   });
 
+  it('rejects a queue entry with a whitespace-only owner', () => {
+    expect(() =>
+      parseQueuedActivity({ ...validEntry(), ownerId: ' \t\n ' }),
+    ).toThrow('Invalid queued activity');
+  });
+
+  it('accepts null as an explicit no-error state', () => {
+    expect(
+      parseQueuedActivity({ ...validEntry(), lastError: null }),
+    ).toMatchObject({ lastError: null });
+  });
+
   it.each([
     ['schema', { schema: 2 }],
     ['UUID', { id: 'not-a-uuid' }],
@@ -80,6 +92,7 @@ describe('parseQueuedActivity', () => {
     ['attempt count', { attemptCount: -1 }],
     ['fractional attempt count', { attemptCount: 1.5 }],
     ['next attempt', { nextAttemptAt: Number.NaN }],
+    ['negative next attempt', { nextAttemptAt: -1 }],
   ])('rejects an invalid %s', (_label, patch) => {
     expect(() => parseQueuedActivity({ ...validEntry(), ...patch })).toThrow(
       'Invalid queued activity',
@@ -110,6 +123,70 @@ describe('parseQueuedActivity', () => {
         activity: { ...validEntry().activity, ...activityPatch },
       }),
     ).toThrow('Invalid queued activity');
+  });
+
+  it.each([
+    ['latitude above 90', { lat: 90.0001, lon: 0 }],
+    ['latitude below -90', { lat: -90.0001, lon: 0 }],
+    ['longitude above 180', { lat: 0, lon: 180.0001 }],
+    ['longitude below -180', { lat: 0, lon: -180.0001 }],
+    ['non-finite latitude', { lat: Number.POSITIVE_INFINITY, lon: 0 }],
+    ['non-finite longitude', { lat: 0, lon: Number.NEGATIVE_INFINITY }],
+  ])('rejects a route point with %s', (_label, point) => {
+    expect(() =>
+      parseQueuedActivity({
+        ...validEntry(),
+        activity: { ...validEntry().activity, route: [point] },
+      }),
+    ).toThrow('Invalid queued activity');
+  });
+
+  it('accepts route coordinates at the geographic boundaries', () => {
+    const route = [
+      { lat: 90, lon: 180 },
+      { lat: -90, lon: -180 },
+    ];
+
+    expect(
+      parseQueuedActivity({
+        ...validEntry(),
+        activity: { ...validEntry().activity, route },
+      }).activity.route,
+    ).toEqual(route);
+  });
+
+  it('strips unknown top-level and nested properties from parsed data', () => {
+    const parsed = parseQueuedActivity({
+      ...validEntry(),
+      unexpectedTopLevel: 'discard me',
+      activity: {
+        ...validEntry().activity,
+        unexpectedActivityField: 'discard me',
+        route: [
+          {
+            lat: -31.9523,
+            lon: 115.8613,
+            unexpectedPointField: 'discard me',
+          },
+        ],
+      },
+      lastError: {
+        category: 'network',
+        message: 'Offline',
+        unexpectedErrorField: 'discard me',
+      },
+    });
+
+    expect(parsed).not.toHaveProperty('unexpectedTopLevel');
+    expect(parsed.activity).not.toHaveProperty('unexpectedActivityField');
+    expect(parsed.activity.route[0]).toEqual({
+      lat: -31.9523,
+      lon: 115.8613,
+    });
+    expect(parsed.lastError).toEqual({
+      category: 'network',
+      message: 'Offline',
+    });
   });
 
   it('accepts every supported status and error category', () => {
