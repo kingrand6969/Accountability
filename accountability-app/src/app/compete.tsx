@@ -124,6 +124,8 @@ function RankingsTab({ uid }: { uid: string | null }) {
   const [period, setPeriod] = useState<Period>('week');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof getLeaderboard>>>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [flexing, setFlexing] = useState(false);
 
   useFocusEffect(
@@ -136,14 +138,20 @@ function RankingsTab({ uid }: { uid: string | null }) {
     if (!sharing?.share_location) return;
     let live = true;
     setLoading(true);
+    setLoadError(false);
     getLeaderboard(scope, metric, period)
       .then((r) => live && setRows(r))
-      .catch(() => live && setRows([]))
+      .catch(() => {
+        if (live) {
+          setRows([]);
+          setLoadError(true);
+        }
+      })
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
-  }, [sharing?.share_location, scope, metric, period]);
+  }, [sharing?.share_location, scope, metric, period, reloadKey]);
 
   async function onEnable() {
     setEnabling(true);
@@ -241,6 +249,8 @@ function RankingsTab({ uid }: { uid: string | null }) {
         <View style={styles.listPad}>
           {loading ? (
             <ActivityIndicator color={ACCENT} style={{ marginVertical: 24 }} />
+          ) : loadError ? (
+            <RetryState label="leaderboard" onRetry={() => setReloadKey((value) => value + 1)} />
           ) : rows.length === 0 ? (
             <Text style={styles.empty}>No scores yet — log something to get on the board.</Text>
           ) : (
@@ -290,12 +300,17 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
   const [items, setItems] = useState<ChallengeCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
+    setLoadError(false);
     listChallenges()
       .then(setItems)
-      .catch(() => setItems([]))
+      .catch(() => {
+        setItems([]);
+        setLoadError(true);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -321,6 +336,7 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
         style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
         onPress={() => (isPro ? router.push('/challenge-new') : router.push('/paywall'))}
         accessibilityRole="button"
+        accessibilityLabel={isPro ? 'Create a challenge' : 'Learn about Pro challenge creation'}
       >
         <Ionicons name={isPro ? 'add' : 'lock-closed'} size={17} color="#fff" />
         <Text style={styles.primaryBtnText}>
@@ -330,6 +346,22 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
 
       {loading ? (
         <ActivityIndicator color={ACCENT} style={{ marginTop: 30 }} />
+      ) : loadError ? (
+        <GlassCard style={styles.card}>
+          <View style={styles.pad}>
+            <Ionicons name="cloud-offline-outline" size={28} color={INK_SOFT} />
+            <Text style={styles.cardTitle}>Challenges couldn&apos;t load</Text>
+            <Text style={styles.cardSub}>Check your connection, then try again.</Text>
+            <Pressable
+              style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
+              onPress={load}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading challenges"
+            >
+              <Text style={styles.secondaryBtnText}>Try again</Text>
+            </Pressable>
+          </View>
+        </GlassCard>
       ) : items.length === 0 ? (
         <GlassCard style={styles.card}>
           <View style={styles.pad}>
@@ -345,6 +377,8 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
               <Pressable
                 style={({ pressed }) => [styles.challengePad, pressed && styles.pressed]}
                 onPress={() => router.push({ pathname: '/challenge/[id]', params: { id: c.id } })}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${c.title}`}
               >
                 {(() => {
                   const art = challengeArtFor(c.metric);
@@ -377,6 +411,9 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
                     ]}
                     onPress={() => toggle(c)}
                     disabled={busy === c.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={c.joined ? `Leave ${c.title}` : `Join ${c.title}`}
+                    accessibilityState={{ disabled: busy === c.id, busy: busy === c.id }}
                   >
                     {busy === c.id ? (
                       <ActivityIndicator size="small" color={c.joined ? INK_SOFT : '#fff'} />
@@ -403,18 +440,26 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
   const [period, setPeriod] = useState<Period>('week');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof getBuddyStandings>>>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let live = true;
     setLoading(true);
+    setLoadError(false);
     getBuddyStandings(metric, period)
       .then((r) => live && setRows(r))
-      .catch(() => live && setRows([]))
+      .catch(() => {
+        if (live) {
+          setRows([]);
+          setLoadError(true);
+        }
+      })
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
-  }, [metric, period]);
+  }, [metric, period, reloadKey]);
 
   const soloOrEmpty = !loading && rows.filter((r) => !r.is_me).length === 0;
 
@@ -441,12 +486,16 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
         <View style={styles.listPad}>
           {loading ? (
             <ActivityIndicator color={ACCENT} style={{ marginVertical: 24 }} />
+          ) : loadError ? (
+            <RetryState label="buddy standings" onRetry={() => setReloadKey((value) => value + 1)} />
           ) : soloOrEmpty ? (
             <View style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}>
               <Text style={styles.empty}>Add accountability buddies to compete head-to-head.</Text>
               <Pressable
                 style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
                 onPress={() => router.push('/buddy')}
+                accessibilityRole="button"
+                accessibilityLabel="Find accountability buddies"
               >
                 <Text style={styles.secondaryBtnText}>Find buddies</Text>
               </Pressable>
@@ -466,6 +515,23 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
           )}
         </View>
       </GlassCard>
+    </View>
+  );
+}
+
+function RetryState({ label, onRetry }: { label: string; onRetry: () => void }) {
+  return (
+    <View style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}>
+      <Ionicons name="cloud-offline-outline" size={26} color={INK_SOFT} />
+      <Text style={styles.empty}>Couldn&apos;t load the {label}.</Text>
+      <Pressable
+        style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
+        onPress={onRetry}
+        accessibilityRole="button"
+        accessibilityLabel={`Retry loading ${label}`}
+      >
+        <Text style={styles.secondaryBtnText}>Try again</Text>
+      </Pressable>
     </View>
   );
 }
