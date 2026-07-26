@@ -391,12 +391,23 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
                   );
                 })()}
                 <View style={{ flex: 1 }}>
+                  {c.is_official ? (
+                    <Text style={styles.officialLabel}>
+                      OFFICIAL · {(c.difficulty ?? 'beginner').toUpperCase()}
+                    </Text>
+                  ) : null}
                   <Text style={styles.challengeTitle} numberOfLines={1}>
                     {c.title}
                   </Text>
                   <Text style={styles.challengeMeta}>
                     {meta.label} · {c.participants} in · {daysLeft(c.ends_at)}
                   </Text>
+                  {c.target ? (
+                    <Text style={styles.challengeGoal}>
+                      Goal: {formatScore(c.target, c.metric)}
+                      {c.rest_day_tokens ? ` · ${c.rest_day_tokens} rest-day tokens` : ''}
+                    </Text>
+                  ) : null}
                 </View>
                 {ended ? (
                   <View style={[styles.joinBtn, styles.joinedBtn]}>
@@ -595,7 +606,9 @@ const styles = StyleSheet.create({
   secondaryBtnText: { color: ACCENT, fontFamily: font.bold, fontSize: 13.5 },
   challengePad: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
   challengeTitle: { fontFamily: font.bold, fontSize: 15.5, color: INK },
+  officialLabel: { fontFamily: font.extrabold, fontSize: 9.5, color: ACCENT, letterSpacing: 0.6 },
   challengeMeta: { fontFamily: font.medium, fontSize: 12.5, color: INK_SOFT, marginTop: 2 },
+  challengeGoal: { fontFamily: font.medium, fontSize: 11.5, color: INK_SOFT, marginTop: 2 },
   joinBtn: {
     backgroundColor: ACCENT,
     borderRadius: radius.pill,
