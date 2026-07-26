@@ -19,6 +19,7 @@ import { PostMenuHost } from '../feed/PostMenu';
 import { ModerationGate } from '../moderation/ModerationGate';
 import { colors } from '../ui/theme';
 import { cleanupAbandonedRunMedia } from '../activity/runMediaCache';
+import { ActivitySyncProvider } from '../activity/ActivitySyncProvider';
 import '../notifications/handler';
 import '../activity/locationTask';
 
@@ -164,13 +165,15 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <ProProvider>
-        <RootNavigator />
-        <ModerationGate />
-        <ToastHost />
-        <ConfirmHost />
-        <PostMenuHost />
-      </ProProvider>
+      <ActivitySyncProvider>
+        <ProProvider>
+          <RootNavigator />
+          <ModerationGate />
+          <ToastHost />
+          <ConfirmHost />
+          <PostMenuHost />
+        </ProProvider>
+      </ActivitySyncProvider>
     </AuthProvider>
   );
 }
