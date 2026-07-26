@@ -23,7 +23,7 @@ export type UploadErrorCategory = (typeof UPLOAD_ERROR_CATEGORIES)[number];
 
 /** PostgreSQL `integer` upper bound used by activities.duration_s. */
 export const MAX_ACTIVITY_DURATION_S = 2_147_483_647;
-/** Largest distance that remains an exact integer in a JSON/JavaScript number. */
+/** Conservative upper bound for finite JSON/JavaScript distance values. */
 export const MAX_ACTIVITY_DISTANCE_M = Number.MAX_SAFE_INTEGER;
 /** More than 27 hours of one-point-per-second GPS samples. */
 export const MAX_ROUTE_POINTS = 100_000;
@@ -113,7 +113,7 @@ function parseActivity(value: unknown): NewActivity {
   const { type, distance_m, duration_s, route, started_at } = value;
   if (
     (type !== 'run' && type !== 'walk' && type !== 'ride') ||
-    !isBoundedNonNegativeSafeInteger(
+    !isBoundedNonNegativeFiniteNumber(
       distance_m,
       MAX_ACTIVITY_DISTANCE_M,
     ) ||
@@ -199,6 +199,18 @@ function isBoundedNonNegativeSafeInteger(
   maximum: number,
 ): value is number {
   return isNonNegativeSafeInteger(value) && value <= maximum;
+}
+
+function isBoundedNonNegativeFiniteNumber(
+  value: unknown,
+  maximum: number,
+): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= maximum
+  );
 }
 
 function isUploadStatus(value: unknown): value is UploadStatus {

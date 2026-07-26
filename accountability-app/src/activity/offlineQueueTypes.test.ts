@@ -171,7 +171,8 @@ describe('parseQueuedActivity', () => {
   it.each([
     ['unknown type', { type: 'swim' }],
     ['negative distance', { distance_m: -1 }],
-    ['fractional distance', { distance_m: 1.5 }],
+    ['NaN distance', { distance_m: Number.NaN }],
+    ['non-finite distance', { distance_m: Number.POSITIVE_INFINITY }],
     ['excessive distance', { distance_m: MAX_ACTIVITY_DISTANCE_M + 1 }],
     ['fractional duration', { duration_s: 1.5 }],
     ['excessive duration', { duration_s: MAX_ACTIVITY_DURATION_S + 1 }],
@@ -186,6 +187,17 @@ describe('parseQueuedActivity', () => {
         activity: { ...validEntry().activity, ...activityPatch },
       }),
     ).toThrow('Invalid queued activity');
+  });
+
+  it('accepts and preserves a bounded fractional distance', () => {
+    const distance_m = 1_500.625;
+
+    expect(
+      parseQueuedActivity({
+        ...validEntry(),
+        activity: { ...validEntry().activity, distance_m },
+      }).activity.distance_m,
+    ).toBe(distance_m);
   });
 
   it('caps route point count for durable queue entries', () => {
