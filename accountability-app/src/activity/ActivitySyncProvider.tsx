@@ -330,16 +330,28 @@ export function createSyncTriggerController(
 
   const onSession = (nextOwnerId: string | null) => {
     if (!active || ownerId === nextOwnerId) return;
-    const force = pendingDrain?.force === true;
     ownerId = nextOwnerId;
     ownerRevision += 1;
+    const expectedRevision = ownerRevision;
     drainRevision += 1;
     pendingDrain = nextOwnerId
-      ? { ownerId: nextOwnerId, force }
+      ? { ownerId: nextOwnerId, force: false }
       : null;
     clearOwnerDetails();
     if (nextOwnerId && recoveryState === 'healthy') {
       void flushPendingDrain();
+    } else if (nextOwnerId && recoveryPromise) {
+      void recoveryPromise.then((recovered) => {
+        if (
+          active &&
+          recovered &&
+          ownerId === nextOwnerId &&
+          ownerRevision === expectedRevision
+        ) {
+          return flushPendingDrain();
+        }
+        return undefined;
+      });
     }
   };
 
@@ -395,15 +407,16 @@ export function createSyncTriggerController(
     onSession,
     retryNow: async () => {
       if (!active) return;
-      const currentOwner = ownerId;
-      if (!currentOwner) {
+      const requestedOwner = ownerId;
+      if (!requestedOwner) {
         clearOwnerDetails();
         return;
       }
-      pendingDrain = { ownerId: currentOwner, force: true };
+      pendingDrain = { ownerId: requestedOwner, force: true };
       const recovered = await runRecovery(true);
-      if (!active || !recovered) return;
+      if (!active || !recovered || ownerId !== requestedOwner) return;
       await refreshQueue();
+      if (!active || ownerId !== requestedOwner) return;
       await flushPendingDrain();
     },
     refreshQueue,

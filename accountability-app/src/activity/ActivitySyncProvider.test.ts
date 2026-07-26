@@ -321,6 +321,54 @@ describe('createSyncTriggerController', () => {
     });
   });
 
+  it('never transfers an A forced retry to B while recovery is pending', async () => {
+    const retryRecovery =
+      deferred<{ queuedCount: number; issueCount: number }>();
+    const recover = jest
+      .fn<SyncTriggerControllerDependencies['recoverQueue']>()
+      .mockResolvedValueOnce({ queuedCount: 0, issueCount: 0 })
+      .mockImplementationOnce(() => retryRecovery.promise);
+    const harness = setup({ recoverQueue: recover });
+    await harness.controller.start(OWNER_A);
+    jest.mocked(harness.dependencies.drain).mockClear();
+
+    const retrying = harness.controller.retryNow();
+    harness.controller.onSession(OWNER_B);
+    await settleMicrotasks();
+    expect(harness.dependencies.drain).not.toHaveBeenCalled();
+
+    retryRecovery.resolve({ queuedCount: 0, issueCount: 0 });
+    await retrying;
+    await settleMicrotasks();
+
+    expect(harness.dependencies.drain).toHaveBeenCalledTimes(1);
+    expect(harness.dependencies.drain).toHaveBeenCalledWith(OWNER_B, false);
+    expect(harness.dependencies.drain).not.toHaveBeenCalledWith(
+      OWNER_A,
+      true,
+    );
+  });
+
+  it('drops an A forced retry when the session signs out during recovery', async () => {
+    const retryRecovery =
+      deferred<{ queuedCount: number; issueCount: number }>();
+    const recover = jest
+      .fn<SyncTriggerControllerDependencies['recoverQueue']>()
+      .mockResolvedValueOnce({ queuedCount: 0, issueCount: 0 })
+      .mockImplementationOnce(() => retryRecovery.promise);
+    const harness = setup({ recoverQueue: recover });
+    await harness.controller.start(OWNER_A);
+    jest.mocked(harness.dependencies.drain).mockClear();
+
+    const retrying = harness.controller.retryNow();
+    harness.controller.onSession(null);
+    retryRecovery.resolve({ queuedCount: 0, issueCount: 0 });
+    await retrying;
+    await settleMicrotasks();
+
+    expect(harness.dependencies.drain).not.toHaveBeenCalled();
+  });
+
   it('coalesces rapid refresh requests into one in-flight read and one trailing read', async () => {
     const harness = setup();
     await harness.controller.start(OWNER_A);
