@@ -4,6 +4,7 @@ import {
   BEAUTY_RENDER_CHILDREN,
   BEAUTY_RENDER_UNIFORMS,
   assertBeautyOutputBytes,
+  assertOriginalDecoderSafe,
   assertBeautySourceBytes,
   buildBeautyRenderPlan,
   buildMaskRasterPlan,
@@ -12,6 +13,7 @@ import {
   createBeautyOutputUri,
   estimateBeautyWorkingBytes,
   planBeautyResize,
+  runBeautySourcePreflight,
 } from './renderBeautyImage.native';
 import { BEAUTY_SHADER_CHILDREN, buildBeautyShaderUniforms } from './beautyShader';
 import { referenceBeautyPixel } from './beautyShader';
@@ -78,6 +80,8 @@ describe('beauty final render contract', () => {
 describe('beauty memory budget', () => {
   it('documents a conservative seven-RGBA-buffer working set', () => {
     expect(BEAUTY_MEMORY_BUDGET).toEqual({
+      maxOriginalPixels: 8_000_000,
+      maxOriginalDimension: 4_096,
       maxPixels: 4_000_000,
       maxDimension: 2_560,
       maxSourceBytes: 20 * 1024 * 1024,
@@ -85,6 +89,40 @@ describe('beauty memory budget', () => {
       rgbaBuffers: 7,
     });
     expect(estimateBeautyWorkingBytes(4_000_000)).toBe(112_000_000);
+  });
+
+  it.each([
+    { width: 4_000, height: 2_000 },
+    { width: 4_096, height: 1_953 },
+    { width: 1_440, height: 1_920 },
+  ])('accepts decoder-safe original boundary %o', (size) => {
+    expect(() => assertOriginalDecoderSafe(size)).not.toThrow();
+  });
+
+  it.each([
+    { width: 4_001, height: 2_000 },
+    { width: 4_097, height: 1 },
+  ])('rejects original over decoder boundary %o', (size) => {
+    expect(() => assertOriginalDecoderSafe(size)).toThrow(
+      'Photo is too large to process; choose a smaller image',
+    );
+  });
+
+  it('rejects tiny compressed huge-dimension input before normalization', async () => {
+    const calls: string[] = [];
+    await expect(
+      runBeautySourcePreflight({
+        sourceBytes: 128,
+        probeDimensions: async () => ({ width: 8_000, height: 8_000 }),
+        normalize: async () => {
+          calls.push('normalize');
+          return 'temporary-output';
+        },
+      }),
+    ).rejects.toThrow(
+      'Photo is too large to process; choose a smaller image',
+    );
+    expect(calls).toEqual([]);
   });
 
   it.each<

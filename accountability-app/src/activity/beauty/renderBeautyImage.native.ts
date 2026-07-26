@@ -27,12 +27,15 @@ import { normalizeBeautySettings, type BeautySettings } from './types';
 export const BEAUTY_RENDER_CHILDREN = BEAUTY_SHADER_CHILDREN;
 
 /**
- * A 4 MP image occupies 16 MB as RGBA. The renderer can hold the decoded
+ * The native normalization decoder may hold an 8 MP original (32 MB) and
+ * 4 MP resized bitmap (16 MB) together. The renderer can then hold the decoded
  * source, two mask surfaces, two mask snapshots, the output surface, and its
- * snapshot concurrently: 7 * 16 MB = 112 MB. Allowing two 20 MB encoded
- * source copies plus a 10 MB output keeps the peak under a 176 MB envelope.
+ * snapshot concurrently: 7 * 16 MB = 112 MB. Accounting for all decoded
+ * buffers gives a conservative 160 MB ceiling before bounded encoded data.
  */
 export const BEAUTY_MEMORY_BUDGET = Object.freeze({
+  maxOriginalPixels: 8_000_000,
+  maxOriginalDimension: 4_096,
   maxPixels: 4_000_000,
   maxDimension: 2_560,
   maxSourceBytes: 20 * 1024 * 1024,
@@ -180,6 +183,38 @@ export function assertBeautySourceBytes(bytes: number): void {
   }
 }
 
+export function assertOriginalDecoderSafe(size: ImageSize): void {
+  if (
+    !validImageSize(size) ||
+    !Number.isInteger(size.width) ||
+    !Number.isInteger(size.height) ||
+    size.width > BEAUTY_MEMORY_BUDGET.maxOriginalDimension ||
+    size.height > BEAUTY_MEMORY_BUDGET.maxOriginalDimension ||
+    size.width * size.height > BEAUTY_MEMORY_BUDGET.maxOriginalPixels
+  ) {
+    throw new Error(
+      'Photo is too large to process; choose a smaller image',
+    );
+  }
+}
+
+export async function runBeautySourcePreflight<T>(input: Readonly<{
+  sourceBytes: number;
+  probeDimensions(): Promise<ImageSize>;
+  normalize(resize: ImageSize | null): Promise<T>;
+}>): Promise<Readonly<{
+  sourceSize: ImageSize;
+  resize: ImageSize | null;
+  normalized: T;
+}>> {
+  assertBeautySourceBytes(input.sourceBytes);
+  const sourceSize = await input.probeDimensions();
+  assertOriginalDecoderSafe(sourceSize);
+  const resize = planBeautyResize(sourceSize);
+  const normalized = await input.normalize(resize);
+  return { sourceSize, resize, normalized };
+}
+
 export function assertBeautyOutputBytes(bytes: number): void {
   if (!Number.isFinite(bytes) || bytes < 0) {
     throw new Error('The rendered photo size could not be verified safely.');
@@ -319,15 +354,19 @@ export async function renderBeautyImage(
   throwIfAborted(input.signal);
   const sourceUri = requireLocalSourceUri(input.sourceUri);
   const sourceFile = new File(sourceUri);
-  assertBeautySourceBytes(requireVerifiedFileSize(sourceFile.size));
-  const sourceSize = await Image.getSize(sourceUri);
-  const resize = planBeautyResize(sourceSize);
-  throwIfAborted(input.signal);
-  const normalized = await manipulateAsync(
-    sourceUri,
-    resize ? [{ resize }] : [],
-    { compress: 1, format: SaveFormat.JPEG },
-  );
+  const preflight = await runBeautySourcePreflight({
+    sourceBytes: requireVerifiedFileSize(sourceFile.size),
+    probeDimensions: () => Image.getSize(sourceUri),
+    normalize: async (resize) => {
+      throwIfAborted(input.signal);
+      return manipulateAsync(
+        sourceUri,
+        resize ? [{ resize }] : [],
+        { compress: 1, format: SaveFormat.JPEG },
+      );
+    },
+  });
+  const normalized = preflight.normalized;
   const normalizedFile = new File(normalized.uri);
   const resources = createBeautyResourceScope();
 
