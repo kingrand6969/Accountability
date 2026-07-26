@@ -85,15 +85,65 @@ export function createActivitySynchronizer(
     ...defaultDependencies,
     ...overrides,
   };
-  const activeByOwner = new Map<
-    string,
-    {
-      promise: Promise<void>;
-      rerunRequested: boolean;
-      forceRequested: boolean;
-    }
-  >();
+  type OwnerDrainState = {
+    promise: Promise<void>;
+    resolve: () => void;
+    reject: (cause: unknown) => void;
+    queued: boolean;
+    running: boolean;
+    rerunRequested: boolean;
+    forceRequested: boolean;
+  };
+
+  const activeByOwner = new Map<string, OwnerDrainState>();
   let operationTail: Promise<void> = Promise.resolve();
+
+  const finish = (
+    ownerId: string,
+    state: OwnerDrainState,
+    result:
+      | { success: true }
+      | { success: false; cause: unknown },
+  ) => {
+    if (activeByOwner.get(ownerId) !== state) return;
+    activeByOwner.delete(ownerId);
+    if (result.success) {
+      state.resolve();
+    } else {
+      state.reject(result.cause);
+    }
+  };
+
+  const enqueuePass = (
+    ownerId: string,
+    state: OwnerDrainState,
+  ): void => {
+    state.queued = true;
+    const pass = operationTail.then(async () => {
+      state.queued = false;
+      state.running = true;
+      const force = state.forceRequested;
+      state.forceRequested = false;
+      await drainOnce(ownerId, force, dependencies);
+    });
+
+    operationTail = pass.catch(() => undefined);
+    void pass.then(
+      () => {
+        state.running = false;
+        if (state.rerunRequested) {
+          state.rerunRequested = false;
+          enqueuePass(ownerId, state);
+        } else {
+          finish(ownerId, state, { success: true });
+        }
+      },
+      (cause) => {
+        state.running = false;
+        finish(ownerId, state, { success: false, cause });
+      },
+    );
+  };
 
   return {
     drain(ownerId: string, force = false): Promise<void> {
@@ -111,49 +161,29 @@ export function createActivitySynchronizer(
 
       const active = activeByOwner.get(ownerId);
       if (active) {
-        active.rerunRequested = true;
+        if (active.running) active.rerunRequested = true;
         active.forceRequested ||= force;
         return active.promise;
       }
 
-      const state = {
-        promise: Promise.resolve(),
-        rerunRequested: false,
-        forceRequested: false,
-      };
-      const operation = operationTail.then(async () => {
-        let passForce = force;
-
-        while (true) {
-          let rerunAfterPass = state.rerunRequested;
-          state.rerunRequested = false;
-          await drainOnce(ownerId, passForce, dependencies);
-          rerunAfterPass ||= state.rerunRequested;
-          state.rerunRequested = false;
-          if (!rerunAfterPass) return;
-          passForce = state.forceRequested;
-          state.forceRequested = false;
-        }
+      let resolve!: () => void;
+      let reject!: (cause: unknown) => void;
+      const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
       });
-      let publicPromise: Promise<void>;
-      publicPromise = operation.then(
-        () => {
-          if (activeByOwner.get(ownerId) === state) {
-            activeByOwner.delete(ownerId);
-          }
-        },
-        (cause) => {
-          if (activeByOwner.get(ownerId) === state) {
-            activeByOwner.delete(ownerId);
-          }
-          throw cause;
-        },
-      );
-
-      state.promise = publicPromise;
+      const state: OwnerDrainState = {
+        promise,
+        resolve,
+        reject,
+        queued: false,
+        running: false,
+        rerunRequested: false,
+        forceRequested: force,
+      };
       activeByOwner.set(ownerId, state);
-      operationTail = publicPromise.catch(() => undefined);
-      return publicPromise;
+      enqueuePass(ownerId, state);
+      return promise;
     },
   };
 }

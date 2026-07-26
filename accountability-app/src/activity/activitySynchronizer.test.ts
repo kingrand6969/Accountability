@@ -299,7 +299,64 @@ describe('createActivitySynchronizer', () => {
     ]);
   });
 
-  it('reruns an owner requested again while queued behind another owner', async () => {
+  it('queues an active-owner rerun fairly behind owners already waiting', async () => {
+    const setup = harness([
+      entry(ID_A, { ownerId: OWNER_A }),
+      entry(ID_B, { ownerId: OWNER_B }),
+    ]);
+    const firstAStarted = deferred<void>();
+    const releaseFirstA = deferred<string>();
+    const secondAStarted = deferred<void>();
+    const releaseSecondA = deferred<string>();
+    setup.upload.mockImplementation(async (item) => {
+      if (item.id === ID_A) {
+        firstAStarted.resolve();
+        return releaseFirstA.promise;
+      }
+      if (item.id === ID_C) {
+        secondAStarted.resolve();
+        return releaseSecondA.promise;
+      }
+      return item.id;
+    });
+
+    const ownerA = setup.synchronizer.drain(OWNER_A);
+    let ownerAResolved = false;
+    void ownerA.then(() => {
+      ownerAResolved = true;
+    });
+    await firstAStarted.promise;
+    const ownerB = setup.synchronizer.drain(OWNER_B);
+    setup.records.set(
+      ID_C,
+      entry(ID_C, {
+        ownerId: OWNER_A,
+        createdAt: '2026-07-26T01:30:00.000Z',
+      }),
+    );
+    const sharedOwnerA = setup.synchronizer.drain(OWNER_A);
+
+    expect(sharedOwnerA).toBe(ownerA);
+    releaseFirstA.resolve(ID_A);
+    await secondAStarted.promise;
+    expect(setup.list.mock.calls).toEqual([
+      [OWNER_A],
+      [OWNER_B],
+      [OWNER_A],
+    ]);
+    expect(setup.upload.mock.calls.map(([item]) => item.id)).toEqual([
+      ID_A,
+      ID_B,
+      ID_C,
+    ]);
+    expect(ownerAResolved).toBe(false);
+
+    releaseSecondA.resolve(ID_C);
+    await Promise.all([ownerA, ownerB]);
+    expect(ownerAResolved).toBe(true);
+  });
+
+  it('coalesces duplicate calls while an owner pass is queued but not started', async () => {
     const setup = harness([
       entry(ID_A, { ownerId: OWNER_A }),
       entry(ID_B, { ownerId: OWNER_B }),
@@ -321,7 +378,10 @@ describe('createActivitySynchronizer', () => {
     await Promise.all([ownerA, firstOwnerB]);
     expect(
       setup.list.mock.calls.filter(([ownerId]) => ownerId === OWNER_B),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(
+      setup.upload.mock.calls.filter(([item]) => item.ownerId === OWNER_B),
+    ).toHaveLength(1);
   });
 
   it('skips future retries and needs-attention entries unless forced', async () => {
