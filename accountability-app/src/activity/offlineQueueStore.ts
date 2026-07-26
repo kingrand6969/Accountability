@@ -43,7 +43,8 @@ export type QueueIssue = {
     | 'invalid_json'
     | 'invalid_schema'
     | 'id_mismatch'
-    | 'invalid_tombstone';
+    | 'invalid_tombstone'
+    | 'tombstone_owner_mismatch';
   detectedAt: string;
 };
 
@@ -338,8 +339,15 @@ async function recoverQueueUnlocked(): Promise<QueueRecoverySummary> {
     const id = key.slice(TOMBSTONE_PREFIX.length);
     allTombstoneIds.add(id);
     const tombstone = parseTombstone(values.get(key) ?? null, id);
-    if (tombstone) {
+    const rawEntry = values.get(entryKey(id)) ?? null;
+    const storedEntry = inspectStoredEntry(rawEntry, id).entry;
+    if (
+      tombstone &&
+      (rawEntry === null || storedEntry?.ownerId === tombstone.ownerId)
+    ) {
       validTombstoneIds.add(id);
+    } else if (tombstone) {
+      addIssue(id, key, 'tombstone_owner_mismatch');
     } else {
       addIssue(id, key, 'invalid_tombstone');
     }
@@ -568,6 +576,7 @@ function parseIssue(value: unknown): QueueIssue | null {
     'invalid_schema',
     'id_mismatch',
     'invalid_tombstone',
+    'tombstone_owner_mismatch',
   ];
   if (
     typeof record.id !== 'string' ||

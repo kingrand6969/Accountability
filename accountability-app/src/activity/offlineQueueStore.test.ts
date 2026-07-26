@@ -481,6 +481,36 @@ describe('recovery and reads', () => {
     ]);
   });
 
+  it('retains owner-mismatched tombstone and entry bytes without leaking details', async () => {
+    const existing = entry(ID_A, OWNER_A);
+    const entryStorageKey = `${ENTRY_PREFIX}${ID_A}`;
+    const tombstoneStorageKey = `${TOMBSTONE_PREFIX}${ID_A}`;
+    seedEntry(existing);
+    stored.set(INDEX_KEY, JSON.stringify([ID_A]));
+    stored.set(
+      tombstoneStorageKey,
+      JSON.stringify({ schema: 1, id: ID_A, ownerId: OWNER_B }),
+    );
+
+    await expect(recoverQueue()).resolves.toEqual(recoverySummary(0, 1));
+
+    expect(stored.get(entryStorageKey)).toBe(JSON.stringify(existing));
+    expect(stored.has(tombstoneStorageKey)).toBe(true);
+    expect(stored.get(INDEX_KEY)).toBe('[]');
+    await expect(listQueuedActivities(OWNER_A)).resolves.toEqual([]);
+    const issues = await listQueueIssues();
+    expect(issues).toEqual([
+      expect.objectContaining({
+        id: ID_A,
+        storageKey: tombstoneStorageKey,
+        category: 'needs_attention',
+        reason: 'tombstone_owner_mismatch',
+      }),
+    ]);
+    expect(JSON.stringify(issues)).not.toContain('distance_m');
+    expect(JSON.stringify(issues)).not.toContain('started_at');
+  });
+
   it('returns deep copies rather than mutable aliases', async () => {
     const queued = await enqueueActivity(OWNER_A, activity, ID_A);
     queued.activity.route[0].lat = 0;
