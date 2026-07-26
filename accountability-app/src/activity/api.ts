@@ -24,7 +24,11 @@ export async function saveActivity(a: NewActivity): Promise<string> {
     schema: 1,
     id: createActivityId(),
     ownerId: uid,
-    activity: a,
+    activity: {
+      ...a,
+      distance_m: Math.round(a.distance_m),
+      duration_s: Math.round(a.duration_s),
+    },
     createdAt: new Date(now).toISOString(),
     status: 'saved',
     attemptCount: 0,

@@ -229,8 +229,7 @@ function confirmEquivalentActivity(
   const startedAt = canonicalDate(row.started_at);
   const distance = databaseNumber(row.distance_m);
   const duration = databaseNumber(row.duration_s);
-  const routeMatches =
-    row.route == null || equivalentRoute(row.route, expected.route);
+  const routeMatches = equivalentRoute(row.route, expected.route);
 
   if (
     row.id !== entry.id ||
@@ -260,9 +259,13 @@ function equivalentRoute(
   }
   return storedRoute.every((value, index) => {
     if (!isRecord(value)) return false;
+    const keys = Object.keys(value).sort();
+    if (keys.length !== 2 || keys[0] !== 'lat' || keys[1] !== 'lon') {
+      return false;
+    }
     return (
-      databaseNumber(value.lat) === expectedRoute[index].lat &&
-      databaseNumber(value.lon) === expectedRoute[index].lon
+      value.lat === expectedRoute[index].lat &&
+      value.lon === expectedRoute[index].lon
     );
   });
 }
@@ -294,12 +297,30 @@ function classifyAuthenticationError(cause: unknown): ActivityUploadError {
       getErrorCode(cause),
     );
   }
+  const code = getErrorCode(cause);
+  const normalizedCode = code?.toLowerCase();
+  const status = getErrorStatus(cause);
+  if (
+    status === 429 ||
+    (status !== undefined && status >= 500) ||
+    normalizedCode === 'over_request_rate_limit' ||
+    normalizedCode === 'service_unavailable' ||
+    normalizedCode === 'unexpected_failure'
+  ) {
+    return new ActivityUploadError(
+      'server',
+      'Account verification is temporarily unavailable.',
+      true,
+      cause,
+      code,
+    );
+  }
   return new ActivityUploadError(
     'auth',
     'Sign in again to upload this activity.',
     false,
     cause,
-    getErrorCode(cause),
+    code,
   );
 }
 
@@ -400,7 +421,13 @@ function getErrorCode(value: unknown): string | undefined {
 function getErrorStatus(value: unknown): number | undefined {
   if (!isRecord(value)) return undefined;
   if (typeof value.status === 'number') return value.status;
+  if (typeof value.status === 'string' && /^\d{3}$/.test(value.status)) {
+    return Number(value.status);
+  }
   if (typeof value.statusCode === 'number') return value.statusCode;
+  if (typeof value.code === 'string' && /^\d{3}$/.test(value.code)) {
+    return Number(value.code);
+  }
   if (
     typeof value.statusCode === 'string' &&
     /^\d{3}$/.test(value.statusCode)

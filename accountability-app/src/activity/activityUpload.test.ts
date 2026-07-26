@@ -218,6 +218,71 @@ describe('uploadQueuedActivity', () => {
     );
   });
 
+  it.each([
+    [
+      'rate-limit status',
+      { status: 429, code: 'over_request_rate_limit', message: 'Too many requests' },
+      'over_request_rate_limit',
+    ],
+    [
+      'service status',
+      { status: 503, code: 'unexpected_failure', message: 'Unavailable' },
+      'unexpected_failure',
+    ],
+    [
+      'rate-limit code',
+      { code: 'over_request_rate_limit', message: 'Request rejected' },
+      'over_request_rate_limit',
+    ],
+    [
+      'service-unavailable code',
+      { code: 'service_unavailable', message: 'Request rejected' },
+      'service_unavailable',
+    ],
+    [
+      'HTTP code',
+      { code: '503', message: 'Service unavailable' },
+      '503',
+    ],
+  ])(
+    'classifies a getUser %s as a transient server failure',
+    async (_label, cause, code) => {
+      mockedSupabase.auth.getUser.mockResolvedValue({
+        data: { user: null },
+        error: cause,
+      });
+
+      await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+        expect.objectContaining({
+          category: 'server',
+          transient: true,
+          cause,
+          code,
+        }),
+      );
+    },
+  );
+
+  it.each(['session_expired', 'invalid_token', 'bad_jwt'])(
+    'keeps getUser code %s as a non-transient authentication failure',
+    async (code) => {
+      const cause = { code, status: 401, message: 'Session is invalid' };
+      mockedSupabase.auth.getUser.mockResolvedValue({
+        data: { user: null },
+        error: cause,
+      });
+
+      await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+        expect.objectContaining({
+          category: 'auth',
+          transient: false,
+          cause,
+          code,
+        }),
+      );
+    },
+  );
+
   it('returns success from a matching preflight row without retry traffic', async () => {
     const existing = queryResult({
       data: storedActivity(),
@@ -416,7 +481,7 @@ describe('uploadQueuedActivity', () => {
     );
   });
 
-  it('rejects a stored route mismatch without exposing route data in the error', async () => {
+  it('rejects a different stored route without exposing route data in the error', async () => {
     const existing = queryResult({
       data: storedActivity({ route: [{ lat: 0, lon: 0 }] }),
       error: null,
@@ -430,15 +495,91 @@ describe('uploadQueuedActivity', () => {
     await expect(rejection).rejects.not.toThrow(/31\.9523|115\.8613/);
   });
 
-  it('accepts a matching row when the server does not return stored route data', async () => {
+  it('rejects null stored route data instead of claiming idempotent success', async () => {
     const existing = queryResult({
       data: storedActivity({ route: null }),
       error: null,
     });
     arrangeDatabase(existing.builder);
 
-    await expect(uploadQueuedActivity(queuedActivity())).resolves.toBe(
-      ACTIVITY_ID,
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('validation', false, 'activity_mismatch'),
+    );
+  });
+
+  it('rejects missing stored route data', async () => {
+    const row = storedActivity();
+    delete row.route;
+    const existing = queryResult({ data: row, error: null });
+    arrangeDatabase(existing.builder);
+
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('validation', false, 'activity_mismatch'),
+    );
+  });
+
+  it('requires an inserted empty route to be confirmed as an empty route', async () => {
+    const existing = queryResult({
+      data: storedActivity({ route: null }),
+      error: null,
+    });
+    arrangeDatabase(existing.builder);
+
+    await expect(
+      uploadQueuedActivity(queuedActivity({ route: [] })),
+    ).rejects.toEqual(
+      expectUploadError('validation', false, 'activity_mismatch'),
+    );
+  });
+
+  it('rejects a stored route with the expected points in a different order', async () => {
+    const existing = queryResult({
+      data: storedActivity({
+        route: [
+          { lat: -31.953, lon: 115.862 },
+          { lat: -31.9523, lon: 115.8613 },
+        ],
+      }),
+      error: null,
+    });
+    arrangeDatabase(existing.builder);
+
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('validation', false, 'activity_mismatch'),
+    );
+  });
+
+  it('rejects type-coerced route coordinates rather than treating them as exact', async () => {
+    const existing = queryResult({
+      data: storedActivity({
+        route: [
+          { lat: '-31.9523', lon: '115.8613' },
+          { lat: '-31.953', lon: '115.862' },
+        ],
+      }),
+      error: null,
+    });
+    arrangeDatabase(existing.builder);
+
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('validation', false, 'activity_mismatch'),
+    );
+  });
+
+  it('rejects unexpected stored route-point fields', async () => {
+    const existing = queryResult({
+      data: storedActivity({
+        route: [
+          { lat: -31.9523, lon: 115.8613, altitude: 7 },
+          { lat: -31.953, lon: 115.862 },
+        ],
+      }),
+      error: null,
+    });
+    arrangeDatabase(existing.builder);
+
+    await expect(uploadQueuedActivity(queuedActivity())).rejects.toEqual(
+      expectUploadError('validation', false, 'activity_mismatch'),
     );
   });
 });
@@ -470,6 +611,31 @@ describe('saveActivity compatibility wrapper', () => {
       expect.objectContaining({
         id: ACTIVITY_ID,
         user_id: OWNER_ID,
+      }),
+    );
+  });
+
+  it('rounds legacy fractional duration and distance before queuing', async () => {
+    const missing = queryResult({ data: null, error: null });
+    const inserted = insertResult({
+      data: storedActivity({ duration_s: 421 }),
+      error: null,
+    });
+    arrangeDatabase(missing.builder, inserted.builder);
+
+    await expect(
+      saveActivity({
+        ...queuedActivity().activity,
+        distance_m: 1500.6,
+        duration_s: 420.6,
+      }),
+    ).resolves.toBe(ACTIVITY_ID);
+
+    expect(inserted.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: ACTIVITY_ID,
+        distance_m: 1501,
+        duration_s: 421,
       }),
     );
   });
