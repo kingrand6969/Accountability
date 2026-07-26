@@ -79,6 +79,7 @@ describe('Supabase React Native authentication lifecycle', () => {
   it('configures native persistence and follows foreground state', () => {
     const startAutoRefresh = jest.fn();
     const stopAutoRefresh = jest.fn();
+    const dispose = jest.fn();
     const remove = jest.fn();
     const addEventListener = jest.fn<
       (
@@ -91,7 +92,7 @@ describe('Supabase React Native authentication lifecycle', () => {
       onAppStateChange = listener;
       return { remove };
     });
-    const auth = { startAutoRefresh, stopAutoRefresh };
+    const auth = { startAutoRefresh, stopAutoRefresh, dispose };
     const createClient = jest.fn(() => ({ auth }));
     const processLock = jest.fn();
     const storage = {};
@@ -141,10 +142,12 @@ describe('Supabase React Native authentication lifecycle', () => {
     const firstAuth = {
       startAutoRefresh: jest.fn(),
       stopAutoRefresh: jest.fn(),
+      dispose: jest.fn(),
     };
     const secondAuth = {
       startAutoRefresh: jest.fn(),
       stopAutoRefresh: jest.fn(),
+      dispose: jest.fn(),
     };
     const firstRemove = jest.fn();
     const secondRemove = jest.fn();
@@ -177,6 +180,7 @@ describe('Supabase React Native authentication lifecycle', () => {
 
     expect(firstRemove).toHaveBeenCalledTimes(1);
     expect(firstAuth.stopAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(firstAuth.dispose).toHaveBeenCalledTimes(1);
     expect(secondAuth.startAutoRefresh).toHaveBeenCalledTimes(1);
     expect(secondAuth.stopAutoRefresh).not.toHaveBeenCalled();
     expect(addEventListener).toHaveBeenCalledTimes(2);
@@ -186,10 +190,12 @@ describe('Supabase React Native authentication lifecycle', () => {
     const nativeAuth = {
       startAutoRefresh: jest.fn(),
       stopAutoRefresh: jest.fn(),
+      dispose: jest.fn(),
     };
     const webAuth = {
       startAutoRefresh: jest.fn(),
       stopAutoRefresh: jest.fn(),
+      dispose: jest.fn(),
     };
     const remove = jest.fn();
     const addEventListener = jest.fn(() => ({ remove }));
@@ -220,8 +226,49 @@ describe('Supabase React Native authentication lifecycle', () => {
 
     expect(remove).toHaveBeenCalledTimes(1);
     expect(nativeAuth.stopAutoRefresh).toHaveBeenCalledTimes(1);
+    expect(nativeAuth.dispose).toHaveBeenCalledTimes(1);
     expect(addEventListener).toHaveBeenCalledTimes(1);
     expect(webAuth.startAutoRefresh).not.toHaveBeenCalled();
     expect(webAuth.stopAutoRefresh).not.toHaveBeenCalled();
+  });
+
+  it('disposes the previous web client without attaching AppState listeners', () => {
+    const firstAuth = {
+      startAutoRefresh: jest.fn(),
+      stopAutoRefresh: jest.fn(),
+      dispose: jest.fn(),
+    };
+    const secondAuth = {
+      startAutoRefresh: jest.fn(),
+      stopAutoRefresh: jest.fn(),
+      dispose: jest.fn(),
+    };
+    const addEventListener = jest.fn();
+    const createClient = jest
+      .fn()
+      .mockReturnValueOnce({ auth: firstAuth })
+      .mockReturnValueOnce({ auth: secondAuth });
+
+    jest.doMock('@supabase/supabase-js', () => ({
+      createClient,
+      processLock: jest.fn(),
+    }));
+    jest.doMock('@react-native-async-storage/async-storage', () => ({}));
+    jest.doMock('react-native', () => ({
+      AppState: { currentState: 'active', addEventListener },
+      Platform: { OS: 'web' },
+    }));
+    jest.doMock('react-native-url-polyfill/auto', () => ({}));
+
+    jest.isolateModules(() => {
+      require('../lib/supabase');
+    });
+    jest.isolateModules(() => {
+      require('../lib/supabase');
+    });
+
+    expect(firstAuth.dispose).toHaveBeenCalledTimes(1);
+    expect(secondAuth.dispose).not.toHaveBeenCalled();
+    expect(addEventListener).not.toHaveBeenCalled();
   });
 });

@@ -28,8 +28,9 @@ type AuthLifecycleSubscription = {
 
 type AuthLifecycleRegistration = {
   client: typeof supabase;
-  subscription: AuthLifecycleSubscription;
-  stopAutoRefresh: () => void;
+  subscription?: AuthLifecycleSubscription;
+  stopAutoRefresh?: () => void;
+  cleanup?: () => void;
 };
 
 type AuthLifecycleGlobal = typeof globalThis & {
@@ -44,14 +45,27 @@ lifecycleGlobal.__accountabilityAuthLifecycleSubscription?.remove();
 lifecycleGlobal.__accountabilityAuthLifecycleSubscription = undefined;
 
 const previousLifecycle = lifecycleGlobal.__accountabilityAuthLifecycle;
-previousLifecycle?.subscription.remove();
-if (
-  previousLifecycle &&
-  (previousLifecycle.client !== supabase || Platform.OS === 'web')
-) {
-  previousLifecycle.stopAutoRefresh();
+if (previousLifecycle) {
+  if (previousLifecycle.client !== supabase) {
+    if (previousLifecycle.cleanup) {
+      previousLifecycle.cleanup();
+    } else {
+      // Clean up the registration shape used by earlier module evaluations.
+      previousLifecycle.subscription?.remove();
+      previousLifecycle.stopAutoRefresh?.();
+      void previousLifecycle.client.auth.dispose();
+    }
+  } else {
+    previousLifecycle.subscription?.remove();
+    if (Platform.OS === 'web') {
+      previousLifecycle.stopAutoRefresh?.();
+    }
+  }
 }
 lifecycleGlobal.__accountabilityAuthLifecycle = undefined;
+
+let subscription: AuthLifecycleSubscription | undefined;
+let stopAutoRefresh: (() => void) | undefined;
 
 if (Platform.OS !== 'web') {
   const updateAutoRefresh = (state: AppStateStatus) => {
@@ -63,9 +77,20 @@ if (Platform.OS !== 'web') {
   };
 
   updateAutoRefresh(AppState.currentState);
-  lifecycleGlobal.__accountabilityAuthLifecycle = {
-    client: supabase,
-    subscription: AppState.addEventListener('change', updateAutoRefresh),
-    stopAutoRefresh: () => supabase.auth.stopAutoRefresh(),
-  };
+  subscription = AppState.addEventListener('change', updateAutoRefresh);
+  stopAutoRefresh = () => supabase.auth.stopAutoRefresh();
 }
+
+let cleanedUp = false;
+lifecycleGlobal.__accountabilityAuthLifecycle = {
+  client: supabase,
+  subscription,
+  stopAutoRefresh,
+  cleanup: () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    subscription?.remove();
+    stopAutoRefresh?.();
+    void supabase.auth.dispose();
+  },
+};
