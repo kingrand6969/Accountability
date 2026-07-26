@@ -1,20 +1,18 @@
-import type {
-  Bounds,
-  DetectedFace,
-  Point,
+import {
+  MAX_BEAUTY_FACES,
+  sanitizeDetectedFace,
+  sanitizeDetectedFaces,
+  type Bounds,
+  type DetectedFace,
+  type ImageSize,
+  type Point,
 } from './BeautyEngine';
 import {
   effectiveBeautySettings,
   type BeautySettings,
 } from './types';
 
-export const MAX_BEAUTY_FACES = 8;
 export const MAX_MASK_REGIONS = 12;
-
-export type ImageSize = Readonly<{
-  width: number;
-  height: number;
-}>;
 
 export type EllipseRegion = Readonly<{
   kind: 'ellipse';
@@ -29,6 +27,12 @@ export type FaceMask = Readonly<{
   faceBounds: Bounds;
   coverage: EllipseRegion;
   exclusions: readonly EllipseRegion[];
+  /**
+   * Returns feathered mask alpha. Coverage fades inward from the outer oval;
+   * feature exclusions fade from protected centers back to full coverage.
+   */
+  coverageAt(point: Point): number;
+  /** Uses a strict alpha threshold: coverageAt(point) > 0.5. */
   contains(point: Point): boolean;
 }>;
 
@@ -67,6 +71,9 @@ const FACE_INSET_X = 0.04;
 const FACE_INSET_Y = 0.04;
 const FACE_FEATHER = 0.08;
 const EXCLUSION_FEATHER = 0.025;
+// Allows small detector jitter near a cropped face without accepting distant
+// image coordinates as facial landmarks.
+const LANDMARK_FACE_TOLERANCE = 0.2;
 
 const LANDMARK_REGION_SCALES: readonly LandmarkRegionScale[] = Object.freeze([
   { name: 'leftEye', radiusX: 0.1, radiusY: 0.055 },
@@ -88,21 +95,38 @@ class EllipseFaceMask implements FaceMask {
     readonly exclusions: readonly EllipseRegion[],
   ) {}
 
-  contains(point: Point): boolean {
-    if (!isFinitePoint(point) || !ellipseContains(this.coverage, point)) {
-      return false;
-    }
+  coverageAt(point: Point): number {
+    if (!isFinitePoint(point)) return 0;
 
-    return !this.exclusions.some((region) => ellipseContains(region, point));
+    let coverage = inwardEllipseCoverage(this.coverage, point);
+    for (const exclusion of this.exclusions) {
+      coverage = Math.min(
+        coverage,
+        exclusionProtection(exclusion, point),
+      );
+    }
+    return stableAlpha(coverage);
+  }
+
+  contains(point: Point): boolean {
+    return this.coverageAt(point) > 0.5;
   }
 }
 
 export function buildFaceMask(
-  face: DetectedFace,
+  face: unknown,
   image: ImageSize,
 ): FaceMask | null {
   if (!isValidImageSize(image)) return null;
+  const sanitized = sanitizeDetectedFace(face);
+  if (!sanitized) return null;
+  return buildSanitizedFaceMask(sanitized, image);
+}
 
+function buildSanitizedFaceMask(
+  face: DetectedFace,
+  image: ImageSize,
+): FaceMask | null {
   const faceBounds = clampBounds(face.bounds, image);
   if (!faceBounds) return null;
 
@@ -118,7 +142,11 @@ export function buildFaceMask(
 
   for (const scale of LANDMARK_REGION_SCALES) {
     if (exclusions.length >= MAX_MASK_REGIONS - 1) break;
-    const point = clampPoint(face[scale.name], image);
+    const point = validLandmarkPoint(
+      face[scale.name],
+      image,
+      faceBounds,
+    );
     if (!point) continue;
     exclusions.push({
       kind: 'ellipse',
@@ -139,7 +167,9 @@ export function buildFaceMask(
     index += 1
   ) {
     const bounds = clampBounds(facialHair[index], image);
-    if (!bounds) continue;
+    if (!bounds || !boundsCenterInside(bounds, expandedFaceBounds(faceBounds))) {
+      continue;
+    }
     exclusions.push(ellipseFromBounds(bounds, exclusionFeather));
   }
 
@@ -151,15 +181,16 @@ export function buildFaceMask(
 }
 
 export function buildFaceMasks(
-  faces: readonly DetectedFace[],
+  faces: unknown,
   image: ImageSize,
 ): FaceMask[] {
-  if (!isValidImageSize(image) || !Array.isArray(faces)) return [];
+  if (!isValidImageSize(image)) return [];
 
   const masks: FaceMask[] = [];
-  const workLimit = Math.min(faces.length, MAX_BEAUTY_FACES);
+  const sanitizedFaces = sanitizeDetectedFaces(faces);
+  const workLimit = Math.min(sanitizedFaces.length, MAX_BEAUTY_FACES);
   for (let index = 0; index < workLimit; index += 1) {
-    const mask = buildFaceMask(faces[index], image);
+    const mask = buildSanitizedFaceMask(sanitizedFaces[index], image);
     if (mask) masks.push(mask);
   }
   return masks;
@@ -180,7 +211,7 @@ export function shaderUniforms(
 }
 
 export function buildFaceRenderPlans(
-  faces: readonly DetectedFace[],
+  faces: unknown,
   image: ImageSize,
   settings: BeautySettings,
 ): FaceRenderPlan[] {
@@ -231,15 +262,22 @@ function clampBounds(bounds: Bounds, image: ImageSize): Bounds | null {
   return { x, y, width, height };
 }
 
-function clampPoint(
+function validLandmarkPoint(
   point: Point | null | undefined,
   image: ImageSize,
+  faceBounds: Bounds,
 ): Point | null {
   if (!isFinitePoint(point)) return null;
-  return {
-    x: clamp(point.x, 0, image.width),
-    y: clamp(point.y, 0, image.height),
-  };
+  if (
+    point.x < 0 ||
+    point.x > image.width ||
+    point.y < 0 ||
+    point.y > image.height ||
+    !pointInsideBounds(point, expandedFaceBounds(faceBounds))
+  ) {
+    return null;
+  }
+  return { x: point.x, y: point.y };
 }
 
 function isFinitePoint(
@@ -268,6 +306,36 @@ function insetBounds(
   };
 }
 
+function expandedFaceBounds(bounds: Bounds): Bounds {
+  const horizontal = bounds.width * LANDMARK_FACE_TOLERANCE;
+  const vertical = bounds.height * LANDMARK_FACE_TOLERANCE;
+  return {
+    x: bounds.x - horizontal,
+    y: bounds.y - vertical,
+    width: bounds.width + horizontal * 2,
+    height: bounds.height + vertical * 2,
+  };
+}
+
+function pointInsideBounds(point: Point, bounds: Bounds): boolean {
+  return (
+    point.x >= bounds.x &&
+    point.x <= bounds.x + bounds.width &&
+    point.y >= bounds.y &&
+    point.y <= bounds.y + bounds.height
+  );
+}
+
+function boundsCenterInside(bounds: Bounds, container: Bounds): boolean {
+  return pointInsideBounds(
+    {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2,
+    },
+    container,
+  );
+}
+
 function ellipseFromBounds(
   bounds: Bounds,
   feather: number,
@@ -294,11 +362,48 @@ function cloneEllipse(region: EllipseRegion): EllipseRegion {
   };
 }
 
-function ellipseContains(region: EllipseRegion, point: Point): boolean {
-  if (region.radiusX <= 0 || region.radiusY <= 0) return false;
-  const horizontal = (point.x - region.center.x) / region.radiusX;
-  const vertical = (point.y - region.center.y) / region.radiusY;
-  return horizontal * horizontal + vertical * vertical <= 1;
+function ellipsePosition(
+  region: EllipseRegion,
+  point: Point,
+): Readonly<{ radial: number; inwardDistance: number }> | null {
+  if (region.radiusX <= 0 || region.radiusY <= 0) return null;
+  const deltaX = point.x - region.center.x;
+  const deltaY = point.y - region.center.y;
+  const horizontal = deltaX / region.radiusX;
+  const vertical = deltaY / region.radiusY;
+  const radial = Math.hypot(horizontal, vertical);
+  if (!Number.isFinite(radial)) return null;
+  if (radial === 0) {
+    return {
+      radial,
+      inwardDistance: Math.min(region.radiusX, region.radiusY),
+    };
+  }
+  const localRadius = Math.hypot(deltaX, deltaY) / radial;
+  return {
+    radial,
+    inwardDistance: Math.max(0, (1 - radial) * localRadius),
+  };
+}
+
+function inwardEllipseCoverage(
+  region: EllipseRegion,
+  point: Point,
+): number {
+  const position = ellipsePosition(region, point);
+  if (!position || position.radial >= 1) return 0;
+  if (region.feather <= 0) return 1;
+  return clamp(position.inwardDistance / region.feather, 0, 1);
+}
+
+function exclusionProtection(
+  region: EllipseRegion,
+  point: Point,
+): number {
+  const position = ellipsePosition(region, point);
+  if (!position || position.radial >= 1) return 1;
+  if (region.feather <= 0) return 0;
+  return clamp(1 - position.inwardDistance / region.feather, 0, 1);
 }
 
 function boundedAmount(value: number, maximum: number): number {
@@ -312,4 +417,9 @@ function isFiniteNumber(value: unknown): value is number {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function stableAlpha(value: number): number {
+  return Math.round(clamp(value, 0, 1) * 1_000_000_000_000) /
+    1_000_000_000_000;
 }

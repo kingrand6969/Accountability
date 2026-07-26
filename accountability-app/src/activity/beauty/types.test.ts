@@ -256,7 +256,7 @@ describe('effective beauty settings', () => {
       }),
     ).toEqual({
       ...EXPECTED_DEFAULTS,
-      overall: 0,
+      overall: 20,
       smooth: 0,
       blemish: 0,
       shine: 0,
@@ -295,7 +295,7 @@ describe('effective beauty settings', () => {
         lighting: 8,
       }),
     ).toMatchObject({
-      overall: 40,
+      overall: 20,
       smooth: 20,
       blemish: 24,
       shine: 12,
@@ -317,7 +317,7 @@ describe('effective beauty settings', () => {
     expect(
       effectiveBeautySettings({ ...EXPECTED_DEFAULTS, overall: 100 }),
     ).toMatchObject({
-      overall: 100,
+      overall: 20,
       smooth: 60,
       blemish: 60,
       shine: 50,
@@ -338,7 +338,7 @@ describe('effective beauty settings', () => {
     ).toEqual({
       ...EXPECTED_DEFAULTS,
       enabled: false,
-      overall: 100,
+      overall: 20,
       smooth: 0,
       blemish: 0,
       shine: 0,
@@ -367,5 +367,24 @@ describe('effective beauty settings', () => {
     expect(effective).not.toHaveProperty('faceSlim');
     expect(effective).not.toHaveProperty('eyeSize');
     expect(effective).not.toHaveProperty('geometry');
+  });
+
+  it('is idempotent after Overall has been resolved to neutral 20', () => {
+    const settings: BeautySettings = {
+      ...EXPECTED_DEFAULTS,
+      overall: 40,
+      smooth: 13,
+      blemish: 17,
+      shine: 11,
+      underEye: 9,
+      lighting: 7,
+    };
+
+    const once = effectiveBeautySettings(settings);
+    const twice = effectiveBeautySettings(once);
+
+    expect(once.overall).toBe(20);
+    expect(twice).toEqual(once);
+    expect(twice).not.toBe(once);
   });
 });

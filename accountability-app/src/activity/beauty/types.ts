@@ -21,6 +21,10 @@ export type BeautySettings = {
   colorStrength: number;
 };
 
+export type EffectiveBeautySettings = BeautySettings & {
+  overall: 20;
+};
+
 export type ColorLookPreset = Readonly<{
   value: ColorLook;
   label: string;
@@ -111,13 +115,14 @@ export function normalizeBeautySettings(value: unknown): BeautySettings {
 /**
  * Resolves Overall into renderer-ready natural beauty controls.
  *
- * The renderer must call this exactly once and must not scale the five beauty
- * controls again. Overall affects beauty only; color look and strength remain
- * independent.
+ * The returned Overall is reset to its neutral value of 20 to mark the controls
+ * as resolved. Calling this helper again is therefore idempotent and cannot
+ * apply the master multiplier twice. Overall affects beauty only; color look
+ * and strength remain independent.
  */
 export function effectiveBeautySettings(
   settings: BeautySettings,
-): BeautySettings {
+): EffectiveBeautySettings {
   const normalized = normalizeBeautySettings(settings);
   const multiplier = normalized.enabled
     ? normalized.overall / DEFAULT_BEAUTY.overall
@@ -125,6 +130,7 @@ export function effectiveBeautySettings(
 
   return {
     ...normalized,
+    overall: 20,
     smooth: scaledControl(normalized.smooth, multiplier, 60),
     blemish: scaledControl(normalized.blemish, multiplier, 60),
     shine: scaledControl(normalized.shine, multiplier, 50),

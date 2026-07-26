@@ -1,18 +1,27 @@
 import { describe, expect, it } from '@jest/globals';
 import type {
   BeautyEngine,
+  BeautyDetectionInput,
   DetectedFace,
   Point,
 } from './BeautyEngine';
 import {
   MAX_BEAUTY_FACES,
+  sanitizeDetectedFace,
+  sanitizeDetectedFaces,
+} from './BeautyEngine';
+import {
   MAX_MASK_REGIONS,
   buildFaceMask,
   buildFaceRenderPlans,
   buildFaceMasks,
   shaderUniforms,
 } from './beautyMath';
-import { DEFAULT_BEAUTY, type BeautySettings } from './types';
+import {
+  DEFAULT_BEAUTY,
+  effectiveBeautySettings,
+  type BeautySettings,
+} from './types';
 
 const IMAGE = Object.freeze({ width: 400, height: 400 });
 
@@ -48,7 +57,7 @@ describe('BeautyEngine boundary', () => {
       capabilities: async () => ({
         livePreview: true,
         finalRender: true,
-        maxFaces: 3,
+        maxFaces: MAX_BEAUTY_FACES,
       }),
       detectFaces: async () => [faceFixture],
       renderFinal: async (sourceUri) => sourceUri,
@@ -61,6 +70,26 @@ describe('BeautyEngine boundary', () => {
     });
   });
 
+  it('accepts explicit frame and URI detection inputs', () => {
+    const inputs: BeautyDetectionInput[] = [
+      {
+        kind: 'frame',
+        frame: { nativeHandle: 'opaque' },
+        imageSize: IMAGE,
+        orientation: 90,
+        mirrored: true,
+      },
+      {
+        kind: 'uri',
+        uri: 'file:///private/selfie.jpg',
+        imageSize: IMAGE,
+        orientation: 0,
+      },
+    ];
+
+    expect(inputs.map((input) => input.kind)).toEqual(['frame', 'uri']);
+  });
+
   it('does not define identity or demographic fields on detected faces', () => {
     expect(detectedFaceHasNoBiometricFields).toBe(true);
     expect(faceFixture).not.toHaveProperty('identity');
@@ -68,6 +97,152 @@ describe('BeautyEngine boundary', () => {
     expect(faceFixture).not.toHaveProperty('age');
     expect(faceFixture).not.toHaveProperty('gender');
     expect(faceFixture).not.toHaveProperty('ethnicity');
+  });
+});
+
+describe('detected-face privacy sanitizer', () => {
+  it('returns a fresh plain allow-listed face and strips private extras', () => {
+    const nativeFace = {
+      ...faceFixture,
+      bounds: { ...faceFixture.bounds },
+      trackingId: 'track-42',
+      identity: 'person-7',
+      embedding: [0.1, 0.2],
+      age: 29,
+      gender: 'female',
+      ethnicity: 'unknown',
+      geometry: { jaw: 1 },
+    };
+
+    const sanitized = sanitizeDetectedFace(nativeFace);
+
+    expect(sanitized).toEqual({
+      bounds: faceFixture.bounds,
+      leftEye: faceFixture.leftEye,
+      rightEye: faceFixture.rightEye,
+      leftEyebrow: faceFixture.leftEyebrow,
+      rightEyebrow: faceFixture.rightEyebrow,
+      nose: faceFixture.nose,
+      leftNostril: faceFixture.leftNostril,
+      rightNostril: faceFixture.rightNostril,
+      mouth: faceFixture.mouth,
+      facialHair: faceFixture.facialHair,
+    });
+    expect(sanitized).not.toBe(nativeFace);
+    expect(sanitized?.bounds).not.toBe(nativeFace.bounds);
+    expect(Object.getPrototypeOf(sanitized!)).toBe(Object.prototype);
+    expect(Object.keys(sanitized!)).toEqual([
+      'bounds',
+      'leftEye',
+      'rightEye',
+      'leftEyebrow',
+      'rightEyebrow',
+      'nose',
+      'leftNostril',
+      'rightNostril',
+      'mouth',
+      'facialHair',
+    ]);
+    expect(sanitized).not.toHaveProperty('trackingId');
+    expect(sanitized).not.toHaveProperty('identity');
+    expect(sanitized).not.toHaveProperty('embedding');
+    expect(sanitized).not.toHaveProperty('age');
+    expect(sanitized).not.toHaveProperty('gender');
+    expect(sanitized).not.toHaveProperty('ethnicity');
+    expect(sanitized).not.toHaveProperty('geometry');
+  });
+
+  it('never invokes face, point, bounds, or list accessors', () => {
+    let getterCalls = 0;
+    const accessorPoint = Object.defineProperty({}, 'x', {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return 160;
+      },
+    });
+    const accessorFace = Object.defineProperties(
+      {},
+      {
+        bounds: {
+          enumerable: true,
+          value: { x: 100, y: 80, width: 200, height: 240 },
+        },
+        leftEye: {
+          enumerable: true,
+          value: accessorPoint,
+        },
+        identity: {
+          enumerable: true,
+          get() {
+            getterCalls += 1;
+            return 'secret';
+          },
+        },
+        mouth: {
+          enumerable: true,
+          get() {
+            getterCalls += 1;
+            return { x: 200, y: 260 };
+          },
+        },
+        facialHair: {
+          enumerable: true,
+          value: Object.defineProperty([], '0', {
+            get() {
+              getterCalls += 1;
+              return { x: 160, y: 270, width: 80, height: 20 };
+            },
+          }),
+        },
+      },
+    );
+
+    expect(sanitizeDetectedFace(accessorFace)).toEqual({
+      bounds: { x: 100, y: 80, width: 200, height: 240 },
+      facialHair: [],
+    });
+    expect(getterCalls).toBe(0);
+  });
+
+  it('fails closed for hostile proxies and caps native face lists', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error('hostile descriptor trap');
+        },
+      },
+    );
+    const manyFaces = Array.from(
+      { length: MAX_BEAUTY_FACES + 20 },
+      () => faceFixture,
+    );
+
+    expect(() => sanitizeDetectedFace(hostile)).not.toThrow();
+    expect(sanitizeDetectedFace(hostile)).toBeNull();
+    expect(sanitizeDetectedFaces(manyFaces)).toHaveLength(MAX_BEAUTY_FACES);
+    expect(sanitizeDetectedFaces(hostile)).toEqual([]);
+  });
+
+  it('sanitizes unknown native inputs before mask and plan construction', () => {
+    const nativeFace = {
+      ...faceFixture,
+      identity: 'must-not-survive',
+      embedding: [1, 2, 3],
+    };
+
+    const mask = buildFaceMask(nativeFace, IMAGE);
+    const plans = buildFaceRenderPlans(
+      [nativeFace],
+      IMAGE,
+      DEFAULT_BEAUTY,
+    );
+
+    expect(mask?.faceBounds).toEqual(faceFixture.bounds);
+    expect(mask).not.toHaveProperty('identity');
+    expect(mask).not.toHaveProperty('embedding');
+    expect(plans).toHaveLength(1);
   });
 });
 
@@ -104,6 +279,50 @@ describe('face mask geometry', () => {
     );
   });
 
+  it('uses inward outer feather coverage with a documented half threshold', () => {
+    const mask = buildFaceMask(
+      { bounds: { x: 100, y: 80, width: 200, height: 240 } },
+      IMAGE,
+    );
+
+    expect(mask).not.toBeNull();
+    if (!mask) throw new Error('expected a valid face mask');
+    const boundaryX = mask.coverage.center.x + mask.coverage.radiusX;
+    const halfwayX = boundaryX - mask.coverage.feather / 2;
+    const interiorX = boundaryX - mask.coverage.feather;
+
+    expect(mask.coverageAt({ x: boundaryX, y: mask.coverage.center.y })).toBe(0);
+    expect(
+      mask.coverageAt({ x: halfwayX, y: mask.coverage.center.y }),
+    ).toBeCloseTo(0.5);
+    expect(
+      mask.coverageAt({ x: interiorX, y: mask.coverage.center.y }),
+    ).toBe(1);
+    expect(mask.contains({ x: halfwayX, y: mask.coverage.center.y })).toBe(
+      false,
+    );
+  });
+
+  it('feathers feature exclusions from protected center to boundary', () => {
+    const mask = buildFaceMask(
+      {
+        bounds: faceFixture.bounds,
+        leftEye: faceFixture.leftEye,
+      },
+      IMAGE,
+    );
+
+    expect(mask).not.toBeNull();
+    if (!mask) throw new Error('expected a valid face mask');
+    const eye = mask.exclusions[0];
+    const boundaryX = eye.center.x + eye.radiusX;
+    const halfwayX = boundaryX - eye.feather / 2;
+
+    expect(mask.coverageAt(eye.center)).toBe(0);
+    expect(mask.coverageAt({ x: halfwayX, y: eye.center.y })).toBeCloseTo(0.5);
+    expect(mask.coverageAt({ x: boundaryX, y: eye.center.y })).toBe(1);
+  });
+
   it('uses canonical unmirrored image pixels and leaves mirroring to adapters', () => {
     const mask = buildFaceMask(faceFixture, IMAGE);
 
@@ -124,7 +343,7 @@ describe('face mask geometry', () => {
     expect(mask?.contains({ x: 200, y: 200 })).toBe(true);
   });
 
-  it('clamps partly off-image detections and landmarks to image bounds', () => {
+  it('clamps partly off-image face bounds but rejects outlier landmarks', () => {
     const face: DetectedFace = {
       bounds: { x: -30, y: 350, width: 100, height: 100 },
       leftEye: { x: -20, y: 370 },
@@ -139,14 +358,7 @@ describe('face mask geometry', () => {
       width: 70,
       height: 50,
     });
-    expect(mask?.exclusions.every((region) => {
-      return (
-        region.center.x >= 0 &&
-        region.center.x <= IMAGE.width &&
-        region.center.y >= 0 &&
-        region.center.y <= IMAGE.height
-      );
-    })).toBe(true);
+    expect(mask?.exclusions).toEqual([]);
   });
 
   it.each([
@@ -174,8 +386,21 @@ describe('face mask geometry', () => {
       IMAGE,
     );
 
+    expect(mask?.exclusions).toEqual([]);
+  });
+
+  it('does not turn a far edge-face mouth outlier into an exclusion', () => {
+    const mask = buildFaceMask(
+      {
+        bounds: { x: -15, y: 120, width: 95, height: 130 },
+        leftEye: { x: 30, y: 165 },
+        mouth: { x: 390, y: 390 },
+      },
+      IMAGE,
+    );
+
     expect(mask?.exclusions).toHaveLength(1);
-    expect(mask?.exclusions[0].center).toEqual({ x: 0, y: 400 });
+    expect(mask?.exclusions[0].center).toEqual({ x: 30, y: 165 });
   });
 
   it('caps face and region counts to bound untrusted detector work', () => {
@@ -312,6 +537,19 @@ describe('beauty shader strength mapping', () => {
     expect(settings).toEqual(snapshot);
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
+  });
+
+  it('maps already-effective settings to exactly the same uniforms', () => {
+    const settings: BeautySettings = {
+      ...DEFAULT_BEAUTY,
+      overall: 40,
+      smooth: 18,
+      blemish: 12,
+    };
+
+    expect(shaderUniforms(effectiveBeautySettings(settings))).toEqual(
+      shaderUniforms(settings),
+    );
   });
 });
 
