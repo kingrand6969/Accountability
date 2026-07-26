@@ -1,0 +1,40 @@
+# This repository contains several projects. EAS builds are launched from the
+# accountability-app directory, so unrelated workspace content must never be
+# included in its mobile build archive.
+/.git/
+/.agents/
+/.claude/
+/.worktrees/
+/docs/
+/kingrand-portfolio/
+/ecpro-rental-services/
+
+# Accountability mobile-app exclusions
+/accountability-app/node_modules/
+/accountability-app/.expo/
+/accountability-app/dist/
+/accountability-app/web-build/
+/accountability-app/ios/
+/accountability-app/android/
+/accountability-app/.env
+/accountability-app/.env.*
+/accountability-app/admin-site/
+/accountability-app/share-site/
+/accountability-app/.tmp-quality-web/
+/accountability-app/admin/
+/accountability-app/legal-web/
+/accountability-app/admin-site-deploy.tar.gz
+/accountability-app/supabase/
+/accountability-app/docs/
+/accountability-app/.superpowers/
+/accountability-app/.claude/
+/accountability-app/.vscode/
+/accountability-app/.wrangler/
+/accountability-app/*.tsbuildinfo
+/accountability-app/*.log
+/accountability-app/*.jks
+/accountability-app/*.p8
+/accountability-app/*.p12
+/accountability-app/*.key
+/accountability-app/*.mobileprovision
+/accountability-app/*.pem
