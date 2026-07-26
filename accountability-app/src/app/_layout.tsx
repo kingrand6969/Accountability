@@ -18,6 +18,7 @@ import { ConfirmHost } from '../ui/ConfirmDialog';
 import { PostMenuHost } from '../feed/PostMenu';
 import { ModerationGate } from '../moderation/ModerationGate';
 import { colors } from '../ui/theme';
+import { cleanupAbandonedRunMedia } from '../activity/runMediaCache';
 import '../notifications/handler';
 import '../activity/locationTask';
 
@@ -154,6 +155,12 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    cleanupAbandonedRunMedia().catch((error) => {
+      console.warn('Unable to clean abandoned run media.', error);
+    });
+  }, []);
+
   return (
     <AuthProvider>
       <ProProvider>
