@@ -15,6 +15,11 @@ import { getMyProfile } from '../../profiles/api';
 import { getHomeStats, type HomeStats } from '../../home/api';
 import { getInsights } from '../../insights/api';
 import { toLocalDateString } from '../../timeline/datetime';
+import { useActivitySync } from '../../activity/ActivitySyncProvider';
+import {
+  ActivityUploadsPanel,
+  shouldShowUploadsPanel,
+} from '../../activity/UploadStatus';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { ProgressRing } from '../../ui/ProgressRing';
 import { contentMaxWidth } from '../../ui/responsive';
@@ -104,6 +109,14 @@ function weekDayDate(index: number): string {
 export default function Track() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const {
+    queued,
+    issueCount,
+    otherAccountPendingCount,
+    otherAccountPendingIsApproximate,
+    status: uploadStatus,
+    retryNow,
+  } = useActivitySync();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -159,6 +172,12 @@ export default function Track() {
     weekday: 'long',
     day: 'numeric',
     month: 'short',
+  });
+  const showUploads = shouldShowUploadsPanel({
+    queuedCount: queued.length,
+    issueCount,
+    otherAccountPendingCount,
+    status: uploadStatus,
   });
 
   return (
@@ -255,6 +274,21 @@ export default function Track() {
             </View>
           </View>
         </GlassCard>
+
+        {showUploads ? (
+          <GlassCard blurTarget={bgRef}>
+            <ActivityUploadsPanel
+              queued={queued}
+              issueCount={issueCount}
+              otherAccountPendingCount={otherAccountPendingCount}
+              otherAccountPendingIsApproximate={
+                otherAccountPendingIsApproximate
+              }
+              status={uploadStatus}
+              onRetryNow={retryNow}
+            />
+          </GlassCard>
+        ) : null}
 
         {/* pillars — frosted ledger */}
         <GlassCard blurTarget={bgRef}>

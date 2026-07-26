@@ -26,6 +26,7 @@ import {
 } from '../../activity/geo';
 import { OsmMap, type OsmMapHandle } from '../../ui/OsmMap';
 import { RunShareSheet, type FinishedRun } from '../../activity/RunShareSheet';
+import { ActivityUploadBadge } from '../../activity/UploadStatus';
 import {
   beginTrackRecording,
   claimLegacyTrackRecording,
@@ -860,6 +861,14 @@ export default function ActivityTrack() {
           </View>
         ) : null}
 
+        {visiblePending ? (
+          <ActivityUploadBadge
+            status="saved"
+            dark
+            style={styles.uploadBadge}
+          />
+        ) : null}
+
         {/* floating primary action */}
         {visiblePending ? (
           <View style={styles.pendingRow}>
@@ -1014,6 +1023,7 @@ const styles = StyleSheet.create({
   stopBtn: { backgroundColor: '#ef4444' },
   stopText: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
   pendingRow: { gap: 8 },
+  uploadBadge: { alignSelf: 'flex-start' },
   recoveryNotice: {
     minHeight: 52,
     flexDirection: 'row',
