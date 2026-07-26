@@ -106,6 +106,35 @@ describe('temporary run-media cache', () => {
     expect(deleteAttempts).toBe(2);
   });
 
+  test('tombstones a failed deletion until retry succeeds', async () => {
+    let deleteAttempts = 0;
+    const fs: RunMediaFileSystem = {
+      cacheDirectory: '/cache',
+      list: async () => [],
+      delete: async () => {
+        deleteAttempts += 1;
+        if (deleteAttempts === 1) throw new Error('device busy');
+      },
+    };
+    const cache = createRunMediaCache(fs);
+    const staleItem = await cache.register('/cache/run-share/tombstone.jpg', 'share');
+
+    await expect(cache.release(staleItem.id)).rejects.toThrow('device busy');
+    await expect(
+      cache.register('/cache/run-share/./tombstone.jpg', 'editor'),
+    ).rejects.toThrow('pending deletion');
+
+    await cache.release(staleItem.id);
+    const freshItem = await cache.register('/cache/run-share/tombstone.jpg', 'editor');
+    expect(freshItem.id).not.toBe(staleItem.id);
+
+    await cache.release(staleItem.id);
+    expect(deleteAttempts).toBe(2);
+
+    await cache.release(freshItem.id, 'editor');
+    expect(deleteAttempts).toBe(3);
+  });
+
   test('rejects re-registration while an old deletion is in flight', async () => {
     let finishDelete!: () => void;
     const deletion = new Promise<void>((resolve) => {

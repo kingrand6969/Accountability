@@ -108,6 +108,7 @@ function isMissingPathError(error: unknown): boolean {
 export function createRunMediaCache(fs: RunMediaFileSystem = expoFileSystemAdapter) {
   type TrackedItem = RunMediaCacheItem & {
     canonicalUri: string;
+    deleteFailed?: boolean;
     deleting?: Promise<void>;
     owners: Set<MediaOwner>;
   };
@@ -129,6 +130,9 @@ export function createRunMediaCache(fs: RunMediaFileSystem = expoFileSystemAdapt
         if (existing.deleting) {
           throw new Error('Run media is being deleted; register it again after deletion completes.');
         }
+        if (existing.deleteFailed) {
+          throw new Error('Run media is pending deletion; retry its release before registering it.');
+        }
         existing.owners.add(owner);
         return { id: existing.id, uri: existing.uri };
       }
@@ -149,6 +153,7 @@ export function createRunMediaCache(fs: RunMediaFileSystem = expoFileSystemAdapt
     const item = items.get(id);
     if (!item) throw new Error(`Unknown run-media cache item: ${id}`);
     if (item.deleting) throw new Error('Run media is being deleted.');
+    if (item.deleteFailed) throw new Error('Run media is pending deletion.');
     item.owners.add(owner);
   }
 
@@ -173,7 +178,10 @@ export function createRunMediaCache(fs: RunMediaFileSystem = expoFileSystemAdapt
           await fs.delete(item.uri);
         }
       } catch (error) {
-        if (!isMissingPathError(error)) throw error;
+        if (!isMissingPathError(error)) {
+          item.deleteFailed = true;
+          throw error;
+        }
       }
 
       items.delete(id);
