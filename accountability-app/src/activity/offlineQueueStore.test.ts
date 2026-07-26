@@ -9,6 +9,7 @@ import {
   enqueueActivity,
   getQueuedActivity,
   listQueuedActivities,
+  MAX_OFFLINE_QUEUE_INDEX_BYTES,
   MAX_QUEUED_ACTIVITY_BYTES,
   patchQueuedActivity,
   recoverQueue,
@@ -67,6 +68,12 @@ function entry(
 
 function seedEntry(value: QueuedActivity): void {
   stored.set(`${ENTRY_PREFIX}${value.id}`, JSON.stringify(value));
+}
+
+function generatedId(sequence: number): string {
+  return `00000000-0000-4000-8000-${sequence
+    .toString(16)
+    .padStart(12, '0')}`;
 }
 
 beforeEach(() => {
@@ -134,6 +141,34 @@ describe('enqueueActivity', () => {
     );
     expect(mockedStorage.setItem).not.toHaveBeenCalled();
   });
+
+  it('rejects an oversized projected index before writing the entry', async () => {
+    const maximumIdsThatFit = Math.floor(
+      (MAX_OFFLINE_QUEUE_INDEX_BYTES - 1) / 39,
+    );
+    const nearlyFullIndex = Array.from(
+      { length: maximumIdsThatFit },
+      (_, index) => generatedId(index),
+    );
+    const serializedIndex = JSON.stringify(nearlyFullIndex);
+    expect(new TextEncoder().encode(serializedIndex).byteLength).toBeLessThanOrEqual(
+      MAX_OFFLINE_QUEUE_INDEX_BYTES,
+    );
+    expect(
+      new TextEncoder().encode(
+        JSON.stringify([...nearlyFullIndex, ID_A]),
+      ).byteLength,
+    ).toBeGreaterThan(MAX_OFFLINE_QUEUE_INDEX_BYTES);
+    stored.set(INDEX_KEY, serializedIndex);
+
+    await expect(enqueueActivity(OWNER_A, activity, ID_A)).rejects.toThrow(
+      `${MAX_OFFLINE_QUEUE_INDEX_BYTES}-byte index storage limit`,
+    );
+
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
+    expect(stored.has(`${ENTRY_PREFIX}${ID_A}`)).toBe(false);
+    expect(stored.get(INDEX_KEY)).toBe(serializedIndex);
+  });
 });
 
 describe('recovery and reads', () => {
@@ -195,6 +230,52 @@ describe('recovery and reads', () => {
 
     expect(recovered.map((item) => item.id)).toEqual([ID_A, ID_B]);
     expect(JSON.parse(stored.get(INDEX_KEY)!)).toEqual([ID_A, ID_B]);
+  });
+
+  it('persists an empty repair when an existing index is corrupt', async () => {
+    stored.set(INDEX_KEY, '{broken');
+
+    await expect(recoverQueue()).resolves.toEqual([]);
+
+    expect(stored.get(INDEX_KEY)).toBe('[]');
+    expect(mockedStorage.setItem).toHaveBeenCalledWith(INDEX_KEY, '[]');
+  });
+
+  it('repairs an oversized corrupt index without parsing or deleting entries', async () => {
+    const oversizedIndex = 'x'.repeat(MAX_OFFLINE_QUEUE_INDEX_BYTES + 1);
+    stored.set(INDEX_KEY, oversizedIndex);
+    const originalParse = JSON.parse;
+    const parseSpy = jest.spyOn(JSON, 'parse').mockImplementation((value) => {
+      if (value === oversizedIndex) {
+        throw new Error('oversized index was parsed');
+      }
+      return originalParse(value);
+    });
+
+    await expect(recoverQueue()).resolves.toEqual([]);
+
+    expect(parseSpy).not.toHaveBeenCalledWith(oversizedIndex);
+    expect(stored.get(INDEX_KEY)).toBe('[]');
+    expect(mockedStorage.removeItem).not.toHaveBeenCalled();
+    parseSpy.mockRestore();
+  });
+
+  it('surfaces an oversized recovery index without writing or deleting entries', async () => {
+    const tooManyEntries = Math.floor(
+      (MAX_OFFLINE_QUEUE_INDEX_BYTES - 1) / 39,
+    ) + 1;
+    for (let index = 0; index < tooManyEntries; index += 1) {
+      seedEntry(entry(generatedId(index)));
+    }
+
+    await expect(recoverQueue()).rejects.toThrow(
+      `${MAX_OFFLINE_QUEUE_INDEX_BYTES}-byte index storage limit`,
+    );
+
+    expect(stored.has(INDEX_KEY)).toBe(false);
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
+    expect(mockedStorage.removeItem).not.toHaveBeenCalled();
+    expect(stored.size).toBe(tooManyEntries);
   });
 
   it('drops missing IDs from the effective index without deleting quarantined values', async () => {

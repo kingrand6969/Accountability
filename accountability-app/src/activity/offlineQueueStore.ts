@@ -17,6 +17,12 @@ const MULTI_GET_BATCH_SIZE = 50;
  */
 export const MAX_QUEUED_ACTIVITY_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Maximum UTF-8 size of the queue's ID-only index. Keeping this independent
+ * from the entry cap bounds index parsing and still permits over 6,700 items.
+ */
+export const MAX_OFFLINE_QUEUE_INDEX_BYTES = 256 * 1024;
+
 type QueuePatch = Partial<
   Pick<
     QueuedActivity,
@@ -33,6 +39,11 @@ const PATCH_KEYS = new Set<keyof QueuePatch>([
 
 const listeners = new Set<() => void>();
 let operationTail: Promise<void> = Promise.resolve();
+
+type IndexRead = {
+  state: 'missing' | 'valid' | 'corrupt' | 'oversize';
+  ids: string[];
+};
 
 export async function enqueueActivity(
   ownerId: string,
@@ -52,13 +63,15 @@ export async function enqueueActivity(
       nextAttemptAt: now,
       lastError: null,
     });
-    const serialized = serializeEntry(entry);
+    const serializedEntry = serializeEntry(entry);
+    const index = await readIndex();
+    const nextIds = index.ids.includes(entry.id)
+      ? index.ids
+      : [...index.ids, entry.id];
+    const serializedIndex = serializeIndex(nextIds);
 
-    await AsyncStorage.setItem(entryKey(entry.id), serialized);
-
-    const ids = await readIndex();
-    const nextIds = ids.includes(entry.id) ? ids : [...ids, entry.id];
-    await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(nextIds));
+    await AsyncStorage.setItem(entryKey(entry.id), serializedEntry);
+    await AsyncStorage.setItem(INDEX_KEY, serializedIndex);
     emitQueueChanged();
     return entry;
   });
@@ -123,13 +136,14 @@ export async function removeQueuedActivity(id: string): Promise<void> {
       AsyncStorage.getItem(entryKey(id)),
     ]);
     const validEntry = parseStoredEntry(raw, id);
-    const indexed = ids.includes(id);
+    const indexed = ids.ids.includes(id);
 
     if (!indexed && raw === null) return;
 
-    const nextIds = ids.filter((candidate) => candidate !== id);
+    const nextIds = ids.ids.filter((candidate) => candidate !== id);
+    const serializedIndex = serializeIndex(nextIds);
     if (indexed || validEntry) {
-      await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(nextIds));
+      await AsyncStorage.setItem(INDEX_KEY, serializedIndex);
     }
 
     if (validEntry) {
@@ -152,7 +166,7 @@ export function subscribeToQueue(listener: () => void): () => void {
 }
 
 async function recoverQueueUnlocked(): Promise<QueuedActivity[]> {
-  const [storedIds, keys] = await Promise.all([
+  const [storedIndex, keys] = await Promise.all([
     readIndex(),
     AsyncStorage.getAllKeys(),
   ]);
@@ -169,23 +183,29 @@ async function recoverQueueUnlocked(): Promise<QueuedActivity[]> {
   const entries = [...validById.values()].sort(compareEntries);
   const effectiveIds = entries.map((entry) => entry.id);
 
-  if (!sameIds(storedIds, effectiveIds)) {
-    await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(effectiveIds));
+  const needsRepair =
+    storedIndex.state === 'corrupt' ||
+    storedIndex.state === 'oversize' ||
+    !sameIds(storedIndex.ids, effectiveIds);
+  if (needsRepair) {
+    const serializedIndex = serializeIndex(effectiveIds);
+    await AsyncStorage.setItem(INDEX_KEY, serializedIndex);
     emitQueueChanged();
   }
 
   return entries;
 }
 
-async function readIndex(): Promise<string[]> {
+async function readIndex(): Promise<IndexRead> {
   const raw = await AsyncStorage.getItem(INDEX_KEY);
-  if (raw === null || utf8ByteLength(raw) > MAX_QUEUED_ACTIVITY_BYTES) {
-    return [];
+  if (raw === null) return { state: 'missing', ids: [] };
+  if (utf8ByteLength(raw) > MAX_OFFLINE_QUEUE_INDEX_BYTES) {
+    return { state: 'oversize', ids: [] };
   }
 
   try {
     const value: unknown = JSON.parse(raw);
-    if (!Array.isArray(value)) return [];
+    if (!Array.isArray(value)) return { state: 'corrupt', ids: [] };
 
     const ids: string[] = [];
     const seen = new Set<string>();
@@ -195,14 +215,14 @@ async function readIndex(): Promise<string[]> {
         !isActivityId(item) ||
         seen.has(item)
       ) {
-        return [];
+        return { state: 'corrupt', ids: [] };
       }
       seen.add(item);
       ids.push(item);
     }
-    return ids;
+    return { state: 'valid', ids };
   } catch {
-    return [];
+    return { state: 'corrupt', ids: [] };
   }
 }
 
@@ -242,6 +262,16 @@ function serializeEntry(entry: QueuedActivity): string {
   if (utf8ByteLength(serialized) > MAX_QUEUED_ACTIVITY_BYTES) {
     throw new Error(
       `Queued activity exceeds ${MAX_QUEUED_ACTIVITY_BYTES}-byte storage limit`,
+    );
+  }
+  return serialized;
+}
+
+function serializeIndex(ids: string[]): string {
+  const serialized = JSON.stringify(ids);
+  if (utf8ByteLength(serialized) > MAX_OFFLINE_QUEUE_INDEX_BYTES) {
+    throw new Error(
+      `Offline queue index exceeds ${MAX_OFFLINE_QUEUE_INDEX_BYTES}-byte index storage limit`,
     );
   }
   return serialized;
