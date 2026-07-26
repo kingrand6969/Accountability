@@ -1,4 +1,9 @@
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { cwd } from 'node:process';
+import { TextDecoder as NodeTextDecoder } from 'node:util';
+import type { CanvasKit } from 'canvaskit-wasm';
 import { DEFAULT_BEAUTY, type BeautySettings, type ColorLook } from './types';
 import {
   BEAUTY_RUNTIME_EFFECT,
@@ -17,6 +22,20 @@ const COLOR_TARGET_CASES: [
   ['night', [1.18, 1.22, 0.88]],
   ['mono', [0, 1.2, 1.04]],
 ];
+
+type CanvasKitInitializer = (options: {
+  locateFile(file: string): string;
+}) => Promise<CanvasKit>;
+
+const requireFromProject = createRequire(
+  join(cwd(), 'beauty-shader-runtime-test.cjs'),
+);
+const initializeCanvasKit = requireFromProject(
+  'canvaskit-wasm/bin/full/canvaskit',
+) as CanvasKitInitializer;
+const canvasKitWasmPath = requireFromProject.resolve(
+  'canvaskit-wasm/bin/full/canvaskit.wasm',
+);
 
 describe('colorUniforms', () => {
   test.each(COLOR_TARGET_CASES)(
@@ -147,6 +166,52 @@ describe('buildBeautyShaderUniforms', () => {
 });
 
 describe('BEAUTY_RUNTIME_EFFECT', () => {
+  test(
+    'compiles in the installed headless CanvasKit runtime',
+    async () => {
+      const originalTextDecoder = globalThis.TextDecoder;
+      Object.defineProperty(globalThis, 'TextDecoder', {
+        configurable: true,
+        value: NodeTextDecoder,
+        writable: true,
+      });
+
+      try {
+        const canvasKit = await initializeCanvasKit({
+          locateFile: (file) => {
+            expect(file).toBe('canvaskit.wasm');
+            return canvasKitWasmPath;
+          },
+        });
+
+        const expectedCompilerLog = jest
+          .spyOn(console, 'log')
+          .mockImplementation(() => undefined);
+        try {
+          expect(
+            canvasKit.RuntimeEffect.Make(
+              'half4 main(float2 xy) { this is deliberately invalid; }',
+            ),
+          ).toBeNull();
+          expect(expectedCompilerLog).toHaveBeenCalled();
+        } finally {
+          expectedCompilerLog.mockRestore();
+        }
+
+        const effect = canvasKit.RuntimeEffect.Make(BEAUTY_RUNTIME_EFFECT);
+        expect(effect).not.toBeNull();
+        effect?.delete();
+      } finally {
+        Object.defineProperty(globalThis, 'TextDecoder', {
+          configurable: true,
+          value: originalTextDecoder,
+          writable: true,
+        });
+      }
+    },
+    15_000,
+  );
+
   test.each([
     'uniform shader image;',
     'uniform shader skinMask;',
