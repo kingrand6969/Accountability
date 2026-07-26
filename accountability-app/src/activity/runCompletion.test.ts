@@ -19,6 +19,10 @@ import {
   type LocationRecordingStorage,
 } from './locationTask';
 import type { QueuedActivity } from './offlineQueueTypes';
+import {
+  createRunEditorSafeCloser,
+  handleRunEditorHardwareBack,
+} from './RunShareSheet';
 
 jest.mock('../lib/supabase', () => ({ supabase: {} }));
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -29,6 +33,28 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
     removeItem: jest.fn(),
   },
 }));
+jest.mock('expo-media-library', () => ({
+  requestPermissionsAsync: jest.fn(),
+  createAssetAsync: jest.fn(),
+}));
+jest.mock('expo-file-system', () => ({
+  File: class {
+    async base64() {
+      return '';
+    }
+  },
+}));
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(),
+  shareAsync: jest.fn(),
+}));
+jest.mock('expo-image-picker', () => ({
+  CameraType: { front: 'front', back: 'back' },
+  requestCameraPermissionsAsync: jest.fn(),
+  launchCameraAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn(),
+}));
+jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn() }));
 
 const OWNER_A = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const OWNER_B = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
@@ -690,6 +716,49 @@ describe('synchronous mutation and owner gates', () => {
     expect(
       shouldApplyOwnerAsyncResult(OWNER_A, OWNER_A, 3, 3),
     ).toBe(true);
+  });
+});
+
+describe('owner-independent run editor close', () => {
+  it('closes after an owner switch and releases its managed lease once', async () => {
+    const release = jest.fn(async () => undefined);
+    const clearLocal = jest.fn();
+    const onClose = jest.fn();
+    let staged: { id: string } | null = { id: 'managed-card' };
+    const externalSideEffect = jest.fn();
+    const close = createRunEditorSafeCloser({
+      takeStaged: () => {
+        const item = staged;
+        staged = null;
+        return item;
+      },
+      release,
+      clearLocal,
+      onClose,
+    });
+
+    await Promise.all([close(), close()]);
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith('managed-card', 'editor');
+    expect(clearLocal).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(externalSideEffect).not.toHaveBeenCalled();
+  });
+
+  it('lets ownerless preview and mismatched hardware back close safely', async () => {
+    const onClose = jest.fn();
+    const close = createRunEditorSafeCloser({
+      takeStaged: () => null,
+      release: jest.fn(async () => undefined),
+      clearLocal: jest.fn(),
+      onClose,
+    });
+
+    expect(handleRunEditorHardwareBack(close)).toBe(true);
+    await close();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

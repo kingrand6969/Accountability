@@ -90,6 +90,39 @@ type RunFeedOperationMetadata = {
 };
 
 /** Full-screen overlay shown after Stop & Save — turn the run into a shareable card. */
+type RunEditorSafeCloserDependencies = {
+  takeStaged: () => { id: string } | null;
+  release: (id: string, owner: 'editor') => Promise<void>;
+  clearLocal: () => void;
+  onClose: () => void;
+};
+
+export function createRunEditorSafeCloser({
+  takeStaged,
+  release,
+  clearLocal,
+  onClose,
+}: RunEditorSafeCloserDependencies): () => Promise<void> {
+  let closing: Promise<void> | null = null;
+  return () => {
+    if (closing) return closing;
+    const staged = takeStaged();
+    clearLocal();
+    closing = (async () => {
+      if (staged) await release(staged.id, 'editor').catch(() => {});
+      onClose();
+    })();
+    return closing;
+  };
+}
+
+export function handleRunEditorHardwareBack(
+  closeEditor: () => Promise<void>,
+): true {
+  void closeEditor();
+  return true;
+}
+
 export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () => void }) {
   const { session } = useAuth();
   const currentOwnerRef = useRef<string | null>(session?.user.id ?? null);
@@ -120,6 +153,35 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const renderGeneration = useRef(0);
   const feedOperation = useRef<FeedOperationContext<RunFeedOperationMetadata> | null>(null);
   const hasPersistentDestination = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const safeCloseRef = useRef<(() => Promise<void>) | null>(null);
+  if (!safeCloseRef.current) {
+    safeCloseRef.current = createRunEditorSafeCloser({
+      takeStaged: () => {
+        const item = stagedMedia.current;
+        stagedMedia.current = null;
+        return item;
+      },
+      release: runMediaCache.release,
+      clearLocal: () => {
+        renderGeneration.current += 1;
+        feedOperation.current = null;
+        hasPersistentDestination.current = false;
+        setCheckedOwnerId(null);
+        setActiveDestination(null);
+        setPhotoUri(null);
+        setPhotoKind(null);
+        setOriginalRatio(null);
+        setMode('map');
+        setFormat('feed');
+        setMediaFit('cover');
+        setAudience('buddies');
+        setShowEnds(false);
+      },
+      onClose: () => onCloseRef.current(),
+    });
+  }
   const shareOperationGate = useRef(createShareOperationGate()).current;
   const completionEffects = useMemo(
     () =>
@@ -227,11 +289,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   // Android hardware back closes the sheet instead of popping the run screen
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!busy) void closeEditor();
-      return true;
+      return handleRunEditorHardwareBack(closeEditor);
     });
     return () => sub.remove();
-  }, [busy, onClose]);
+  }, []);
 
   // A changed card must never reuse an older staged export. Release only that
   // item's editor owner. Destination leases are released after every attempt;
@@ -346,13 +407,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   }
 
   async function closeEditor() {
-    const boundary = ownerBoundary();
-    boundary.assertOwned();
-    await runMediaCache.discardEditorSession().catch(() => {});
-    boundary.assertOwned();
-    stagedMedia.current = null;
-    feedOperation.current = null;
-    onClose();
+    await safeCloseRef.current!();
   }
 
   async function onDestination(destination: RunMediaDestination) {
@@ -522,6 +577,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         <Text style={styles.ownerBoundaryText}>
           Sign in as the recording owner to continue
         </Text>
+        <Pressable
+          onPress={() => void closeEditor()}
+          style={styles.ownerBoundaryClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        >
+          <Text style={styles.ownerBoundaryCloseText}>Close</Text>
+        </Pressable>
       </View>
     );
   }
@@ -743,6 +806,20 @@ const styles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 16,
     textAlign: 'center',
+  },
+  ownerBoundaryClose: {
+    minWidth: 96,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: LIME,
+    paddingHorizontal: 20,
+  },
+  ownerBoundaryCloseText: {
+    color: '#101319',
+    fontFamily: font.extrabold,
+    fontSize: 15,
   },
   header: {
     flexDirection: 'row',
