@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts, Anton_400Regular } from '@expo-google-fonts/anton';
 import {
@@ -156,6 +156,7 @@ function RootNavigator() {
 
 export default function RootLayout() {
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     cleanupAbandonedRunMedia().catch((error) => {
       console.warn('Unable to clean abandoned run media.', error);
     });
