@@ -34,6 +34,18 @@ export type QueueRecoverySummary = {
   issueCount: number;
 };
 
+export type QueueCountSummary = {
+  currentOwnerCount: number;
+  otherOwnerCount: number;
+  totalQueuedCount: number;
+  issueCount: number;
+};
+
+export type OwnerQueueSnapshot = {
+  queued: QueuedActivity[];
+  summary: QueueCountSummary;
+};
+
 export type QueueIssue = {
   id: string;
   storageKey: string;
@@ -172,6 +184,62 @@ export async function listQueuedActivities(
       if (parsed?.ownerId === ownerId) entries.push(parsed);
     }
     return entries.sort(compareEntries);
+  });
+}
+
+/**
+ * Returns current-owner details and redacted aggregate counts from the same
+ * serialized store pass. Foreign entries are counted but never returned.
+ */
+export async function getOwnerQueueSnapshot(
+  ownerId: string,
+): Promise<OwnerQueueSnapshot> {
+  return serializeOperation(async () => {
+    const [index, storedIssues] = await Promise.all([
+      readIndex(),
+      readIssues(),
+    ]);
+    if (index.state !== 'valid' || index.ids.length === 0) {
+      return {
+        queued: [],
+        summary: {
+          currentOwnerCount: 0,
+          otherOwnerCount: 0,
+          totalQueuedCount: 0,
+          issueCount: storedIssues.issues.length,
+        },
+      };
+    }
+
+    const pairs = await multiGetInBatches([
+      ...index.ids.map(entryKey),
+      ...index.ids.map(tombstoneKey),
+    ]);
+    const values = new Map(pairs);
+    const queued: QueuedActivity[] = [];
+    let otherOwnerCount = 0;
+
+    for (const id of index.ids) {
+      if (values.get(tombstoneKey(id)) != null) continue;
+      const parsed = parseStoredEntry(values.get(entryKey(id)) ?? null, id);
+      if (!parsed) continue;
+      if (parsed.ownerId === ownerId) {
+        queued.push(parsed);
+      } else {
+        otherOwnerCount += 1;
+      }
+    }
+
+    queued.sort(compareEntries);
+    return {
+      queued,
+      summary: {
+        currentOwnerCount: queued.length,
+        otherOwnerCount,
+        totalQueuedCount: queued.length + otherOwnerCount,
+        issueCount: storedIssues.issues.length,
+      },
+    };
   });
 }
 

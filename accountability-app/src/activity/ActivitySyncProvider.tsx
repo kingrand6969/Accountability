@@ -13,22 +13,24 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
 import { createActivitySynchronizer } from './activitySynchronizer';
 import {
-  listQueueIssues,
-  listQueuedActivities,
+  getOwnerQueueSnapshot,
   recoverQueue,
   subscribeToQueue,
-  type QueueIssue,
+  type OwnerQueueSnapshot,
   type QueueRecoverySummary,
 } from './offlineQueueStore';
 import type { QueuedActivity } from './offlineQueueTypes';
 
-export type ActivitySyncStatus = 'idle' | 'syncing' | 'error';
+export type ActivitySyncStatus = 'recovering' | 'idle' | 'syncing' | 'error';
 
 export type ActivitySyncSnapshot = {
+  ownerId: string | null;
   queued: QueuedActivity[];
   issueCount: number;
   otherAccountPendingCount: number;
   status: ActivitySyncStatus;
+  recoveryError: string | null;
+  syncError: string | null;
   error: string | null;
 };
 
@@ -41,8 +43,7 @@ type Unsubscribe = () => void;
 
 export type SyncTriggerControllerDependencies = {
   recoverQueue: () => Promise<QueueRecoverySummary>;
-  listQueuedActivities: (ownerId: string) => Promise<QueuedActivity[]>;
-  listQueueIssues: () => Promise<QueueIssue[]>;
+  getOwnerQueueSnapshot: (ownerId: string) => Promise<OwnerQueueSnapshot>;
   drain: (ownerId: string, force?: boolean) => Promise<void>;
   subscribeQueue: (listener: () => void) => Unsubscribe;
   subscribeNetwork: (
@@ -62,22 +63,20 @@ export type SyncTriggerController = {
 };
 
 const EMPTY_SNAPSHOT: ActivitySyncSnapshot = {
+  ownerId: null,
   queued: [],
   issueCount: 0,
   otherAccountPendingCount: 0,
-  status: 'idle',
+  status: 'recovering',
+  recoveryError: null,
+  syncError: null,
   error: null,
 };
 
 const LOAD_ERROR = 'Offline activities could not be loaded. Try again.';
 const SYNC_ERROR = 'Activity upload could not be completed. Try again.';
+const RECOVERY_ERROR = 'Offline activity recovery failed. Try again.';
 
-/**
- * Coordinates sync triggers without importing React Native APIs. The recovery
- * total is intentionally used only to derive an approximate, redacted count:
- * queue writes can race this snapshot, and the store never enumerates another
- * owner's entries for this provider.
- */
 export function createSyncTriggerController(
   dependencies: SyncTriggerControllerDependencies,
 ): SyncTriggerController {
@@ -88,44 +87,65 @@ export function createSyncTriggerController(
   let drainRevision = 0;
   let appState = dependencies.initialAppState;
   let online: boolean | null = null;
-  let recoveredQueuedCount = 0;
-  let snapshot: ActivitySyncSnapshot = { ...EMPTY_SNAPSHOT };
+  let queued: QueuedActivity[] = [];
+  let issueCount = 0;
+  let otherAccountPendingCount = 0;
+  let recoveryState: 'pending' | 'healthy' | 'error' = 'pending';
+  let operationState: 'idle' | 'syncing' = 'idle';
+  let recoveryError: string | null = null;
+  let syncError: string | null = null;
+  let recoveryPromise: Promise<boolean> | null = null;
+  let refreshPromise: Promise<void> | null = null;
+  let refreshRerunRequested = false;
+  let pendingDrain: { ownerId: string; force: boolean } | null = null;
+  let flushPromise: Promise<void> | null = null;
   const unsubscribers: Unsubscribe[] = [];
+  let resolveDisposed!: () => void;
+  const disposedPromise = new Promise<'disposed'>((resolve) => {
+    resolveDisposed = () => resolve('disposed');
+  });
 
-  const publish = (patch: Partial<ActivitySyncSnapshot>) => {
+  const publish = () => {
     if (!active) return;
-    snapshot = {
-      ...snapshot,
-      ...patch,
-      queued: patch.queued ? [...patch.queued] : snapshot.queued,
-    };
-    dependencies.onSnapshot(snapshot);
-  };
-
-  const publishSignedOut = () => {
-    publish({
-      queued: [],
-      issueCount: 0,
-      otherAccountPendingCount: 0,
-      status: 'idle',
-      error: null,
+    const error = recoveryError ?? syncError;
+    const status: ActivitySyncStatus = error
+      ? 'error'
+      : recoveryState === 'pending'
+        ? 'recovering'
+        : operationState === 'syncing'
+          ? 'syncing'
+          : 'idle';
+    dependencies.onSnapshot({
+      ownerId,
+      queued: [...queued],
+      issueCount,
+      otherAccountPendingCount,
+      status,
+      recoveryError,
+      syncError,
+      error,
     });
   };
 
-  const refreshQueue = async (): Promise<void> => {
-    if (!active) return;
+  const clearOwnerDetails = () => {
+    queued = [];
+    issueCount = 0;
+    otherAccountPendingCount = 0;
+    operationState = 'idle';
+    syncError = null;
+    publish();
+  };
+
+  const refreshOnce = async (): Promise<void> => {
     const expectedOwner = ownerId;
     const expectedRevision = ownerRevision;
     if (!expectedOwner) {
-      publishSignedOut();
+      clearOwnerDetails();
       return;
     }
 
     try {
-      const [listed, issues] = await Promise.all([
-        dependencies.listQueuedActivities(expectedOwner),
-        dependencies.listQueueIssues(),
-      ]);
+      const view = await dependencies.getOwnerQueueSnapshot(expectedOwner);
       if (
         !active ||
         ownerId !== expectedOwner ||
@@ -134,37 +154,61 @@ export function createSyncTriggerController(
         return;
       }
 
-      const currentOwnerEntries = listed.filter(
+      queued = view.queued.filter(
         (entry) => entry.ownerId === expectedOwner,
       );
-      publish({
-        queued: currentOwnerEntries,
-        issueCount: issues.length,
-        otherAccountPendingCount: Math.max(
-          0,
-          recoveredQueuedCount - currentOwnerEntries.length,
-        ),
-        error: null,
-      });
+      issueCount = view.summary.issueCount;
+      otherAccountPendingCount = view.summary.otherOwnerCount;
+      syncError = null;
+      publish();
     } catch {
       if (
         active &&
         ownerId === expectedOwner &&
         ownerRevision === expectedRevision
       ) {
-        publish({ status: 'error', error: LOAD_ERROR });
+        syncError = LOAD_ERROR;
+        publish();
       }
     }
+  };
+
+  const refreshQueue = (): Promise<void> => {
+    if (!active) return Promise.resolve();
+    if (refreshPromise) {
+      refreshRerunRequested = true;
+      return refreshPromise;
+    }
+
+    const run = async () => {
+      do {
+        refreshRerunRequested = false;
+        await refreshOnce();
+      } while (active && refreshRerunRequested);
+    };
+    const pending = run().finally(() => {
+      if (refreshPromise === pending) refreshPromise = null;
+    });
+    refreshPromise = pending;
+    return pending;
   };
 
   const triggerDrain = async (
     expectedOwner: string,
     force: boolean,
   ): Promise<void> => {
-    if (!active || ownerId !== expectedOwner) return;
+    if (
+      !active ||
+      recoveryState !== 'healthy' ||
+      ownerId !== expectedOwner
+    ) {
+      return;
+    }
     const expectedOwnerRevision = ownerRevision;
     const expectedDrainRevision = ++drainRevision;
-    publish({ status: 'syncing', error: null });
+    operationState = 'syncing';
+    syncError = null;
+    publish();
 
     try {
       await dependencies.drain(expectedOwner, force);
@@ -180,10 +224,10 @@ export function createSyncTriggerController(
         active &&
         ownerId === expectedOwner &&
         ownerRevision === expectedOwnerRevision &&
-        drainRevision === expectedDrainRevision &&
-        snapshot.status !== 'error'
+        drainRevision === expectedDrainRevision
       ) {
-        publish({ status: 'idle', error: null });
+        operationState = 'idle';
+        publish();
       }
     } catch {
       if (
@@ -200,9 +244,77 @@ export function createSyncTriggerController(
         ownerRevision === expectedOwnerRevision &&
         drainRevision === expectedDrainRevision
       ) {
-        publish({ status: 'error', error: SYNC_ERROR });
+        operationState = 'idle';
+        syncError = SYNC_ERROR;
+        publish();
       }
     }
+  };
+
+  const flushPendingDrain = (): Promise<void> => {
+    if (!active || recoveryState !== 'healthy') return Promise.resolve();
+    if (flushPromise) return flushPromise;
+
+    const run = async () => {
+      while (active && recoveryState === 'healthy' && pendingDrain) {
+        const request = pendingDrain;
+        pendingDrain = null;
+        if (ownerId !== request.ownerId) continue;
+        await triggerDrain(request.ownerId, request.force);
+      }
+    };
+    const pending = run().finally(() => {
+      if (flushPromise === pending) flushPromise = null;
+    });
+    flushPromise = pending;
+    return pending;
+  };
+
+  const requestDrain = (requestedOwner: string, force: boolean) => {
+    if (!active || ownerId !== requestedOwner) return;
+    pendingDrain = {
+      ownerId: requestedOwner,
+      force:
+        force ||
+        (pendingDrain?.ownerId === requestedOwner &&
+          pendingDrain.force),
+    };
+    if (recoveryState === 'healthy') void flushPendingDrain();
+  };
+
+  const runRecovery = (force: boolean): Promise<boolean> => {
+    if (!active) return Promise.resolve(false);
+    if (recoveryPromise) return recoveryPromise;
+    if (!force && recoveryState === 'healthy') return Promise.resolve(true);
+    if (!force && recoveryState === 'error') return Promise.resolve(false);
+
+    recoveryState = 'pending';
+    recoveryError = null;
+    publish();
+    const attempt = Promise.resolve()
+      .then(() => dependencies.recoverQueue())
+      .then(
+        () => 'success' as const,
+        () => 'failure' as const,
+      );
+    const pending = Promise.race([attempt, disposedPromise]).then((result) => {
+      if (!active || result === 'disposed') return false;
+      if (result === 'failure') {
+        recoveryState = 'error';
+        recoveryError = RECOVERY_ERROR;
+        operationState = 'idle';
+        publish();
+        return false;
+      }
+      recoveryState = 'healthy';
+      recoveryError = null;
+      publish();
+      return true;
+    }).finally(() => {
+      if (recoveryPromise === pending) recoveryPromise = null;
+    });
+    recoveryPromise = pending;
+    return pending;
   };
 
   const safeSubscribe = (subscribe: () => Unsubscribe) => {
@@ -218,13 +330,16 @@ export function createSyncTriggerController(
 
   const onSession = (nextOwnerId: string | null) => {
     if (!active || ownerId === nextOwnerId) return;
+    const force = pendingDrain?.force === true;
     ownerId = nextOwnerId;
     ownerRevision += 1;
     drainRevision += 1;
-    publishSignedOut();
-
-    if (nextOwnerId) {
-      void triggerDrain(nextOwnerId, false);
+    pendingDrain = nextOwnerId
+      ? { ownerId: nextOwnerId, force }
+      : null;
+    clearOwnerDetails();
+    if (nextOwnerId && recoveryState === 'healthy') {
+      void flushPendingDrain();
     }
   };
 
@@ -233,7 +348,8 @@ export function createSyncTriggerController(
     started = true;
     ownerId = initialOwnerId;
     ownerRevision += 1;
-    const startupOwner = initialOwnerId;
+    clearOwnerDetails();
+    if (initialOwnerId) requestDrain(initialOwnerId, false);
 
     safeSubscribe(() =>
       dependencies.subscribeQueue(() => {
@@ -249,7 +365,7 @@ export function createSyncTriggerController(
         const wasOnline = online;
         online = nextOnline;
         if (wasOnline === false && nextOnline && ownerId) {
-          void triggerDrain(ownerId, false);
+          requestDrain(ownerId, false);
         }
       }),
     );
@@ -263,25 +379,15 @@ export function createSyncTriggerController(
           nextState === 'active' &&
           ownerId
         ) {
-          void triggerDrain(ownerId, false);
+          requestDrain(ownerId, false);
         }
       }),
     );
 
-    try {
-      const recovery = await dependencies.recoverQueue();
-      if (!active) return;
-      recoveredQueuedCount = recovery.queuedCount;
-    } catch {
-      if (active) publish({ status: 'error', error: LOAD_ERROR });
-    }
-
-    if (!active) return;
-    if (startupOwner && ownerId === startupOwner) {
-      await triggerDrain(startupOwner, false);
-    } else if (ownerId === startupOwner) {
-      await refreshQueue();
-    }
+    const recovered = await runRecovery(false);
+    if (!active || !recovered) return;
+    await refreshQueue();
+    await flushPendingDrain();
   };
 
   return {
@@ -291,10 +397,14 @@ export function createSyncTriggerController(
       if (!active) return;
       const currentOwner = ownerId;
       if (!currentOwner) {
-        publishSignedOut();
+        clearOwnerDetails();
         return;
       }
-      await triggerDrain(currentOwner, true);
+      pendingDrain = { ownerId: currentOwner, force: true };
+      const recovered = await runRecovery(true);
+      if (!active || !recovered) return;
+      await refreshQueue();
+      await flushPendingDrain();
     },
     refreshQueue,
     dispose: () => {
@@ -303,6 +413,8 @@ export function createSyncTriggerController(
       ownerId = null;
       ownerRevision += 1;
       drainRevision += 1;
+      pendingDrain = null;
+      resolveDisposed();
       for (const unsubscribe of unsubscribers.splice(0)) {
         try {
           unsubscribe();
@@ -314,12 +426,11 @@ export function createSyncTriggerController(
   };
 }
 
-export type ActivitySyncContextValue = ActivitySyncSnapshot & {
-  /**
-   * True because the redacted aggregate is derived from a startup recovery
-   * count and may race later queue writes.
-   */
-  otherAccountPendingIsApproximate: true;
+export type ActivitySyncContextValue = Omit<
+  ActivitySyncSnapshot,
+  'ownerId'
+> & {
+  otherAccountPendingIsApproximate: false;
   retryNow: () => Promise<void>;
   refreshQueue: () => Promise<void>;
 };
@@ -327,6 +438,18 @@ export type ActivitySyncContextValue = ActivitySyncSnapshot & {
 const ActivitySyncContext = createContext<ActivitySyncContextValue | null>(
   null,
 );
+
+export function snapshotForOwner(
+  snapshot: ActivitySyncSnapshot,
+  currentOwnerId: string | null,
+): ActivitySyncSnapshot {
+  if (snapshot.ownerId === currentOwnerId) return snapshot;
+  return {
+    ...EMPTY_SNAPSHOT,
+    ownerId: currentOwnerId,
+    status: 'idle',
+  };
+}
 
 export function ActivitySyncProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
@@ -344,8 +467,7 @@ export function ActivitySyncProvider({ children }: { children: ReactNode }) {
     if (!controllerRef.current) {
       controllerRef.current = createSyncTriggerController({
         recoverQueue,
-        listQueuedActivities,
-        listQueueIssues,
+        getOwnerQueueSnapshot,
         drain: (currentOwnerId, force) =>
           synchronizerRef.current!.drain(currentOwnerId, force),
         subscribeQueue: subscribeToQueue,
@@ -382,14 +504,18 @@ export function ActivitySyncProvider({ children }: { children: ReactNode }) {
     getController().onSession(ownerId);
   }, [getController, ownerId]);
 
+  const visibleSnapshot = snapshotForOwner(snapshot, ownerId);
   const value = useMemo<ActivitySyncContextValue>(
-    () => ({
-      ...snapshot,
-      otherAccountPendingIsApproximate: true,
-      retryNow: () => getController().retryNow(),
-      refreshQueue: () => getController().refreshQueue(),
-    }),
-    [getController, snapshot],
+    () => {
+      const { ownerId: _snapshotOwnerId, ...visible } = visibleSnapshot;
+      return {
+        ...visible,
+        otherAccountPendingIsApproximate: false,
+        retryNow: () => getController().retryNow(),
+        refreshQueue: () => getController().refreshQueue(),
+      };
+    },
+    [getController, visibleSnapshot],
   );
 
   return (

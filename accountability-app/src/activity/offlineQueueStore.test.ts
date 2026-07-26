@@ -8,6 +8,7 @@ import {
 import {
   enqueueActivity,
   getQueuedActivity,
+  getOwnerQueueSnapshot,
   listQueueIssues,
   listQueuedActivities,
   MAX_OFFLINE_QUEUE_INDEX_BYTES,
@@ -266,6 +267,44 @@ describe('enqueueActivity', () => {
     await expect(
       enqueueActivity(OWNER_A, activity, ID_B),
     ).resolves.toMatchObject({ id: ID_B });
+  });
+});
+
+describe('getOwnerQueueSnapshot', () => {
+  it('returns live current-owner entries and redacted counts from one serialized snapshot', async () => {
+    const ownerAEntry = await enqueueActivity(OWNER_A, activity, ID_A);
+    await enqueueActivity(OWNER_B, activity, ID_B);
+
+    await expect(getOwnerQueueSnapshot(OWNER_A)).resolves.toEqual({
+      queued: [ownerAEntry],
+      summary: {
+        currentOwnerCount: 1,
+        otherOwnerCount: 1,
+        totalQueuedCount: 2,
+        issueCount: 0,
+      },
+    });
+
+    await enqueueActivity(OWNER_B, activity, ID_C);
+    await expect(getOwnerQueueSnapshot(OWNER_A)).resolves.toMatchObject({
+      queued: [{ id: ID_A, ownerId: OWNER_A }],
+      summary: {
+        currentOwnerCount: 1,
+        otherOwnerCount: 2,
+        totalQueuedCount: 3,
+      },
+    });
+
+    await removeQueuedActivity(OWNER_A, ID_A);
+    await expect(getOwnerQueueSnapshot(OWNER_A)).resolves.toEqual({
+      queued: [],
+      summary: {
+        currentOwnerCount: 0,
+        otherOwnerCount: 2,
+        totalQueuedCount: 2,
+        issueCount: 0,
+      },
+    });
   });
 });
 

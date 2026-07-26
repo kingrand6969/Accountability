@@ -1,20 +1,33 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { createElement } from 'react';
+import TestRenderer, { act } from 'react-test-renderer';
+import { createActivitySynchronizer } from './activitySynchronizer';
 import {
+  getOwnerQueueSnapshot,
+  recoverQueue,
+  subscribeToQueue,
+} from './offlineQueueStore';
+import {
+  ActivitySyncProvider,
   createSyncTriggerController,
+  useActivitySync,
   type ActivitySyncSnapshot,
   type SyncTriggerControllerDependencies,
 } from './ActivitySyncProvider';
 
+let mockOwnerId: string | null = null;
+
 jest.mock('../auth/AuthProvider', () => ({
-  useAuth: () => ({ session: null }),
+  useAuth: () => ({
+    session: mockOwnerId ? { user: { id: mockOwnerId } } : null,
+  }),
 }));
 jest.mock('./activitySynchronizer', () => ({
-  createActivitySynchronizer: () => ({ drain: jest.fn() }),
+  createActivitySynchronizer: jest.fn(() => ({ drain: jest.fn() })),
 }));
 jest.mock('./offlineQueueStore', () => ({
   recoverQueue: jest.fn(),
-  listQueuedActivities: jest.fn(),
-  listQueueIssues: jest.fn(),
+  getOwnerQueueSnapshot: jest.fn(),
   subscribeToQueue: jest.fn(),
 }));
 jest.mock('@react-native-community/netinfo', () => ({
@@ -27,14 +40,22 @@ const OWNER_B = '22222222-2222-4222-8222-222222222222';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function queued(ownerId: string, id: string) {
   return { ownerId, id } as never;
+}
+
+async function settleMicrotasks() {
+  for (let index = 0; index < 12; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 function setup(
@@ -58,8 +79,15 @@ function setup(
       queuedCount: 0,
       issueCount: 0,
     })),
-    listQueuedActivities: jest.fn(async (_ownerId: string) => []),
-    listQueueIssues: jest.fn(async () => []),
+    getOwnerQueueSnapshot: jest.fn(async (_ownerId: string) => ({
+      queued: [],
+      summary: {
+        currentOwnerCount: 0,
+        otherOwnerCount: 0,
+        totalQueuedCount: 0,
+        issueCount: 0,
+      },
+    })),
     drain: jest.fn(async (_ownerId: string, _force?: boolean) => undefined),
     subscribeQueue: (listener) => {
       queueListener = listener;
@@ -103,10 +131,9 @@ describe('createSyncTriggerController', () => {
     await harness.controller.start(OWNER_A);
 
     expect(harness.dependencies.recoverQueue).toHaveBeenCalledTimes(1);
-    expect(harness.dependencies.listQueuedActivities).toHaveBeenCalledWith(
+    expect(harness.dependencies.getOwnerQueueSnapshot).toHaveBeenCalledWith(
       OWNER_A,
     );
-    expect(harness.dependencies.listQueueIssues).toHaveBeenCalledTimes(1);
     expect(harness.dependencies.drain).toHaveBeenCalledTimes(1);
     expect(harness.dependencies.drain).toHaveBeenCalledWith(OWNER_A, false);
   });
@@ -125,7 +152,7 @@ describe('createSyncTriggerController', () => {
     harness.emitAppState('background');
     harness.emitAppState('active');
     harness.emitAppState('active');
-    await Promise.resolve();
+    await settleMicrotasks();
 
     expect(harness.dependencies.drain).toHaveBeenCalledTimes(2);
     expect(harness.dependencies.drain).toHaveBeenNthCalledWith(
@@ -141,12 +168,21 @@ describe('createSyncTriggerController', () => {
   });
 
   it('drains once for a changed authenticated owner and clears private state on signout', async () => {
-    const list = jest.fn(async (ownerId: string) =>
-      ownerId === OWNER_A
+    const readSnapshot = jest.fn(async (ownerId: string) => {
+      const current = ownerId === OWNER_A
         ? [queued(OWNER_A, 'a')]
-        : [queued(OWNER_B, 'b')],
-    );
-    const harness = setup({ listQueuedActivities: list });
+        : [queued(OWNER_B, 'b')];
+      return {
+        queued: current,
+        summary: {
+          currentOwnerCount: current.length,
+          otherOwnerCount: 0,
+          totalQueuedCount: current.length,
+          issueCount: 0,
+        },
+      };
+    });
+    const harness = setup({ getOwnerQueueSnapshot: readSnapshot });
     await harness.controller.start(OWNER_A);
 
     harness.controller.onSession(OWNER_A);
@@ -163,7 +199,7 @@ describe('createSyncTriggerController', () => {
       OWNER_B,
       false,
     );
-    expect(list).toHaveBeenLastCalledWith(OWNER_B);
+    expect(readSnapshot).toHaveBeenLastCalledWith(OWNER_B);
     expect(harness.snapshots.at(-1)).toMatchObject({
       queued: [],
       issueCount: 0,
@@ -203,22 +239,17 @@ describe('createSyncTriggerController', () => {
     expect(JSON.stringify(snapshot)).not.toContain('secret-value');
   });
 
-  it('refreshes owner-only details and reports other-account work as a redacted approximate count', async () => {
+  it('refreshes owner-only details and reports a live redacted other-account count', async () => {
     const harness = setup({
-      recoverQueue: jest.fn(async () => ({
-        queuedCount: 3,
-        issueCount: 2,
+      getOwnerQueueSnapshot: jest.fn(async (_ownerId: string) => ({
+        queued: [queued(OWNER_A, 'current')],
+        summary: {
+          currentOwnerCount: 1,
+          otherOwnerCount: 2,
+          totalQueuedCount: 3,
+          issueCount: 2,
+        },
       })),
-      listQueuedActivities: jest.fn(async (_ownerId: string) => [
-        queued(OWNER_A, 'current'),
-      ]),
-      listQueueIssues: jest.fn(
-        async () =>
-          [
-            { id: 'redacted-one' },
-            { id: 'redacted-two' },
-          ] as never,
-      ),
     });
 
     await harness.controller.start(OWNER_A);
@@ -231,9 +262,119 @@ describe('createSyncTriggerController', () => {
       issueCount: 2,
       otherAccountPendingCount: 2,
     });
-    expect(harness.dependencies.listQueuedActivities).not.toHaveBeenCalledWith(
+    expect(harness.dependencies.getOwnerQueueSnapshot).not.toHaveBeenCalledWith(
       OWNER_B,
     );
+  });
+
+  it('holds every automatic trigger behind recovery and drains only the latest owner', async () => {
+    const recovery = deferred<{ queuedCount: number; issueCount: number }>();
+    const harness = setup({ recoverQueue: () => recovery.promise });
+    const starting = harness.controller.start(OWNER_A);
+
+    harness.emitNetwork(false, false);
+    harness.emitNetwork(true, true);
+    harness.emitAppState('background');
+    harness.emitAppState('active');
+    harness.controller.onSession(OWNER_B);
+    await Promise.resolve();
+
+    expect(harness.dependencies.drain).not.toHaveBeenCalled();
+
+    recovery.resolve({ queuedCount: 0, issueCount: 0 });
+    await starting;
+
+    expect(harness.dependencies.drain).toHaveBeenCalledTimes(1);
+    expect(harness.dependencies.drain).toHaveBeenCalledWith(OWNER_B, false);
+  });
+
+  it('keeps recovery failure authoritative until manual retry recovers and force-drains the current owner', async () => {
+    const recoveryFailure = new Error('storage-key=private');
+    const recover = jest
+      .fn<SyncTriggerControllerDependencies['recoverQueue']>()
+      .mockRejectedValueOnce(recoveryFailure)
+      .mockResolvedValue({ queuedCount: 0, issueCount: 0 });
+    const harness = setup({ recoverQueue: recover });
+
+    await harness.controller.start(OWNER_A);
+    await harness.controller.refreshQueue();
+
+    expect(harness.dependencies.drain).not.toHaveBeenCalled();
+    expect(harness.snapshots.at(-1)).toMatchObject({
+      ownerId: OWNER_A,
+      status: 'error',
+      recoveryError: 'Offline activity recovery failed. Try again.',
+      error: 'Offline activity recovery failed. Try again.',
+    });
+    expect(JSON.stringify(harness.snapshots.at(-1))).not.toContain('private');
+
+    await harness.controller.retryNow();
+
+    expect(recover).toHaveBeenCalledTimes(2);
+    expect(harness.dependencies.drain).toHaveBeenCalledTimes(1);
+    expect(harness.dependencies.drain).toHaveBeenCalledWith(OWNER_A, true);
+    expect(harness.snapshots.at(-1)).toMatchObject({
+      ownerId: OWNER_A,
+      status: 'idle',
+      recoveryError: null,
+      error: null,
+    });
+  });
+
+  it('coalesces rapid refresh requests into one in-flight read and one trailing read', async () => {
+    const harness = setup();
+    await harness.controller.start(OWNER_A);
+    const firstRead = deferred<{
+      queued: never[];
+      summary: {
+        currentOwnerCount: number;
+        otherOwnerCount: number;
+        totalQueuedCount: number;
+        issueCount: number;
+      };
+    }>();
+    const readSnapshot = jest
+      .fn<SyncTriggerControllerDependencies['getOwnerQueueSnapshot']>()
+      .mockImplementationOnce(() => firstRead.promise)
+      .mockResolvedValue({
+        queued: [queued(OWNER_A, 'latest')],
+        summary: {
+          currentOwnerCount: 1,
+          otherOwnerCount: 2,
+          totalQueuedCount: 3,
+          issueCount: 1,
+        },
+      });
+    harness.dependencies.getOwnerQueueSnapshot = readSnapshot;
+
+    harness.emitQueue();
+    const waitingA = harness.controller.refreshQueue();
+    const waitingB = harness.controller.refreshQueue();
+    for (let index = 0; index < 20; index += 1) harness.emitQueue();
+    await Promise.resolve();
+
+    expect(readSnapshot).toHaveBeenCalledTimes(1);
+
+    firstRead.resolve({
+      queued: [],
+      summary: {
+        currentOwnerCount: 0,
+        otherOwnerCount: 1,
+        totalQueuedCount: 1,
+        issueCount: 0,
+      },
+    });
+    await Promise.all([waitingA, waitingB]);
+
+    expect(readSnapshot).toHaveBeenCalledTimes(2);
+    expect(harness.snapshots.at(-1)).toMatchObject({
+      ownerId: OWNER_A,
+      queued: [{ id: 'latest', ownerId: OWNER_A }],
+      issueCount: 1,
+      otherAccountPendingCount: 2,
+      status: 'idle',
+      error: null,
+    });
   });
 
   it('unsubscribes once and ignores late async work after disposal', async () => {
@@ -256,5 +397,86 @@ describe('createSyncTriggerController', () => {
     expect(harness.unsubAppState).toHaveBeenCalledTimes(1);
     expect(harness.snapshots).toHaveLength(snapshotsBeforeDispose);
     expect(harness.dependencies.drain).not.toHaveBeenCalled();
+  });
+});
+
+describe('ActivitySyncProvider owner render boundary', () => {
+  it('commits an empty value before effects on A-to-B and A-to-signout renders', async () => {
+    const commits: Array<{
+      queuedIds: string[];
+      status: string;
+      error: string | null;
+    }> = [];
+    const mockDrain = jest.fn(async () => undefined);
+    jest.mocked(createActivitySynchronizer).mockReturnValue({
+      drain: mockDrain,
+    } as never);
+    jest.mocked(recoverQueue).mockResolvedValue({
+      queuedCount: 2,
+      issueCount: 0,
+    });
+    jest.mocked(getOwnerQueueSnapshot).mockImplementation(
+      async (ownerId: string) => ({
+        queued: [queued(ownerId, ownerId === OWNER_A ? 'a-private' : 'b-private')],
+        summary: {
+          currentOwnerCount: 1,
+          otherOwnerCount: 1,
+          totalQueuedCount: 2,
+          issueCount: 0,
+        },
+      }),
+    );
+    jest.mocked(subscribeToQueue).mockReturnValue(jest.fn());
+
+    function Probe() {
+      const value = useActivitySync();
+      commits.push({
+        queuedIds: value.queued.map((entry) => entry.id),
+        status: value.status,
+        error: value.error,
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(
+        ActivitySyncProvider,
+        null,
+        createElement(Probe),
+      );
+    mockOwnerId = OWNER_A;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+    expect(commits.some((commit) => commit.queuedIds.includes('a-private'))).toBe(
+      true,
+    );
+
+    const beforeSwitch = commits.length;
+    mockOwnerId = OWNER_B;
+    await act(async () => {
+      renderer.update(tree());
+    });
+    const switchCommits = commits.slice(beforeSwitch);
+    expect(switchCommits[0]?.queuedIds).toEqual([]);
+    expect(switchCommits.every((commit) => !commit.queuedIds.includes('a-private'))).toBe(
+      true,
+    );
+
+    const beforeSignout = commits.length;
+    mockOwnerId = null;
+    await act(async () => {
+      renderer.update(tree());
+    });
+    const signoutCommits = commits.slice(beforeSignout);
+    expect(signoutCommits[0]?.queuedIds).toEqual([]);
+    expect(signoutCommits.every((commit) => commit.queuedIds.length === 0)).toBe(
+      true,
+    );
+
+    await act(async () => {
+      renderer.unmount();
+    });
   });
 });
