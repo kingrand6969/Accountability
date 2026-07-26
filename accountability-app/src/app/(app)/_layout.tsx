@@ -18,13 +18,11 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
  *  squircle — you always see which page you're on. */
 function tabIcon(active: IoniconName, inactive: IoniconName) {
   return ({ color, size, focused }: { color: ColorValue; size: number; focused: boolean }) => (
-    <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-      <Ionicons
-        name={focused ? active : inactive}
-        size={size - 2}
-        color={focused ? '#fff' : color}
-      />
-    </View>
+    <Ionicons
+      name={focused ? active : inactive}
+      size={size}
+      color={focused ? colors.primary : color}
+    />
   );
 }
 
@@ -33,18 +31,19 @@ function MessagesTabIcon({
   color,
   size,
   focused,
+  unread,
 }: {
   color: ColorValue;
   size: number;
   focused: boolean;
+  unread: number;
 }) {
-  const { unread } = useUnreadMessages();
   return (
-    <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+    <View style={styles.messageIcon}>
       <Ionicons
         name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
-        size={size - 2}
-        color={focused ? '#fff' : color}
+        size={size}
+        color={focused ? colors.primary : color}
       />
       {unread > 0 && !focused ? <View style={styles.unreadDot} /> : null}
     </View>
@@ -52,14 +51,7 @@ function MessagesTabIcon({
 }
 
 const styles = StyleSheet.create({
-  iconPill: {
-    width: 44,
-    height: 34,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconPillActive: { backgroundColor: '#0f172a' },
+  messageIcon: { width: 32, height: 28, alignItems: 'center', justifyContent: 'center' },
   unreadDot: {
     position: 'absolute',
     top: 5,
@@ -78,6 +70,7 @@ export default function AppLayout() {
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
   const userId = session?.user.id ?? null;
+  const { unread: unreadMessages } = useUnreadMessages(userId);
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -131,7 +124,7 @@ export default function AppLayout() {
         headerShown: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: '#475569',
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
         // kept so the run screen can hide the bar via tabBarStyle:{display:'none'}
         tabBarStyle: floatingTabBarStyle(winW, insets.bottom),
         tabBarItemStyle: {
@@ -182,7 +175,7 @@ export default function AppLayout() {
       <Tabs.Screen
         name="run"
         options={{
-          title: 'Track Run',
+          title: 'Run',
           tabBarIcon: tabIcon('walk', 'walk-outline'),
           headerShown: false, // immersive full-screen tracker
         }}
@@ -192,7 +185,7 @@ export default function AppLayout() {
         name="messages"
         options={{
           title: 'Messages',
-          tabBarIcon: (p) => <MessagesTabIcon {...p} />,
+          tabBarIcon: (p) => <MessagesTabIcon {...p} unread={unreadMessages} />,
           headerShown: true,
         }}
       />
