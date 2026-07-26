@@ -3,6 +3,7 @@ import { createActivitySynchronizer } from './activitySynchronizer';
 import { ActivityUploadError } from './activityUpload';
 import {
   completeRecordedActivity,
+  recordingDetailView,
   runFeedAvailability,
   runSyncPresentation,
   type PendingRecordedActivity,
@@ -194,7 +195,7 @@ describe('location recording persistence', () => {
     expect(createId).toHaveBeenCalledTimes(1);
   });
 
-  it('persists a secure ID once when parsing a legacy raw recording', async () => {
+  it('does not assign an owner or ID while reading legacy raw recording', async () => {
     const storage = memoryStorage({
       'activity:session': 'legacy-session',
       'activity:points': JSON.stringify({
@@ -209,27 +210,15 @@ describe('location recording persistence', () => {
       nowIso: () => STARTED_AT,
     });
 
-    const first = await store.readRecording(OWNER_A);
-    const second = await store.readRecording(OWNER_B);
-    const persisted = JSON.parse(storage.values.get('activity:points')!);
+    const before = new Map(storage.values);
 
-    expect(first).toMatchObject({
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-    });
-    expect(second).toMatchObject({
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-    });
-    expect(persisted).toMatchObject({
-      schema: 2,
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-    });
-    expect(createId).toHaveBeenCalledTimes(1);
+    await expect(store.readRecording(OWNER_A)).resolves.toBeNull();
+    await expect(store.readRecording(OWNER_B)).resolves.toBeNull();
+    expect(storage.values).toEqual(before);
+    expect(createId).not.toHaveBeenCalled();
   });
 
-  it('migrates the oldest raw point-array format without losing its route', async () => {
+  it('does not reveal the oldest raw point-array through normal reads', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:session': 'legacy-session',
@@ -241,11 +230,7 @@ describe('location recording persistence', () => {
       nowIso: () => STARTED_AT,
     });
 
-    await expect(store.readRecording(OWNER_A)).resolves.toMatchObject({
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      points: route,
-    });
+    await expect(store.readRecording(OWNER_A)).resolves.toBeNull();
   });
 
   it('recovers a completed run with the same ID and owner after restart', async () => {
@@ -288,7 +273,7 @@ describe('location recording persistence', () => {
     );
   });
 
-  it('migrates legacy GPS once and restores it as an active recording', async () => {
+  it('keeps a session-era legacy recording unclaimed and redacted', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:session': 'legacy-session',
@@ -301,27 +286,13 @@ describe('location recording persistence', () => {
       nowIso: () => STARTED_AT,
     });
 
-    await expect(store.recover(OWNER_A, 'ride')).resolves.toMatchObject({
-      kind: 'active',
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'ride',
-      points: route,
+    const before = new Map(storage.values);
+
+    await expect(store.recover(OWNER_A, 'ride')).resolves.toEqual({
+      kind: 'legacy_unclaimed',
     });
-    await expect(store.recover(OWNER_A, 'run')).resolves.toMatchObject({
-      kind: 'active',
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'ride',
-      points: route,
-    });
-    expect(createId).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(storage.values.get('activity:points')!)).toMatchObject({
-      schema: 2,
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'ride',
-    });
+    expect(storage.values).toEqual(before);
+    expect(createId).not.toHaveBeenCalled();
   });
 
   it('restores the pre-session point-array format', async () => {
@@ -336,13 +307,51 @@ describe('location recording persistence', () => {
       nowIso: () => STARTED_AT,
     });
 
-    await expect(store.recover(OWNER_A, 'run')).resolves.toMatchObject({
+    const before = new Map(storage.values);
+
+    await expect(store.recover(OWNER_A, 'run')).resolves.toEqual({
+      kind: 'legacy_unclaimed',
+    });
+    expect(storage.values).toEqual(before);
+    expect(storage.values.get('activity:session')).toBeUndefined();
+  });
+
+  it('claims legacy GPS only after an explicit action and reuses one stable ID', async () => {
+    const route = [{ lat: -31.9523, lon: 115.8613 }];
+    const storage = memoryStorage({
+      'activity:points': JSON.stringify(route),
+    });
+    const createId = jest.fn(() => ACTIVITY_ID);
+    const store = createLocationRecordingStore({
+      storage,
+      createActivityId: createId,
+      createSessionId: () => 'migrated-session',
+      nowIso: () => STARTED_AT,
+    });
+
+    const first = await store.claimLegacy(OWNER_A, 'walk');
+    const second = await store.claimLegacy(OWNER_A, 'run');
+
+    expect(first).toMatchObject({
       kind: 'active',
       activityId: ACTIVITY_ID,
       ownerId: OWNER_A,
+      type: 'walk',
       points: route,
     });
-    expect(storage.values.get('activity:session')).toBe('migrated-session');
+    expect(second).toMatchObject({
+      kind: 'active',
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      type: 'walk',
+      points: route,
+    });
+    expect(createId).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(storage.values.get('activity:points')!)).toMatchObject({
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      type: 'walk',
+    });
   });
 
   it('redacts owner-mismatched recovery and still prevents Start overwrite', async () => {
@@ -463,6 +472,48 @@ describe('fail-closed Feed availability', () => {
     ).toEqual({
       enabled: false,
       reason: 'Uploads automatically when online',
+    });
+  });
+});
+
+describe('owner-tagged recording details', () => {
+  const details = {
+    ownerId: OWNER_A,
+    distance: 1_500,
+    elapsed: 420,
+    points: [{ lat: -31.9523, lon: 115.8613 }],
+  };
+
+  it('redacts the first render after switching accounts or signing out', () => {
+    expect(recordingDetailView(details, OWNER_B, 'ready')).toEqual({
+      visible: false,
+      distance: 0,
+      elapsed: 0,
+      points: [],
+    });
+    expect(recordingDetailView(details, null, 'ready')).toEqual({
+      visible: false,
+      distance: 0,
+      elapsed: 0,
+      points: [],
+    });
+  });
+
+  it('keeps prior details redacted after a storage recovery rejection', () => {
+    expect(recordingDetailView(details, OWNER_A, 'error')).toEqual({
+      visible: false,
+      distance: 0,
+      elapsed: 0,
+      points: [],
+    });
+  });
+
+  it('reveals details only for the tagged owner after recovery succeeds', () => {
+    expect(recordingDetailView(details, OWNER_A, 'ready')).toEqual({
+      visible: true,
+      distance: 1_500,
+      elapsed: 420,
+      points: details.points,
     });
   });
 });

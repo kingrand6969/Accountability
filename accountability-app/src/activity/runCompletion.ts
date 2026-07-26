@@ -136,3 +136,44 @@ export function runFeedAvailability(
   }
   return { enabled: true, reason: null };
 }
+
+export type RecordingRecoveryReadState = 'checking' | 'ready' | 'error';
+
+export type OwnerTaggedRecordingDetails = {
+  ownerId: string;
+  distance: number;
+  elapsed: number;
+  points: NewActivity['route'];
+};
+
+export function recordingDetailView(
+  details: OwnerTaggedRecordingDetails,
+  currentOwnerId: string | null,
+  recoveryState: RecordingRecoveryReadState,
+):
+  | (Omit<OwnerTaggedRecordingDetails, 'ownerId'> & { visible: true })
+  | {
+      visible: false;
+      distance: 0;
+      elapsed: 0;
+      points: [];
+    } {
+  if (
+    recoveryState !== 'ready' ||
+    !currentOwnerId ||
+    currentOwnerId !== details.ownerId
+  ) {
+    return {
+      visible: false,
+      distance: 0,
+      elapsed: 0,
+      points: [],
+    };
+  }
+  return {
+    visible: true,
+    distance: details.distance,
+    elapsed: details.elapsed,
+    points: details.points,
+  };
+}
