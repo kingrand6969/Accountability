@@ -40,6 +40,7 @@ import {
   createRunMediaCompletionEffects,
   createRunMediaOperationId,
   persistRunMedia,
+  retainFeedOperationContext,
   runMediaRenderSizeKey,
   stageRunMediaForGeneration,
   stageRunMedia,
@@ -536,6 +537,62 @@ describe('run-media Feed operation identity', () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
     expect(createRunMediaOperationId(() => 0.5)).toBe(operationId);
+  });
+
+  test('render change during an ambiguously committed post retries the same operation and does not upload twice', async () => {
+    const operationId = createRunMediaOperationId(() => 0.25);
+    const original = retainFeedOperationContext(null, () => ({
+      operationId,
+      metadata: {
+        caption: 'original caption',
+        audience: 'buddies',
+        shareData: { format: 'feed' },
+      },
+    }));
+    const committedPosts = new Map<string, string>();
+    const uploadToFeed = jest.fn(async () => 'https://images.example/original.jpg');
+    const createFeedPost = jest.fn(async () => {
+      committedPosts.set(original.operationId, 'post-committed');
+      throw new Error('response lost after commit');
+    });
+    const recordSelfie = jest.fn(async () => undefined);
+    const completionEffects = createRunMediaCompletionEffects(recordSelfie);
+    const deps = dependencies({
+      findExistingFeedPost: jest.fn(async () =>
+        committedPosts.get(original.operationId) ?? null,
+      ),
+      uploadToFeed,
+      createFeedPost,
+    });
+
+    await expect(persistRunMedia('feed', item, deps)).rejects.toThrow(
+      'response lost after commit',
+    );
+
+    // A viewport/card render change offers new metadata, but the outstanding
+    // operation remains immutable until its persistent result is confirmed.
+    const afterRenderChange = retainFeedOperationContext(original, () => ({
+      operationId: createRunMediaOperationId(() => 0.75),
+      metadata: {
+        caption: 'changed caption',
+        audience: 'private',
+        shareData: { format: 'story' },
+      },
+    }));
+
+    const confirmed = await persistRunMedia('feed', item, deps);
+    expect(confirmed).toEqual({
+      destination: 'feed',
+      persisted: true,
+      newlyPersisted: false,
+    });
+    await completionEffects.complete('feed', true, 5);
+    expect(afterRenderChange).toBe(original);
+    expect(afterRenderChange.operationId).toBe(operationId);
+    expect(afterRenderChange.metadata.caption).toBe('original caption');
+    expect(uploadToFeed).toHaveBeenCalledTimes(1);
+    expect(createFeedPost).toHaveBeenCalledTimes(1);
+    expect(recordSelfie).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -13,6 +13,18 @@ export type RunMediaPersistResult = {
   newlyPersisted: boolean;
 };
 
+export type FeedOperationContext<T> = {
+  operationId: string;
+  metadata: T;
+};
+
+export function retainFeedOperationContext<T>(
+  existing: FeedOperationContext<T> | null,
+  create: () => FeedOperationContext<T>,
+): FeedOperationContext<T> {
+  return existing ?? create();
+}
+
 export type RunMediaPersistenceDependencies = {
   retain(id: string, owner: MediaOwner): Promise<void>;
   release(id: string, owner: MediaOwner): Promise<void>;

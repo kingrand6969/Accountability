@@ -47,6 +47,8 @@ import {
   runMediaRenderSizeKey,
   stageRunMedia,
   stageRunMediaForGeneration,
+  retainFeedOperationContext,
+  type FeedOperationContext,
   type RunMediaDestination,
 } from './saveRunMedia';
 import type { RunMediaCacheItem } from './runMediaCache';
@@ -64,6 +66,19 @@ export type FinishedRun = {
 
 type Mode = 'map' | 'photo';
 
+type RunFeedOperationMetadata = {
+  body: string;
+  audience: Exclude<PostAudience, 'group'>;
+  activityId: string;
+  shareData: {
+    format: RunShareFormat;
+    media_fit: RunMediaFit;
+    route_ends_visible: boolean;
+  };
+  selfie: boolean;
+  distanceKm: number;
+};
+
 /** Full-screen overlay shown after Stop & Save — turn the run into a shareable card. */
 export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () => void }) {
   const { width, height } = useWindowDimensions();
@@ -79,7 +94,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const cardRef = useRef<View>(null);
   const stagedMedia = useRef<RunMediaCacheItem | null>(null);
   const renderGeneration = useRef(0);
-  const feedOperationId = useRef<string | null>(null);
+  const feedOperation = useRef<FeedOperationContext<RunFeedOperationMetadata> | null>(null);
   const hasPersistentDestination = useRef(false);
   const shareOperationGate = useRef(createShareOperationGate()).current;
   const completionEffects = useMemo(
@@ -119,10 +134,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   }, [busy, onClose]);
 
   // A changed card must never reuse an older staged export. Release only that
-  // item's editor owner; a failed destination keeps its own retry ownership.
+  // item's editor owner. Destination leases are released after every attempt;
+  // the editor owner keeps the staged item retryable.
   useEffect(() => {
     renderGeneration.current += 1;
-    feedOperationId.current = null;
     const stale = stagedMedia.current;
     stagedMedia.current = null;
     if (stale) void runMediaCache.release(stale.id, 'editor').catch(() => {});
@@ -202,14 +217,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   async function discardStagedEditorMedia(): Promise<void> {
     const item = stagedMedia.current;
     stagedMedia.current = null;
-    feedOperationId.current = null;
     if (item) await runMediaCache.release(item.id, 'editor');
   }
 
   async function closeEditor() {
     await runMediaCache.discardEditorSession().catch(() => {});
     stagedMedia.current = null;
-    feedOperationId.current = null;
+    feedOperation.current = null;
     onClose();
   }
 
@@ -222,10 +236,28 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             'Save a real GPS activity on your phone before posting a verified Run card.',
           );
         }
-        const operationId =
+        const feedContext =
           destination === 'feed'
-            ? (feedOperationId.current ??= createRunMediaOperationId())
+            ? (feedOperation.current = retainFeedOperationContext(
+                feedOperation.current,
+                () => ({
+                  operationId: createRunMediaOperationId(),
+                  metadata: {
+                    body: caption,
+                    audience,
+                    activityId: run.activityId!,
+                    shareData: {
+                      format,
+                      media_fit: mediaFit,
+                      route_ends_visible: showEnds,
+                    },
+                    selfie: photoKind === 'selfie',
+                    distanceKm: run.distance / 1000,
+                  },
+                }),
+              ))
             : null;
+        const operationId = feedContext?.operationId ?? null;
 
         // react-native-view-shot cannot provide a managed local file on web.
         // Preserve the existing text-share and image-less Feed behavior there.
@@ -239,18 +271,20 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           }
           if (destination === 'feed') {
             const post = await createRunPostIdempotent({
-              body: caption,
+              body: feedContext!.metadata.body,
               imageUrl: null,
               operationId: operationId!,
-              audience,
-              activityId: run.activityId!,
-              shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
+              audience: feedContext!.metadata.audience,
+              activityId: feedContext!.metadata.activityId,
+              shareData: feedContext!.metadata.shareData,
             });
-            if (post.created) {
-              void completionEffects
-                .complete('feed', photoKind === 'selfie', run.distance / 1000)
-                .catch(() => {});
-            }
+            void completionEffects
+              .complete(
+                'feed',
+                feedContext!.metadata.selfie,
+                feedContext!.metadata.distanceKm,
+              )
+              .catch(() => {});
             Alert.alert('Posted 🎉', 'Your run is on your feed.');
             await closeEditor();
             return;
@@ -259,9 +293,6 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         }
 
         const item = await currentRunMedia();
-        if (operationId && !feedOperationId.current) {
-          feedOperationId.current = operationId;
-        }
         const result = await persistRunMedia(destination, item, {
           retain: runMediaCache.retain,
           release: runMediaCache.release,
@@ -286,20 +317,25 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             uploadPostImage(await new File(uri).base64(), 'jpg', operationId ?? undefined),
           createFeedPost: (imageUrl) =>
             createRunPostIdempotent({
-              body: caption,
+              body: feedContext!.metadata.body,
               imageUrl,
               operationId: operationId!,
-              audience,
-              activityId: run.activityId!,
-              shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
+              audience: feedContext!.metadata.audience,
+              activityId: feedContext!.metadata.activityId,
+              shareData: feedContext!.metadata.shareData,
             }),
         });
 
         if (result.persisted) hasPersistentDestination.current = true;
-        if (result.newlyPersisted) {
+        if (result.persisted) {
           void completionEffects
-            .complete(destination, photoKind === 'selfie', run.distance / 1000)
+            .complete(
+              destination,
+              feedContext?.metadata.selfie ?? photoKind === 'selfie',
+              feedContext?.metadata.distanceKm ?? run.distance / 1000,
+            )
             .catch(() => {});
+          if (destination === 'feed') feedOperation.current = null;
         }
 
         if (destination === 'share' && !hasPersistentDestination.current) {
@@ -308,7 +344,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
         if (destination === 'feed') {
           const tmp = await capture('tmpfile');
-          promptCrossShare(caption, tmp);
+          promptCrossShare(feedContext!.metadata.body, tmp);
           await closeEditor();
         }
       } finally {
