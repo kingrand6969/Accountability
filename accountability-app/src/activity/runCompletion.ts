@@ -204,3 +204,51 @@ export function recordingTypeView(
         selectorAccessibilityHidden: true,
       };
 }
+
+type BooleanLock = { current: boolean };
+
+export function acquireSynchronousLock(lock: BooleanLock): boolean {
+  if (lock.current) return false;
+  lock.current = true;
+  return true;
+}
+
+export function releaseSynchronousLock(lock: BooleanLock): void {
+  lock.current = false;
+}
+
+export function createOwnerBoundary(
+  expectedOwnerId: string,
+  currentOwnerId: () => string | null,
+) {
+  const assertOwned = () => {
+    if (currentOwnerId() !== expectedOwnerId) {
+      throw new Error('Recording owner changed');
+    }
+  };
+  return {
+    assertOwned,
+    async awaitOwned<T>(operation: Promise<T>): Promise<T> {
+      assertOwned();
+      const result = await operation;
+      assertOwned();
+      return result;
+    },
+    runSideEffect<T>(effect: () => T): T {
+      assertOwned();
+      return effect();
+    },
+  };
+}
+
+export function shouldApplyOwnerAsyncResult(
+  requestedOwnerId: string,
+  currentOwnerId: string | null,
+  requestedRevision: number,
+  currentRevision: number,
+): boolean {
+  return (
+    requestedOwnerId === currentOwnerId &&
+    requestedRevision === currentRevision
+  );
+}

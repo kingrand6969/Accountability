@@ -3,14 +3,19 @@ import { createActivitySynchronizer } from './activitySynchronizer';
 import { ActivityUploadError } from './activityUpload';
 import {
   completeRecordedActivity,
+  acquireSynchronousLock,
+  createOwnerBoundary,
   recordingDetailView,
   recordingTypeView,
+  releaseSynchronousLock,
   runFeedAvailability,
   runSyncPresentation,
+  shouldApplyOwnerAsyncResult,
   type PendingRecordedActivity,
 } from './runCompletion';
 import {
   createLocationRecordingStore,
+  reconcileLocationTask,
   type LocationRecordingStorage,
 } from './locationTask';
 import type { QueuedActivity } from './offlineQueueTypes';
@@ -378,6 +383,99 @@ describe('location recording persistence', () => {
       'A saved recording already exists',
     );
   });
+
+  it('serializes concurrent begins so only one owner and ID can win', async () => {
+    const storage = memoryStorage();
+    const ids = [
+      ACTIVITY_ID,
+      '22222222-2222-4222-8222-222222222222',
+    ];
+    const store = createLocationRecordingStore({
+      storage,
+      createActivityId: () => ids.shift()!,
+      createSessionId: () => `session-${ids.length}`,
+      nowIso: () => STARTED_AT,
+    });
+
+    const results = await Promise.allSettled([
+      store.begin(OWNER_A, 'run'),
+      store.begin(OWNER_B, 'walk'),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(JSON.parse(storage.values.get('activity:points')!)).toMatchObject({
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      type: 'run',
+    });
+  });
+
+  it('does not mix a stale background append into a concurrent new begin', async () => {
+    const storage = memoryStorage();
+    const store = createLocationRecordingStore({
+      storage,
+      createActivityId: () => ACTIVITY_ID,
+      createSessionId: () => 'session-new',
+      nowIso: () => STARTED_AT,
+    });
+
+    await Promise.all([
+      store.begin(OWNER_A, 'run'),
+      store.appendPoints('session-stale', [
+        { lat: -31.9523, lon: 115.8613 },
+      ]),
+    ]);
+
+    expect(JSON.parse(storage.values.get('activity:points')!)).toMatchObject({
+      ownerId: OWNER_A,
+      session: 'session-new',
+      points: [],
+    });
+  });
+});
+
+describe('active GPS task reconciliation', () => {
+  const granted = async () => ({ granted: true });
+
+  it('keeps an already-running task without starting another', async () => {
+    const start = jest.fn(async () => undefined);
+    await expect(
+      reconcileLocationTask({
+        hasStarted: async () => true,
+        getForegroundPermission: granted,
+        getBackgroundPermission: granted,
+        start,
+      }),
+    ).resolves.toBe('running');
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('restarts a missing task when permissions still allow tracking', async () => {
+    const start = jest.fn(async () => undefined);
+    await expect(
+      reconcileLocationTask({
+        hasStarted: async () => false,
+        getForegroundPermission: granted,
+        getBackgroundPermission: granted,
+        start,
+      }),
+    ).resolves.toBe('restarted');
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns paused without mutating raw data when task restart fails', async () => {
+    await expect(
+      reconcileLocationTask({
+        hasStarted: async () => false,
+        getForegroundPermission: granted,
+        getBackgroundPermission: granted,
+        start: async () => {
+          throw new Error('native task unavailable');
+        },
+      }),
+    ).resolves.toBe('paused');
+  });
 });
 
 describe('run sync presentation', () => {
@@ -531,6 +629,67 @@ describe('owner-tagged recording details', () => {
       selectedType: 'ride',
       selectorAccessibilityHidden: false,
     });
+  });
+});
+
+describe('synchronous mutation and owner gates', () => {
+  it('allows only one start acquisition before the first await', () => {
+    const lock = { current: false };
+
+    expect(acquireSynchronousLock(lock)).toBe(true);
+    expect(acquireSynchronousLock(lock)).toBe(false);
+    releaseSynchronousLock(lock);
+    expect(acquireSynchronousLock(lock)).toBe(true);
+  });
+
+  it('rejects deferred capture completion after the owner switches', async () => {
+    let owner: string | null = OWNER_A;
+    let resolveCapture!: (value: string) => void;
+    const capture = new Promise<string>((resolve) => {
+      resolveCapture = resolve;
+    });
+    const sideEffect = jest.fn();
+    const boundary = createOwnerBoundary(OWNER_A, () => owner);
+
+    const operation = boundary
+      .awaitOwned(capture)
+      .then((value) => boundary.runSideEffect(() => sideEffect(value)));
+    owner = OWNER_B;
+    resolveCapture('managed://card.jpg');
+
+    await expect(operation).rejects.toThrow('Recording owner changed');
+    expect(sideEffect).not.toHaveBeenCalled();
+  });
+
+  it('rechecks immediately before a deferred action side effect', async () => {
+    let owner: string | null = OWNER_A;
+    let resolveStage!: (value: string) => void;
+    const staged = new Promise<string>((resolve) => {
+      resolveStage = resolve;
+    });
+    const phoneWrite = jest.fn();
+    const boundary = createOwnerBoundary(OWNER_A, () => owner);
+
+    const operation = boundary.awaitOwned(staged).then((uri) => {
+      owner = null;
+      return boundary.runSideEffect(() => phoneWrite(uri));
+    });
+    resolveStage('managed://staged.jpg');
+
+    await expect(operation).rejects.toThrow('Recording owner changed');
+    expect(phoneWrite).not.toHaveBeenCalled();
+  });
+
+  it('drops stale avatar results after owner or revision changes', () => {
+    expect(
+      shouldApplyOwnerAsyncResult(OWNER_A, OWNER_B, 3, 3),
+    ).toBe(false);
+    expect(
+      shouldApplyOwnerAsyncResult(OWNER_A, OWNER_A, 3, 4),
+    ).toBe(false);
+    expect(
+      shouldApplyOwnerAsyncResult(OWNER_A, OWNER_A, 3, 3),
+    ).toBe(true);
   });
 });
 

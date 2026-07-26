@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
+import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NewActivity } from './api';
 import type { Pt } from './geo';
@@ -9,6 +10,18 @@ import type { PendingRecordedActivity } from './runCompletion';
 export const LOCATION_TASK_NAME = 'accountability-location-task';
 const POINTS_KEY = 'activity:points';
 const SESSION_KEY = 'activity:session';
+let recordingMutationTail: Promise<void> = Promise.resolve();
+
+function serializeRecordingMutation<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const result = recordingMutationTail.then(operation, operation);
+  recordingMutationTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
 
 type LegacyPointsBlob = { session: string; points: Pt[] };
 
@@ -83,34 +96,34 @@ export function createLocationRecordingStore(
     ...overrides,
   };
 
-  async function begin(
+  function begin(
     ownerId: string,
     type: NewActivity['type'] = 'run',
   ): Promise<TrackRecordingIdentity> {
-    if (!ownerId.trim()) throw new Error('A signed-in owner is required');
-    const [storedSession, storedPoints] = await Promise.all([
-      options.storage.getItem(SESSION_KEY),
-      options.storage.getItem(POINTS_KEY),
-    ]);
-    if (storedSession !== null || storedPoints !== null) {
-      throw new Error('A saved recording already exists');
-    }
-    const blob: RecordingBlob = {
-      schema: 2,
-      session: options.createSessionId(),
-      activityId: options.createActivityId(),
-      ownerId,
-      startedAt: options.nowIso(),
-      type,
-      points: [],
-      completed: null,
-    };
+    return serializeRecordingMutation(async () => {
+      if (!ownerId.trim()) throw new Error('A signed-in owner is required');
+      const [storedSession, storedPoints] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      if (storedSession !== null || storedPoints !== null) {
+        throw new Error('A saved recording already exists');
+      }
+      const blob: RecordingBlob = {
+        schema: 2,
+        session: options.createSessionId(),
+        activityId: options.createActivityId(),
+        ownerId,
+        startedAt: options.nowIso(),
+        type,
+        points: [],
+        completed: null,
+      };
 
-    // Persist identity before exposing the active session to the background
-    // task. A partial write can therefore never collect ownerless points.
-    await options.storage.setItem(POINTS_KEY, JSON.stringify(blob));
-    await options.storage.setItem(SESSION_KEY, blob.session);
-    return identityOf(blob);
+      await options.storage.setItem(POINTS_KEY, JSON.stringify(blob));
+      await options.storage.setItem(SESSION_KEY, blob.session);
+      return identityOf(blob);
+    });
   }
 
   async function readRecording(
@@ -127,110 +140,111 @@ export function createLocationRecordingStore(
     return null;
   }
 
-  async function recover(
+  function recover(
     currentOwnerId: string | null,
     legacyType: NewActivity['type'] = 'run',
   ): Promise<TrackRecordingRecovery> {
-    const raw = await options.storage.getItem(POINTS_KEY);
-    const parsed = parseStoredBlob(raw);
-    if (!parsed) return { kind: 'none' };
+    return serializeRecordingMutation(async () => {
+      const raw = await options.storage.getItem(POINTS_KEY);
+      const parsed = parseStoredBlob(raw);
+      if (!parsed) return { kind: 'none' };
 
-    if (parsed.kind === 'legacy') {
-      return { kind: 'legacy_unclaimed' };
-    }
+      if (parsed.kind === 'legacy') {
+        return { kind: 'legacy_unclaimed' };
+      }
 
-    // Persist the normalized schema (including `type`) before returning it.
-    await options.storage.setItem(POINTS_KEY, JSON.stringify(parsed.blob));
-    const storedSession = await options.storage.getItem(SESSION_KEY);
-    if (storedSession !== parsed.blob.session) {
-      await options.storage.setItem(SESSION_KEY, parsed.blob.session);
-    }
-    if (!currentOwnerId || parsed.blob.ownerId !== currentOwnerId) {
-      return {
-        kind: 'owner_mismatch',
-        activityId: parsed.blob.activityId,
-        ownerId: parsed.blob.ownerId,
-      };
-    }
-    if (parsed.blob.completed) {
-      return {
-        kind: 'completed',
-        recording: {
-          activityId: parsed.blob.activityId,
-          ownerId: parsed.blob.ownerId,
-          activity: parsed.blob.completed,
-        },
-      };
-    }
-    return {
-      kind: 'active',
-      ...identityOf(parsed.blob),
-      type: parsed.blob.type,
-      points: parsed.blob.points,
-    };
-  }
-
-  async function claimLegacy(
-    ownerId: string,
-    type: NewActivity['type'] = 'run',
-  ): Promise<TrackRecordingRecovery> {
-    if (!ownerId.trim()) throw new Error('A signed-in owner is required');
-    const [storedSession, raw] = await Promise.all([
-      options.storage.getItem(SESSION_KEY),
-      options.storage.getItem(POINTS_KEY),
-    ]);
-    const parsed = parseStoredBlob(raw);
-    if (!parsed) throw new Error('Legacy recording was not found');
-
-    if (parsed.kind === 'current') {
-      if (parsed.blob.ownerId !== ownerId) {
+      await options.storage.setItem(POINTS_KEY, JSON.stringify(parsed.blob));
+      const storedSession = await options.storage.getItem(SESSION_KEY);
+      if (storedSession !== parsed.blob.session) {
+        await options.storage.setItem(SESSION_KEY, parsed.blob.session);
+      }
+      if (!currentOwnerId || parsed.blob.ownerId !== currentOwnerId) {
         return {
           kind: 'owner_mismatch',
           activityId: parsed.blob.activityId,
           ownerId: parsed.blob.ownerId,
         };
       }
-      return parsed.blob.completed
-        ? {
-            kind: 'completed',
-            recording: {
-              activityId: parsed.blob.activityId,
-              ownerId: parsed.blob.ownerId,
-              activity: parsed.blob.completed,
-            },
-          }
-        : {
-            kind: 'active',
-            ...identityOf(parsed.blob),
-            type: parsed.blob.type,
-            points: parsed.blob.points,
-          };
-    }
+      if (parsed.blob.completed) {
+        return {
+          kind: 'completed',
+          recording: {
+            activityId: parsed.blob.activityId,
+            ownerId: parsed.blob.ownerId,
+            activity: parsed.blob.completed,
+          },
+        };
+      }
+      return {
+        kind: 'active',
+        ...identityOf(parsed.blob),
+        type: parsed.blob.type,
+        points: parsed.blob.points,
+      };
+    });
+  }
 
-    const session =
-      parsed.session || storedSession || options.createSessionId();
-    const claimed: RecordingBlob = {
-      schema: 2,
-      session,
-      activityId: options.createActivityId(),
-      ownerId,
-      startedAt: options.nowIso(),
-      type,
-      points: parsed.points,
-      completed: null,
-    };
-    // The identity and route become owned in one durable blob write. If the
-    // session-key follow-up fails, retry observes this same ID and owner.
-    await options.storage.setItem(POINTS_KEY, JSON.stringify(claimed));
-    if (storedSession !== session) {
-      await options.storage.setItem(SESSION_KEY, session);
-    }
-    return {
-      kind: 'active',
-      ...identityOf(claimed),
-      type: claimed.type,
-      points: claimed.points,
-    };
+  function claimLegacy(
+    ownerId: string,
+    type: NewActivity['type'] = 'run',
+  ): Promise<TrackRecordingRecovery> {
+    return serializeRecordingMutation(async () => {
+      if (!ownerId.trim()) throw new Error('A signed-in owner is required');
+      const [storedSession, raw] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      const parsed = parseStoredBlob(raw);
+      if (!parsed) throw new Error('Legacy recording was not found');
+
+      if (parsed.kind === 'current') {
+        if (parsed.blob.ownerId !== ownerId) {
+          return {
+            kind: 'owner_mismatch',
+            activityId: parsed.blob.activityId,
+            ownerId: parsed.blob.ownerId,
+          };
+        }
+        return parsed.blob.completed
+          ? {
+              kind: 'completed',
+              recording: {
+                activityId: parsed.blob.activityId,
+                ownerId: parsed.blob.ownerId,
+                activity: parsed.blob.completed,
+              },
+            }
+          : {
+              kind: 'active',
+              ...identityOf(parsed.blob),
+              type: parsed.blob.type,
+              points: parsed.blob.points,
+            };
+      }
+
+      const session =
+        parsed.session || storedSession || options.createSessionId();
+      const claimed: RecordingBlob = {
+        schema: 2,
+        session,
+        activityId: options.createActivityId(),
+        ownerId,
+        startedAt: options.nowIso(),
+        type,
+        points: parsed.points,
+        completed: null,
+      };
+      await options.storage.setItem(POINTS_KEY, JSON.stringify(claimed));
+      if (storedSession !== session) {
+        await options.storage.setItem(SESSION_KEY, session);
+      }
+      return {
+        kind: 'active',
+        ...identityOf(claimed),
+        type: claimed.type,
+        points: claimed.points,
+      };
+    });
   }
 
   async function readPoints(): Promise<Pt[]> {
@@ -247,27 +261,29 @@ export function createLocationRecordingStore(
     return !parsed.session || parsed.session === session ? parsed.points : [];
   }
 
-  async function persistCompleted(
+  function persistCompleted(
     recording: PendingRecordedActivity,
   ): Promise<void> {
-    const raw = await options.storage.getItem(POINTS_KEY);
-    const parsed = parseStoredBlob(raw);
-    if (
-      !parsed ||
-      parsed.kind !== 'current' ||
-      parsed.blob.activityId !== recording.activityId ||
-      parsed.blob.ownerId !== recording.ownerId
-    ) {
-      throw new Error('Recorded activity identity does not match raw GPS');
-    }
+    return serializeRecordingMutation(async () => {
+      const raw = await options.storage.getItem(POINTS_KEY);
+      const parsed = parseStoredBlob(raw);
+      if (
+        !parsed ||
+        parsed.kind !== 'current' ||
+        parsed.blob.activityId !== recording.activityId ||
+        parsed.blob.ownerId !== recording.ownerId
+      ) {
+        throw new Error('Recorded activity identity does not match raw GPS');
+      }
 
-    const completed: RecordingBlob = {
-      ...parsed.blob,
-      type: recording.activity.type,
-      points: recording.activity.route,
-      completed: recording.activity,
-    };
-    await options.storage.setItem(POINTS_KEY, JSON.stringify(completed));
+      const completed: RecordingBlob = {
+        ...parsed.blob,
+        type: recording.activity.type,
+        points: recording.activity.route,
+        completed: recording.activity,
+      };
+      await options.storage.setItem(POINTS_KEY, JSON.stringify(completed));
+    });
   }
 
   async function readPendingCompleted(): Promise<PendingRecordedActivity | null> {
@@ -287,28 +303,54 @@ export function createLocationRecordingStore(
     };
   }
 
-  async function clear(activityId?: string): Promise<void> {
-    if (activityId) {
+  function appendPoints(session: string, nextPoints: Pt[]): Promise<void> {
+    return serializeRecordingMutation(async () => {
       const raw = await options.storage.getItem(POINTS_KEY);
       const parsed = parseStoredBlob(raw);
-      if (
-        parsed?.kind === 'current' &&
-        parsed.blob.activityId !== activityId
-      ) {
-        throw new Error('Recorded activity identity does not match raw GPS');
+      if (!parsed) return;
+      if (parsed.kind === 'current') {
+        if (parsed.blob.session !== session || parsed.blob.completed) return;
+        await options.storage.setItem(
+          POINTS_KEY,
+          JSON.stringify({
+            ...parsed.blob,
+            points: [...parsed.blob.points, ...nextPoints],
+          }),
+        );
+        return;
       }
-    }
+      if (parsed.session && parsed.session !== session) return;
+      const legacy: LegacyPointsBlob = {
+        session,
+        points: [...parsed.points, ...nextPoints],
+      };
+      await options.storage.setItem(POINTS_KEY, JSON.stringify(legacy));
+    });
+  }
 
-    // Stop task writes first. If either removal fails, the raw blob remains
-    // available for recovery and an idempotent retry with the same ID.
-    await options.storage.removeItem(SESSION_KEY);
-    await options.storage.removeItem(POINTS_KEY);
+  function clear(activityId?: string): Promise<void> {
+    return serializeRecordingMutation(async () => {
+      if (activityId) {
+        const raw = await options.storage.getItem(POINTS_KEY);
+        const parsed = parseStoredBlob(raw);
+        if (
+          parsed?.kind === 'current' &&
+          parsed.blob.activityId !== activityId
+        ) {
+          throw new Error('Recorded activity identity does not match raw GPS');
+        }
+      }
+
+      await options.storage.removeItem(SESSION_KEY);
+      await options.storage.removeItem(POINTS_KEY);
+    });
   }
 
   return {
     begin,
     claimLegacy,
     recover,
+    appendPoints,
     readRecording,
     readPoints,
     persistCompleted,
@@ -331,33 +373,76 @@ if (Platform.OS !== 'web') {
     try {
       const session = await AsyncStorage.getItem(SESSION_KEY);
       if (!session) return;
-      const raw = await AsyncStorage.getItem(POINTS_KEY);
-      const parsed = parseStoredBlob(raw);
-      if (!parsed) return;
-
-      if (parsed.kind === 'current') {
-        if (parsed.blob.session !== session || parsed.blob.completed) return;
-        const points = [
-          ...parsed.blob.points,
-          ...locations.map(locationPoint),
-        ];
-        await AsyncStorage.setItem(
-          POINTS_KEY,
-          JSON.stringify({ ...parsed.blob, points }),
-        );
-        return;
-      }
-
-      if (parsed.session && parsed.session !== session) return;
-      const legacy: LegacyPointsBlob = {
+      await defaultRecordingStore.appendPoints(
         session,
-        points: [...parsed.points, ...locations.map(locationPoint)],
-      };
-      await AsyncStorage.setItem(POINTS_KEY, JSON.stringify(legacy));
+        locations.map(locationPoint),
+      );
     } catch {
       // Best effort: a dropped sample is preferable to corrupting identity.
     }
   });
+}
+
+const LOCATION_UPDATE_OPTIONS = {
+  accuracy: Location.Accuracy.High,
+  distanceInterval: 5,
+  pausesUpdatesAutomatically: false,
+  showsBackgroundLocationIndicator: true,
+  foregroundService: {
+    notificationTitle: 'Tracking your activity',
+    notificationBody: 'Recording distance & pace — tap to return.',
+    notificationColor: '#2563eb',
+  },
+} satisfies Location.LocationTaskOptions;
+
+export type LocationTaskRuntime = {
+  hasStarted(): Promise<boolean>;
+  getForegroundPermission(): Promise<{ granted: boolean }>;
+  getBackgroundPermission(): Promise<{ granted: boolean }>;
+  start(): Promise<void>;
+};
+
+export async function reconcileLocationTask(
+  runtime: LocationTaskRuntime,
+): Promise<'running' | 'restarted' | 'paused'> {
+  try {
+    if (await runtime.hasStarted()) return 'running';
+    const [foreground, background] = await Promise.all([
+      runtime.getForegroundPermission(),
+      runtime.getBackgroundPermission(),
+    ]);
+    if (!foreground.granted || !background.granted) return 'paused';
+    await runtime.start();
+    return 'restarted';
+  } catch {
+    return 'paused';
+  }
+}
+
+export async function ensureTrackLocationTask(): Promise<
+  'running' | 'restarted' | 'paused'
+> {
+  if (Platform.OS === 'web') return 'paused';
+  return reconcileLocationTask({
+    hasStarted: () =>
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME),
+    getForegroundPermission: () =>
+      Location.getForegroundPermissionsAsync(),
+    getBackgroundPermission: () =>
+      Location.getBackgroundPermissionsAsync(),
+    start: () =>
+      Location.startLocationUpdatesAsync(
+        LOCATION_TASK_NAME,
+        LOCATION_UPDATE_OPTIONS,
+      ),
+  });
+}
+
+export async function startTrackLocationTask(): Promise<void> {
+  await Location.startLocationUpdatesAsync(
+    LOCATION_TASK_NAME,
+    LOCATION_UPDATE_OPTIONS,
+  );
 }
 
 export async function beginTrackRecording(

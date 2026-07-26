@@ -30,12 +30,14 @@ import {
   beginTrackRecording,
   claimLegacyTrackRecording,
   clearTrackRecording,
+  ensureTrackLocationTask,
   LOCATION_TASK_NAME,
   persistCompletedTrackRecording,
   recoverTrackRecording,
   readTrackRecording,
   readTrackPoints,
   resetTrackPoints,
+  startTrackLocationTask,
   type TrackRecordingRecovery,
   type TrackRecordingIdentity,
 } from '../../activity/locationTask';
@@ -43,8 +45,11 @@ import { type ActivityType } from '../../activity/api';
 import { enqueueActivity } from '../../activity/offlineQueueStore';
 import {
   completeRecordedActivity,
+  acquireSynchronousLock,
   recordingDetailView,
   recordingTypeView,
+  releaseSynchronousLock,
+  shouldApplyOwnerAsyncResult,
   type RecordingRecoveryReadState,
   type PendingRecordedActivity,
 } from '../../activity/runCompletion';
@@ -115,12 +120,17 @@ export default function ActivityTrack() {
     | 'owner_mismatch'
     | 'legacy_unclaimed'
     | 'storage_error'
+    | 'tracking_paused'
     | null
   >(null);
   const [recoveryReadState, setRecoveryReadState] =
     useState<RecordingRecoveryReadState>('checking');
   const [detailOwnerId, setDetailOwnerId] = useState<string | null>(null);
-  const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<{
+    ownerId: string;
+    uri: string | null;
+  } | null>(null);
+  const [starting, setStarting] = useState(false);
   // shareable run card, shown after a successful save
   const [shareRun, setShareRun] = useState<FinishedRun | null>(null);
 
@@ -128,6 +138,10 @@ export default function ActivityTrack() {
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
   const recordingRef = useRef<TrackRecordingIdentity | null>(null);
+  const startingRef = useRef(false);
+  const avatarRevisionRef = useRef(0);
+  const authOwnerRef = useRef<string | null>(session?.user.id ?? null);
+  authOwnerRef.current = session?.user.id ?? null;
   const pulse = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<OsmMapHandle>(null);
   // where to centre the idle map — the user's last-known spot (no prompt)
@@ -135,13 +149,34 @@ export default function ActivityTrack() {
 
   useFocusEffect(
     useCallback(() => {
-      getMyProfile().then((p) => setAvatar(p?.avatar_url ?? null)).catch(() => {});
+      const requestedOwnerId = session?.user.id ?? null;
+      const requestedRevision = ++avatarRevisionRef.current;
+      setAvatar(null);
+      if (requestedOwnerId) {
+        getMyProfile()
+          .then((profile) => {
+            if (
+              shouldApplyOwnerAsyncResult(
+                requestedOwnerId,
+                authOwnerRef.current,
+                requestedRevision,
+                avatarRevisionRef.current,
+              )
+            ) {
+              setAvatar({
+                ownerId: requestedOwnerId,
+                uri: profile?.avatar_url ?? null,
+              });
+            }
+          })
+          .catch(() => {});
+      }
       if (Platform.OS === 'web') return;
       Location.getForegroundPermissionsAsync()
         .then((perm) => (perm.granted ? Location.getLastKnownPositionAsync() : null))
         .then((pos) => pos && setIdlePos({ lat: pos.coords.latitude, lng: pos.coords.longitude }))
         .catch(() => {});
-    }, []),
+    }, [session?.user.id]),
   );
 
   // stream live GPS points into the map without reloading it
@@ -167,7 +202,6 @@ export default function ActivityTrack() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      stopUpdatesIfRunning();
     };
   }, []);
 
@@ -176,8 +210,16 @@ export default function ActivityTrack() {
     let active = true;
     setRecoveryReadState('checking');
     void recoverTrackRecording(session?.user.id ?? null, 'run')
-      .then((recovery) => {
+      .then(async (recovery) => {
         if (!active) return;
+        if (recovery.kind === 'active') {
+          const taskStatus = await ensureTrackLocationTask();
+          if (!active) return;
+          if (taskStatus === 'paused') {
+            restorePausedRecovery(recovery);
+            return;
+          }
+        }
         restoreRecovery(recovery);
       })
       .catch(() => {
@@ -226,6 +268,26 @@ export default function ActivityTrack() {
         // Keep the last safe in-memory view while local storage recovers.
       }
     }, 1000);
+  }
+
+  function restorePausedRecovery(
+    recovery: Extract<TrackRecordingRecovery, { kind: 'active' }>,
+  ) {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+    recordingRef.current = {
+      activityId: recovery.activityId,
+      ownerId: recovery.ownerId,
+      startedAt: recovery.startedAt,
+    };
+    setDetailOwnerId(recovery.ownerId);
+    setRecoveryReadState('error');
+    setRecoveryNotice('tracking_paused');
+    setTracking(false);
+    setPending(null);
+    setDistance(0);
+    setElapsed(0);
+    setLivePoints([]);
   }
 
   function restoreRecovery(recovery: TrackRecordingRecovery) {
@@ -333,7 +395,35 @@ export default function ActivityTrack() {
     }
   }
 
+  async function onRetryResume() {
+    const ownerId = session?.user.id;
+    if (!ownerId) return;
+    setSaving(true);
+    setRecoveryReadState('checking');
+    try {
+      const recovery = await recoverTrackRecording(ownerId, type);
+      if (recovery.kind !== 'active') {
+        restoreRecovery(recovery);
+        return;
+      }
+      const taskStatus = await ensureTrackLocationTask();
+      if (taskStatus === 'paused') {
+        restorePausedRecovery(recovery);
+        return;
+      }
+      restoreRecovery(recovery);
+    } catch {
+      setRecoveryReadState('error');
+      setRecoveryNotice('tracking_paused');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onStart() {
+    if (!acquireSynchronousLock(startingRef)) return;
+    setStarting(true);
+    try {
     hapticImpact();
     if (Platform.OS === 'web') {
       // no GPS in a browser — let the user preview the shareable run card
@@ -403,26 +493,26 @@ export default function ActivityTrack() {
     startedAtRef.current = recording.startedAt;
     startMsRef.current = Date.now();
     try {
-      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-        accuracy: Location.Accuracy.High,
-        distanceInterval: 5,
-        pausesUpdatesAutomatically: false,
-        showsBackgroundLocationIndicator: true,
-        foregroundService: {
-          notificationTitle: 'Tracking your activity',
-          notificationBody: 'Recording distance & pace — tap to return.',
-          notificationColor: '#2563eb',
-        },
-      });
+      await startTrackLocationTask();
     } catch (e) {
-      recordingRef.current = null;
-      setDetailOwnerId(null);
-      await resetTrackPoints().catch(() => undefined);
-      Alert.alert('Could not start tracking', String((e as Error).message ?? e));
+      const recovery = await recoverTrackRecording(ownerId, type).catch(
+        () => null,
+      );
+      if (recovery?.kind === 'active') {
+        restorePausedRecovery(recovery);
+      }
+      Alert.alert(
+        'Tracking paused',
+        `${String((e as Error).message ?? e)}\n\nYour recording is safe. Tap Retry resume.`,
+      );
       return;
     }
     setTracking(true);
     startTrackingTimer();
+    } finally {
+      releaseSynchronousLock(startingRef);
+      setStarting(false);
+    }
   }
 
   async function persist(p: PendingSave) {
@@ -581,6 +671,8 @@ export default function ActivityTrack() {
         }`;
   const when = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const timeLabel = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const visibleAvatar =
+    avatar && avatar.ownerId === session?.user.id ? avatar.uri : null;
 
   return (
     <View style={styles.screen}>
@@ -620,9 +712,10 @@ export default function ActivityTrack() {
                 !tracking &&
                 !pending &&
                 !recoveryBlocked &&
+                !starting &&
                 setType(t.value)
               }
-              disabled={tracking || !!pending || recoveryBlocked}
+              disabled={tracking || !!pending || recoveryBlocked || starting}
               style={[
                 styles.typePill,
                 selectedType === t.value && styles.typePillActive,
@@ -630,7 +723,8 @@ export default function ActivityTrack() {
               accessibilityLabel={t.label}
               accessibilityState={{
                 selected: selectedType === t.value,
-                disabled: tracking || !!pending || recoveryBlocked,
+                disabled:
+                  tracking || !!pending || recoveryBlocked || starting,
               }}
             >
               <Ionicons
@@ -671,8 +765,8 @@ export default function ActivityTrack() {
         ]}
       >
         <View style={styles.titleRow}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatar} />
+          {visibleAvatar ? (
+            <Image source={{ uri: visibleAvatar }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarFallback]}>
               <Ionicons name="person" size={14} color="#cbd5e1" />
@@ -713,6 +807,8 @@ export default function ActivityTrack() {
                   ? 'Unsaved activity from an older version found'
                   : recoveryNotice === 'storage_error'
                     ? 'Saved activity could not be checked'
+                    : recoveryNotice === 'tracking_paused'
+                      ? 'Tracking paused'
                     : 'Recording saved safely'}
               </Text>
               <Text style={styles.recoveryNoticeDetail}>
@@ -722,6 +818,8 @@ export default function ActivityTrack() {
                     ? 'Restore it explicitly before viewing its details.'
                     : recoveryNotice === 'storage_error'
                       ? 'Details stay hidden until storage is available.'
+                      : recoveryNotice === 'tracking_paused'
+                        ? 'Your route is safe. Resume tracking to continue.'
                   : 'Sign in to recover this recording.'}
               </Text>
             </View>
@@ -744,6 +842,21 @@ export default function ActivityTrack() {
                 </Text>
               </Pressable>
             ) : null}
+            {recoveryNotice === 'tracking_paused' ? (
+              <Pressable
+                style={[
+                  styles.restoreLegacyBtn,
+                  saving && styles.actionDisabled,
+                ]}
+                onPress={onRetryResume}
+                disabled={saving}
+                accessibilityRole="button"
+                accessibilityLabel="Retry resume"
+                accessibilityState={{ disabled: saving }}
+              >
+                <Text style={styles.restoreLegacyText}>Retry resume</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -764,15 +877,17 @@ export default function ActivityTrack() {
             style={[
               styles.actionBtn,
               styles.startBtn,
-              recoveryBlocked && styles.actionDisabled,
+              (recoveryBlocked || starting) && styles.actionDisabled,
             ]}
             onPress={onStart}
-            disabled={recoveryBlocked}
-            accessibilityState={{ disabled: recoveryBlocked }}
+            disabled={recoveryBlocked || starting}
+            accessibilityState={{ disabled: recoveryBlocked || starting }}
           >
             <Ionicons name="play" size={20} color="#101319" />
             <Text style={styles.startText}>
-              {recoveryBlocked
+              {starting
+                ? 'Starting…'
+                : recoveryBlocked
                 ? 'Recovery required'
                 : `Start ${TYPES.find((t) => t.value === type)?.label}`}
             </Text>

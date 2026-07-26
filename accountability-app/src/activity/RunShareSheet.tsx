@@ -55,6 +55,7 @@ import type { RunMediaCacheItem } from './runMediaCache';
 import { useActivitySync } from './ActivitySyncProvider';
 import { useAuth } from '../auth/AuthProvider';
 import {
+  createOwnerBoundary,
   runFeedAvailability,
   runSyncPresentation,
 } from './runCompletion';
@@ -91,6 +92,12 @@ type RunFeedOperationMetadata = {
 /** Full-screen overlay shown after Stop & Save — turn the run into a shareable card. */
 export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () => void }) {
   const { session } = useAuth();
+  const currentOwnerRef = useRef<string | null>(session?.user.id ?? null);
+  currentOwnerRef.current = session?.user.id ?? null;
+  const ownerMatches =
+    !!run.ownerId && currentOwnerRef.current === run.ownerId;
+  const ownerBoundary = () =>
+    createOwnerBoundary(run.ownerId ?? '', () => currentOwnerRef.current);
   const {
     queued,
     status: activitySyncStatus,
@@ -115,8 +122,11 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const hasPersistentDestination = useRef(false);
   const shareOperationGate = useRef(createShareOperationGate()).current;
   const completionEffects = useMemo(
-    () => createRunMediaCompletionEffects(recordRunSelfie),
-    [],
+    () =>
+      createRunMediaCompletionEffects((distanceKm) =>
+        ownerBoundary().runSideEffect(() => recordRunSelfie(distanceKm)),
+      ),
+    [run.ownerId],
   );
   const busy = activeDestination !== null;
   const syncPresentation =
@@ -175,6 +185,24 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.activityId, run.ownerId, currentOwnerId]);
 
+  useEffect(() => {
+    if (ownerMatches) return;
+    renderGeneration.current += 1;
+    const staged = stagedMedia.current;
+    stagedMedia.current = null;
+    if (staged) {
+      void runMediaCache.release(staged.id, 'editor').catch(() => {});
+    }
+    feedOperation.current = null;
+    hasPersistentDestination.current = false;
+    setActiveDestination(null);
+    setPhotoUri(null);
+    setPhotoKind(null);
+    setOriginalRatio(null);
+    setMode('map');
+    setShowEnds(false);
+  }, [ownerMatches]);
+
   // size the 4:5 card to fit BOTH the width and the space left after the
   // header/mode-picker/buttons, so it never clips on short screens
   const cardRatio = runShareRatio(format, originalRatio);
@@ -220,6 +248,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     `· ${formatPace(run.distance, run.elapsed)} /km`;
 
   async function addPhoto(kind: 'selfie' | 'place') {
+    const boundary = ownerBoundary();
+    boundary.assertOwned();
     try {
       const opts: ImagePicker.ImagePickerOptions = {
         mediaTypes: ['images'],
@@ -232,11 +262,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       // await before it breaks the user-gesture) → go straight to the library
       if (Platform.OS === 'web') {
         res = await ImagePicker.launchImageLibraryAsync(opts);
+        boundary.assertOwned();
       } else {
         const perm = await ImagePicker.requestCameraPermissionsAsync();
+        boundary.assertOwned();
         res = perm.granted
           ? await ImagePicker.launchCameraAsync(opts)
           : await ImagePicker.launchImageLibraryAsync(opts);
+        boundary.assertOwned();
       }
       if (!res.canceled && res.assets[0]) {
         const asset = res.assets[0];
@@ -246,28 +279,40 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         setMode('photo');
       }
     } catch {
+      try {
+        boundary.assertOwned();
+      } catch {
+        return;
+      }
       Alert.alert('Could not open camera', 'Try choosing a photo from your gallery, or use Map only.');
     }
   }
 
   async function capture(result: 'base64' | 'tmpfile'): Promise<string | null> {
     if (Platform.OS === 'web' || !cardRef.current) return null;
+    const boundary = ownerBoundary();
+    boundary.assertOwned();
     try {
       // 4:5 at 1080×1350 — Instagram/FB portrait HD; near-lossless jpg so the
       // stats stay crisp (the on-screen preview renders small)
-      return await captureRef(cardRef, {
+      const captured = await captureRef(cardRef, {
         format: 'jpg',
         quality: 0.97,
         result,
         width: exportSize.width,
         height: exportSize.height,
       });
+      boundary.assertOwned();
+      return captured;
     } catch {
+      boundary.assertOwned();
       return null;
     }
   }
 
   async function currentRunMedia(): Promise<RunMediaCacheItem> {
+    const boundary = ownerBoundary();
+    boundary.assertOwned();
     if (stagedMedia.current) return stagedMedia.current;
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -278,6 +323,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         stage: (uri) => stageRunMedia(uri),
         release: runMediaCache.release,
       });
+      try {
+        boundary.assertOwned();
+      } catch (cause) {
+        if (result.status === 'ready') {
+          await runMediaCache.release(result.item.id, 'editor').catch(() => {});
+        }
+        throw cause;
+      }
       if (result.status === 'stale') continue;
 
       stagedMedia.current = result.item;
@@ -293,7 +346,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   }
 
   async function closeEditor() {
+    const boundary = ownerBoundary();
+    boundary.assertOwned();
     await runMediaCache.discardEditorSession().catch(() => {});
+    boundary.assertOwned();
     stagedMedia.current = null;
     feedOperation.current = null;
     onClose();
@@ -301,6 +357,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
   async function onDestination(destination: RunMediaDestination) {
     const ran = await shareOperationGate.run(async () => {
+      const boundary = ownerBoundary();
+      boundary.assertOwned();
       setActiveDestination(destination);
       try {
         if (destination === 'feed' && (!run.activityId || activityQueued)) {
@@ -336,21 +394,25 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         // Preserve the existing text-share and image-less Feed behavior there.
         if (Platform.OS === 'web') {
           if (destination === 'share') {
-            await Share.share({ message: `${caption}\n\n#accountability` });
+            await boundary.runSideEffect(() =>
+              Share.share({ message: `${caption}\n\n#accountability` }),
+            );
+            boundary.assertOwned();
             void completionEffects
               .complete('share', photoKind === 'selfie', run.distance / 1000)
               .catch(() => {});
             return;
           }
           if (destination === 'feed') {
-            const post = await createRunPostIdempotent({
+            await boundary.runSideEffect(() => createRunPostIdempotent({
               body: feedContext!.metadata.body,
               imageUrl: null,
               operationId: operationId!,
               audience: feedContext!.metadata.audience,
               activityId: feedContext!.metadata.activityId,
               shareData: feedContext!.metadata.shareData,
-            });
+            }));
+            boundary.assertOwned();
             void completionEffects
               .complete(
                 'feed',
@@ -366,41 +428,63 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         }
 
         const item = await currentRunMedia();
+        boundary.assertOwned();
         const result = await persistRunMedia(destination, item, {
           retain: runMediaCache.retain,
           release: runMediaCache.release,
-          saveToMemories: (uri) => saveImageToMemories(uri),
-          requestPhonePermission: () => MediaLibrary.requestPermissionsAsync(true, ['photo']),
-          saveToPhone: (uri) => MediaLibrary.Asset.create(uri),
+          saveToMemories: (uri) =>
+            boundary.runSideEffect(() => saveImageToMemories(uri)),
+          requestPhonePermission: () =>
+            boundary.runSideEffect(() =>
+              MediaLibrary.requestPermissionsAsync(true, ['photo']),
+            ),
+          saveToPhone: (uri) =>
+            boundary.runSideEffect(() => MediaLibrary.Asset.create(uri)),
           share: async (uri) => {
+            boundary.assertOwned();
             if (Platform.OS !== 'web' && (await Sharing.isAvailableAsync())) {
-              await Sharing.shareAsync(uri, {
+              boundary.assertOwned();
+              await boundary.runSideEffect(() => Sharing.shareAsync(uri, {
                 mimeType: 'image/jpeg',
                 dialogTitle: 'Share your run',
-              });
+              }));
+              boundary.assertOwned();
               return;
             }
-            await Share.share({ message: `${caption}\n\n#accountability` });
+            await boundary.runSideEffect(() =>
+              Share.share({ message: `${caption}\n\n#accountability` }),
+            );
+            boundary.assertOwned();
           },
           findExistingFeedPost: () =>
-            operationId
-              ? findMyPostByOperationId(operationId)
-              : Promise.resolve(null),
-          uploadToFeed: async (uri) =>
-            uploadPostImage(await new File(uri).base64(), 'jpg', operationId ?? undefined),
+            boundary.runSideEffect(() =>
+              operationId
+                ? findMyPostByOperationId(operationId)
+                : Promise.resolve(null),
+            ),
+          uploadToFeed: async (uri) => {
+            boundary.assertOwned();
+            const base64 = await new File(uri).base64();
+            boundary.assertOwned();
+            return boundary.runSideEffect(() =>
+              uploadPostImage(base64, 'jpg', operationId ?? undefined),
+            );
+          },
           createFeedPost: (imageUrl) =>
-            createRunPostIdempotent({
+            boundary.runSideEffect(() => createRunPostIdempotent({
               body: feedContext!.metadata.body,
               imageUrl,
               operationId: operationId!,
               audience: feedContext!.metadata.audience,
               activityId: feedContext!.metadata.activityId,
               shareData: feedContext!.metadata.shareData,
-            }),
+            })),
         });
+        boundary.assertOwned();
 
         if (result.persisted) hasPersistentDestination.current = true;
         if (result.persisted) {
+          boundary.assertOwned();
           void completionEffects
             .complete(
               destination,
@@ -417,6 +501,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
         if (destination === 'feed') {
           const tmp = await capture('tmpfile');
+          boundary.assertOwned();
           promptCrossShare(feedContext!.metadata.body, tmp);
           await closeEditor();
         }
@@ -425,6 +510,20 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       }
     });
     if (!ran) throw new Error('Another run-image action is already in progress.');
+  }
+
+  if (!ownerMatches) {
+    return (
+      <View
+        style={styles.ownerBoundary}
+        accessibilityLiveRegion="polite"
+      >
+        <Ionicons name="shield-checkmark" size={24} color={LIME} />
+        <Text style={styles.ownerBoundaryText}>
+          Sign in as the recording owner to continue
+        </Text>
+      </View>
+    );
   }
 
   return (
@@ -630,6 +729,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center', // center the compact stack — no stretched gaps
     gap: 12,
+  },
+  ownerBoundary: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#0b0e14',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 28,
+  },
+  ownerBoundaryText: {
+    color: '#fff',
+    fontFamily: font.bold,
+    fontSize: 16,
+    textAlign: 'center',
   },
   header: {
     flexDirection: 'row',
