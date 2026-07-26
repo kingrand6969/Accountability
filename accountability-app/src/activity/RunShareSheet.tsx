@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   BackHandler,
   Platform,
@@ -15,6 +14,8 @@ import {
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
+import { File } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { RunCard } from './RunCard';
 import { formatDurationLong, formatKm, formatPace, trimRouteEnds, type Pt } from './geo';
@@ -33,6 +34,15 @@ import {
 } from './runShareFormats';
 import type { PostAudience } from '../feed/types';
 import { createShareOperationGate } from './shareOperationGate';
+import { saveImageToMemories } from '../memories/api';
+import { RunMediaActions } from './RunMediaActions';
+import {
+  persistRunMedia,
+  runMediaCache,
+  stageRunMedia,
+  type RunMediaDestination,
+} from './saveRunMedia';
+import type { RunMediaCacheItem } from './runMediaCache';
 
 const LIME = '#c6f24e';
 
@@ -57,11 +67,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const [format, setFormat] = useState<RunShareFormat>('feed');
   const [mediaFit, setMediaFit] = useState<RunMediaFit>('cover');
   const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
-  const [posting, setPosting] = useState(false);
-  const [sharing, setSharing] = useState(false);
+  const [activeDestination, setActiveDestination] = useState<RunMediaDestination | null>(null);
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
   const cardRef = useRef<View>(null);
+  const stagedMedia = useRef<RunMediaCacheItem | null>(null);
+  const hasPersistentDestination = useRef(false);
   const shareOperationGate = useRef(createShareOperationGate()).current;
+  const busy = activeDestination !== null;
 
   // size the 4:5 card to fit BOTH the width and the space left after the
   // header/mode-picker/buttons, so it never clips on short screens
@@ -79,11 +91,19 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   // Android hardware back closes the sheet instead of popping the run screen
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!posting && !sharing) onClose();
+      if (!busy) void closeEditor();
       return true;
     });
     return () => sub.remove();
-  }, [posting, sharing, onClose]);
+  }, [busy, onClose]);
+
+  // A changed card must never reuse an older staged export. Release only that
+  // item's editor owner; a failed destination keeps its own retry ownership.
+  useEffect(() => {
+    const stale = stagedMedia.current;
+    stagedMedia.current = null;
+    if (stale) void runMediaCache.release(stale.id, 'editor').catch(() => {});
+  }, [format, mediaFit, showEnds, mode, photoUri, originalRatio, run]);
 
   const caption =
     `🏃 ${run.title} · ${formatKm(run.distance)} km in ${formatDurationLong(run.elapsed)} ` +
@@ -138,71 +158,116 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     }
   }
 
-  async function onPost() {
-    if (!run.activityId) {
-      Alert.alert('Preview only', 'Save a real GPS activity on your phone before posting a verified Run card.');
-      return;
-    }
+  async function currentRunMedia(): Promise<RunMediaCacheItem> {
+    if (stagedMedia.current) return stagedMedia.current;
+    const uri = await capture('tmpfile');
+    if (!uri) throw new Error('Could not render the run image.');
+    const item = await stageRunMedia(uri);
+    stagedMedia.current = item;
+    return item;
+  }
 
-    await shareOperationGate.run(async () => {
-      setPosting(true);
+  async function discardStagedEditorMedia(): Promise<void> {
+    const item = stagedMedia.current;
+    stagedMedia.current = null;
+    if (item) await runMediaCache.release(item.id, 'editor');
+  }
+
+  async function closeEditor() {
+    await runMediaCache.discardEditorSession().catch(() => {});
+    stagedMedia.current = null;
+    onClose();
+  }
+
+  async function onDestination(destination: RunMediaDestination) {
+    const ran = await shareOperationGate.run(async () => {
+      setActiveDestination(destination);
       try {
-        let imageUrl: string | null = null;
-        const base64 = await capture('base64');
-        if (base64) {
-          imageUrl = await uploadPostImage(base64, 'jpg').catch(() => null);
+        if (destination === 'feed' && !run.activityId) {
+          throw new Error(
+            'Save a real GPS activity on your phone before posting a verified Run card.',
+          );
         }
-        await createPost(caption, imageUrl, null, null, null, false, {
-          audience,
-          postType: 'run',
-          activityId: run.activityId,
-          shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
-        });
-        // a posted selfie counts toward the Selfie Club mission (2/5/10/25 km)
-        if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
+
+        // react-native-view-shot cannot provide a managed local file on web.
+        // Preserve the existing text-share and image-less Feed behavior there.
         if (Platform.OS === 'web') {
-          Alert.alert('Posted 🎉', 'Your run is on your feed.');
-        } else {
+          if (destination === 'share') {
+            await Share.share({ message: `${caption}\n\n#accountability` });
+            if (photoKind === 'selfie') {
+              recordRunSelfie(run.distance / 1000).catch(() => {});
+            }
+            return;
+          }
+          if (destination === 'feed') {
+            await createPost(caption, null, null, null, null, false, {
+              audience,
+              postType: 'run',
+              activityId: run.activityId,
+              shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
+            });
+            if (photoKind === 'selfie') {
+              recordRunSelfie(run.distance / 1000).catch(() => {});
+            }
+            Alert.alert('Posted 🎉', 'Your run is on your feed.');
+            await closeEditor();
+            return;
+          }
+          throw new Error('Saving run images is available on your phone.');
+        }
+
+        const item = await currentRunMedia();
+        const result = await persistRunMedia(destination, item, {
+          retain: runMediaCache.retain,
+          release: runMediaCache.release,
+          saveToMemories: (uri) => saveImageToMemories(uri),
+          requestPhonePermission: () => MediaLibrary.requestPermissionsAsync(true, ['photo']),
+          saveToPhone: (uri) => MediaLibrary.Asset.create(uri),
+          share: async (uri) => {
+            if (Platform.OS !== 'web' && (await Sharing.isAvailableAsync())) {
+              await Sharing.shareAsync(uri, {
+                mimeType: 'image/jpeg',
+                dialogTitle: 'Share your run',
+              });
+              return;
+            }
+            await Share.share({ message: `${caption}\n\n#accountability` });
+          },
+          uploadToFeed: async (uri) => uploadPostImage(await new File(uri).base64(), 'jpg'),
+          createFeedPost: (imageUrl) =>
+            createPost(caption, imageUrl, null, null, null, false, {
+              audience,
+              postType: 'run',
+              activityId: run.activityId,
+              shareData: { format, media_fit: mediaFit, route_ends_visible: showEnds },
+            }),
+        });
+
+        if (result.persisted) hasPersistentDestination.current = true;
+        if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
+
+        if (destination === 'share' && !hasPersistentDestination.current) {
+          await discardStagedEditorMedia();
+        }
+
+        if (destination === 'feed') {
           const tmp = await capture('tmpfile');
           promptCrossShare(caption, tmp);
+          await closeEditor();
         }
-        onClose();
-      } catch (e) {
-        Alert.alert('Could not post', String((e as Error).message ?? e));
       } finally {
-        setPosting(false);
+        setActiveDestination(null);
       }
     });
+    if (!ran) throw new Error('Another run-image action is already in progress.');
   }
-
-  async function onShare() {
-    await shareOperationGate.run(async () => {
-      setSharing(true);
-      try {
-        const uri = await capture('tmpfile');
-        if (uri && Platform.OS !== 'web' && (await Sharing.isAvailableAsync())) {
-          await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', dialogTitle: 'Share your run' });
-          if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
-          return;
-        }
-        await Share.share({ message: `${caption}\n\n#accountability` });
-        if (photoKind === 'selfie') recordRunSelfie(run.distance / 1000).catch(() => {});
-      } catch {
-        // dismissed
-      } finally {
-        setSharing(false);
-      }
-    });
-  }
-
-  const busy = posting || sharing;
 
   return (
     <View style={styles.overlay}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Share your run</Text>
         <Pressable
-          onPress={onClose}
+          onPress={() => void closeEditor()}
           style={styles.skipBtn}
           accessibilityRole="button"
           accessibilityLabel="Skip sharing"
@@ -337,39 +402,15 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         ))}
       </View>
 
-      <Pressable
-        style={[styles.primary, busy && styles.dim]}
-        onPress={onPost}
+      <RunMediaActions
+        onDestination={onDestination}
         disabled={busy}
-        accessibilityRole="button"
-        accessibilityLabel="Post your run to the feed"
-        accessibilityState={{ disabled: busy, busy: posting }}
-      >
-        {posting ? (
-          <ActivityIndicator color="#101319" />
-        ) : (
-          <>
-            <Ionicons name="share-social" size={18} color="#101319" />
-            <Text style={styles.primaryText}>Post to feed</Text>
-          </>
-        )}
-      </Pressable>
-      <Pressable
-        style={[styles.secondary, busy && styles.dim]}
-        onPress={onShare}
-        disabled={busy}
-        accessibilityRole="button"
-        accessibilityLabel={Platform.OS === 'web' ? 'Share a link' : 'Share the run image'}
-        accessibilityState={{ disabled: busy, busy: sharing }}
-      >
-        {sharing ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.secondaryText}>
-            {Platform.OS === 'web' ? 'Share link' : 'Share image'}
-          </Text>
-        )}
-      </Pressable>
+        feedDisabledReason={
+          run.activityId
+            ? undefined
+            : 'Save a real GPS activity before posting a verified Run card.'
+        }
+      />
     </View>
   );
 }

@@ -33,7 +33,8 @@ export type Memory = {
 };
 
 async function me(): Promise<string> {
-  const { data } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
   const uid = data.user?.id;
   if (!uid) throw new Error('Not signed in.');
   return uid;
@@ -101,7 +102,7 @@ async function uploadBuffer(
   kind: 'image' | 'video',
   location: string | null,
   tagged: string[] | null,
-): Promise<void> {
+): Promise<{ path: string; bytes: number }> {
   const uid = await me();
   if (buf.byteLength > MAX_FILE_BYTES) {
     throw new Error(`That file is too big (max ${formatBytes(MAX_FILE_BYTES)}).`);
@@ -124,6 +125,7 @@ async function uploadBuffer(
     await supabase.storage.from('memories').remove([path]).catch(() => {});
     throw rowError;
   }
+  return { path, bytes: buf.byteLength };
 }
 
 /** Save a picture at post time ("Add to Memories" checkbox). Compressed first. */
@@ -131,14 +133,14 @@ export async function saveImageToMemories(
   localUri: string,
   location: string | null = null,
   tagged: string[] | null = null,
-): Promise<void> {
+): Promise<{ path: string; bytes: number }> {
   const shrunk = await ImageManipulator.manipulateAsync(
     localUri,
     [{ resize: { width: MAX_IMAGE_DIM } }],
     { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG, base64: true },
   );
   if (!shrunk.base64) throw new Error('Could not read that image.');
-  await uploadBuffer(
+  return uploadBuffer(
     decode(shrunk.base64),
     'jpg',
     'image/jpeg',

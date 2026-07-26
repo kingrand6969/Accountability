@@ -14,7 +14,8 @@ export async function uploadPostImage(base64: string, ext: string): Promise<stri
 }
 
 async function uploadToSupabase(base64: string, ext: string): Promise<string> {
-  const { data } = await supabase.auth.getUser();
+  const { data, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
   const uid = data.user?.id;
   if (!uid) throw new Error('Not signed in.');
 
