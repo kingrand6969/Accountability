@@ -54,7 +54,10 @@ import {
 import type { RunMediaCacheItem } from './runMediaCache';
 import { useActivitySync } from './ActivitySyncProvider';
 import { useAuth } from '../auth/AuthProvider';
-import { runSyncPresentation } from './runCompletion';
+import {
+  runFeedAvailability,
+  runSyncPresentation,
+} from './runCompletion';
 import type { UploadStatus } from './offlineQueueTypes';
 
 const LIME = '#c6f24e';
@@ -90,10 +93,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const { session } = useAuth();
   const {
     queued,
+    status: activitySyncStatus,
+    error: activitySyncError,
     refreshQueue,
   } = useActivitySync();
   const { width, height } = useWindowDimensions();
-  const [queueReady, setQueueReady] = useState(run.activityId === null);
+  const [checkedOwnerId, setCheckedOwnerId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('map');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | null>(null);
@@ -114,47 +119,61 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     [],
   );
   const busy = activeDestination !== null;
-  const liveQueued = run.activityId
-    ? queued.some((entry) => entry.id === run.activityId)
-    : false;
   const syncPresentation =
     run.activityId && run.syncStatus
       ? runSyncPresentation(run.activityId, run.syncStatus, queued)
       : null;
-  const ownerMismatch =
-    !!run.ownerId &&
-    !!session?.user.id &&
-    run.ownerId !== session.user.id;
-  const activityQueued =
-    !!run.activityId &&
-    (liveQueued || !queueReady || ownerMismatch);
-  const feedDisabledReason = ownerMismatch
-    ? 'Sign in to the account that recorded this activity.'
-    : activityQueued
-      ? syncPresentation?.feedDisabledReason ??
-        'Uploads automatically when online'
-      : run.activityId
-        ? undefined
-        : 'Save a real GPS activity before posting a verified Run card.';
-  const syncDetail = ownerMismatch
-    ? 'Sign in to the recording account to upload'
-    : !queueReady && !liveQueued
-      ? 'Uploads automatically when online'
-      : syncPresentation?.detail;
+  const currentOwnerId = session?.user.id ?? null;
+  const feedAvailability =
+    run.activityId && run.ownerId
+      ? runFeedAvailability(
+          run.activityId,
+          run.ownerId,
+          currentOwnerId,
+          {
+            queueChecked:
+              checkedOwnerId === run.ownerId &&
+              currentOwnerId === run.ownerId,
+            syncStatus: activitySyncStatus,
+            syncError: activitySyncError,
+            queuedActivities: queued,
+          },
+        )
+      : {
+          enabled: false as const,
+          reason:
+            'Save a real GPS activity before posting a verified Run card.',
+        };
+  const activityQueued = !feedAvailability.enabled;
+  const feedDisabledReason = feedAvailability.reason ?? undefined;
+  const syncDetail =
+    !currentOwnerId || currentOwnerId !== run.ownerId
+      ? 'Sign in as the recording owner to upload'
+      : feedAvailability.reason === 'Checking saved activity'
+        ? 'Checking saved activity'
+        : feedAvailability.reason === 'Uploads unavailable—retry sync'
+          ? 'Uploads unavailable—retry sync'
+          : syncPresentation?.detail;
 
   useEffect(() => {
-    if (!run.activityId) return;
+    setCheckedOwnerId(null);
+    if (
+      !run.activityId ||
+      !run.ownerId ||
+      currentOwnerId !== run.ownerId
+    ) {
+      return;
+    }
     let active = true;
-    setQueueReady(false);
     void refreshQueue().finally(() => {
-      if (active) setQueueReady(true);
+      if (active) setCheckedOwnerId(run.ownerId);
     });
     return () => {
       active = false;
     };
     // Refresh once for this completed activity; live queue events update later.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run.activityId]);
+  }, [run.activityId, run.ownerId, currentOwnerId]);
 
   // size the 4:5 card to fit BOTH the width and the space left after the
   // header/mode-picker/buttons, so it never clips on short screens

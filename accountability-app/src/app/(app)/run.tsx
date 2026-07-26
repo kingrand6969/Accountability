@@ -31,10 +31,11 @@ import {
   clearTrackRecording,
   LOCATION_TASK_NAME,
   persistCompletedTrackRecording,
-  readPendingCompletedTrackRecording,
+  recoverTrackRecording,
   readTrackRecording,
   readTrackPoints,
   resetTrackPoints,
+  type TrackRecordingRecovery,
   type TrackRecordingIdentity,
 } from '../../activity/locationTask';
 import { type ActivityType } from '../../activity/api';
@@ -94,7 +95,7 @@ async function stopUpdatesIfRunning() {
 
 export default function ActivityTrack() {
   const router = useRouter();
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { width: W, height: H } = useWindowDimensions();
@@ -105,6 +106,9 @@ export default function ActivityTrack() {
   const [saving, setSaving] = useState(false);
   const [livePoints, setLivePoints] = useState<Pt[]>([]);
   const [pending, setPending] = useState<PendingSave | null>(null);
+  const [recoveryNotice, setRecoveryNotice] = useState<
+    'needs_owner' | 'owner_mismatch' | null
+  >(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   // shareable run card, shown after a successful save
   const [shareRun, setShareRun] = useState<FinishedRun | null>(null);
@@ -144,21 +148,12 @@ export default function ActivityTrack() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
     let active = true;
-    void readPendingCompletedTrackRecording()
-      .then((recording) => {
-        if (!active || !recording) return;
-        recordingRef.current = {
-          activityId: recording.activityId,
-          ownerId: recording.ownerId,
-          startedAt: recording.activity.started_at,
-        };
-        startedAtRef.current = recording.activity.started_at;
-        setType(recording.activity.type);
-        setDistance(recording.activity.distance_m);
-        setElapsed(recording.activity.duration_s);
-        setLivePoints(recording.activity.route);
-        setPending(recording);
+    void recoverTrackRecording(session?.user.id ?? null, 'run')
+      .then((recovery) => {
+        if (!active) return;
+        restoreRecovery(recovery);
       })
       .catch(() => {
         // Keep a recoverable raw blob untouched when local storage is busy.
@@ -166,7 +161,7 @@ export default function ActivityTrack() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [authLoading, session?.user.id]);
 
   // hide the floating tab bar while actually recording or sharing, so the run
   // stays immersive; show it (highlighted) in the idle pre-start state
@@ -189,6 +184,81 @@ export default function ActivityTrack() {
     loop.start();
     return () => loop.stop();
   }, [tracking, pulse]);
+
+  function startTrackingTimer() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(async () => {
+      setElapsed(
+        Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
+      );
+      try {
+        const pts = await readTrackPoints();
+        setLivePoints(pts);
+        setDistance(totalDistanceMeters(pts));
+      } catch {
+        // Keep the last safe in-memory view while local storage recovers.
+      }
+    }, 1000);
+  }
+
+  function restoreRecovery(recovery: TrackRecordingRecovery) {
+    if (
+      recovery.kind === 'needs_owner' ||
+      recovery.kind === 'owner_mismatch'
+    ) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+      recordingRef.current = null;
+      setTracking(false);
+      setPending(null);
+      setDistance(0);
+      setElapsed(0);
+      setLivePoints([]);
+      setRecoveryNotice(recovery.kind);
+      return;
+    }
+    if (recovery.kind === 'none') {
+      setRecoveryNotice(null);
+      return;
+    }
+    if (recovery.kind === 'completed') {
+      const recording = recovery.recording;
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+      recordingRef.current = {
+        activityId: recording.activityId,
+        ownerId: recording.ownerId,
+        startedAt: recording.activity.started_at,
+      };
+      startedAtRef.current = recording.activity.started_at;
+      setTracking(false);
+      setRecoveryNotice(null);
+      setType(recording.activity.type);
+      setDistance(recording.activity.distance_m);
+      setElapsed(recording.activity.duration_s);
+      setLivePoints(recording.activity.route);
+      setPending(recording);
+      return;
+    }
+
+    recordingRef.current = {
+      activityId: recovery.activityId,
+      ownerId: recovery.ownerId,
+      startedAt: recovery.startedAt,
+    };
+    startedAtRef.current = recovery.startedAt;
+    startMsRef.current = Date.parse(recovery.startedAt);
+    setRecoveryNotice(null);
+    setPending(null);
+    setType(recovery.type);
+    setLivePoints(recovery.points);
+    setDistance(totalDistanceMeters(recovery.points));
+    setElapsed(
+      Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
+    );
+    setTracking(true);
+    startTrackingTimer();
+  }
 
   async function onStart() {
     hapticImpact();
@@ -214,6 +284,25 @@ export default function ActivityTrack() {
       );
       return;
     }
+    try {
+      const existing = await recoverTrackRecording(ownerId, type);
+      if (existing.kind !== 'none') {
+        restoreRecovery(existing);
+        Alert.alert(
+          'Recording already saved',
+          existing.kind === 'owner_mismatch'
+            ? 'Sign in as the recording owner to recover it.'
+            : 'Your saved recording has been restored.',
+        );
+        return;
+      }
+    } catch {
+      Alert.alert(
+        'Could not check saved recording',
+        'Try again before starting a new activity.',
+      );
+      return;
+    }
     const fg = await Location.requestForegroundPermissionsAsync();
     if (fg.status !== 'granted') {
       Alert.alert('Location needed', 'Allow location access to track your activity.');
@@ -222,7 +311,7 @@ export default function ActivityTrack() {
     await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
     let recording: TrackRecordingIdentity;
     try {
-      recording = await beginTrackRecording(ownerId);
+      recording = await beginTrackRecording(ownerId, type);
     } catch {
       Alert.alert(
         'Could not save on this phone',
@@ -255,16 +344,7 @@ export default function ActivityTrack() {
       return;
     }
     setTracking(true);
-    timerRef.current = setInterval(async () => {
-      setElapsed(Math.round((Date.now() - startMsRef.current) / 1000));
-      try {
-        const pts = await readTrackPoints();
-        setLivePoints(pts);
-        setDistance(totalDistanceMeters(pts));
-      } catch {
-        // keep last value
-      }
-    }, 1000);
+    startTrackingTimer();
   }
 
   async function persist(p: PendingSave) {
@@ -472,6 +552,22 @@ export default function ActivityTrack() {
           </View>
         </View>
 
+        {recoveryNotice ? (
+          <View style={styles.recoveryNotice} accessibilityLiveRegion="polite">
+            <Ionicons name="shield-checkmark" size={18} color={LIME} />
+            <View style={styles.recoveryNoticeCopy}>
+              <Text style={styles.recoveryNoticeTitle}>
+                Recording saved safely
+              </Text>
+              <Text style={styles.recoveryNoticeDetail}>
+                {recoveryNotice === 'owner_mismatch'
+                  ? 'Sign in as the recording owner to recover it.'
+                  : 'Sign in to recover this recording.'}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* floating primary action */}
         {pending ? (
           <View style={styles.pendingRow}>
@@ -485,9 +581,22 @@ export default function ActivityTrack() {
             <Text style={styles.stopText}>{saving ? 'Saving…' : 'Stop & Save'}</Text>
           </Pressable>
         ) : (
-          <Pressable style={[styles.actionBtn, styles.startBtn]} onPress={onStart}>
+          <Pressable
+            style={[
+              styles.actionBtn,
+              styles.startBtn,
+              recoveryNotice && styles.actionDisabled,
+            ]}
+            onPress={onStart}
+            disabled={!!recoveryNotice}
+            accessibilityState={{ disabled: !!recoveryNotice }}
+          >
             <Ionicons name="play" size={20} color="#101319" />
-            <Text style={styles.startText}>Start {TYPES.find((t) => t.value === type)?.label}</Text>
+            <Text style={styles.startText}>
+              {recoveryNotice
+                ? 'Recovery required'
+                : `Start ${TYPES.find((t) => t.value === type)?.label}`}
+            </Text>
           </Pressable>
         )}
       </View>
@@ -611,6 +720,31 @@ const styles = StyleSheet.create({
   stopBtn: { backgroundColor: '#ef4444' },
   stopText: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
   pendingRow: { gap: 8 },
+  recoveryNotice: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(198,242,78,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,242,78,0.3)',
+  },
+  recoveryNoticeCopy: { flex: 1 },
+  recoveryNoticeTitle: {
+    color: '#fff',
+    fontFamily: font.bold,
+    fontSize: 13,
+  },
+  recoveryNoticeDetail: {
+    color: '#cbd5e1',
+    fontFamily: font.medium,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  actionDisabled: { opacity: 0.55 },
   retryBtn: { backgroundColor: LIME },
   retryText: { color: '#101319', fontFamily: font.extrabold, fontSize: 16 },
 });

@@ -18,6 +18,7 @@ type RecordingBlob = {
   activityId: string;
   ownerId: string;
   startedAt: string;
+  type: NewActivity['type'];
   points: Pt[];
   completed: NewActivity | null;
 };
@@ -26,6 +27,24 @@ export type TrackRecordingIdentity = Pick<
   RecordingBlob,
   'activityId' | 'ownerId' | 'startedAt'
 >;
+
+export type TrackRecordingRecovery =
+  | { kind: 'none' }
+  | { kind: 'needs_owner' }
+  | {
+      kind: 'owner_mismatch';
+      activityId: string;
+      ownerId: string;
+    }
+  | (TrackRecordingIdentity & {
+      kind: 'active';
+      type: NewActivity['type'];
+      points: Pt[];
+    })
+  | {
+      kind: 'completed';
+      recording: PendingRecordedActivity;
+    };
 
 export type LocationRecordingStorage = {
   getItem(key: string): Promise<string | null>;
@@ -63,14 +82,25 @@ export function createLocationRecordingStore(
     ...overrides,
   };
 
-  async function begin(ownerId: string): Promise<TrackRecordingIdentity> {
+  async function begin(
+    ownerId: string,
+    type: NewActivity['type'] = 'run',
+  ): Promise<TrackRecordingIdentity> {
     if (!ownerId.trim()) throw new Error('A signed-in owner is required');
+    const [storedSession, storedPoints] = await Promise.all([
+      options.storage.getItem(SESSION_KEY),
+      options.storage.getItem(POINTS_KEY),
+    ]);
+    if (storedSession !== null || storedPoints !== null) {
+      throw new Error('A saved recording already exists');
+    }
     const blob: RecordingBlob = {
       schema: 2,
       session: options.createSessionId(),
       activityId: options.createActivityId(),
       ownerId,
       startedAt: options.nowIso(),
+      type,
       points: [],
       completed: null,
     };
@@ -84,6 +114,7 @@ export function createLocationRecordingStore(
 
   async function readRecording(
     legacyOwnerId?: string,
+    legacyType: NewActivity['type'] = 'run',
   ): Promise<(TrackRecordingIdentity & { points: Pt[] }) | null> {
     const [session, raw] = await Promise.all([
       options.storage.getItem(SESSION_KEY),
@@ -97,23 +128,74 @@ export function createLocationRecordingStore(
     }
 
     if (
-      !session ||
-      (parsed.session && parsed.session !== session) ||
+      (session && parsed.session && parsed.session !== session) ||
       !legacyOwnerId?.trim()
     ) {
       return null;
     }
+    const migratedSession =
+      parsed.session || session || options.createSessionId();
     const migrated: RecordingBlob = {
       schema: 2,
-      session,
+      session: migratedSession,
       activityId: options.createActivityId(),
       ownerId: legacyOwnerId,
       startedAt: options.nowIso(),
+      type: legacyType,
       points: parsed.points,
       completed: null,
     };
     await options.storage.setItem(POINTS_KEY, JSON.stringify(migrated));
+    if (session !== migratedSession) {
+      await options.storage.setItem(SESSION_KEY, migratedSession);
+    }
     return { ...identityOf(migrated), points: migrated.points };
+  }
+
+  async function recover(
+    currentOwnerId: string | null,
+    legacyType: NewActivity['type'] = 'run',
+  ): Promise<TrackRecordingRecovery> {
+    const raw = await options.storage.getItem(POINTS_KEY);
+    const parsed = parseStoredBlob(raw);
+    if (!parsed) return { kind: 'none' };
+
+    if (parsed.kind === 'legacy') {
+      if (!currentOwnerId) return { kind: 'needs_owner' };
+      const migrated = await readRecording(currentOwnerId, legacyType);
+      if (!migrated) return { kind: 'none' };
+      return {
+        kind: 'active',
+        ...migrated,
+        type: legacyType,
+      };
+    }
+
+    // Persist the normalized schema (including `type`) before returning it.
+    await options.storage.setItem(POINTS_KEY, JSON.stringify(parsed.blob));
+    if (!currentOwnerId || parsed.blob.ownerId !== currentOwnerId) {
+      return {
+        kind: 'owner_mismatch',
+        activityId: parsed.blob.activityId,
+        ownerId: parsed.blob.ownerId,
+      };
+    }
+    if (parsed.blob.completed) {
+      return {
+        kind: 'completed',
+        recording: {
+          activityId: parsed.blob.activityId,
+          ownerId: parsed.blob.ownerId,
+          activity: parsed.blob.completed,
+        },
+      };
+    }
+    return {
+      kind: 'active',
+      ...identityOf(parsed.blob),
+      type: parsed.blob.type,
+      points: parsed.blob.points,
+    };
   }
 
   async function readPoints(): Promise<Pt[]> {
@@ -146,6 +228,7 @@ export function createLocationRecordingStore(
 
     const completed: RecordingBlob = {
       ...parsed.blob,
+      type: recording.activity.type,
       points: recording.activity.route,
       completed: recording.activity,
     };
@@ -189,6 +272,7 @@ export function createLocationRecordingStore(
 
   return {
     begin,
+    recover,
     readRecording,
     readPoints,
     persistCompleted,
@@ -242,14 +326,23 @@ if (Platform.OS !== 'web') {
 
 export async function beginTrackRecording(
   ownerId: string,
+  type: NewActivity['type'] = 'run',
 ): Promise<TrackRecordingIdentity> {
-  return defaultRecordingStore.begin(ownerId);
+  return defaultRecordingStore.begin(ownerId, type);
+}
+
+export async function recoverTrackRecording(
+  currentOwnerId: string | null,
+  legacyType: NewActivity['type'] = 'run',
+): Promise<TrackRecordingRecovery> {
+  return defaultRecordingStore.recover(currentOwnerId, legacyType);
 }
 
 export async function readTrackRecording(
   legacyOwnerId?: string,
+  legacyType: NewActivity['type'] = 'run',
 ): Promise<(TrackRecordingIdentity & { points: Pt[] }) | null> {
-  return defaultRecordingStore.readRecording(legacyOwnerId);
+  return defaultRecordingStore.readRecording(legacyOwnerId, legacyType);
 }
 
 export async function persistCompletedTrackRecording(
@@ -318,6 +411,14 @@ function parseStoredBlob(
           activityId: value.activityId,
           ownerId: value.ownerId,
           startedAt: value.startedAt,
+          type:
+            value.type === 'run' ||
+            value.type === 'walk' ||
+            value.type === 'ride'
+              ? value.type
+              : value.completed && isNewActivity(value.completed)
+                ? value.completed.type
+                : 'run',
           points,
           completed: value.completed,
         },

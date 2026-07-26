@@ -3,6 +3,7 @@ import { createActivitySynchronizer } from './activitySynchronizer';
 import { ActivityUploadError } from './activityUpload';
 import {
   completeRecordedActivity,
+  runFeedAvailability,
   runSyncPresentation,
   type PendingRecordedActivity,
 } from './runCompletion';
@@ -262,6 +263,111 @@ describe('location recording persistence', () => {
 
     await expect(restarted.readPendingCompleted()).resolves.toEqual(pending());
   });
+
+  it('restores an active schema-2 recording and refuses to overwrite it', async () => {
+    const storage = memoryStorage();
+    const firstProcess = createLocationRecordingStore({
+      storage,
+      createActivityId: () => ACTIVITY_ID,
+      createSessionId: () => 'session-1',
+      nowIso: () => STARTED_AT,
+    });
+    await firstProcess.begin(OWNER_A, 'walk');
+
+    const restarted = createLocationRecordingStore({ storage });
+
+    await expect(restarted.recover(OWNER_A, 'run')).resolves.toMatchObject({
+      kind: 'active',
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      type: 'walk',
+      points: [],
+    });
+    await expect(restarted.begin(OWNER_A, 'run')).rejects.toThrow(
+      'A saved recording already exists',
+    );
+  });
+
+  it('migrates legacy GPS once and restores it as an active recording', async () => {
+    const route = [{ lat: -31.9523, lon: 115.8613 }];
+    const storage = memoryStorage({
+      'activity:session': 'legacy-session',
+      'activity:points': JSON.stringify(route),
+    });
+    const createId = jest.fn(() => ACTIVITY_ID);
+    const store = createLocationRecordingStore({
+      storage,
+      createActivityId: createId,
+      nowIso: () => STARTED_AT,
+    });
+
+    await expect(store.recover(OWNER_A, 'ride')).resolves.toMatchObject({
+      kind: 'active',
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      type: 'ride',
+      points: route,
+    });
+    await expect(store.recover(OWNER_A, 'run')).resolves.toMatchObject({
+      kind: 'active',
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      type: 'ride',
+      points: route,
+    });
+    expect(createId).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(storage.values.get('activity:points')!)).toMatchObject({
+      schema: 2,
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      type: 'ride',
+    });
+  });
+
+  it('restores the pre-session point-array format', async () => {
+    const route = [{ lat: -31.9523, lon: 115.8613 }];
+    const storage = memoryStorage({
+      'activity:points': JSON.stringify(route),
+    });
+    const store = createLocationRecordingStore({
+      storage,
+      createActivityId: () => ACTIVITY_ID,
+      createSessionId: () => 'migrated-session',
+      nowIso: () => STARTED_AT,
+    });
+
+    await expect(store.recover(OWNER_A, 'run')).resolves.toMatchObject({
+      kind: 'active',
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      points: route,
+    });
+    expect(storage.values.get('activity:session')).toBe('migrated-session');
+  });
+
+  it('redacts owner-mismatched recovery and still prevents Start overwrite', async () => {
+    const storage = memoryStorage();
+    const firstProcess = createLocationRecordingStore({
+      storage,
+      createActivityId: () => ACTIVITY_ID,
+      createSessionId: () => 'session-1',
+      nowIso: () => STARTED_AT,
+    });
+    await firstProcess.begin(OWNER_A, 'run');
+
+    const restarted = createLocationRecordingStore({ storage });
+    const recovery = await restarted.recover(OWNER_B, 'walk');
+
+    expect(recovery).toEqual({
+      kind: 'owner_mismatch',
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+    });
+    expect(recovery).not.toHaveProperty('points');
+    await expect(restarted.begin(OWNER_B, 'walk')).rejects.toThrow(
+      'A saved recording already exists',
+    );
+  });
 });
 
 describe('run sync presentation', () => {
@@ -295,6 +401,68 @@ describe('run sync presentation', () => {
     ).toMatchObject({
       title: 'Saved on phone',
       detail: 'Uploads automatically when online',
+    });
+  });
+});
+
+describe('fail-closed Feed availability', () => {
+  const healthy = {
+    queueChecked: true,
+    syncStatus: 'idle' as const,
+    syncError: null,
+    queuedActivities: [] as QueuedActivity[],
+  };
+
+  it('disables Feed after signout or an account switch', () => {
+    expect(
+      runFeedAvailability(ACTIVITY_ID, OWNER_A, null, healthy),
+    ).toEqual({
+      enabled: false,
+      reason: 'Sign in as the recording owner to post',
+    });
+    expect(
+      runFeedAvailability(ACTIVITY_ID, OWNER_A, OWNER_B, healthy),
+    ).toEqual({
+      enabled: false,
+      reason: 'Sign in as the recording owner to post',
+    });
+  });
+
+  it('disables Feed while queue authority is unknown or sync has failed', () => {
+    expect(
+      runFeedAvailability(ACTIVITY_ID, OWNER_A, OWNER_A, {
+        ...healthy,
+        queueChecked: false,
+      }),
+    ).toEqual({
+      enabled: false,
+      reason: 'Checking saved activity',
+    });
+    expect(
+      runFeedAvailability(ACTIVITY_ID, OWNER_A, OWNER_A, {
+        ...healthy,
+        syncStatus: 'error',
+        syncError: 'Offline activity recovery failed.',
+      }),
+    ).toEqual({
+      enabled: false,
+      reason: 'Uploads unavailable—retry sync',
+    });
+  });
+
+  it('enables Feed only for the exact owner with a healthy authoritative absence', () => {
+    expect(
+      runFeedAvailability(ACTIVITY_ID, OWNER_A, OWNER_A, healthy),
+    ).toEqual({ enabled: true, reason: null });
+
+    expect(
+      runFeedAvailability(ACTIVITY_ID, OWNER_A, OWNER_A, {
+        ...healthy,
+        queuedActivities: [queued()],
+      }),
+    ).toEqual({
+      enabled: false,
+      reason: 'Uploads automatically when online',
     });
   });
 });

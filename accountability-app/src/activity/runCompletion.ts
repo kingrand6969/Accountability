@@ -86,3 +86,53 @@ export function runSyncPresentation(
     feedDisabledReason: null,
   };
 }
+
+export type RunFeedAvailabilityInput = {
+  queueChecked: boolean;
+  syncStatus: 'recovering' | 'idle' | 'syncing' | 'error';
+  syncError: string | null;
+  queuedActivities: readonly QueuedActivity[];
+};
+
+export type RunFeedAvailability =
+  | { enabled: true; reason: null }
+  | { enabled: false; reason: string };
+
+export function runFeedAvailability(
+  activityId: string,
+  recordingOwnerId: string,
+  currentOwnerId: string | null,
+  input: RunFeedAvailabilityInput,
+): RunFeedAvailability {
+  if (!currentOwnerId || currentOwnerId !== recordingOwnerId) {
+    return {
+      enabled: false,
+      reason: 'Sign in as the recording owner to post',
+    };
+  }
+  if (input.syncStatus === 'error' || input.syncError) {
+    return {
+      enabled: false,
+      reason: 'Uploads unavailable—retry sync',
+    };
+  }
+  if (!input.queueChecked || input.syncStatus === 'recovering') {
+    return {
+      enabled: false,
+      reason: 'Checking saved activity',
+    };
+  }
+
+  const matching = input.queuedActivities.find(
+    (entry) =>
+      entry.id === activityId &&
+      entry.ownerId === recordingOwnerId,
+  );
+  if (matching) {
+    return {
+      enabled: false,
+      reason: detailFor(matching.status),
+    };
+  }
+  return { enabled: true, reason: null };
+}
