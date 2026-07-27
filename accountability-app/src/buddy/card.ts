@@ -8,6 +8,8 @@ export type BuddyCard = {
   mode?: 'profile' | 'custom';
   headline?: string;
   about?: string;
+  /** Public, owner-selected signals that help a potential buddy judge fit. */
+  traits?: string[];
   // what the owner chooses to display on their card
   show_rank?: boolean;
   rank_name?: string; // snapshotted at save time (rank only climbs)

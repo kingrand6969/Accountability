@@ -1,24 +1,32 @@
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   getMyBuddyCard,
   saveMyBuddyCard,
-  getBuddyStats,
-  getBoardRank,
   getCardMetrics,
-  type BoardRank,
   type BuddyCard,
-  type BuddyStats,
   type CardMetrics,
 } from '../buddy/card';
-import { BuddyCardFace } from '../buddy/BuddyCardFace';
+import { PublicBuddyCardFace } from '../buddy/PublicBuddyCardFace';
 import { getRank } from '../achievements/api';
 import { getMyProfile } from '../profiles/api';
 import { supabase } from '../lib/supabase';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
+
+const TRAITS = [
+  'Encouraging',
+  'Consistent',
+  'Goal focused',
+  'Morning training',
+  'Running',
+  'Gym focused',
+  'Competitive',
+  'Beginner friendly',
+  'Daily check-ins',
+] as const;
 
 export default function BuddyCardEdit() {
   const router = useRouter();
@@ -28,8 +36,6 @@ export default function BuddyCardEdit() {
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myArea, setMyArea] = useState<string | null>(null);
   const [myBio, setMyBio] = useState<string | null>(null);
-  const [myStats, setMyStats] = useState<BuddyStats | null>(null);
-  const [myBoardRank, setMyBoardRank] = useState<BoardRank | null>(null);
   const [myMetrics, setMyMetrics] = useState<CardMetrics | null>(null);
   const [myRankName, setMyRankName] = useState<string | null>(null);
   const [myMedals, setMyMedals] = useState<number | null>(null);
@@ -49,8 +55,6 @@ export default function BuddyCardEdit() {
     supabase.auth.getUser().then(({ data }) => {
       const uid = data.user?.id;
       if (!uid) return;
-      getBuddyStats(uid).then(setMyStats).catch(() => {});
-      getBoardRank(uid).then(setMyBoardRank).catch(() => {});
       getCardMetrics(uid).then(setMyMetrics).catch(() => {});
     });
     getRank()
@@ -113,6 +117,40 @@ export default function BuddyCardEdit() {
         multiline
         maxLength={400}
       />
+      <Text style={styles.label}>Your accountability style</Text>
+      <Text style={styles.traitHint}>Choose up to three traits visitors should know.</Text>
+      <View style={styles.traitGrid}>
+        {TRAITS.map((trait) => {
+          const selected = card.traits?.includes(trait) ?? false;
+          const full = (card.traits?.length ?? 0) >= 3;
+          return (
+            <Pressable
+              key={trait}
+              onPress={() =>
+                setCard((current) => ({
+                  ...current,
+                  traits: selected
+                    ? (current.traits ?? []).filter((item) => item !== trait)
+                    : [...(current.traits ?? []), trait].slice(0, 3),
+                }))
+              }
+              disabled={!selected && full}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected, disabled: !selected && full }}
+              style={({ pressed }) => [
+                styles.trait,
+                selected && styles.traitSelected,
+                !selected && full && styles.traitDisabled,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.traitText, selected && styles.traitTextSelected]}>
+                {trait}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <Text style={styles.hint}>
         Your card shows your rank, medals and stats automatically. Non-buddies also see any posts
         you marked “Show on Buddy Card”.
@@ -121,15 +159,13 @@ export default function BuddyCardEdit() {
       {/* live preview — EXACTLY what a visitor sees (same component) */}
       <Text style={styles.sectionTitle}>How visitors see you</Text>
       <View style={styles.card}>
-        <BuddyCardFace
+        <PublicBuddyCardFace
           name={myName}
           area={myArea}
           avatar={myAvatar}
           memberSince="…"
           headline={headline}
           card={previewCard}
-          stats={myStats}
-          boardRank={myBoardRank}
           metrics={myMetrics}
           onPressMedals={() => router.push('/achievements' as never)}
         />
@@ -160,6 +196,23 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   hint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 4 },
+  traitHint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  traitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  trait: {
+    minHeight: 44,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  traitSelected: { borderColor: colors.primary, backgroundColor: '#eff6ff' },
+  traitDisabled: { opacity: 0.42 },
+  traitText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 12.5 },
+  traitTextSelected: { color: colors.primary },
+  pressed: { opacity: 0.75 },
   label: {
     fontSize: 13.5,
     fontFamily: font.semibold,

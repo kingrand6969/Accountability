@@ -25,6 +25,7 @@ import {
   type CardPost,
 } from '../../buddy/card';
 import { BuddyCardFace } from '../../buddy/BuddyCardFace';
+import { PublicBuddyCardFace } from '../../buddy/PublicBuddyCardFace';
 import { sendRequest, listBuddies, blockUser, reportUser } from '../../buddy/api';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
@@ -175,7 +176,8 @@ export default function BuddyCardScreen() {
         }}
       />
       <View style={styles.card}>
-        <BuddyCardFace
+        {isBuddy ? (
+          <BuddyCardFace
           name={view.name}
           area={view.area}
           avatar={view.avatar}
@@ -189,8 +191,31 @@ export default function BuddyCardScreen() {
           onPressMedals={() =>
             router.push({ pathname: '/buddy-medals/[id]', params: { id: id! } } as never)
           }
-        />
+          />
+        ) : (
+          <PublicBuddyCardFace
+            name={view.name}
+            area={view.area}
+            avatar={view.avatar}
+            lastActive={view.last_active_at}
+            headline={headline}
+            card={view.card}
+            metrics={metrics}
+            onPressMedals={() =>
+              router.push({ pathname: '/buddy-medals/[id]', params: { id: id! } } as never)
+            }
+          />
+        )}
       </View>
+
+      {!isBuddy ? (
+        <View style={styles.privacyRow}>
+          <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+          <Text style={styles.privacyText}>
+            {authorLabel(view.name)} chose everything shown on this card.
+          </Text>
+        </View>
+      ) : null}
 
       {/* profile info below */}
       <View style={styles.aboutCard}>
@@ -203,7 +228,7 @@ export default function BuddyCardScreen() {
       {/* posts — buddies get a fuller feed, non-buddies only the public ones */}
       {
         <View style={styles.aboutCard}>
-          <Text style={styles.aboutTitle}>{isBuddy ? 'Recent posts' : 'Posts'}</Text>
+          <Text style={styles.aboutTitle}>{isBuddy ? 'Recent posts' : 'Shared publicly'}</Text>
           {posts === null ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
           ) : posts.length === 0 ? (
@@ -218,18 +243,35 @@ export default function BuddyCardScreen() {
                 <Pressable
                   key={p.id}
                   onPress={() => router.push({ pathname: '/post/[id]', params: { id: p.id } })}
-                  style={({ pressed }) => [styles.postRow, pressed && { opacity: 0.75 }]}
+                  style={({ pressed }) => [
+                    isBuddy ? styles.postRow : styles.publicPostCard,
+                    pressed && { opacity: 0.75 },
+                  ]}
                   accessibilityRole="button"
                   accessibilityLabel="Open post"
                 >
                   {p.image_url ? (
-                    <Image source={{ uri: p.image_url }} style={styles.postThumb} />
+                    <Image
+                      source={{ uri: p.image_url }}
+                      style={isBuddy ? styles.postThumb : styles.publicPostImage}
+                    />
                   ) : (
-                    <View style={[styles.postThumb, styles.postThumbFallback]}>
+                    <View
+                      style={[
+                        isBuddy ? styles.postThumb : styles.publicPostImage,
+                        styles.postThumbFallback,
+                      ]}
+                    >
                       <Ionicons name="chatbox-ellipses-outline" size={20} color={colors.textFaint} />
                     </View>
                   )}
-                  <View style={{ flex: 1 }}>
+                  <View style={isBuddy ? { flex: 1 } : styles.publicPostCopy}>
+                    {!isBuddy ? (
+                      <View style={styles.publicPostChip}>
+                        <Ionicons name="globe-outline" size={12} color={colors.primary} />
+                        <Text style={styles.publicPostChipText}>PUBLIC POST</Text>
+                      </View>
+                    ) : null}
                     <Text style={styles.postBody} numberOfLines={2}>
                       {p.body || 'Photo'}
                     </Text>
@@ -261,14 +303,21 @@ export default function BuddyCardScreen() {
       ) : (
         <>
           <Button
-            title={sent ? 'Request sent ✓' : 'Connect as buddies'}
+            title={sent ? 'Request sent ✓' : `Connect with ${authorLabel(view.name)}`}
             onPress={onConnect}
             loading={sending}
             disabled={sent}
+            icon={
+              sent ? (
+                <Ionicons name="checkmark-circle-outline" size={19} color="#fff" />
+              ) : (
+                <Ionicons name="person-add-outline" size={19} color="#fff" />
+              )
+            }
             style={styles.connect}
           />
           <Text style={styles.hint}>
-            You&apos;ll only be linked if they accept — then you can chat.
+            {authorLabel(view.name)} must approve before you can message or see buddy-only posts.
           </Text>
         </>
       )}
@@ -294,6 +343,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     ...shadow.card,
   },
+  privacyRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  privacyText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontFamily: font.medium,
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
   aboutTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text, marginBottom: 6 },
   aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: colors.textSecondary },
   postRow: {
@@ -304,6 +368,37 @@ const styles = StyleSheet.create({
   },
   postThumb: { width: 48, height: 48, borderRadius: radius.sm, backgroundColor: colors.surface },
   postThumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  publicPostCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.card,
+    marginTop: spacing.sm,
+  },
+  publicPostImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: colors.surface,
+  },
+  publicPostCopy: { padding: spacing.md },
+  publicPostChip: {
+    alignSelf: 'flex-start',
+    minHeight: 26,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    backgroundColor: '#eff6ff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 6,
+  },
+  publicPostChipText: {
+    color: colors.primary,
+    fontFamily: font.extrabold,
+    fontSize: 9.5,
+    letterSpacing: 0.6,
+  },
   postBody: { fontFamily: font.medium, fontSize: 13.5, color: colors.text, lineHeight: 19 },
   postTime: { fontFamily: font.regular, fontSize: 11.5, color: colors.textMuted, marginTop: 1 },
   postNote: {
