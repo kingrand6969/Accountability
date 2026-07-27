@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addPostTags, createPost } from '../feed/api';
+import { addPostTags, createPost, getPost, updatePost, updatePostAudience } from '../feed/api';
 import { createEvent } from '../events/api';
 import { toIsoFromLocal, toLocalDateString } from '../timeline/datetime';
 import { uploadPostImage } from '../feed/uploadPostImage';
@@ -29,11 +29,13 @@ import { showToast } from '../ui/Toast';
 import { authorLabel, taggedLabel } from '../feed/format';
 import { Avatar } from '../feed/Avatar';
 import { colors, font, radius, spacing } from '../ui/theme';
+import type { PostAudience } from '../feed/types';
 
 export default function Compose() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ photo?: string; event?: string; text?: string }>();
+  const params = useLocalSearchParams<{ photo?: string; event?: string; text?: string; edit?: string }>();
+  const editingId = typeof params.edit === 'string' ? params.edit : null;
 
   const [me, setMe] = useState<{ name: string | null; avatar: string | null }>({
     name: null,
@@ -46,6 +48,7 @@ export default function Compose() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [keepInMemories, setKeepInMemories] = useState(false);
   const [showOnCard, setShowOnCard] = useState(false);
+  const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [buddies, setBuddies] = useState<Buddy[]>([]);
   const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
@@ -60,6 +63,17 @@ export default function Compose() {
     getMyProfile()
       .then((p) => setMe({ name: p?.display_name ?? null, avatar: p?.avatar_url ?? null }))
       .catch(() => {});
+    if (editingId) {
+      getPost(editingId)
+        .then((post) => {
+          if (!post) throw new Error('Post not found.');
+          setBody(post.body);
+          setPreviewUri(post.image_url);
+          if (post.audience !== 'group') setAudience(post.audience);
+        })
+        .catch((e) => Alert.alert('Could not edit post', String((e as Error).message ?? e)));
+      return;
+    }
     if (params.photo === '1') onPickPhoto();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -126,12 +140,27 @@ export default function Compose() {
     });
   }
 
-  const canPost = eventOpen
+  const canPost = editingId
+    ? body.trim().length > 0 && !posting
+    : eventOpen
     ? evTitle.trim().length >= 3 && !posting
     : (body.trim().length > 0 || !!pickedBase64) && !posting;
 
   async function onPost() {
     if (!canPost) return;
+    if (editingId) {
+      setPosting(true);
+      try {
+        await updatePost(editingId, body.trim());
+        await updatePostAudience(editingId, audience);
+        showToast('Post updated');
+        router.back();
+      } catch (e) {
+        Alert.alert('Could not update post', String((e as Error).message ?? e));
+        setPosting(false);
+      }
+      return;
+    }
     if (eventOpen) {
       setPosting(true);
       try {
@@ -158,7 +187,10 @@ export default function Compose() {
     try {
       let imageUrl: string | null = null;
       if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
-      const postId = await createPost(postedText, imageUrl, null, null, null, showOnCard);
+      const postId = await createPost(postedText, imageUrl, null, null, null, showOnCard, {
+        audience,
+        postType: imageUrl ? 'photo' : 'post',
+      });
       if (tagIds.length > 0) await addPostTags(postId, tagIds).catch(() => {});
       if (keep && postedImageUri) {
         try {
@@ -195,7 +227,7 @@ export default function Compose() {
         >
           <Ionicons name="close" size={26} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>{eventOpen ? 'Announce event' : 'New post'}</Text>
+        <Text style={styles.title}>{editingId ? 'Edit post' : eventOpen ? 'Announce event' : 'New post'}</Text>
         <Pressable
           onPress={onPost}
           disabled={!canPost}
@@ -209,7 +241,7 @@ export default function Compose() {
           {posting ? (
             <ActivityIndicator size="small" color={colors.onPrimary} />
           ) : (
-            <Text style={styles.postBtnText}>{eventOpen ? 'Announce' : 'Post'}</Text>
+            <Text style={styles.postBtnText}>{editingId ? 'Save' : eventOpen ? 'Announce' : 'Post'}</Text>
           )}
         </Pressable>
       </View>
@@ -223,9 +255,29 @@ export default function Compose() {
           <Avatar url={me.avatar} name={me.name} size={44} />
           <View style={{ flex: 1 }}>
             <Text style={styles.author}>{authorLabel(me.name)}</Text>
-            <View style={styles.privacyChip}>
-              <Ionicons name="earth" size={12} color={colors.textMuted} />
-              <Text style={styles.privacyText}>Public</Text>
+            <View style={styles.audiencePicker} accessibilityRole="radiogroup">
+              {(['buddies', 'public'] as const).map((value) => (
+                <Pressable
+                  key={value}
+                  onPress={() => {
+                    setAudience(value);
+                    if (value === 'buddies') setShowOnCard(false);
+                  }}
+                  style={[styles.privacyChip, audience === value && styles.privacyChipActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: audience === value }}
+                  accessibilityLabel={value === 'buddies' ? 'Buddies only' : 'Public, also appears in Discover'}
+                >
+                  <Ionicons
+                    name={value === 'buddies' ? 'people' : 'earth'}
+                    size={12}
+                    color={audience === value ? colors.primary : colors.textMuted}
+                  />
+                  <Text style={[styles.privacyText, audience === value && styles.privacyTextActive]}>
+                    {value === 'buddies' ? 'Buddies' : 'Public'}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
           </View>
         </View>
@@ -241,9 +293,14 @@ export default function Compose() {
         />
 
         {/* per-post grant: lets non-buddies see this post on your buddy card */}
-        <Pressable
+        {!editingId ? <Pressable
           style={({ pressed }) => [styles.cardOptRow, pressed && styles.pressed]}
-          onPress={() => setShowOnCard((v) => !v)}
+          onPress={() => {
+            setShowOnCard((v) => {
+              if (!v) setAudience('public');
+              return !v;
+            });
+          }}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: showOnCard }}
           accessibilityLabel="Show on Buddy Card"
@@ -258,23 +315,23 @@ export default function Compose() {
               Show on Buddy Card
             </Text>
             <Text style={styles.cardOptHint}>
-              People who aren&apos;t your buddy yet can see this post on your card
+              This makes the post Public and may show it to people viewing your card
             </Text>
           </View>
-        </Pressable>
+        </Pressable> : null}
 
         {previewUri ? (
           <View style={styles.previewWrap}>
             <Image source={{ uri: previewUri }} style={styles.preview} resizeMode="cover" />
-            <Pressable
+            {!editingId ? <Pressable
               style={styles.previewRemove}
               onPress={clearPhoto}
               hitSlop={8}
               accessibilityLabel="Remove photo"
             >
               <Ionicons name="close" size={15} color="#fff" />
-            </Pressable>
-            <View style={styles.photoOpts}>
+            </Pressable> : null}
+            {!editingId ? <View style={styles.photoOpts}>
               <Pressable
                 style={({ pressed }) => [styles.optRow, pressed && styles.pressed]}
                 onPress={() => setKeepInMemories((v) => !v)}
@@ -308,7 +365,7 @@ export default function Compose() {
                     : 'Tag buddies'}
                 </Text>
               </Pressable>
-            </View>
+            </View> : null}
           </View>
         ) : null}
 
@@ -473,18 +530,23 @@ const styles = StyleSheet.create({
   body: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   author: { fontSize: 16, fontFamily: font.bold, color: colors.text },
+  audiencePicker: { flexDirection: 'row', gap: 6, marginTop: 4 },
   privacyChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     alignSelf: 'flex-start',
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    marginTop: 3,
+    minHeight: 44,
   },
+  privacyChipActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   privacyText: { fontSize: 12, fontFamily: font.semibold, color: colors.textMuted },
+  privacyTextActive: { color: colors.primary },
   input: {
     fontSize: 19,
     lineHeight: 26,

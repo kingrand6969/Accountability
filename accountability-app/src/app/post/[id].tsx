@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -162,8 +161,8 @@ export default function PostDetail() {
         ListEmptyComponent={
           <EmptyState
             icon="chatbubble-ellipses-outline"
-            title="No comments yet"
-            subtitle="Say something supportive!"
+            title={`Be the first to encourage ${authorLabel(post.author_name)}`}
+            subtitle="A little support can keep a streak going."
           />
         }
         renderItem={({ item }) => (
@@ -182,7 +181,7 @@ export default function PostDetail() {
       <View style={styles.inputBar}>
         <TextInput
           style={styles.input}
-          placeholder="Add a comment…"
+          placeholder="Write an encouraging comment…"
           placeholderTextColor={colors.textFaint}
           value={text}
           onChangeText={setText}
@@ -197,6 +196,8 @@ export default function PostDetail() {
             pressed && !(!text.trim() || sending) && styles.pressed,
           ]}
           accessibilityLabel="Send comment"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !text.trim() || sending, busy: sending }}
         >
           {sending ? (
             <ActivityIndicator color={colors.onPrimary} />
@@ -223,9 +224,9 @@ const styles = StyleSheet.create({
   post: { gap: 10, marginBottom: spacing.sm },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   menuBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',

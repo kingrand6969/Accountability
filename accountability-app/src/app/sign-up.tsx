@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Link, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
@@ -10,6 +10,8 @@ import { recordConsent } from '../auth/consent';
 import { updateMyProfile } from '../profiles/api';
 import { MIN_AGE } from '../legal/content';
 import { AuthShell } from '../ui/AuthShell';
+import { AuthField } from '../ui/AuthField';
+import { DateOfBirthField } from '../ui/DateOfBirthField';
 import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
 import { colors, font, radius, spacing } from '../ui/theme';
@@ -20,175 +22,225 @@ export default function SignUp() {
   const [birthday, setBirthday] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [agree, setAgree] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [birthdayError, setBirthdayError] = useState('');
+  const [consentError, setConsentError] = useState('');
+  const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function onSignUp() {
-    const emailError = validateEmail(email);
-    const passwordError = validatePassword(password);
-    if (emailError || passwordError) {
-      Alert.alert('Check your details', emailError ?? passwordError ?? '');
-      return;
-    }
-    const bdError = validateBirthday(birthday);
-    if (!birthday.trim() || bdError) {
-      Alert.alert('Date of birth', bdError ?? 'Please enter your date of birth (YYYY-MM-DD).');
-      return;
-    }
+    const nextEmailError = validateEmail(email) ?? '';
+    const nextPasswordError = validatePassword(password) ?? '';
+    const rawBirthdayError = birthday.trim() ? validateBirthday(birthday) : null;
     const age = ageFromBirthday(birthday);
-    if (age === null || age < MIN_AGE) {
-      Alert.alert('Sorry', `You must be ${MIN_AGE} or older to use AccountAbility.`);
-      return;
-    }
-    if (!agree) {
-      Alert.alert('One more thing', 'Please agree to the Terms of Service and Privacy Policy to continue.');
-      return;
-    }
+    const nextBirthdayError = !birthday.trim()
+      ? 'Choose your date of birth.'
+      : rawBirthdayError
+        ? rawBirthdayError
+        : age === null || age < MIN_AGE
+          ? `You must be ${MIN_AGE} or older to use AccountAbility.`
+          : '';
+    const nextConsentError = agree
+      ? ''
+      : 'Please agree to the Terms of Service and Privacy Policy to continue.';
+
+    setEmailError(nextEmailError);
+    setPasswordError(nextPasswordError);
+    setBirthdayError(nextBirthdayError);
+    setConsentError(nextConsentError);
+    setFormError('');
+    if (nextEmailError || nextPasswordError || nextBirthdayError || nextConsentError) return;
+
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
     setBusy(false);
     if (error) {
-      Alert.alert('Could not sign up', authErrorMessage(error.message));
+      setFormError(authErrorMessage(error.message));
       return;
     }
     if (data.session) {
-      // Email confirmation is off → account is active immediately.
       await updateMyProfile({ birthday: birthday.trim() }).catch(() => {});
       await recordConsent();
     } else {
-      // Confirmation required → verify the code, then we save the birthday there.
       router.push({ pathname: '/verify-email', params: { email: email.trim(), birthday: birthday.trim() } });
     }
   }
 
   return (
-    <AuthShell>
-      <Text style={styles.title}>Create your account</Text>
-      <Text style={styles.sub}>Start building your streak with people who keep you honest.</Text>
+    <AuthShell glass>
+      <View style={styles.heading}>
+        <Text style={styles.title}>Create your account</Text>
+        <Text style={styles.sub}>Build your first streak with people who keep you honest.</Text>
+      </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor={colors.textFaint}
+      {formError ? (
+        <View style={styles.errorBanner} accessibilityLiveRegion="assertive">
+          <Ionicons name="alert-circle-outline" size={19} color="#b91c1c" />
+          <Text style={styles.errorBannerText}>{formError}</Text>
+        </View>
+      ) : null}
+
+      <AuthField
+        label="Email"
+        icon="mail-outline"
+        placeholder="you@example.com"
         autoCapitalize="none"
         keyboardType="email-address"
         autoComplete="email"
         textContentType="emailAddress"
         value={email}
-        onChangeText={setEmail}
+        error={emailError}
+        onChangeText={(value) => {
+          setEmail(value);
+          if (emailError) setEmailError('');
+          if (formError) setFormError('');
+        }}
       />
 
-      <View style={styles.pwWrap}>
-        <TextInput
-          style={styles.pwInput}
-          placeholder="Password (8+ characters)"
-          placeholderTextColor={colors.textFaint}
-          secureTextEntry={!showPw}
-          autoComplete="new-password"
-          textContentType="newPassword"
-          value={password}
-          onChangeText={setPassword}
-        />
-        <Pressable onPress={() => setShowPw((s) => !s)} hitSlop={8} style={styles.eye} accessibilityLabel={showPw ? 'Hide password' : 'Show password'}>
-          <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
-        </Pressable>
+      <AuthField
+        label="Password"
+        icon="lock-closed-outline"
+        placeholder="At least 8 characters"
+        secureTextEntry={!showPw}
+        autoComplete="new-password"
+        textContentType="newPassword"
+        value={password}
+        error={passwordError}
+        actionLabel={showPw ? 'Hide' : 'Show'}
+        onActionPress={() => setShowPw((shown) => !shown)}
+        onChangeText={(value) => {
+          setPassword(value);
+          if (passwordError) setPasswordError('');
+          if (formError) setFormError('');
+        }}
+      />
+
+      <DateOfBirthField
+        value={birthday}
+        onChange={(value) => {
+          setBirthday(value);
+          if (birthdayError) setBirthdayError('');
+        }}
+        minimumAge={MIN_AGE}
+        error={birthdayError}
+      />
+
+      <View style={styles.safetyBox}>
+        <Ionicons name="heart-circle-outline" size={19} color="#92400e" />
+        <Text style={styles.safetyText}>
+          Train safely and respect the community. AccountAbility is not medical advice, and harmful
+          or abusive content is not allowed.{' '}
+          <Text style={styles.safetyLink} onPress={() => router.push('/legal/terms')}>
+            Review the rules.
+          </Text>
+        </Text>
       </View>
 
       <View>
-        <TextInput
-          style={styles.input}
-          placeholder="Date of birth (YYYY-MM-DD)"
-          placeholderTextColor={colors.textFaint}
-          keyboardType="numbers-and-punctuation"
-          autoComplete="birthdate-full"
-          value={birthday}
-          onChangeText={setBirthday}
-        />
-        <Text style={styles.hint}>You must be {MIN_AGE}+ to use AccountAbility.</Text>
+        <Checkbox
+          checked={agree}
+          onChange={(checked) => {
+            setAgree(checked);
+            if (checked) setConsentError('');
+          }}
+          style={styles.consent}
+          accessibilityLabel="Agree to Terms and Privacy Policy"
+        >
+          <Text style={styles.consentText}>
+            I agree to the{' '}
+            <Text style={styles.link} onPress={() => router.push('/legal/terms')}>
+              Terms of Service
+            </Text>{' '}
+            and{' '}
+            <Text style={styles.link} onPress={() => router.push('/legal/privacy')}>
+              Privacy Policy
+            </Text>
+            .
+          </Text>
+        </Checkbox>
+        {consentError ? <Text style={styles.consentError}>{consentError}</Text> : null}
       </View>
 
-      {/* safety + zero-tolerance — shown up front, before anyone joins */}
-      <View style={styles.warnBox}>
-        <View style={styles.warnRow}>
-          <Ionicons name="fitness-outline" size={16} color="#b45309" style={styles.warnIcon} />
-          <Text style={styles.warnText}>
-            <Text style={styles.warnStrong}>Train safely.</Text> Check with a doctor — and ideally a
-            qualified coach — before starting new workouts, and stay within your limits.
-          </Text>
-        </View>
-        <View style={styles.warnRow}>
-          <Ionicons name="hand-left-outline" size={16} color="#b91c1c" style={styles.warnIcon} />
-          <Text style={styles.warnText}>
-            <Text style={styles.warnStrong}>Zero tolerance.</Text> No nudity, hate, harassment, or
-            content that harms people or animals. Violations are removed and accounts banned.
-          </Text>
-        </View>
-      </View>
-
-      <Checkbox checked={agree} onChange={setAgree} style={styles.consent} accessibilityLabel="Agree to Terms and Privacy Policy">
-        <Text style={styles.consentText}>
-          I agree to the{' '}
-          <Text style={styles.link} onPress={() => router.push('/legal/terms')}>
-            Terms of Service
-          </Text>{' '}
-          and{' '}
-          <Text style={styles.link} onPress={() => router.push('/legal/privacy')}>
-            Privacy Policy
-          </Text>
-          .
-        </Text>
-      </Checkbox>
-
-      <Button title="Sign up" onPress={onSignUp} loading={busy} style={styles.button} />
+      <Button title="Create account" onPress={onSignUp} loading={busy} />
       <Link href="/sign-in" style={styles.linkCenter}>
-        Already have an account? Log in
+        Already have an account? <Text style={styles.linkStrong}>Log in</Text>
       </Link>
     </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 24, fontFamily: font.extrabold, color: colors.text },
-  sub: { fontSize: 14, fontFamily: font.regular, color: colors.textMuted, marginBottom: spacing.xs, lineHeight: 20 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: 14,
-    fontSize: 16,
-    fontFamily: font.regular,
+  heading: { gap: 5, marginBottom: spacing.xs },
+  title: {
     color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    fontFamily: font.extrabold,
+    fontSize: 27,
+    letterSpacing: -0.35,
   },
-  hint: { fontSize: 12, fontFamily: font.regular, color: colors.textFaint, marginTop: 5, marginLeft: 2 },
-  pwWrap: { position: 'relative', justifyContent: 'center' },
-  pwInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: 14,
-    paddingRight: 48,
-    fontSize: 16,
+  sub: {
+    color: colors.textMuted,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    fontSize: 14,
+    lineHeight: 20,
   },
-  eye: { position: 'absolute', right: 8, height: 44, width: 40, alignItems: 'center', justifyContent: 'center' },
-  warnBox: {
-    backgroundColor: '#fffbeb',
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    padding: 12,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+  },
+  errorBannerText: {
+    flex: 1,
+    color: '#991b1b',
+    fontFamily: font.medium,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  safetyBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
     borderWidth: 1,
     borderColor: '#fde68a',
     borderRadius: radius.md,
-    padding: 12,
-    gap: 8,
-    marginTop: 2,
+    padding: 11,
+    backgroundColor: 'rgba(255,251,235,0.9)',
   },
-  warnRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  warnIcon: { marginTop: 1 },
-  warnText: { flex: 1, fontSize: 12.5, lineHeight: 18, fontFamily: font.regular, color: '#78350f' },
-  warnStrong: { fontFamily: font.bold, color: '#78350f' },
-  consent: { marginTop: 2 },
-  consentText: { fontSize: 13.5, lineHeight: 20, fontFamily: font.regular, color: colors.textMuted },
+  safetyText: {
+    flex: 1,
+    color: '#78350f',
+    fontFamily: font.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  safetyLink: { color: '#92400e', fontFamily: font.bold, textDecorationLine: 'underline' },
+  consent: { marginTop: 1 },
+  consentText: {
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  consentError: {
+    color: colors.danger,
+    fontFamily: font.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+    marginLeft: 32,
+    marginTop: 5,
+  },
   link: { color: colors.primary, fontFamily: font.semibold },
-  button: { marginTop: spacing.xs },
-  linkCenter: { textAlign: 'center', color: colors.primary, fontFamily: font.medium, marginTop: spacing.sm },
+  linkCenter: {
+    textAlign: 'center',
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    fontSize: 13.5,
+    marginTop: spacing.xs,
+  },
+  linkStrong: { color: colors.primary, fontFamily: font.semibold },
 });

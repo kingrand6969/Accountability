@@ -471,7 +471,7 @@ export function ActivitySyncProvider({ children }: { children: ReactNode }) {
     useState<ActivitySyncSnapshot>(EMPTY_SNAPSHOT);
   const synchronizerRef =
     useRef<ReturnType<typeof createActivitySynchronizer> | null>(null);
-  if (!synchronizerRef.current) {
+  if (synchronizerRef.current == null) {
     synchronizerRef.current = createActivitySynchronizer();
   }
 

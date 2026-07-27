@@ -1,7 +1,10 @@
-import { deletePost, hidePost, reportPost } from './api';
+import { deletePost, hidePost, reportPost, updatePostAudience } from './api';
 import { showToast } from '../ui/Toast';
 import { confirmDialog } from '../ui/ConfirmDialog';
 import { openPostMenu } from './PostMenu';
+import { router } from 'expo-router';
+import { saveRemoteImageToMemories } from '../memories/api';
+import type { PostAudience } from './types';
 
 /**
  * The ⋮ menu for any post card, shared by the feed, post detail, group and
@@ -21,6 +24,8 @@ export function showPostMenu(
     body: string | null;
     author_name?: string | null;
     author_avatar?: string | null;
+    image_url?: string | null;
+    audience?: PostAudience;
   },
   myId: string | null,
   onRemoved: (postId: string) => void,
@@ -33,32 +38,81 @@ export function showPostMenu(
   };
 
   if (mine) {
+    const options = [
+      {
+        label: 'Edit post',
+        subtitle: 'Update your words',
+        icon: 'create-outline' as const,
+        onPress: () => router.push({ pathname: '/compose', params: { edit: post.id } }),
+      },
+      ...(post.audience !== 'group'
+        ? [{
+            label: 'Change audience',
+            subtitle: post.audience === 'public' ? 'Public' : 'Buddies',
+            icon: 'earth-outline' as const,
+            onPress: () =>
+              openPostMenu({
+                preview,
+                options: ([
+                  ['buddies', 'Buddies', 'Only your accountability buddies'],
+                  ['public', 'Public', 'Also appears in Discover'],
+                ] as const).map(([audience, label, subtitle]) => ({
+                  label,
+                  subtitle,
+                  icon: audience === 'public' ? 'earth-outline' : 'people-outline',
+                  onPress: async () => {
+                    try {
+                      await updatePostAudience(post.id, audience);
+                      showToast(`Audience changed to ${label}`);
+                    } catch (e) {
+                      showToast(`Could not change audience: ${String((e as Error).message ?? e)}`);
+                    }
+                  },
+                })),
+              }),
+          }]
+        : []),
+      ...(post.image_url
+        ? [{
+            label: 'Save to Memories',
+            subtitle: 'Keep this achievement',
+            icon: 'bookmark-outline' as const,
+            onPress: async () => {
+              try {
+                await saveRemoteImageToMemories(post.image_url!);
+                showToast('Saved to Memories');
+              } catch (e) {
+                showToast(`Could not save: ${String((e as Error).message ?? e)}`);
+              }
+            },
+          }]
+        : []),
+      {
+        label: 'Delete post',
+        subtitle: 'You will be asked to confirm',
+        icon: 'trash-outline' as const,
+        destructive: true,
+        onPress: () =>
+          confirmDialog({
+            title: 'Delete this post?',
+            message: 'It will be removed for everyone. Your saved activities and Memories are not deleted.',
+            confirmLabel: 'Delete',
+            destructive: true,
+            onConfirm: async () => {
+              try {
+                await deletePost(post.id);
+                onRemoved(post.id);
+                showToast('Post deleted');
+              } catch (e) {
+                showToast(`Could not delete: ${String((e as Error).message ?? e)}`);
+              }
+            },
+          }),
+      },
+    ];
     openPostMenu({
       preview,
-      options: [
-        {
-          label: 'Remove post',
-          subtitle: 'Deletes it for everyone, permanently',
-          icon: 'trash-outline',
-          destructive: true,
-          onPress: () =>
-            confirmDialog({
-              title: 'Remove this post?',
-              message: 'It will be deleted for everyone.',
-              confirmLabel: 'Remove',
-              destructive: true,
-              onConfirm: async () => {
-                try {
-                  await deletePost(post.id);
-                  onRemoved(post.id);
-                  showToast('Post removed');
-                } catch (e) {
-                  showToast(`Could not remove: ${String((e as Error).message ?? e)}`);
-                }
-              },
-            }),
-        },
-      ],
+      options,
     });
     return;
   }

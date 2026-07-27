@@ -12,10 +12,10 @@
       "supportsTablet": true,
       "icon": "./assets/expo.icon",
       "infoPlist": {
+        "NSCameraUsageDescription": "AccountAbility uses the front camera for a private on-device beauty preview.",
         "UIBackgroundModes": [
           "location"
-        ],
-        "NSCameraUsageDescription": "AccountAbility uses the front camera for a private on-device beauty preview."
+        ]
       }
     },
     "android": {
@@ -31,7 +31,13 @@
         "android.permission.RECORD_AUDIO"
       ],
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -65,8 +71,8 @@
         "expo-image-picker",
         {
           "cameraPermission": "AccountAbility uses your camera for selfies, run cards, stories and profile photos.",
-          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories.",
-          "microphonePermission": false
+          "microphonePermission": false,
+          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories."
         }
       ],
       [
@@ -79,11 +85,25 @@
             "video"
           ]
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f91c0791-4a6e-4080-88fd-5cc9a4e720bf"
+      }
+    },
+    "owner": "kingrand",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f91c0791-4a6e-4080-88fd-5cc9a4e720bf"
     }
   }
 }

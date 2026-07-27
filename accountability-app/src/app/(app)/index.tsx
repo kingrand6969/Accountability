@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
   Pressable,
   RefreshControl,
@@ -14,7 +13,7 @@ import {
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { listFeed, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
+import { listFeed, setLiked, FEED_PAGE_SIZE, type FeedMode } from '../../feed/api';
 import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
 import { attendEvent } from '../../events/api';
@@ -35,6 +34,12 @@ import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/them
 import { hapticTap } from '../../ui/haptics';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+type CreateItem = {
+  icon: IoniconName;
+  tint: string;
+  title: string;
+  sub: string;
+} & ({ kind: 'story' } | { kind: 'route'; route: string });
 
 // a sponsored card every N posts for free members (Pro sees none)
 const AD_EVERY = 5;
@@ -42,17 +47,16 @@ type FeedRow = { kind: 'post'; post: FeedPost } | { kind: 'ad'; id: string };
 
 // warm hairline for subtle in-post lines (content ↔ actions).
 const HAIRLINE = '#ece9e3';
-// between-post divider — thicker + a visible light grey so the separation
-// actually reads on a phone (the near-white hairline vanished).
-const DIVIDER = '#d8dce2';
-
-/** The left activity spine colour, derived from what the post actually is.
- *  Muted on purpose. (True per-workout colour needs activity metadata on the
- *  post — a follow-up; today posts are free text / photo / event.) */
-function spineColor(post: FeedPost): string {
-  if (post.event) return '#88b0e8'; // event — a happening (soft blue)
-  if (post.image_url) return '#e3b184'; // a shared photo / moment (soft amber)
-  return '#d6dce4'; // plain text — quiet neutral
+function postTypeLabel(post: FeedPost): string | null {
+  const labels: Partial<Record<FeedPost['post_type'], string>> = {
+    run: 'Verified run',
+    workout: 'Workout',
+    milestone: 'Milestone',
+    event: 'Event',
+    memory: 'Memory',
+    savings: 'Savings win',
+  };
+  return labels[post.post_type] ?? null;
 }
 
 function HeaderIcon({
@@ -71,7 +75,7 @@ function HeaderIcon({
       onPress={onPress}
       accessibilityLabel={label}
       style={({ pressed }) => ({
-        minWidth: 36,
+        minWidth: 44,
         minHeight: 44,
         alignItems: 'center',
         justifyContent: 'center',
@@ -84,6 +88,28 @@ function HeaderIcon({
 }
 
 /** Header bell with a live unread dot — opens the Notifications screen. */
+function QuickShare({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: IoniconName;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.quickShare, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={18} color={colors.primary} />
+      <Text style={styles.quickShareText}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function NotificationsBell({ onPress }: { onPress: () => void }) {
   const { unread } = useUnreadNotifications();
   return (
@@ -91,7 +117,7 @@ function NotificationsBell({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       accessibilityLabel="Notifications"
       style={({ pressed }) => ({
-        minWidth: 36,
+        minWidth: 44,
         minHeight: 44,
         alignItems: 'center',
         justifyContent: 'center',
@@ -111,6 +137,7 @@ export default function Feed() {
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [feedMode, setFeedMode] = useState<FeedMode>('buddies');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -150,47 +177,51 @@ export default function Feed() {
       .catch(() => {});
   }, []);
 
-  const CREATE_ITEMS: { icon: IoniconName; tint: string; title: string; sub: string; action: () => void }[] = [
+  const CREATE_ITEMS: CreateItem[] = [
     {
       icon: 'create-outline',
       tint: colors.primary,
       title: 'Post',
       sub: 'Share a win or an update',
-      action: () => router.push('/compose' as never),
+      kind: 'route',
+      route: '/compose',
     },
     {
       icon: 'add-circle-outline',
       tint: '#db2777',
-      title: 'Story',
-      sub: 'A photo that lasts 24 hours',
-      action: () => storyRailRef.current?.openPicker(),
+      title: 'My Day',
+      sub: 'Share a photo for 24 hours',
+      kind: 'story',
     },
     {
       icon: 'flame-outline',
       tint: '#f59e0b',
       title: 'Win card',
       sub: 'Share your streak as an image',
-      action: () => router.push('/win-card'),
+      kind: 'route',
+      route: '/win-card',
     },
     {
       icon: 'people-outline',
       tint: '#16a34a',
       title: 'Group',
       sub: 'Start a community',
-      action: () => router.push('/group-new' as never),
+      kind: 'route',
+      route: '/group-new',
     },
     {
       icon: 'storefront-outline',
       tint: '#0d9488',
       title: 'Page',
       sub: 'For your gym, coaching or brand',
-      action: () => router.push('/page-new' as never),
+      kind: 'route',
+      route: '/page-new',
     },
   ];
 
   const load = useCallback(async () => {
     try {
-      const page = await listFeed();
+      const page = await listFeed(undefined, undefined, undefined, feedMode);
       setPosts(page);
       setEndReached(page.length < FEED_PAGE_SIZE);
     } catch (e) {
@@ -199,7 +230,7 @@ export default function Feed() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [feedMode]);
 
   useFocusEffect(
     useCallback(() => {
@@ -218,7 +249,7 @@ export default function Feed() {
     setLoadingMore(true);
     try {
       const oldest = posts[posts.length - 1].created_at;
-      const page = await listFeed(oldest);
+      const page = await listFeed(oldest, undefined, undefined, feedMode);
       if (page.length < FEED_PAGE_SIZE) setEndReached(true);
       if (page.length > 0) {
         setPosts((cur) => {
@@ -316,7 +347,13 @@ export default function Feed() {
                 style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
                 onPress={() => {
                   setCreateOpen(false);
-                  setTimeout(item.action, 250); // let the sheet close first
+                  setTimeout(() => {
+                    if (item.kind === 'story') {
+                      storyRailRef.current?.openPicker();
+                    } else {
+                      router.push(item.route as never);
+                    }
+                  }, 250); // let the sheet close first
                 }}
               >
                 <View style={[styles.sheetIcon, { backgroundColor: `${item.tint}15` }]}>
@@ -333,6 +370,24 @@ export default function Feed() {
       </Modal>
 
       {/* slim prompt row — opens the full-screen composer (FB-style, above stories) */}
+      <View style={styles.feedTabsWrap}>
+      <View style={styles.feedTabs} accessibilityRole="tablist">
+        {(['buddies', 'discover'] as const).map((mode) => (
+          <Pressable
+            key={mode}
+            onPress={() => setFeedMode(mode)}
+            hitSlop={{ top: 3, bottom: 3 }}
+            style={[styles.feedTab, feedMode === mode && styles.feedTabActive]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: feedMode === mode }}
+          >
+            <Text style={[styles.feedTabText, feedMode === mode && styles.feedTabTextActive]}>
+              {mode === 'buddies' ? 'Buddies' : 'Discover'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      </View>
       <View style={styles.promptWrap}>
         <Pressable
           style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
@@ -340,20 +395,22 @@ export default function Feed() {
           accessibilityRole="button"
           accessibilityLabel="Share a win — create a post"
         >
-          <Avatar url={me.avatar} name={me.name} size={40} />
-          <Text style={styles.promptText}>Share a win or FLEX!</Text>
-          <Pressable
-            onPress={() => router.push('/compose?photo=1' as never)}
-            hitSlop={8}
-            style={({ pressed }) => [styles.promptPhoto, pressed && styles.pressed]}
-            accessibilityLabel="Add a photo"
-          >
-            <Ionicons name="images-outline" size={24} color={colors.primary} />
-          </Pressable>
+          <Avatar url={me.avatar} name={me.name} size={36} />
+          <Text style={styles.promptText} numberOfLines={1}>
+            Inspire us today!
+          </Text>
         </Pressable>
+        <View style={styles.composerDivider} />
+        <View style={styles.quickShareRow}>
+          <QuickShare icon="create-outline" label="Post" onPress={() => router.push('/compose' as never)} />
+          <View style={styles.quickShareDivider} />
+          <QuickShare icon="images-outline" label="Photo" onPress={() => router.push('/compose?photo=1' as never)} />
+          <View style={styles.quickShareDivider} />
+          <QuickShare icon="walk-outline" label="Flex" onPress={() => router.push('/run' as never)} />
+        </View>
       </View>
       <View style={styles.storyStrip}>
-        <StoryRail ref={storyRailRef} />
+        <StoryRail ref={storyRailRef} meName={me.name} meAvatar={me.avatar} />
       </View>
 
       {loading ? (
@@ -376,10 +433,41 @@ export default function Feed() {
             ) : null
           }
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Ionicons name="people-outline" size={40} color={colors.textFaint} />
-              <Text style={styles.emptyTitle}>No posts yet</Text>
-              <Text style={styles.emptySub}>Be the first to share something.</Text>
+            <View style={styles.emptyCard}>
+              <Ionicons
+                name={feedMode === 'discover' ? 'compass-outline' : 'people-outline'}
+                size={38}
+                color={colors.primary}
+              />
+              <Text style={styles.emptyTitle}>
+                {feedMode === 'discover' ? 'Discover is quiet right now' : 'No buddy posts yet'}
+              </Text>
+              <Text style={styles.emptySub}>
+                {feedMode === 'discover'
+                  ? 'Public wins from outside your buddy circle appear here.'
+                  : 'Share a win or add an accountability buddy.'}
+              </Text>
+              <View style={styles.emptyActions}>
+                <Pressable
+                  onPress={() => router.push('/compose' as never)}
+                  style={({ pressed }) => [styles.emptyPrimary, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share a win"
+                >
+                  <Ionicons name="create-outline" size={17} color="#fff" />
+                  <Text style={styles.emptyPrimaryText}>Share a win</Text>
+                </Pressable>
+                {feedMode === 'buddies' ? (
+                  <Pressable
+                    onPress={() => router.push('/buddy' as never)}
+                    style={({ pressed }) => [styles.emptySecondary, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Find buddies"
+                  >
+                    <Text style={styles.emptySecondaryText}>Find buddies</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           }
           renderItem={({ item: row }) => {
@@ -393,18 +481,25 @@ export default function Feed() {
             const item = row.post;
             return (
             <View style={styles.post}>
-              <View style={[styles.spine, { backgroundColor: spineColor(item) }]} />
               <View style={styles.postBody}>
               <View style={styles.cardHeader}>
-                <View style={[styles.avRing, { borderColor: spineColor(item) }]}>
-                  <Avatar url={item.author_avatar} name={item.author_name} size={40} />
-                </View>
+                <Avatar url={item.author_avatar} name={item.author_name} size={44} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.author}>{authorLabel(item.author_name)}</Text>
-                  <Text style={styles.time}>
-                    {timeAgo(item.created_at)}
-                    {item.tagged.length > 0 ? ` · ${taggedLabel(item.tagged)}` : ''}
-                  </Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.time}>
+                      {timeAgo(item.created_at)}
+                      {item.tagged.length > 0 ? ` · ${taggedLabel(item.tagged)}` : ''}
+                    </Text>
+                    {postTypeLabel(item) ? (
+                      <View style={[styles.typeChip, item.post_type === 'milestone' && styles.typeChipMilestone]}>
+                        {item.post_type === 'run' ? <Ionicons name="shield-checkmark" size={11} color={colors.primary} /> : null}
+                        <Text style={[styles.typeChipText, item.post_type === 'milestone' && styles.typeChipTextMilestone]}>
+                          {postTypeLabel(item)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
                 <Pressable
                   onPress={() => onPostMenu(item)}
@@ -470,7 +565,6 @@ export default function Feed() {
                   >
                     <PostImage url={item.image_url} capTall />
                   </Pressable>
-                  <SaveToMemories url={item.image_url} />
                 </View>
               ) : null}
               <View style={styles.actions}>
@@ -479,6 +573,7 @@ export default function Feed() {
                   onPress={() => onToggleLike(item)}
                   hitSlop={8}
                   accessibilityLabel={item.liked_by_me ? 'Remove cheer' : 'Cheer'}
+                  accessibilityRole="button"
                 >
                   <Ionicons
                     name={item.liked_by_me ? 'flame' : 'flame-outline'}
@@ -486,7 +581,7 @@ export default function Feed() {
                     color={item.liked_by_me ? colors.cheer : colors.textMuted}
                   />
                   <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
-                    {item.like_count}
+                    Cheer{item.like_count > 0 ? ` ${item.like_count}` : ''}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -494,18 +589,24 @@ export default function Feed() {
                   onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
                   hitSlop={8}
                   accessibilityLabel="View comments"
+                  accessibilityRole="button"
                 >
                   <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
-                  <Text style={styles.actionText}>{item.comment_count}</Text>
+                  <Text style={styles.actionText}>
+                    Comment{item.comment_count > 0 ? ` ${item.comment_count}` : ''}
+                  </Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [styles.action, styles.actionEnd, pressed && styles.pressed]}
                   onPress={() => setBroadcast(item)}
                   hitSlop={8}
-                  accessibilityLabel="Broadcast this post"
+                  accessibilityLabel="Share this post"
+                  accessibilityRole="button"
                 >
-                  <Ionicons name="megaphone-outline" size={18} color={colors.textMuted} />
+                  <Ionicons name="paper-plane-outline" size={18} color={colors.textMuted} />
+                  <Text style={styles.actionText}>Share</Text>
                 </Pressable>
+                {item.image_url ? <SaveToMemories url={item.image_url} inline /> : null}
               </View>
               </View>
             </View>
@@ -521,8 +622,7 @@ export default function Feed() {
 }
 
 const styles = StyleSheet.create({
-  // soft slate feed so the white cards lift off the page (FB/LinkedIn-style)
-  screen: { flex: 1, backgroundColor: colors.surface },
+  screen: { flex: 1, backgroundColor: colors.surfaceAlt },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.45)',
@@ -585,6 +685,8 @@ const styles = StyleSheet.create({
   storyStrip: {
     ...contentMax,
     backgroundColor: colors.card,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   headerDot: {
     position: 'absolute',
@@ -597,35 +699,79 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.card,
   },
-  // white "sheet" holding the slim compose prompt
-  promptWrap: {
+  feedTabsWrap: {
     ...contentMax,
     backgroundColor: colors.card,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    paddingTop: spacing.xs,
   },
-  // bordered like an input, so it reads as "tap here to share a win"
+  feedTabs: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.pill,
+    padding: 1,
+  },
+  feedTab: {
+    flex: 1,
+    minHeight: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+  },
+  feedTabActive: { backgroundColor: colors.primary },
+  feedTabText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
+  feedTabTextActive: { color: colors.onPrimary },
+  promptWrap: {
+    ...contentMax,
+    backgroundColor: colors.card,
+    width: '93%',
+    alignSelf: 'center',
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    ...shadow.card,
+  },
   promptRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 48,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    backgroundColor: colors.surfaceAlt,
+    gap: spacing.sm,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.card,
   },
   promptText: {
     flex: 1,
-    fontSize: 15.5,
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: font.regular,
     color: colors.textMuted,
   },
-  promptPhoto: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  composerDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.lg,
+  },
+  quickShareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    paddingHorizontal: 4,
+  },
+  quickShare: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  quickShareDivider: { width: StyleSheet.hairlineWidth, height: 24, backgroundColor: colors.border },
+  quickShareText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 13.5 },
   composer: {
     ...contentMax,
     backgroundColor: colors.card,
@@ -758,23 +904,69 @@ const styles = StyleSheet.create({
   postBtnText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
   pressed: { opacity: 0.7 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
-  emptyWrap: { flexGrow: 1 },
-  // borderless timeline: posts are one continuous white surface split by
-  // day dividers + hairlines — no floating tiles, no gap.
-  list: { paddingBottom: 110, ...contentMax },
+  emptyWrap: { paddingBottom: 110, ...contentMax },
+  list: { paddingTop: spacing.sm, paddingBottom: 110, ...contentMax },
   post: {
-    flexDirection: 'row',
     backgroundColor: colors.card,
-    borderBottomWidth: 2,
-    borderBottomColor: DIVIDER,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
   },
-  spine: { width: 3, alignSelf: 'stretch' },
   postBody: { flex: 1, padding: spacing.lg, gap: spacing.sm },
-  avRing: { borderRadius: 999, borderWidth: 1.5, padding: 2 },
-  adWrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 2, borderBottomColor: DIVIDER },
+  adWrap: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
   footerSpinner: { paddingVertical: spacing.lg },
-  emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
-  emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
+  emptyCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    margin: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  emptyTitle: { fontSize: 18, fontFamily: font.bold, color: colors.text, marginTop: 4 },
+  emptySub: {
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+  emptyActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  emptyPrimary: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+  },
+  emptyPrimaryText: { color: '#fff', fontFamily: font.bold, fontSize: 13.5 },
+  emptySecondary: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  emptySecondaryText: { color: colors.primary, fontFamily: font.bold, fontSize: 13.5 },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -784,37 +976,50 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadow.card,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   postMenuBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
   },
-  author: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
-  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: colors.text },
+  author: { fontSize: 15.5, fontFamily: font.bold, color: colors.text },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 2, flexWrap: 'wrap' },
+  time: { color: colors.textMuted, fontSize: 12, fontFamily: font.medium },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  typeChipText: { color: colors.primary, fontFamily: font.bold, fontSize: 10.5, textTransform: 'uppercase' },
+  typeChipMilestone: { backgroundColor: '#fff7df' },
+  typeChipTextMilestone: { color: '#d97706' },
+  body: { fontSize: 15.5, lineHeight: 22, fontFamily: font.regular, color: colors.text },
   postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: colors.surface },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xl,
     marginTop: 4,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: HAIRLINE,
   },
   action: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: spacing.xs,
-    minHeight: 32,
+    minHeight: 44,
+    justifyContent: 'center',
   },
-  // broadcast sits apart on the right — like/comment stay as a left cluster
-  actionEnd: { marginLeft: 'auto' },
-  actionText: { fontSize: 14, color: colors.textMuted, fontFamily: font.semibold },
+  actionEnd: {},
+  actionText: { fontSize: 12, color: colors.textMuted, fontFamily: font.semibold },
   liked: { color: colors.cheer },
 });
