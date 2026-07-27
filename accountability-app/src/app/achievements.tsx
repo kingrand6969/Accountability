@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { GlassBackdrop } from '../ui/Glass';
 import { contentMaxWidth } from '../ui/responsive';
 import { hapticSuccess } from '../ui/haptics';
@@ -116,6 +118,11 @@ export default function Achievements() {
 
   const points = (states ? flexPoints(states) : 0) + (missions ? missionPoints(missions) : 0);
   const earned = states ? states.filter((s) => s.unlocked).length : 0;
+  const currentRank = rankFor(points);
+  const medalCellWidth = Math.max(
+    142,
+    Math.min(176, (colMax - spacing.lg * 2 - spacing.md) / 2),
+  );
 
   async function onFlex() {
     if (flexing) return;
@@ -143,6 +150,23 @@ export default function Achievements() {
         </Text>
 
         {/* missions — social & sharing actions (distinct from the fitness medals) */}
+        <View style={styles.collectionSummary}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryValue}>{earned}</Text>
+            <Text style={styles.summaryLabel}>Earned</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryValue}>{points.toLocaleString()}</Text>
+            <Text style={styles.summaryLabel}>Flex Points</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryValue} numberOfLines={1}>{currentRank.name}</Text>
+            <Text style={styles.summaryLabel}>Current rank</Text>
+          </View>
+        </View>
+
         <Text style={[styles.sectionLabel, styles.sectionTop]}>MISSIONS</Text>
         <Text style={styles.sectionHint}>Actions & social wins that earn Flex Points</Text>
         <MissionsList states={missions} onFlex={onFlex} flexing={flexing} />
@@ -169,12 +193,92 @@ export default function Achievements() {
             {states.map((s) => (
               <Pressable
                 key={s.def.id}
-                style={({ pressed }) => [styles.cell, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.cell,
+                  {
+                    width: medalCellWidth,
+                    borderColor: s.unlocked
+                      ? TIER_META[medalMetal(s.def, s.tierIndex)].base
+                      : 'rgba(148,163,184,0.34)',
+                  },
+                  pressed && styles.pressed,
+                ]}
                 onPress={() => setSelected(s)}
                 accessibilityRole="button"
-                accessibilityLabel={`${s.def.title}, ${s.tierName ?? 'locked'}`}
+                accessibilityLabel={`${s.def.title}, ${s.tierName ?? 'locked'}, ${Math.round(s.progress * 100)} percent progress`}
+                accessibilityHint="Opens medal details and the full tier ladder"
               >
-                <Medal state={s} size={86} />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={
+                    s.unlocked
+                      ? [
+                          `${TIER_META[medalMetal(s.def, s.tierIndex)].light}42`,
+                          `${TIER_META[medalMetal(s.def, s.tierIndex)].base}12`,
+                          'rgba(255,255,255,0)',
+                        ]
+                      : [
+                          'rgba(226,232,240,0.72)',
+                          'rgba(248,250,252,0.18)',
+                          'rgba(255,255,255,0)',
+                        ]
+                  }
+                  style={styles.cellGlow}
+                />
+                <View style={styles.statusRow}>
+                  <View
+                    style={[
+                      styles.statusChip,
+                      {
+                        backgroundColor: s.unlocked
+                          ? `${TIER_META[medalMetal(s.def, s.tierIndex)].base}22`
+                          : 'rgba(100,116,139,0.1)',
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={s.unlocked ? 'checkmark-circle' : 'lock-closed'}
+                      size={13}
+                      color={
+                        s.unlocked
+                          ? TIER_META[medalMetal(s.def, s.tierIndex)].dark
+                          : '#64748b'
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.statusText,
+                        {
+                          color: s.unlocked
+                            ? TIER_META[medalMetal(s.def, s.tierIndex)].dark
+                            : '#64748b',
+                        },
+                      ]}
+                    >
+                      {s.unlocked
+                        ? TIER_META[medalMetal(s.def, s.tierIndex)].name
+                        : 'Locked'}
+                    </Text>
+                  </View>
+                  {prestigeState(s.def, s.value).rings > 0 ? (
+                    <View style={styles.prestigeChip}>
+                      <Ionicons name="sparkles" size={12} color="#6d28d9" />
+                      <Text style={styles.prestigeText}>
+                        P{prestigeState(s.def, s.value).rings}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View
+                  style={[
+                    styles.medalStage,
+                    s.unlocked && {
+                      shadowColor: TIER_META[medalMetal(s.def, s.tierIndex)].glow,
+                    },
+                  ]}
+                >
+                  <Medal state={s} size={92} />
+                </View>
                 <Text style={styles.cellTitle} numberOfLines={1}>
                   {s.def.title}
                 </Text>
@@ -314,6 +418,25 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 4,
   },
+  collectionSummary: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: spacing.sm,
+  },
+  summaryItem: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  summaryValue: { color: INK, fontFamily: font.extrabold, fontSize: 17 },
+  summaryLabel: {
+    color: INK_SOFT,
+    fontFamily: font.medium,
+    fontSize: 10.5,
+    marginTop: 3,
+  },
+  summaryDivider: { width: 1, height: 34, backgroundColor: 'rgba(30,27,75,0.1)' },
   sectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -326,15 +449,52 @@ const styles = StyleSheet.create({
   seeAll: { fontFamily: font.bold, fontSize: 13, color: ACCENT },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, justifyContent: 'center' },
   cell: {
-    width: 152,
+    minHeight: 252,
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
     borderRadius: radius.lg,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
     paddingHorizontal: spacing.sm,
+    overflow: 'hidden',
+  },
+  cellGlow: { position: 'absolute', left: 0, top: 0, right: 0, height: 122 },
+  statusRow: {
+    minHeight: 27,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statusChip: {
+    minHeight: 25,
+    paddingHorizontal: 8,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statusText: { fontFamily: font.bold, fontSize: 10.5 },
+  prestigeChip: {
+    minHeight: 25,
+    paddingHorizontal: 7,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(124,58,237,0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  prestigeText: { color: '#6d28d9', fontFamily: font.extrabold, fontSize: 10 },
+  medalStage: {
+    width: 100,
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
   cellTitle: { fontFamily: font.bold, fontSize: 14, color: INK, marginTop: 4 },
   cellTier: { fontFamily: font.semibold, fontSize: 12, color: INK_SOFT },

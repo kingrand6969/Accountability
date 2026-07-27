@@ -28,7 +28,6 @@ import {
   type IncomingRequest,
   type Buddy,
 } from '../buddy/api';
-import { inviteFriends } from '../social/invite';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
@@ -261,7 +260,7 @@ export default function BuddyHub() {
           ListFooterComponent={
             <Pressable
               style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
-              onPress={inviteFriends}
+              onPress={() => router.push('/invite-card' as never)}
               accessibilityLabel="Invite friends to AccountAbility"
             >
               <Ionicons name="paper-plane-outline" size={17} color={colors.primary} />

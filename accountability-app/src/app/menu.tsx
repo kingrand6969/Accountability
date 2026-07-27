@@ -13,7 +13,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getMyProfile } from '../profiles/api';
 import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
-import { inviteFriends } from '../social/invite';
 import { getRank } from '../achievements/api';
 import { RankBadge } from '../achievements/RankBadge';
 import { colors, font, radius, shadow, spacing, contentMax } from '../ui/theme';
@@ -133,7 +132,7 @@ export default function Menu() {
       {/* invite friends — the growth loop lives one tap from everywhere */}
       <Pressable
         style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
-        onPress={inviteFriends}
+        onPress={() => router.push('/invite-card' as never)}
         accessibilityRole="button"
         accessibilityLabel="Invite friends to AccountAbility"
       >
