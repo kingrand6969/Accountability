@@ -23,7 +23,7 @@
     "audit.mjs": "046cde96c7d441ec34bc099c13e9af63957ea7fffa150a5a720150c0af0bf780",
     "core.mjs": "8fb06230e0ff3bff4b7fd3fb3252b3caa9f3907d9fdb83904c53a9e1a882a625",
     "core.test.mjs": "ec0e0ceb71fa4d419bf31d5ede3b129d4cc7abb3eec5741d6eb871efa860bcf5",
-    "frozen-artifacts.json": "ccc6b63d9f044ae680dc98f1b3ffee7581dbbc47cd9e47e0b614f9c43f154b58",
+    "frozen-artifacts.json": "84eecd11b9dba15ab6aaeab2b2ad6d85dcacba2564fb9e9f70e3a04d3a08b9f4",
     "one-process-executor.mjs": "09034c4fe008ea8317235e75e6c2023602c8df411d17f2dcfa924c944f196b64",
     "bounded-subprocess.mjs": "1a4ed9fa607fe8a663f00ceca2121fe59e32dabb040c7324b5edf117c59f1d03",
     "collector.test.mjs": "e8e49d19385357d53cbd6bff05db927c83599fa078d72c08f30d1d138621db9e",
@@ -31,7 +31,7 @@
     "inspect-windows-acl.ps1": "451c5d31a3f9dc1ee4a484acebb953f1f9a54d72d621cd8361e347fe36318d92",
     "supabase-2.110.0-json-envelope-provenance.json": "f4aec86303d709ebeaba1aac86de797eeb12a7ac97dafc22a3c4fce9503ee7d0",
     "0095-postconditions-readonly.sql": "e19365452cb441880d65fda2de50b8abb3ca64439253c1e9956e23ffbd12c7cd",
-    "0096-postconditions-readonly.sql": "8281508f7878975a69120ed6c5068d36cd1bed90c1ddab64d8ed4243a3984eaf",
+    "0096-postconditions-readonly.sql": "09b6c13ef28acbc844be273a8649cae8ce216893c85fb05bf7002e6c1ae76e49",
     "moderate-content-bundle-manifest.json": "2005a575bf766839cfb3a4ec1d6721982f19e5921a9d6fab5b30ee8efbced62c",
     "admin-actions-bundle-manifest.json": "f567b194f64502671f11f8c8bb78dfd58faa7cd84fe5062bc9e1e346d8337d12"
   }

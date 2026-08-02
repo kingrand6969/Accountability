@@ -65,7 +65,7 @@
     "frozen-ledger.json": "7fa8b7efa055c34ecd26c4a4875e18eda860dde72ebeab3836f06a2a90519cf9",
     "version-status-manifest.json": "0be2570219be3e0969bca45ce978ee0edb02eeb34edafbbd5d10a4a3f83e66d2",
     "0095-postconditions-readonly.sql": "e19365452cb441880d65fda2de50b8abb3ca64439253c1e9956e23ffbd12c7cd",
-    "0096-postconditions-readonly.sql": "8281508f7878975a69120ed6c5068d36cd1bed90c1ddab64d8ed4243a3984eaf",
+    "0096-postconditions-readonly.sql": "09b6c13ef28acbc844be273a8649cae8ce216893c85fb05bf7002e6c1ae76e49",
     "moderate-content-bundle-manifest.json": "2005a575bf766839cfb3a4ec1d6721982f19e5921a9d6fab5b30ee8efbced62c",
     "admin-actions-bundle-manifest.json": "f567b194f64502671f11f8c8bb78dfd58faa7cd84fe5062bc9e1e346d8337d12",
     "allowlist.json": "5de407caa5347e46628a26fabf8d1af419fe5dded7e0fb00f93699b7ed36675a"
