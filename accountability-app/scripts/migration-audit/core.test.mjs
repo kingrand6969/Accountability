@@ -22,7 +22,7 @@ import {
   enumerateSqlCallExpressions,
   fingerprintCatalogRecords,
   hashFiles,
-  materializeCrlf,
+  normalizeLf,
   normalizedJson,
   normalizeSqlCode,
   optionalLedgerScriptForPresence,
@@ -374,9 +374,15 @@ test('project, CLI and frozen hash mismatches abort', () => {
   assert.doesNotThrow(() => assertCliVersion('2.110.0'));
   assert.throws(() => assertCliVersion('2.111.0'), /CLI rejected/);
   const dir = mkdtempSync(path.join(os.tmpdir(), 'ledger-audit-'));
-  writeFileSync(path.join(dir, '0001.sql'), 'select 1;');
+  writeFileSync(path.join(dir, '0001.sql'), 'select 1;\r\n');
+  const canonicalSha256 = sha256(Buffer.from('select 1;\n'));
+  assert.equal(
+    verifyFrozenInventory(dir, { migrations: [{ filename: '0001.sql', sha256: canonicalSha256 }] }),
+    true,
+  );
+  writeFileSync(path.join(dir, '0001.sql'), 'select 2;\r\n');
   assert.throws(
-    () => verifyFrozenInventory(dir, { migrations: [{ filename: '0001.sql', sha256: 'wrong' }] }),
+    () => verifyFrozenInventory(dir, { migrations: [{ filename: '0001.sql', sha256: canonicalSha256 }] }),
     /Frozen migration drift/,
   );
 });
@@ -534,7 +540,7 @@ test('checked-in ledger, status manifest and catalog SQL are internally safe and
   );
 });
 
-test('every frozen migration is tracked and its clean CRLF materialization matches the ledger', () => {
+test('every frozen migration is tracked with LF checkout policy and exact canonical blob hash', () => {
   const directory = path.dirname(fileURLToPath(import.meta.url));
   const projectRoot = path.resolve(directory, '../..');
   const repositoryRoot = path.resolve(projectRoot, '..');
@@ -550,15 +556,15 @@ test('every frozen migration is tracked and its clean CRLF materialization match
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
-    assert.equal(attribute, `${relative}: eol: crlf`);
+    assert.equal(attribute, `${relative}: eol: lf`);
     const blob = execFileSync('git', ['show', `:${relative}`], {
       cwd: repositoryRoot,
       encoding: 'buffer',
       maxBuffer: 2 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    const cleanMaterialized = materializeCrlf(blob);
-    assert.equal(sha256(cleanMaterialized), migration.sha256, relative);
+    assert.equal(sha256(blob), migration.sha256, relative);
+    assert.equal(normalizeLf(blob).equals(blob), true, `${relative} blob must already be LF canonical`);
   }
 });
 

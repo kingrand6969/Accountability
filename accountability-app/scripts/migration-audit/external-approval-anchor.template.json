@@ -21,9 +21,9 @@
   "instructions": "Pending review only. This checked-in file is deliberately unusable as approval. An authorized reviewer must create a distinct APPROVED file outside the audit package.",
   "packageSha256": {
     "audit.mjs": "046cde96c7d441ec34bc099c13e9af63957ea7fffa150a5a720150c0af0bf780",
-    "core.mjs": "c9b219cfa87c63f45745bc81c5afcaee1f1d9c765d06a76b7668bbcb70aa784f",
-    "core.test.mjs": "ab55acb5cc00355116f2b82d82bc9b829278cb8f2d88d6236a5ba520f749a6ec",
-    "frozen-artifacts.json": "fe88f4dc438d42ecad9df81d3a76697b1bac77fd9e5d65b0adad25c95570f099",
+    "core.mjs": "8fb06230e0ff3bff4b7fd3fb3252b3caa9f3907d9fdb83904c53a9e1a882a625",
+    "core.test.mjs": "ec0e0ceb71fa4d419bf31d5ede3b129d4cc7abb3eec5741d6eb871efa860bcf5",
+    "frozen-artifacts.json": "752f2f2bad8565ece80b2943d0d380bc214946ad3bf9c5549e5fcbda5ff34aff",
     "one-process-executor.mjs": "1b43e4d4fa984e169de7a63be7167b4c2b000de9817eca7f028be6934ca748c3",
     "bounded-subprocess.mjs": "1a4ed9fa607fe8a663f00ceca2121fe59e32dabb040c7324b5edf117c59f1d03",
     "collector.test.mjs": "18909aacb6b2d729f8c98d908fe8a524240ba63ddd85015a2f70acb29ad92d55",

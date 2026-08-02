@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { assertReadOnlyCatalogSql, assertReadOnlyCurrentStateSql, materializeCrlf, normalizedJson } from './core.mjs';
+import { assertReadOnlyCatalogSql, assertReadOnlyCurrentStateSql, normalizedJson } from './core.mjs';
 import { validateQueryRows } from './one-process-executor.mjs';
 import { restrictAndVerifyWindowsAcl } from './collect-readonly.mjs';
 
@@ -16,11 +16,11 @@ const PROJECT_ROOT = path.resolve(MODULE_DIRECTORY, '..', '..');
 export const LOCAL_EVIDENCE_ROOT = path.join(PROJECT_ROOT, '.tmp', 'local-canonical-evidence');
 
 function cleanMigrationBytes(filename) {
-  return materializeCrlf(execFileSync('git', ['show', `:accountability-app/supabase/migrations/${filename}`], {
+  return execFileSync('git', ['show', `:accountability-app/supabase/migrations/${filename}`], {
     cwd: path.resolve(PROJECT_ROOT, '..'),
     encoding: 'buffer',
     maxBuffer: 2 * 1024 * 1024,
-  }));
+  });
 }
 
 export const LOCAL_QUERY_PLAN = Object.freeze([
