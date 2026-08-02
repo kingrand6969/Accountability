@@ -84,6 +84,12 @@ declare
   review_comment_id uuid := gen_random_uuid();
   review_story_id uuid := gen_random_uuid();
   stale_post_id uuid := gen_random_uuid();
+  manual_post_id uuid := gen_random_uuid();
+  manual_report_id uuid := gen_random_uuid();
+  manual_other_report_id uuid := gen_random_uuid();
+  legacy_post_id uuid := gen_random_uuid();
+  legacy_report_id uuid := gen_random_uuid();
+  malformed_legacy_report_id uuid := gen_random_uuid();
   report_post_id uuid := gen_random_uuid();
   report_comment_parent_id uuid := gen_random_uuid();
   report_comment_id uuid := gen_random_uuid();
@@ -104,6 +110,7 @@ declare
   review_report_id uuid := gen_random_uuid();
   first_warned_at timestamptz;
   first_resolved_at timestamptz;
+  function_def text;
 begin
   if not exists (
     select 1 from information_schema.columns
@@ -129,8 +136,29 @@ begin
   if to_regprocedure('public.review_quarantined_content(uuid,text,uuid,text,text)') is null then
     raise exception 'administrator quarantine review function is missing';
   end if;
-  if to_regprocedure('public.review_quarantined_content(uuid,text)') is null then
-    raise exception 'minimal administrator quarantine review function is missing';
+  if to_regprocedure('public.review_quarantined_content(uuid,text)') is not null then
+    raise exception 'ambiguous two-argument quarantine review overload remains';
+  end if;
+  if to_regprocedure('public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)') is null then
+    raise exception 'atomic reported-post removal function is missing';
+  end if;
+  select pg_get_functiondef('public.quarantine_moderated_content(text,uuid,text[],numeric,text)'::regprocedure)
+    into function_def;
+  if position('moderation-source:' in function_def) = 0
+     or position('pg_advisory_xact_lock' in function_def) > position('update public.%I set moderation_state' in function_def) then
+    raise exception 'quarantine does not acquire the source lock before mutation';
+  end if;
+  select pg_get_functiondef('public.review_quarantined_content(uuid,text,uuid,text,text)'::regprocedure)
+    into function_def;
+  if position('moderation-source:' in function_def) = 0
+     or position('pg_advisory_xact_lock' in function_def) > position('for update' in function_def) then
+    raise exception 'review does not acquire the source lock before row locks';
+  end if;
+  select pg_get_functiondef('public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)'::regprocedure)
+    into function_def;
+  if position('moderation-source:posts:' in function_def) = 0
+     or position('pg_advisory_xact_lock' in function_def) > position('for update' in function_def) then
+    raise exception 'reported-post removal does not acquire the source lock before row locks';
   end if;
   if has_function_privilege('public', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute')
      or has_function_privilege('anon', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute')
@@ -138,11 +166,11 @@ begin
      or not has_function_privilege('service_role', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute') then
     raise exception 'administrator quarantine review grants are unsafe';
   end if;
-  if has_function_privilege('public', 'public.review_quarantined_content(uuid,text)', 'execute')
-     or has_function_privilege('anon', 'public.review_quarantined_content(uuid,text)', 'execute')
-     or has_function_privilege('authenticated', 'public.review_quarantined_content(uuid,text)', 'execute')
-     or not has_function_privilege('service_role', 'public.review_quarantined_content(uuid,text)', 'execute') then
-    raise exception 'minimal administrator quarantine review grants are unsafe';
+  if has_function_privilege('public', 'public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)', 'execute')
+     or has_function_privilege('anon', 'public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)', 'execute')
+     or not has_function_privilege('service_role', 'public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)', 'execute') then
+    raise exception 'reported-post removal grants are unsafe';
   end if;
   if has_function_privilege('public', 'public.report_content(text,uuid,text)', 'execute')
      or has_function_privilege('anon', 'public.report_content(text,uuid,text)', 'execute')
@@ -162,6 +190,23 @@ begin
     raise exception 'authenticated invoked service-only quarantine function';
   exception when insufficient_privilege then null;
   end;
+  begin
+    perform public.review_quarantined_content(gen_random_uuid(),'approve',gen_random_uuid(),null,null);
+    raise exception 'authenticated invoked service-only review function';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.remove_reported_post(gen_random_uuid(),gen_random_uuid(),null,null,null,null);
+    raise exception 'authenticated invoked service-only reported-post removal';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+  set local role anon;
+  begin
+    perform public.review_quarantined_content(gen_random_uuid(),'approve',gen_random_uuid(),null,null);
+    raise exception 'anonymous invoked service-only review function';
+  exception when insufficient_privilege then null;
+  end;
   reset role;
 
   insert into auth.users(id, email) values
@@ -176,6 +221,8 @@ begin
     (review_post_id, owner_id, 'review post', 'public'),
     (review_comment_parent_id, owner_id, 'review comment parent', 'public'),
     (stale_post_id, owner_id, 'stale review post', 'public'),
+    (manual_post_id, owner_id, 'manual removal post', 'public'),
+    (legacy_post_id, owner_id, 'legacy removal post', 'public'),
     (unsafe_url_post_id, owner_id, 'unsafe config report', 'public'),
     (missing_secret_post_id, owner_id, 'missing secret report', 'public'),
     (sync_failure_post_id, owner_id, 'sync failure report', 'public');
@@ -364,7 +411,9 @@ begin
   insert into public.admins(user_id) values(reviewer_id);
   insert into public.buddy_reports(id, reporter, reported, reason, source_table, source_id)
   values (review_report_id, viewer_id, owner_id, 'review story report', 'stories', review_story_id);
+  set local role service_role;
   review_result := public.review_quarantined_content(comment_flag_id, 'approve', reviewer_id, null, null);
+  reset role;
   if review_result->>'status' <> 'approved'
      or (select moderation_state from public.post_comments where id=review_comment_id) <> 'visible'
      or not exists (select 1 from public.moderation_flags where id=comment_flag_id
@@ -434,6 +483,70 @@ begin
   end;
   if (select strike_count from public.profiles where id=owner_id) <> 1 then
     raise exception 'stale source changed strike count';
+  end if;
+
+  insert into public.buddy_reports(id,reporter,reported,reason,source_table,source_id) values
+    (manual_report_id,viewer_id,owner_id,'structured manual post','posts',manual_post_id),
+    (manual_other_report_id,reviewer_id,owner_id,'second structured report','posts',manual_post_id);
+  perform public.quarantine_moderated_content('posts',manual_post_id,array['hate'],.7,'manual flag');
+  begin
+    perform public.remove_reported_post(manual_report_id,viewer_id,manual_post_id,owner_id,null,null);
+    raise exception 'non-admin removed a reported post';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.remove_reported_post(manual_report_id,reviewer_id,gen_random_uuid(),owner_id,null,null);
+    raise exception 'mismatched post hint was trusted';
+  exception when invalid_parameter_value then null;
+  end;
+  begin
+    perform public.remove_reported_post(manual_report_id,reviewer_id,manual_post_id,viewer_id,null,null);
+    raise exception 'mismatched author hint was trusted';
+  exception when invalid_parameter_value then null;
+  end;
+  if not exists(select 1 from public.posts where id=manual_post_id)
+     or exists(select 1 from public.buddy_reports where id=manual_report_id and resolved_at is not null)
+     or (select strike_count from public.profiles where id=owner_id) <> 1 then
+    raise exception 'failed reported-post decision was not rolled back';
+  end if;
+  set local role service_role;
+  review_result := public.remove_reported_post(
+    manual_report_id,reviewer_id,manual_post_id,owner_id,'manual remove','Manual post removed'
+  );
+  reset role;
+  if review_result->>'status'<>'removed' or exists(select 1 from public.posts where id=manual_post_id)
+     or (select strike_count from public.profiles where id=owner_id)<>2
+     or (select count(*) from public.user_sanctions where user_id=owner_id and action='remove')<>2
+     or (select count(*) from public.buddy_reports where id in (manual_report_id,manual_other_report_id)
+         and resolved_by=reviewer_id and resolved_at is not null)<>2
+     or exists(select 1 from public.moderation_flags where source_table='posts' and source_id=manual_post_id and status='open') then
+    raise exception 'reported-post removal transaction was incomplete';
+  end if;
+  review_result := public.remove_reported_post(
+    manual_report_id,reviewer_id,manual_post_id,owner_id,'changed','Changed retry'
+  );
+  if not (review_result->>'idempotent')::boolean
+     or (select strike_count from public.profiles where id=owner_id)<>2
+     or (select count(*) from public.user_sanctions where user_id=owner_id and action='remove')<>2
+     or (select warning_message from public.profiles where id=owner_id)<>'Manual post removed' then
+    raise exception 'reported-post removal retry was not idempotent';
+  end if;
+  insert into public.buddy_reports(id,reporter,reported,reason) values
+    (legacy_report_id,viewer_id,owner_id,'Reported a post: excerpt (post '||legacy_post_id::text||')'),
+    (malformed_legacy_report_id,reviewer_id,owner_id,'Reported a post without a canonical identifier');
+  begin
+    perform public.remove_reported_post(malformed_legacy_report_id,reviewer_id,null,owner_id,null,null);
+    raise exception 'malformed legacy report was accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  review_result := public.remove_reported_post(
+    legacy_report_id,reviewer_id,legacy_post_id,owner_id,'legacy remove','Legacy post removed'
+  );
+  if review_result->>'status'<>'removed' or exists(select 1 from public.posts where id=legacy_post_id)
+     or not exists(select 1 from public.buddy_reports where id=legacy_report_id
+                    and resolved_by=reviewer_id and resolved_at is not null)
+     or (select strike_count from public.profiles where id=owner_id)<>3 then
+    raise exception 'strict legacy reported-post removal failed';
   end if;
 
   select moderation_state into state from public.posts where id = post_id;

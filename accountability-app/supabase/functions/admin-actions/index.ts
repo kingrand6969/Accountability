@@ -58,50 +58,25 @@ Deno.serve(async (req) => {
     //    author with a strike, and resolve the report. Same discipline as
     //    remove_content but keyed by an explicit post id from the report. ──
     if (action === 'remove_post') {
-      if (!post_id || !UUID.test(String(post_id))) return json({ error: 'valid post_id required' }, 400);
-      if (report_id != null && (typeof report_id !== 'string' || !UUID.test(report_id))) {
+      if (typeof report_id !== 'string' || !UUID.test(report_id)) {
         return json({ error: 'valid report_id required' }, 400);
       }
-      if (user_id && user_id === user.id) return json({ error: 'you cannot sanction yourself' }, 400);
-
-      // 1) delete the post (idempotent — may already be gone)
-      await admin.from('posts').delete().eq('id', post_id);
-
-      // 2) strike + warning for the author (if we know who it is)
-      let strikes = 0;
-      if (user_id) {
-        const { data: prof } = await admin.from('profiles').select('strike_count').eq('id', user_id).maybeSingle();
-        strikes = (prof?.strike_count ?? 0) + 1;
-        await admin.from('profiles').update({
-          strike_count: strikes,
-          warning_message: message || null,
-          warned_at: new Date().toISOString(),
-          warning_ack_at: null,
-        }).eq('id', user_id);
-        await admin.from('user_sanctions').insert({
-          user_id, admin_id: user.id, action: 'remove',
-          reason: reason || null, message: message || null,
-        });
+      if (post_id != null && (typeof post_id !== 'string' || !UUID.test(post_id))) {
+        return json({ error: 'valid post_id required' }, 400);
       }
-
-      // 3) resolve the originating report
-      if (report_id) {
-        await admin.from('buddy_reports').update({
-          resolved_at: new Date().toISOString(), resolved_by: user.id,
-        }).eq('id', report_id);
+      const { data, error } = await admin.rpc('remove_reported_post', {
+        p_report: report_id,
+        p_admin_actor: user.id,
+        p_post_hint: post_id ?? null,
+        p_author_hint: user_id ?? null,
+        p_reason: typeof reason === 'string' ? reason : null,
+        p_message: typeof message === 'string' ? message : null,
+      });
+      if (error) {
+        const safe = moderationRpcError(error.code);
+        return json({ error: safe.error }, safe.status);
       }
-
-      // 3b) also resolve ANY other open report about the same post, and close any
-      //     auto-flag for it, so the post is gone from BOTH tabs and the author
-      //     can't be warned a second time for the same content.
-      await admin.from('buddy_reports').update({
-        resolved_at: new Date().toISOString(), resolved_by: user.id,
-      }).is('resolved_at', null).like('reason', `%${post_id}%`);
-      await admin.from('moderation_flags').update({
-        status: 'removed', reviewed_at: new Date().toISOString(), reviewed_by: user.id,
-      }).eq('source_table', 'posts').eq('source_id', post_id).eq('status', 'open');
-
-      return json({ ok: true, strikes });
+      return json(data);
     }
 
     // ── remove_content: delete flagged content + warn author + add a strike ──

@@ -210,6 +210,10 @@ begin
       using errcode = '22023';
   end if;
 
+  perform pg_advisory_xact_lock(hashtextextended(
+    'moderation-source:' || p_source_table || ':' || p_source_id::text, 0
+  ));
+
   execute format(
     'update public.%I set moderation_state = ''quarantined'' where id = $1 returning user_id',
     p_source_table
@@ -263,6 +267,8 @@ set search_path = public
 as $function$
 declare
   v_flag public.moderation_flags%rowtype;
+  v_discovered_table text;
+  v_discovered_id uuid;
   v_state text;
   v_strikes integer := 0;
 begin
@@ -276,12 +282,21 @@ begin
     raise exception 'Administrator privileges required' using errcode = '42501';
   end if;
 
-  select * into v_flag from public.moderation_flags where id = p_flag for update;
+  select source_table, source_id into v_discovered_table, v_discovered_id
+    from public.moderation_flags where id = p_flag;
   if not found then
     raise exception 'Moderation flag not found' using errcode = 'P0002';
   end if;
-  if v_flag.source_table not in ('posts', 'post_comments', 'stories') then
+  if v_discovered_table not in ('posts', 'post_comments', 'stories') then
     raise exception 'Unsupported moderation source' using errcode = '22023';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(
+    'moderation-source:' || v_discovered_table || ':' || v_discovered_id::text, 0
+  ));
+  select * into v_flag from public.moderation_flags where id = p_flag for update;
+  if not found or v_flag.source_table is distinct from v_discovered_table
+     or v_flag.source_id is distinct from v_discovered_id then
+    raise exception 'Moderation flag changed during review' using errcode = '40001';
   end if;
 
   -- A retry (including a conflicting retry) observes and preserves the first
@@ -348,18 +363,105 @@ revoke all on function public.review_quarantined_content(uuid, text, uuid, text,
 grant execute on function public.review_quarantined_content(uuid, text, uuid, text, text)
   to service_role;
 
--- Minimal service API for callers that deliberately propagate a user JWT.
-create or replace function public.review_quarantined_content(p_flag uuid, p_decision text)
+drop function if exists public.review_quarantined_content(uuid, text);
+
+create or replace function public.remove_reported_post(
+  p_report uuid,
+  p_admin_actor uuid,
+  p_post_hint uuid,
+  p_author_hint uuid,
+  p_reason text,
+  p_message text
+)
 returns jsonb
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $function$
-  select public.review_quarantined_content(p_flag, p_decision, auth.uid(), null, null)
+declare
+  v_report public.buddy_reports%rowtype;
+  v_locked_report public.buddy_reports%rowtype;
+  v_post_id uuid;
+  v_author_id uuid;
+  v_post_author uuid;
+  v_strikes integer := 0;
+  v_legacy_match text[];
+begin
+  if p_report is null or p_admin_actor is null then
+    raise exception 'report and administrator are required' using errcode='22023';
+  end if;
+  if not exists (select 1 from public.admins where user_id=p_admin_actor) then
+    raise exception 'Administrator privileges required' using errcode='42501';
+  end if;
+
+  select * into v_report from public.buddy_reports where id=p_report;
+  if not found then raise exception 'Report not found' using errcode='P0002'; end if;
+  if v_report.source_table is not null then
+    if v_report.source_table <> 'posts' or v_report.source_id is null then
+      raise exception 'Report is not for a post' using errcode='22023';
+    end if;
+    v_post_id := v_report.source_id;
+  else
+    if regexp_count(v_report.reason,
+      '\(post [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\)') <> 1 then
+      raise exception 'Legacy report has no unique valid post reference' using errcode='22023';
+    end if;
+    v_legacy_match := regexp_match(v_report.reason,
+      '\(post ([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})\)');
+    if v_legacy_match is null then
+      raise exception 'Legacy report has no valid post reference' using errcode='22023';
+    end if;
+    v_post_id := v_legacy_match[1]::uuid;
+  end if;
+  v_author_id := v_report.reported;
+  if p_post_hint is not null and p_post_hint <> v_post_id then
+    raise exception 'Post does not match report' using errcode='22023';
+  end if;
+  if p_author_hint is not null and p_author_hint <> v_author_id then
+    raise exception 'Author does not match report' using errcode='22023';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(
+    'moderation-source:posts:' || v_post_id::text, 0
+  ));
+  select * into v_locked_report from public.buddy_reports where id=p_report for update;
+  if not found or v_locked_report.source_table is distinct from v_report.source_table
+     or v_locked_report.source_id is distinct from v_report.source_id
+     or v_locked_report.reported is distinct from v_report.reported
+     or v_locked_report.reason is distinct from v_report.reason then
+    raise exception 'Report changed during review' using errcode='40001';
+  end if;
+  if v_locked_report.resolved_at is not null then
+    return jsonb_build_object('ok',true,'status','removed','idempotent',true,
+      'strikes',coalesce((select strike_count from public.profiles where id=v_author_id),0));
+  end if;
+  if v_author_id = p_admin_actor then
+    raise exception 'Administrators cannot sanction themselves' using errcode='42501';
+  end if;
+
+  select user_id into v_post_author from public.posts where id=v_post_id for update;
+  if v_post_author is distinct from v_author_id then
+    raise exception 'Reported post or author not found' using errcode='P0002';
+  end if;
+  delete from public.posts where id=v_post_id;
+  update public.profiles set strike_count=strike_count+1,
+      warning_message=nullif(left(coalesce(p_message,''),2000),''),
+      warned_at=now(), warning_ack_at=null
+    where id=v_author_id returning strike_count into v_strikes;
+  if not found then raise exception 'Content author profile not found' using errcode='P0002'; end if;
+  insert into public.user_sanctions(user_id,admin_id,action,reason,message)
+  values(v_author_id,p_admin_actor,'remove',nullif(left(trim(coalesce(p_reason,'')),500),''),
+         nullif(left(coalesce(p_message,''),2000),''));
+  update public.buddy_reports set resolved_at=now(), resolved_by=p_admin_actor
+   where (id=p_report or (source_table='posts' and source_id=v_post_id)) and resolved_at is null;
+  update public.moderation_flags set status='removed',reviewed_at=now(),reviewed_by=p_admin_actor
+   where source_table='posts' and source_id=v_post_id and status='open';
+  return jsonb_build_object('ok',true,'status','removed','idempotent',false,'strikes',v_strikes);
+end
 $function$;
-revoke all on function public.review_quarantined_content(uuid, text)
+revoke all on function public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)
   from public, anon, authenticated;
-grant execute on function public.review_quarantined_content(uuid, text) to service_role;
+grant execute on function public.remove_reported_post(uuid,uuid,uuid,uuid,text,text) to service_role;
 
 create or replace function public.enqueue_manual_moderation(
   p_source_table text,
