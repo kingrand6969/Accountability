@@ -49,21 +49,32 @@ describe('manual-report database contract', () => {
     expect(migration).toMatch(/buddy_reports[\s\S]*source_table text[\s\S]*source_id uuid/i);
     expect(migration).toMatch(/source_table is null and source_id is null/i);
     expect(migration).toMatch(/source_table in \('posts', 'post_comments', 'stories'\)/i);
+    expect(migration).toMatch(/create policy "File own reports"[\s\S]*source_table is null and source_id is null/i);
   });
 
   test('derives identities server-side and queues a priority manual check', () => {
+    const reportFunction = migration.match(/create or replace function public\.report_content[\s\S]*?\$function\$;/i)?.[0] ?? '';
     expect(migration).toMatch(/create or replace function public\.report_content\(\s*p_source_table text,\s*p_source_id uuid,\s*p_reason text/i);
     expect(migration).toMatch(/v_reporter_id uuid := auth\.uid\(\)/i);
     expect(migration).toMatch(/insert into public\.buddy_reports[\s\S]*v_reporter_id[\s\S]*v_author_id/i);
-    expect(migration).toMatch(/jsonb_build_object\([\s\S]*'table', p_source_table[\s\S]*'id', p_source_id[\s\S]*'reason', 'manual_report'[\s\S]*'report_id', v_report_id/i);
+    expect(migration).toMatch(/jsonb_build_object\([\s\S]*'table', p_source_table[\s\S]*'id', p_source_id[\s\S]*'reason', 'manual_report'[\s\S]*'report_id', p_report_id/i);
     expect(migration).toMatch(/body := jsonb_build_object/i);
+    expect(reportFunction).toMatch(/pg_advisory_xact_lock\(hashtextextended\('report_content:' \|\| v_reporter_id::text, 0\)\)/i);
+    expect(migration).toMatch(/create unique index if not exists buddy_reports_open_structured_idx[\s\S]*where source_table is not null and resolved_at is null/i);
+    expect(reportFunction).toMatch(/on conflict \(reporter, source_table, source_id\)[\s\S]*where source_table is not null and resolved_at is null[\s\S]*do nothing/i);
   });
 
   test('is authenticated-only, fail-open, and never quarantines by itself', () => {
+    const reportFunction = migration.match(/create or replace function public\.report_content[\s\S]*?\$function\$;/i)?.[0] ?? '';
+    const enqueueFunction = migration.match(/create or replace function public\.enqueue_manual_moderation[\s\S]*?\$function\$;/i)?.[0] ?? '';
     expect(migration).toMatch(/revoke all on function public\.report_content\(text, uuid, text\) from public, anon/i);
     expect(migration).toMatch(/grant execute on function public\.report_content\(text, uuid, text\) to authenticated, service_role/i);
-    expect(migration).toMatch(/exception when others then[\s\S]*return v_report_id/i);
-    const reportFunction = migration.match(/create or replace function public\.report_content[\s\S]*?\$function\$;/i)?.[0] ?? '';
+    expect(reportFunction).toMatch(/exception when others then[\s\S]*return v_report_id/i);
     expect(reportFunction).not.toMatch(/update public\.(posts|post_comments|stories).*moderation_state/i);
+    expect(reportFunction).toMatch(/perform public\.enqueue_manual_moderation/i);
+    expect(enqueueFunction).toMatch(/coalesce\(v_secret, ''\) <> ''/i);
+    expect(enqueueFunction).toMatch(/\/functions\/v1\/moderate-content/i);
+    expect(enqueueFunction).not.toMatch(/'x-moderation-secret', coalesce\(v_secret, ''\)/i);
+    expect(migration).toMatch(/revoke all on function public\.enqueue_manual_moderation\(text, uuid, uuid\)\s*from public, anon, authenticated/i);
   });
 });

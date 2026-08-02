@@ -21,6 +21,15 @@ begin
 end
 $report_constraint$;
 
+-- Direct inserts remain available for legacy profile/message/voice reports, but
+-- only the definer RPC may attach structured content coordinates.
+drop policy if exists "File own reports" on public.buddy_reports;
+create policy "File own reports" on public.buddy_reports
+  for insert to authenticated
+  with check (
+    auth.uid() = reporter and source_table is null and source_id is null
+  );
+
 do $constraints$
 declare t text;
 begin
@@ -60,6 +69,7 @@ $constraint$;
 -- blocks those writes and is compatible with CREATE INDEX's own SHARE lock.
 begin;
 lock table public.moderation_flags in share mode;
+lock table public.buddy_reports in share mode;
 
 -- Older callbacks could create multiple open rows for the same source. Keep the
 -- newest row as the canonical review item, merge useful evidence into it, and
@@ -113,6 +123,24 @@ update public.moderation_flags f
 create unique index if not exists moderation_flags_open_source_idx
   on public.moderation_flags(source_table, source_id)
   where status = 'open';
+
+-- Preserve duplicate report history while closing every older unresolved copy.
+with ranked_reports as (
+  select id, row_number() over (
+    partition by reporter, source_table, source_id
+    order by created_at desc, id desc
+  ) as position
+  from public.buddy_reports
+  where source_table is not null and resolved_at is null
+)
+update public.buddy_reports r
+   set resolved_at = now()
+  from ranked_reports d
+ where r.id = d.id and d.position > 1;
+
+create unique index if not exists buddy_reports_open_structured_idx
+  on public.buddy_reports(reporter, source_table, source_id)
+  where source_table is not null and resolved_at is null;
 
 commit;
 
@@ -173,6 +201,70 @@ revoke all on function public.quarantine_moderated_content(text, uuid, text[], n
 grant execute on function public.quarantine_moderated_content(text, uuid, text[], numeric, text)
   to service_role;
 
+create or replace function public.enqueue_manual_moderation(
+  p_source_table text,
+  p_source_id uuid,
+  p_report_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, extensions
+as $function$
+declare
+  v_url text;
+  v_secret text;
+  v_request_host text;
+  v_config_host text;
+  v_allow_local boolean := false;
+begin
+  select value into v_url from public.internal_config where key = 'moderation_url';
+  select value into v_secret from public.internal_config where key = 'moderation_secret';
+  select value into v_config_host from public.internal_config where key = 'moderation_host';
+  select coalesce(value = 'true', false) into v_allow_local
+    from public.internal_config where key = 'moderation_allow_local';
+  begin
+    v_request_host := split_part(
+      coalesce(nullif(current_setting('request.headers', true), ''), '{}')::jsonb ->> 'host',
+      ':', 1
+    );
+  exception when others then
+    v_request_host := null;
+  end;
+  if v_request_host !~ '^[a-z0-9-]+\.supabase\.co$' then
+    v_request_host := null;
+  end if;
+  v_config_host := lower(trim(coalesce(v_request_host, v_config_host, '')));
+
+  if coalesce(v_secret, '') <> '' and (
+    (v_config_host ~ '^[a-z0-9-]+\.supabase\.co$'
+     and v_url = 'https://' || v_config_host || '/functions/v1/moderate-content')
+    or (v_allow_local and v_url ~ '^http://(localhost|127\.0\.0\.1)(:[0-9]{1,5})?/functions/v1/moderate-content$')
+  ) then
+    perform net.http_post(
+      url := v_url,
+      body := jsonb_build_object(
+        'table', p_source_table, 'id', p_source_id,
+        'reason', 'manual_report', 'report_id', p_report_id
+      ),
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-moderation-secret', v_secret
+      )
+    );
+    return true;
+  end if;
+  return false;
+exception when others then
+  return false;
+end
+$function$;
+
+revoke all on function public.enqueue_manual_moderation(text, uuid, uuid)
+  from public, anon, authenticated;
+grant execute on function public.enqueue_manual_moderation(text, uuid, uuid)
+  to service_role;
+
 create or replace function public.report_content(
   p_source_table text,
   p_source_id uuid,
@@ -188,13 +280,12 @@ declare
   v_author_id uuid;
   v_parent_post_id uuid;
   v_report_id uuid;
-  v_reason text := nullif(left(regexp_replace(trim(coalesce(p_reason, '')), '\s+', ' ', 'g'), 500), '');
-  v_url text;
-  v_secret text;
+  v_reason text := nullif(left(trim(regexp_replace(coalesce(p_reason, ''), '[[:cntrl:][:space:]]+', ' ', 'g')), 500), '');
 begin
   if v_reporter_id is null then
     raise exception 'Authentication required.' using errcode = '42501';
   end if;
+  perform pg_advisory_xact_lock(hashtextextended('report_content:' || v_reporter_id::text, 0));
   if p_source_id is null or p_source_table not in ('posts', 'post_comments', 'stories') then
     raise exception 'Unsupported report source.' using errcode = '22023';
   end if;
@@ -229,24 +320,19 @@ begin
   insert into public.buddy_reports(reporter, reported, reason, source_table, source_id)
   values (v_reporter_id, v_author_id, coalesce(v_reason, 'User reported content'),
           p_source_table, p_source_id)
+  on conflict (reporter, source_table, source_id)
+    where source_table is not null and resolved_at is null
+  do nothing
   returning id into v_report_id;
 
+  if v_report_id is null then
+    select id into v_report_id from public.buddy_reports
+     where reporter = v_reporter_id and source_table = p_source_table
+       and source_id = p_source_id and resolved_at is null;
+    return v_report_id;
+  end if;
   begin
-    select value into v_url from public.internal_config where key = 'moderation_url';
-    select value into v_secret from public.internal_config where key = 'moderation_secret';
-    if coalesce(v_url, '') <> '' then
-      perform net.http_post(
-        url := v_url,
-        body := jsonb_build_object(
-          'table', p_source_table, 'id', p_source_id,
-          'reason', 'manual_report', 'report_id', v_report_id
-        ),
-        headers := jsonb_build_object(
-          'Content-Type', 'application/json',
-          'x-moderation-secret', coalesce(v_secret, '')
-        )
-      );
-    end if;
+    perform public.enqueue_manual_moderation(p_source_table, p_source_id, v_report_id);
   exception when others then
     return v_report_id;
   end;

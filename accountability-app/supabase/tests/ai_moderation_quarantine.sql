@@ -7,6 +7,7 @@
 \set ON_ERROR_STOP on
 \if :{?quarantine_upgrade_harness}
 drop index if exists public.moderation_flags_open_source_idx;
+drop index if exists public.buddy_reports_open_structured_idx;
 delete from public.moderation_flags
  where source_table='posts' and source_id='11111111-1111-1111-1111-111111111111';
 insert into public.moderation_flags
@@ -16,6 +17,18 @@ values
    'older evidence','r2://legacy/older-image',array['hate'],.4,'open','2026-01-01 00:00:00+00'),
   ('31111111-1111-1111-1111-111111111111','posts','11111111-1111-1111-1111-111111111111',
    'newer evidence',null,array['violence'],.9,'open','2026-01-02 00:00:00+00');
+insert into auth.users(id, email) values
+  ('41111111-1111-4111-8111-111111111111','reporter-upgrade@test.invalid'),
+  ('42111111-1111-4111-8111-111111111111','author-upgrade@test.invalid')
+on conflict (id) do nothing;
+insert into public.buddy_reports(id, reporter, reported, reason, source_table, source_id, created_at)
+values
+  ('43111111-1111-4111-8111-111111111111','41111111-1111-4111-8111-111111111111',
+   '42111111-1111-4111-8111-111111111111','older report','posts',
+   '44111111-1111-4111-8111-111111111111','2026-01-01 00:00:00+00'),
+  ('45111111-1111-4111-8111-111111111111','41111111-1111-4111-8111-111111111111',
+   '42111111-1111-4111-8111-111111111111','newer report','posts',
+   '44111111-1111-4111-8111-111111111111','2026-01-02 00:00:00+00');
 
 -- Run the exact migration reconciliation rather than a test-side copy.
 \ir ../migrations/0096_ai_moderation_quarantine.sql
@@ -37,10 +50,20 @@ begin
       and status='open') <> 1 then
     raise exception 'duplicate upgrade did not leave exactly one open flag';
   end if;
+  if (select count(*) from public.buddy_reports
+      where reporter='41111111-1111-4111-8111-111111111111'
+        and source_table='posts' and source_id='44111111-1111-4111-8111-111111111111'
+        and resolved_at is null) <> 1
+     or not exists (select 1 from public.buddy_reports
+       where id='43111111-1111-4111-8111-111111111111' and resolved_at is not null) then
+    raise exception 'structured report duplicates were not reconciled with audit history';
+  end if;
 end
 $upgrade_test$;
 delete from public.moderation_flags
  where source_table='posts' and source_id='11111111-1111-1111-1111-111111111111';
+delete from public.buddy_reports
+ where reporter='41111111-1111-4111-8111-111111111111';
 
 -- Prove a subsequent safe application after the upgrade application above.
 \ir ../migrations/0096_ai_moderation_quarantine.sql
@@ -59,7 +82,11 @@ declare
   report_comment_parent_id uuid := gen_random_uuid();
   report_comment_id uuid := gen_random_uuid();
   report_story_id uuid := gen_random_uuid();
+  unsafe_url_post_id uuid := gen_random_uuid();
+  missing_secret_post_id uuid := gen_random_uuid();
+  sync_failure_post_id uuid := gen_random_uuid();
   structured_report_id uuid;
+  duplicate_report_id uuid;
   share_id uuid := gen_random_uuid();
   n integer;
   state text;
@@ -112,7 +139,10 @@ begin
     (post_id, owner_id, 'quarantine post', 'public'),
     (comment_parent_id, owner_id, 'visible comment parent', 'public'),
     (report_post_id, owner_id, 'reported but still visible', 'public'),
-    (report_comment_parent_id, owner_id, 'reported comment parent', 'public');
+    (report_comment_parent_id, owner_id, 'reported comment parent', 'public'),
+    (unsafe_url_post_id, owner_id, 'unsafe config report', 'public'),
+    (missing_secret_post_id, owner_id, 'missing secret report', 'public'),
+    (sync_failure_post_id, owner_id, 'sync failure report', 'public');
   insert into public.post_comments(id, post_id, user_id, body) values
     (comment_id, comment_parent_id, owner_id, 'quarantine comment'),
     (report_comment_id, report_comment_parent_id, owner_id, 'reported comment');
@@ -123,31 +153,69 @@ begin
     values (least(owner_id, viewer_id), greatest(owner_id, viewer_id));
   insert into public.public_shares(id, owner_id, post_id, title)
     values (share_id, owner_id, post_id, 'share');
+  grant insert on public.buddy_reports to authenticated;
 
-  -- Manual reports derive both identities, retain a structured source, enqueue
-  -- a manual priority recheck, and never change visibility on their own. A bad
-  -- queue endpoint exercises fail-open retention without special test hooks.
+  set local role anon;
+  begin
+    perform public.report_content('posts', report_post_id, null);
+    raise exception 'anonymous caller invoked structured reporting';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+
+  perform set_config('request.jwt.claim.sub', viewer_id::text, true);
+  set local role authenticated;
+  insert into public.buddy_reports(reporter, reported, reason)
+    values(viewer_id, owner_id, 'legacy profile or voice report');
+  begin
+    insert into public.buddy_reports(reporter, reported, reason, source_table, source_id)
+      values(viewer_id, owner_id, 'forged structured report', 'posts', report_post_id);
+    raise exception 'direct client insert forged a structured report';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+
+  -- Local HTTP is test-only and requires an explicit server-side opt-in.
   insert into public.internal_config(key, value) values
-    ('moderation_url', 'http://127.0.0.1:1'),
-    ('moderation_secret', 'test-secret')
+    ('moderation_url', 'http://127.0.0.1:1/functions/v1/moderate-content'),
+    ('moderation_secret', 'test-secret'),
+    ('moderation_allow_local', 'true')
   on conflict (key) do update set value = excluded.value;
   perform set_config('request.jwt.claim.sub', viewer_id::text, true);
   set local role authenticated;
-  structured_report_id := public.report_content('posts', report_post_id, '  harmful   claim  ');
-  perform public.report_content('post_comments', report_comment_id, null);
+  structured_report_id := public.report_content(
+    'posts', report_post_id, repeat('x', 510) || chr(1) || ' trailing'
+  );
+  duplicate_report_id := public.report_content('posts', report_post_id, 'duplicate');
+  perform public.report_content('post_comments', report_comment_id, E'  harmful\001\n claim  ');
   perform public.report_content('stories', report_story_id, 'unsafe');
   begin
     perform public.report_content('buddy_messages', report_post_id, null);
     raise exception 'unsupported structured report source was accepted';
   exception when invalid_parameter_value then null;
   end;
+  begin
+    perform public.report_content('posts', gen_random_uuid(), null);
+    raise exception 'unavailable source was accepted';
+  exception when insufficient_privilege then null;
+  end;
   reset role;
 
   if not exists (select 1 from public.buddy_reports
     where id = structured_report_id and reporter = viewer_id and reported = owner_id
       and source_table = 'posts' and source_id = report_post_id
-      and reason = 'harmful claim') then
+      and length(reason) = 500 and reason !~ '[[:cntrl:]]') then
     raise exception 'structured report payload or server-derived identities are wrong';
+  end if;
+  if duplicate_report_id <> structured_report_id
+     or (select count(*) from public.buddy_reports where reporter=viewer_id
+         and source_table='posts' and source_id=report_post_id and resolved_at is null) <> 1 then
+    raise exception 'duplicate structured report was not idempotent';
+  end if;
+  if not exists (select 1 from public.buddy_reports
+    where reporter=viewer_id and source_table='post_comments'
+      and source_id=report_comment_id and reason='harmful claim') then
+    raise exception 'report reason controls/whitespace were not normalized';
   end if;
   if (select count(*) from public.buddy_reports where reporter=viewer_id
       and source_table is not null) <> 3 then
@@ -162,6 +230,33 @@ begin
     where convert_from(body, 'utf8')::jsonb @> jsonb_build_object('table','posts','id',report_post_id,
       'reason','manual_report','report_id',structured_report_id)) then
     raise exception 'priority manual moderation payload was not queued';
+  end if;
+  select count(*) into n from net.http_request_queue
+   where convert_from(body, 'utf8')::jsonb ->> 'report_id' = structured_report_id::text;
+  if n <> 1 then raise exception 'duplicate report queued % moderation jobs', n; end if;
+
+  -- Unsafe URL and missing secret each skip pg_net without losing the report.
+  update public.internal_config set value='https://evil.example/functions/v1/moderate-content'
+   where key='moderation_url';
+  set local role authenticated;
+  perform public.report_content('posts', unsafe_url_post_id, 'unsafe url');
+  reset role;
+  update public.internal_config
+     set value = case key
+       when 'moderation_url' then 'http://127.0.0.1:1/functions/v1/moderate-content'
+       when 'moderation_secret' then '' end
+   where key in ('moderation_url', 'moderation_secret');
+  set local role authenticated;
+  perform public.report_content('posts', missing_secret_post_id, 'missing secret');
+  reset role;
+  if (select count(*) from public.buddy_reports where reporter=viewer_id
+      and source_id in (unsafe_url_post_id, missing_secret_post_id)) <> 2 then
+    raise exception 'invalid enqueue config rolled back a report';
+  end if;
+  if exists (select 1 from net.http_request_queue
+    where convert_from(body, 'utf8')::jsonb ->> 'id'
+      in (unsafe_url_post_id::text, missing_secret_post_id::text)) then
+    raise exception 'unsafe or secretless configuration queued moderation';
   end if;
 
   perform set_config('request.jwt.claim.sub', owner_id::text, true);
@@ -178,6 +273,14 @@ begin
      or (select moderation_state from public.posts where id=report_post_id) <> 'quarantined' then
     raise exception 'later confirmed quarantine did not retain the original report';
   end if;
+  perform set_config('request.jwt.claim.sub', viewer_id::text, true);
+  set local role authenticated;
+  begin
+    perform public.report_content('posts', report_post_id, 'already quarantined');
+    raise exception 'quarantined content accepted a new report';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
 
   begin
     perform public.quarantine_moderated_content('buddy_messages', post_id, array['x'], .9, 'bad');
@@ -265,6 +368,24 @@ begin
   exception when insufficient_privilege then null;
   end;
   reset role;
+
+  -- Stub the isolated enqueue boundary to prove a synchronous exception cannot
+  -- roll back the already-accepted report. The outer transaction restores it.
+  execute $ddl$
+    create or replace function public.enqueue_manual_moderation(
+      p_source_table text, p_source_id uuid, p_report_id uuid
+    )
+    returns boolean language plpgsql security definer set search_path = public
+    as $stub$ begin raise exception 'forced synchronous enqueue failure'; end $stub$
+  $ddl$;
+  perform set_config('request.jwt.claim.sub', viewer_id::text, true);
+  set local role authenticated;
+  perform public.report_content('posts', sync_failure_post_id, 'sync failure');
+  reset role;
+  if not exists (select 1 from public.buddy_reports
+    where reporter=viewer_id and source_table='posts' and source_id=sync_failure_post_id) then
+    raise exception 'synchronous enqueue failure rolled back the report';
+  end if;
 
   set local role anon;
   if exists (select 1 from public.get_public_share(share_id)) then
