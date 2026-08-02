@@ -195,9 +195,11 @@ export function createModerationHandler(deps: Dependencies) {
 declare const Deno: {
   env: { get(name: string): string | undefined };
   serve(handler: (req: Request) => Promise<Response>): void;
+  version?: { deno?: string };
 } | undefined;
 
-if (typeof Deno !== 'undefined') {
+export async function startModerationServer(): Promise<void> {
+  if (typeof Deno === 'undefined' || !Deno.version?.deno || typeof Deno.serve !== 'function') return;
   const [{ createClient }, { AwsClient }] = await Promise.all([
     import('npm:@supabase/supabase-js@2'),
     import('npm:aws4fetch@1.0.20'),
@@ -246,4 +248,8 @@ if (typeof Deno !== 'undefined') {
     quarantine: (args) => admin.rpc('quarantine_moderated_content', args),
   });
   Deno.serve(handler);
+}
+
+if (typeof Deno !== 'undefined' && Deno.version?.deno && typeof Deno.serve === 'function') {
+  void startModerationServer();
 }

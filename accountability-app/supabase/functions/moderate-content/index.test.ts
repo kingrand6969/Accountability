@@ -1,14 +1,22 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import nodeTest from 'node:test';
 
 import { createModerationHandler, createModerationImageResolver, parseModerationResult, retryPolicy,
-  validateModerationImageUrl } from './index.ts';
+  startModerationServer, validateModerationImageUrl } from './index.ts';
+
+const test = (globalThis as { test?: typeof nodeTest }).test ?? nodeTest;
 
 const validResult = {
   flagged: true,
   categories: { harassment: true, violence: false },
   category_scores: { harassment: 0.91, violence: 0.1 },
 };
+
+test('Node import and production initializer have no production side effects', async () => {
+  assert.equal(typeof startModerationServer, 'function');
+  await assert.doesNotReject(startModerationServer());
+  assert.equal(typeof (globalThis as { Deno?: unknown }).Deno, 'undefined');
+});
 
 test('strictly parses safe and confirmed moderation results', () => {
   assert.deepEqual(parseModerationResult({
@@ -183,9 +191,9 @@ test('database quarantine errors return retryable non-2xx metadata', async () =>
   const { handler } = setup(validResult, new Error('db unavailable'));
   const response = await handler(request({ table: 'posts', id: crypto.randomUUID(), attempt: 2 }));
   assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), {
+  assert.equal(JSON.stringify(await response.json()), JSON.stringify({
     ok: false, outcome: 'confirmed', retryable: true, attempt: 2, retry: { schedule: true, nextAttempt: 3, delaySeconds: 120 },
-  });
+  }));
 });
 
 test('source query errors return retryable non-2xx metadata', async () => {
