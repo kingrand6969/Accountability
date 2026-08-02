@@ -19,8 +19,12 @@ const migration = readFileSync(
   require.resolve('../../supabase/migrations/0096_ai_moderation_quarantine.sql'),
   'utf8',
 );
+const postDetailSource = readFileSync(require.resolve('../app/post/[id]'), 'utf8');
+const storyViewerSource = readFileSync(require.resolve('../app/story/[userId]'), 'utf8');
 
-beforeEach(() => rpc.mockReset().mockResolvedValue({ data: null, error: null }));
+beforeEach(() => {
+  rpc.mockReset().mockResolvedValue({ data: null, error: null });
+});
 
 describe('structured content reporting clients', () => {
   test.each([
@@ -41,6 +45,36 @@ describe('structured content reporting clients', () => {
   test('propagates RPC errors', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'denied' } });
     await expect(reportComment('comment-id')).rejects.toMatchObject({ code: '42501' });
+  });
+});
+
+describe('manual-report screen contract', () => {
+  test('only offers the accessible comment report action to non-owners', () => {
+    expect(postDetailSource).toMatch(/item\.user_id\s*!==\s*myId[\s\S]*accessibilityLabel="Report this comment"/);
+    expect(postDetailSource).toMatch(/accessibilityRole="button"[\s\S]*>\s*<Text[^>]*>Report<\/Text>/);
+  });
+
+  test('comment reporting confirms visibility, locks duplicate submissions, and reports the exact comment', () => {
+    expect(postDetailSource).toMatch(/Report comment\?[\s\S]*stays visible unless AI confirms a violation or an admin removes it/i);
+    expect(postDetailSource).toMatch(/commentReportsInFlight\.current\.has\(target\.id\)[\s\S]*commentReportsInFlight\.current\.add\(target\.id\)/);
+    expect(postDetailSource).toContain('await reportComment(target.id)');
+    expect(postDetailSource).toMatch(/showToast\('Comment reported'\)/);
+    expect(postDetailSource).toMatch(/Alert\.alert\('Could not report comment'/);
+    expect(postDetailSource).toMatch(/commentReportsInFlight\.current\.delete\(target\.id\)/);
+  });
+
+  test('only offers the accessible story report action to non-owners', () => {
+    expect(storyViewerSource).toMatch(/!group\.isMe[\s\S]*accessibilityLabel="Report this story"/);
+    expect(storyViewerSource).toContain('accessibilityRole="button"');
+  });
+
+  test('story reporting confirms visibility, locks duplicate submissions, and reports the exact active story', () => {
+    expect(storyViewerSource).toMatch(/Report story\?[\s\S]*stays visible unless AI confirms a violation or an admin removes it/i);
+    expect(storyViewerSource).toMatch(/reportInFlight\.current[\s\S]*reportInFlight\.current = true/);
+    expect(storyViewerSource).toContain('await reportStory(target.id)');
+    expect(storyViewerSource).toMatch(/showToast\('Story reported'\)/);
+    expect(storyViewerSource).toMatch(/Alert\.alert\('Could not report story'/);
+    expect(storyViewerSource).toMatch(/reportInFlight\.current = false/);
   });
 });
 
