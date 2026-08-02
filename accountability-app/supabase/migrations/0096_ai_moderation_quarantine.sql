@@ -37,6 +37,55 @@ begin
 end
 $constraint$;
 
+-- Older callbacks could create multiple open rows for the same source. Keep the
+-- newest row as the canonical review item, merge useful evidence into it, and
+-- preserve every other row as dismissed audit history before enforcing
+-- uniqueness.
+with duplicate_sources as (
+  select source_table, source_id
+    from public.moderation_flags
+   where status = 'open'
+   group by source_table, source_id
+  having count(*) > 1
+), canonical as (
+  select ds.source_table, ds.source_id,
+         (select f.id from public.moderation_flags f
+           where f.source_table = ds.source_table and f.source_id = ds.source_id
+             and f.status = 'open'
+           order by f.created_at desc, f.id desc limit 1) as keep_id,
+         (select f.excerpt from public.moderation_flags f
+           where f.source_table = ds.source_table and f.source_id = ds.source_id
+             and f.status = 'open' and f.excerpt is not null
+           order by f.created_at desc, f.id desc limit 1) as excerpt,
+         (select f.image_url from public.moderation_flags f
+           where f.source_table = ds.source_table and f.source_id = ds.source_id
+             and f.status = 'open' and f.image_url is not null
+           order by f.created_at desc, f.id desc limit 1) as image_url,
+         (select max(f.max_score) from public.moderation_flags f
+           where f.source_table = ds.source_table and f.source_id = ds.source_id
+             and f.status = 'open') as max_score,
+         (select coalesce(array_agg(distinct category order by category), '{}')
+            from public.moderation_flags f
+            cross join lateral unnest(f.categories) category
+           where f.source_table = ds.source_table and f.source_id = ds.source_id
+             and f.status = 'open') as categories
+    from duplicate_sources ds
+), merged as (
+  update public.moderation_flags f
+     set excerpt = coalesce(c.excerpt, f.excerpt),
+         image_url = coalesce(c.image_url, f.image_url),
+         max_score = coalesce(c.max_score, f.max_score),
+         categories = c.categories
+    from canonical c
+   where f.id = c.keep_id
+  returning f.id
+)
+update public.moderation_flags f
+   set status = 'dismissed', reviewed_at = coalesce(f.reviewed_at, now())
+  from canonical c
+ where f.source_table = c.source_table and f.source_id = c.source_id
+   and f.status = 'open' and f.id <> c.keep_id;
+
 create unique index if not exists moderation_flags_open_source_idx
   on public.moderation_flags(source_table, source_id)
   where status = 'open';
@@ -74,15 +123,16 @@ begin
   end if;
 
   insert into public.moderation_flags
-    (source_table, source_id, author_id, categories, max_score,
+    (source_table, source_id, author_id, excerpt, categories, max_score,
      quarantine_reason, check_status, status)
   values
-    (p_source_table, p_source_id, v_author_id,
+    (p_source_table, p_source_id, v_author_id, left(p_excerpt, 500),
      coalesce(p_categories, '{}'::text[]), p_max_score,
      left(p_excerpt, 500), 'confirmed', 'open')
   on conflict (source_table, source_id) where status = 'open'
   do update set
     author_id = excluded.author_id,
+    excerpt = excluded.excerpt,
     categories = excluded.categories,
     max_score = excluded.max_score,
     quarantine_reason = excluded.quarantine_reason,
@@ -136,6 +186,23 @@ drop policy if exists posts_select on public.posts;
 create policy posts_select on public.posts for select to authenticated
   using (moderation_state = 'visible' and public.can_view_post(id, auth.uid()));
 
+drop policy if exists "Users insert own posts" on public.posts;
+drop policy if exists posts_insert_owner on public.posts;
+create policy posts_insert_owner on public.posts for insert to authenticated
+  with check (
+    user_id = auth.uid() and moderation_state = 'visible' and (
+      (group_id is null and page_id is null and audience in ('buddies', 'public'))
+      or (group_id is not null and page_id is null and audience = 'group' and exists (
+        select 1 from public.group_members gm
+         where gm.group_id = posts.group_id and gm.user_id = auth.uid()
+      ))
+      or (page_id is not null and group_id is null and audience = 'public' and exists (
+        select 1 from public.pages pg
+         where pg.id = posts.page_id and pg.owner = auth.uid()
+      ))
+    )
+  );
+
 drop policy if exists "Users update own posts" on public.posts;
 create policy "Users update own posts" on public.posts for update to authenticated
   using (user_id = auth.uid() and moderation_state = 'visible')
@@ -181,6 +248,9 @@ create policy stories_select on public.stories for select to authenticated
           and not public.users_blocked(auth.uid(), user_id))
     )
   );
+drop policy if exists stories_insert on public.stories;
+create policy stories_insert on public.stories for insert to authenticated
+  with check (user_id = auth.uid() and moderation_state = 'visible');
 drop policy if exists stories_delete on public.stories;
 create policy stories_delete on public.stories for delete to authenticated
   using (user_id = auth.uid() and moderation_state = 'visible');
