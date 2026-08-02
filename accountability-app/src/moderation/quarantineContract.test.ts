@@ -226,6 +226,52 @@ describe('manual-report screen contract', () => {
     expect(report).not.toHaveBeenCalled();
   });
 
+  test('old completion cannot clear a same-target replacement after invalidation', async () => {
+    const confirmations: ReportConfirmation[] = [];
+    const completions: Array<() => void> = [];
+    const report = jest.fn<(id: string) => Promise<void>>(
+      () => new Promise<void>((resolve) => completions.push(resolve)),
+    );
+    let storyReporting = false;
+    let storyPaused = false;
+    const action = createReportAction({
+      kind: 'story',
+      report,
+      confirm: (next) => {
+        storyPaused = true;
+        confirmations.push(next);
+      },
+      toast: jest.fn(),
+      announce: jest.fn(),
+      alertError: jest.fn(),
+      pendingChanged: (ids) => {
+        storyReporting = ids.size > 0;
+        if (!storyReporting) storyPaused = false;
+      },
+      getContextKey: (id) => `viewer:${id}:current`,
+    });
+
+    action.request('same-story', 'viewer', 'author');
+    const oldSubmit = confirmations[0].onConfirm();
+    action.invalidate();
+    expect({ storyReporting, storyPaused }).toEqual({ storyReporting: false, storyPaused: false });
+
+    action.request('same-story', 'viewer', 'author');
+    const replacementSubmit = confirmations[1].onConfirm();
+    expect(action.isPending('same-story')).toBe(true);
+    completions[0]();
+    await expect(oldSubmit).resolves.toBe(false);
+    expect(action.isPending('same-story')).toBe(true);
+    expect(storyReporting).toBe(true);
+
+    completions[1]();
+    await expect(replacementSubmit).resolves.toBe(true);
+    expect(action.isPending('same-story')).toBe(false);
+    expect(storyReporting).toBe(false);
+    expect(report).toHaveBeenNthCalledWith(1, 'same-story');
+    expect(report).toHaveBeenNthCalledWith(2, 'same-story');
+  });
+
   test.each([
     [{ code: '401' }, 'Please sign in again and try again.'],
     [{ code: '42501', message: 'raw policy secret' }, 'You can’t report this content.'],

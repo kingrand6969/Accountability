@@ -166,6 +166,7 @@ export default function StoryViewer() {
         storyReportAction.current?.invalidate();
         if (timer.current) clearTimeout(timer.current);
         setPaused(false);
+        setReporting(false);
       };
     }, [load]),
   );

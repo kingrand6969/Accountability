@@ -83,7 +83,7 @@ export function createReportAction(options: ReportActionOptions) {
       );
       return false;
     } finally {
-      pending.delete(targetId);
+      if (pending.get(targetId) === entry) pending.delete(targetId);
       if (isCurrent(targetId, entry)) publishPending();
     }
   }
@@ -109,6 +109,7 @@ export function createReportAction(options: ReportActionOptions) {
     invalidate() {
       version += 1;
       pending.clear();
+      publishPending();
     },
     dispose() {
       disposed = true;
