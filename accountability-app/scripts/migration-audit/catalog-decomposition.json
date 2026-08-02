@@ -1,0 +1,75 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "filename": "catalog-readonly.sql",
+    "sha256": "6fbbf9327ac1024a2e058a68dda65f25d3ee2b72507e37a29cb411ca5d088a93",
+    "selectCount": 19
+  },
+  "aggregateQuerySha256": "0b0a356ac5c7ba9f89e7c9f1a917c1a90001d85121da0ae4a29ceefde513b629",
+  "runtimeUnion": {
+    "filename": "catalog-union-readonly.sql",
+    "sha256": "6918e7ee337f5df08898b7b9ec37c14efa7c20b9dcd5951acbfca74628ff3b1d",
+    "requestCount": 1,
+    "snapshotCount": 1,
+    "resultSetCount": 1,
+    "unionAllCount": 18,
+    "embeddedBodyRule": "Remove exactly one terminal statement semicolon from each source SELECT and preserve every other byte; wrap each body as one parenthesized UNION ALL term.",
+    "orderRule": "CASE category in orderedQueries order, then object_key"
+  },
+  "failureLocalization": {
+    "trigger": "Only after the exact runtimeUnion query fails with validated bounded metadata.",
+    "publication": false,
+    "rootRanges": [[1, 10], [11, 19]],
+    "splitRule": "For a failing inclusive range, execute both frozen children split at floor((start + end) / 2), then descend into the first failing child in manifest order.",
+    "outcomes": ["FIRST_FAILING_CATEGORY", "UNION_WRAPPER_RANGE", "INCOMPLETE"],
+    "maximumProbeCalls": 10,
+    "maximumTotalCalls": 15,
+    "nodes": [
+      { "range": [1, 10], "filename": "catalog-diagnostic-01-10-readonly.sql", "sha256": "467327bb529aaee39e9cd09cd778f2ce4c30789cd16f01106371b6affb1cbcc5" },
+      { "range": [1, 5], "filename": "catalog-diagnostic-01-05-readonly.sql", "sha256": "34fa4d6614ca4c481175dc35e93ce75d1c03495835db6430635ae7fb0dc621dc" },
+      { "range": [1, 3], "filename": "catalog-diagnostic-01-03-readonly.sql", "sha256": "89dc13731111a416c0ae21b56e82f1c19a17ab794fa7407d306717f34938b037" },
+      { "range": [1, 2], "filename": "catalog-diagnostic-01-02-readonly.sql", "sha256": "9bb88b41612616ecaa28292a5a883402c742c7aecfe2c3d5ede41e08dcf1d8df" },
+      { "range": [4, 5], "filename": "catalog-diagnostic-04-05-readonly.sql", "sha256": "e91ba39c0f1466ab314ddf96212883d5d64793d560090ccdcb07634a7b0dc222" },
+      { "range": [6, 10], "filename": "catalog-diagnostic-06-10-readonly.sql", "sha256": "2f76aca6a2b2ea61d6bcbf966ef94a8270025b99468a2e06860c53f28c049022" },
+      { "range": [6, 8], "filename": "catalog-diagnostic-06-08-readonly.sql", "sha256": "5d24d89a5fc04d20fea0d83d3d20686c813a27eff7235cfebd60278105e055b1" },
+      { "range": [6, 7], "filename": "catalog-diagnostic-06-07-readonly.sql", "sha256": "3778b8af6d9c624340dc9e051cb73ae7aaaa8dcff4153bb1d01f5fe31e193e00" },
+      { "range": [9, 10], "filename": "catalog-diagnostic-09-10-readonly.sql", "sha256": "8ad7f1d0afd3a6ca33309778256f2ae5b31b05e019ba14439ed07478d3a77123" },
+      { "range": [11, 19], "filename": "catalog-diagnostic-11-19-readonly.sql", "sha256": "27a484ea82dc83ed9819bb841925b3921148ec349692ce4cf5895cfa8f35059d" },
+      { "range": [11, 15], "filename": "catalog-diagnostic-11-15-readonly.sql", "sha256": "9b06980bab33e44986003e9bdd6a6d10fe2fbbe0482b97ddcbca822f95be6314" },
+      { "range": [11, 13], "filename": "catalog-diagnostic-11-13-readonly.sql", "sha256": "e79b687a680ff74dc51bfcb4f00aee9fa09f8cd99738405cef1a54c16d5ed694" },
+      { "range": [11, 12], "filename": "catalog-diagnostic-11-12-readonly.sql", "sha256": "def929155de9239ecccb9fbd5420159c44e2831d4bf8312d326e831cc1716d16" },
+      { "range": [14, 15], "filename": "catalog-diagnostic-14-15-readonly.sql", "sha256": "022349c8a876914b1d4071b152673265c4a6aafb435c2a3d32554cfd9a90a41c" },
+      { "range": [16, 19], "filename": "catalog-diagnostic-16-19-readonly.sql", "sha256": "572708c1a2a472faf7aa1a9e048f6ea9a27ae03f7ddd92fdf237386c8cb18517" },
+      { "range": [16, 17], "filename": "catalog-diagnostic-16-17-readonly.sql", "sha256": "6505e2bcef7c1d6af2a489b39ac87ff0d9c69019a2c0036d65410a5ed26b723f" },
+      { "range": [18, 19], "filename": "catalog-diagnostic-18-19-readonly.sql", "sha256": "d76c769f8edfcc4ff39a06c9c69774fea21f14dc2f78acd52d721742013e4881" }
+    ]
+  },
+  "framing": {
+    "transaction": "BEGIN READ ONLY",
+    "statementTimeout": "10s",
+    "lockTimeout": "2s",
+    "idleInTransactionSessionTimeout": "15s",
+    "terminator": "ROLLBACK"
+  },
+  "orderedQueries": [
+    { "category": "relation", "filename": "catalog-01-relation-readonly.sql", "selectSha256": "fa7c187624fc7e3fd306d202a83dfb7e04eb6d1f6f6949b271abe336785103a9" },
+    { "category": "relation_privilege", "filename": "catalog-02-relation-privilege-readonly.sql", "selectSha256": "9195db1687ae89263f199cd61132a2d1f99b7d5c73418049cf66e911b0b821ae" },
+    { "category": "column", "filename": "catalog-03-column-readonly.sql", "selectSha256": "19e42662d7d643e5c8ecac012322ef02257ed53c21f8add60498287861bd9592" },
+    { "category": "column_privilege", "filename": "catalog-04-column-privilege-readonly.sql", "selectSha256": "a4d19bfada51af7ef261511fcf381e88b16b5ff14afe8c02215e902968db6555" },
+    { "category": "constraint", "filename": "catalog-05-constraint-readonly.sql", "selectSha256": "5f987138eaa67c0bf04eb9fc1ef34e962a721cb510a1f67576557baddb288872" },
+    { "category": "routine_privilege", "filename": "catalog-06-routine-privilege-readonly.sql", "selectSha256": "15a93624200fd2d98ca8bf6393307e8cbfabc4f9a62b0d1c1315997c6636b4d8" },
+    { "category": "index", "filename": "catalog-07-index-readonly.sql", "selectSha256": "35432dcb47e73b4b9dd4e60ffd81384dd3700d8da665e3c5092cd181dbe7d987" },
+    { "category": "policy", "filename": "catalog-08-policy-readonly.sql", "selectSha256": "629aad63457b0d456d20685d8a05e8416798df8837d5487596beb4a052add093" },
+    { "category": "view", "filename": "catalog-09-view-readonly.sql", "selectSha256": "1135919888fcf82ea545b3bd1387d948bb22481b52a6418c483fe8c089603d1d" },
+    { "category": "materialized_view", "filename": "catalog-10-materialized-view-readonly.sql", "selectSha256": "cc99e281217ce4ad983010a32e81435f0376c1fe8707198e23ee8e8d542e1493" },
+    { "category": "sequence", "filename": "catalog-11-sequence-readonly.sql", "selectSha256": "420cc857537104032a008b16c9c27da35d4a58f21c0aefc66fd8a4261f78a86d" },
+    { "category": "type", "filename": "catalog-12-type-readonly.sql", "selectSha256": "f905411ca3ee2c60c624eeae7b853b222dcf59dbcf292225445c04ea3d0f75cb" },
+    { "category": "routine", "filename": "catalog-13-routine-readonly.sql", "selectSha256": "2e495d4f5250754b1b5f30b7fabfaa24531345a4983e8b69ad6d5bceba4a0309" },
+    { "category": "trigger", "filename": "catalog-14-trigger-readonly.sql", "selectSha256": "3f7c8a8ef196c04c312ed976e9bf000648d28db696831221a66d1a529d87696c" },
+    { "category": "table_grant", "filename": "catalog-15-table-grant-readonly.sql", "selectSha256": "c08bf73aef33e06f05855d04866c3dbd10006596f54ef725281c50b12bb717d3" },
+    { "category": "default_privilege", "filename": "catalog-16-default-privilege-readonly.sql", "selectSha256": "390f86390791d921daa9972c1fcdd469c31d842b09ff785c7969d9589d3d5f2f" },
+    { "category": "extension", "filename": "catalog-17-extension-readonly.sql", "selectSha256": "c6e088e6f5f989f86d7e47c173e6e92932c962ade19bdace79749b970ed2bc8a" },
+    { "category": "publication", "filename": "catalog-18-publication-readonly.sql", "selectSha256": "46ac2e5e7e55730ba10f363d291537baf1ad6be7fc453d90ba0fdaf0eb239eb8" },
+    { "category": "storage_bucket", "filename": "catalog-19-storage-bucket-readonly.sql", "selectSha256": "e3607607891bfdbfe3ae7d2284d5ccc07040f02bd09bf94e2ba5fc35f38725d5" }
+  ]
+}

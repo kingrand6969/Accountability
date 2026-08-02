@@ -1,0 +1,10 @@
+[
+  {
+    "path": "supabase/functions/moderate-content/index.test.ts",
+    "sha256": "932925a7b77ca4844f0c5ddc759f15053189e0ce7dff01b5bc2c48a07751b3d1"
+  },
+  {
+    "path": "supabase/functions/moderate-content/index.ts",
+    "sha256": "0736078020fbdd70198439508ab9c87093b5f8efeabc2d2895f630f4b9968d9b"
+  }
+]
