@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createModerationHandler, parseModerationResult, retryPolicy, validateModerationImageUrl } from './index.ts';
+import { createModerationHandler, createModerationImageResolver, parseModerationResult, retryPolicy,
+  validateModerationImageUrl } from './index.ts';
 
 const validResult = {
   flagged: true,
@@ -83,6 +84,7 @@ function setup(result: unknown = validResult, rpcError: unknown = null, sourceTe
   const handler = createModerationHandler({
     secret: secret ?? undefined, trustedSupabaseUrl: 'https://project.supabase.co',
     loadSource: async () => { calls.source++; return { text: sourceText, image }; },
+    resolveModerationImage: async (raw) => validateModerationImageUrl(raw, 'https://project.supabase.co'),
     moderate: async (input) => { calls.moderate++; calls.inputs.push(input); if (result instanceof Error) throw result; return result; },
     quarantine: async (args) => { calls.rpc.push(args); return rpcError ? { error: rpcError } : { data: true, error: null }; },
     log: (event) => { calls.logs.push(event); },
@@ -127,6 +129,7 @@ test('trusted HTTPS image is included in moderation input', async () => {
   const handler = createModerationHandler({
     secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
     loadSource: async () => ({ text: '', image: 'https://project.supabase.co/a.png' }),
+    resolveModerationImage: async (raw) => validateModerationImageUrl(raw, 'https://project.supabase.co'),
     moderate: async (input) => { received = input; return { ...validResult, flagged: false }; },
     quarantine: async () => ({ data: true, error: null }),
   });
@@ -189,6 +192,7 @@ test('source query errors return retryable non-2xx metadata', async () => {
   const handler = createModerationHandler({
     secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
     loadSource: async () => { throw new Error('query failed'); },
+    resolveModerationImage: async () => null,
     moderate: async () => validResult,
     quarantine: async () => ({ data: true, error: null }),
   });
@@ -203,6 +207,7 @@ test('RPC false means source disappeared and null is retryable', async () => {
     const handler = createModerationHandler({
       secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
       loadSource: async () => ({ text: 'content', image: null }),
+      resolveModerationImage: async () => null,
       moderate: async () => validResult,
       quarantine: async () => { calls.rpc++; return { data, error: null }; },
     });
@@ -211,6 +216,99 @@ test('RPC false means source disappeared and null is retryable', async () => {
     assert.equal((await response.json()).outcome, outcome);
     assert.equal(calls.rpc, 1);
   }
+});
+
+test('valid private post image resolves to signed HTTPS and reaches moderation', async () => {
+  let signCalls = 0;
+  let received: unknown[] = [];
+  const resolveModerationImage = createModerationImageResolver({
+    trustedSupabaseUrl: 'https://project.supabase.co', r2AccountId: 'abc123', r2AccessKeyId: 'key',
+    r2SecretAccessKey: 'secret-key', r2Bucket: 'media',
+    signGet: async (endpoint) => { signCalls++; return `${endpoint}&X-Amz-Signature=signed`; },
+  });
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co', resolveModerationImage,
+    loadSource: async () => ({ text: '', image: 'r2://post-images/00000000-0000-4000-8000-000000000000/proof.webp' }),
+    moderate: async (input) => { received = input; return validResult; },
+    quarantine: async () => ({ data: true, error: null }),
+  });
+  await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.equal(signCalls, 1);
+  assert.match(JSON.stringify(received), /abc123\.r2\.cloudflarestorage\.com/);
+});
+
+test('resolver failure plus text-safe is retryable and never quarantines', async () => {
+  let quarantines = 0;
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
+    loadSource: async () => ({ text: 'benign text', image: 'r2://post-images/00000000-0000-4000-8000-000000000000/a.jpg' }),
+    resolveModerationImage: async () => null,
+    moderate: async () => ({ flagged: false, categories: { harassment: false }, category_scores: { harassment: 0 } }),
+    quarantine: async () => { quarantines++; return { data: true, error: null }; },
+  });
+  const response = await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).outcome, 'image_unresolved');
+  assert.equal(quarantines, 0);
+});
+
+test('resolver failure plus text-confirmed can quarantine', async () => {
+  const { handler, calls } = setup(validResult, null, 'violating text',
+    'r2://post-images/00000000-0000-4000-8000-000000000000/a.jpg');
+  const response = await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.equal(response.status, 200);
+  assert.equal(calls.rpc.length, 1);
+});
+
+test('malicious private refs are rejected without signing and signed URLs are not logged', async () => {
+  let signCalls = 0;
+  const resolver = createModerationImageResolver({
+    trustedSupabaseUrl: 'https://project.supabase.co', r2AccountId: 'abc123', r2AccessKeyId: 'key',
+    r2SecretAccessKey: 'secret-key', r2Bucket: 'media',
+    signGet: async (endpoint) => { signCalls++; return `${endpoint}&secret=sensitive`; },
+  });
+  for (const ref of ['r2://post-videos/00000000-0000-4000-8000-000000000000/a.jpg',
+    'r2://voice/00000000-0000-4000-8000-000000000000/a.jpg',
+    'r2://avatars/00000000-0000-4000-8000-000000000000/a.jpg',
+    'r2://covers/00000000-0000-4000-8000-000000000000/a.jpg',
+    'r2://post-images/00000000-0000-4000-8000-000000000000/../a.jpg',
+    `r2://post-images/00000000-0000-4000-8000-000000000000/${'a'.repeat(300)}.jpg`]) {
+    assert.equal(await resolver(ref), null);
+  }
+  assert.equal(signCalls, 0);
+  const logs: unknown[] = [];
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co', resolveModerationImage: resolver,
+    loadSource: async () => ({ text: 'violation', image: 'r2://post-images/00000000-0000-4000-8000-000000000000/a.jpg' }),
+    moderate: async () => validResult, quarantine: async () => ({ data: true, error: null }),
+    log: (event) => logs.push(event),
+  });
+  await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.doesNotMatch(JSON.stringify(logs), /Signature|sensitive|cloudflarestorage/);
+});
+
+test('missing R2 credentials reject private refs without signing', async () => {
+  let signCalls = 0;
+  const resolver = createModerationImageResolver({
+    trustedSupabaseUrl: 'https://project.supabase.co', r2AccountId: 'abc123', r2AccessKeyId: '',
+    r2SecretAccessKey: 'secret-key', r2Bucket: 'media',
+    signGet: async () => { signCalls++; return 'https://never.example/a.jpg?X-Amz-Expires=300'; },
+  });
+  assert.equal(await resolver('r2://post-images/00000000-0000-4000-8000-000000000000/a.jpg'), null);
+  assert.equal(signCalls, 0);
+});
+
+test('thrown resolver failure with text-safe remains retryable', async () => {
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
+    loadSource: async () => ({ text: 'benign', image: 'r2://post-images/00000000-0000-4000-8000-000000000000/a.jpg' }),
+    resolveModerationImage: async () => { throw new Error('signing unavailable'); },
+    moderate: async () => ({ flagged: false, categories: { harassment: false }, category_scores: { harassment: 0 } }),
+    quarantine: async () => ({ data: true, error: null }),
+  });
+  const response = await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).outcome, 'image_unresolved');
 });
 
 test('retry policy caps automated attempts at three and prioritizes manual reports', () => {

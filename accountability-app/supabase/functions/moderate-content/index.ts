@@ -27,6 +27,7 @@ type Dependencies = {
   trustedSupabaseUrl: string | undefined;
   trustedMediaUrl?: string | undefined;
   loadSource(table: string, id: string): Promise<SourceRow | null>;
+  resolveModerationImage(raw: string): Promise<string | null>;
   moderate(input: unknown[]): Promise<unknown>;
   quarantine(args: QuarantineArgs): Promise<{ data: boolean | null; error: unknown }>;
   log?: (event: { outcome: string; attempt: number }) => void;
@@ -66,6 +67,40 @@ export function validateModerationImageUrl(
   } catch {
     return null;
   }
+}
+
+type R2ResolverConfig = {
+  trustedSupabaseUrl: string | undefined;
+  r2AccountId: string | undefined;
+  r2AccessKeyId: string | undefined;
+  r2SecretAccessKey: string | undefined;
+  r2Bucket: string | undefined;
+  signGet(endpoint: string, credentials: { accessKeyId: string; secretAccessKey: string }): Promise<string>;
+};
+
+export function createModerationImageResolver(config: R2ResolverConfig) {
+  return async (raw: string): Promise<string | null> => {
+    const direct = validateModerationImageUrl(raw, config.trustedSupabaseUrl);
+    if (direct) return direct;
+    const required = [config.r2AccountId, config.r2AccessKeyId, config.r2SecretAccessKey, config.r2Bucket];
+    if (required.some((value) => typeof value !== 'string' || value.length === 0) || raw.length > 256) return null;
+    const match = /^r2:\/\/post-images\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:jpe?g|png|webp))$/i.exec(raw);
+    if (!match || !/^[a-z0-9]+$/i.test(config.r2AccountId!) || !/^[A-Za-z0-9._-]+$/.test(config.r2Bucket!)) return null;
+    const key = `post-images/${match[1]}/${match[2]}`;
+    const trustedR2Url = `https://${config.r2AccountId}.r2.cloudflarestorage.com`;
+    const endpoint = `${trustedR2Url}/${config.r2Bucket}/${key}?X-Amz-Expires=300`;
+    try {
+      const signed = await config.signGet(endpoint, {
+        accessKeyId: config.r2AccessKeyId!, secretAccessKey: config.r2SecretAccessKey!,
+      });
+      const parsed = new URL(signed);
+      const expiry = Number(parsed.searchParams.get('X-Amz-Expires'));
+      if (!Number.isFinite(expiry) || expiry <= 0 || expiry > 300) return null;
+      return validateModerationImageUrl(signed, trustedR2Url);
+    } catch {
+      return null;
+    }
+  };
 }
 
 export function parseModerationResult(value: unknown): ModerationDecision {
@@ -119,7 +154,7 @@ export function createModerationHandler(deps: Dependencies) {
       const row = await deps.loadSource(body.table, body.id);
       if (!row) return json({ ok: true, outcome: 'safe', reason: 'row gone' });
       if (!row.text.trim() && !row.image) return json({ ok: true, outcome: 'safe', reason: 'nothing to check' });
-      const image = validateModerationImageUrl(row.image, deps.trustedSupabaseUrl, deps.trustedMediaUrl);
+      const image = row.image ? await deps.resolveModerationImage(row.image).catch(() => null) : null;
       if (!row.text.trim() && row.image && !image) return json({
         ok: false, outcome: 'unsupported_media', retryable: true, attempt, retry: retryPolicy(attempt, reason),
       }, 503);
@@ -129,6 +164,9 @@ export function createModerationHandler(deps: Dependencies) {
 
       const decision = parseModerationResult(await deps.moderate(input));
       deps.log?.({ outcome: decision.outcome, attempt });
+      if (decision.outcome === 'safe' && row.image && !image) return json({
+        ok: false, outcome: 'image_unresolved', retryable: true, attempt, retry: retryPolicy(attempt, reason),
+      }, 503);
       if (decision.outcome !== 'confirmed') return json({ ok: true, ...decision });
 
       const { data, error } = await deps.quarantine({
@@ -160,16 +198,31 @@ declare const Deno: {
 } | undefined;
 
 if (typeof Deno !== 'undefined') {
-  const { createClient } = await import('npm:@supabase/supabase-js@2');
+  const [{ createClient }, { AwsClient }] = await Promise.all([
+    import('npm:@supabase/supabase-js@2'),
+    import('npm:aws4fetch@1.0.20'),
+  ]);
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const columns: Record<string, { text: string; image?: string }> = {
     posts: { text: 'body', image: 'image_url' },
     post_comments: { text: 'body' },
     stories: { text: 'caption', image: 'image_url' },
   };
+  const resolveModerationImage = createModerationImageResolver({
+    trustedSupabaseUrl: Deno.env.get('SUPABASE_URL'),
+    r2AccountId: Deno.env.get('R2_ACCOUNT_ID'),
+    r2AccessKeyId: Deno.env.get('R2_ACCESS_KEY_ID'),
+    r2SecretAccessKey: Deno.env.get('R2_SECRET_ACCESS_KEY'),
+    r2Bucket: Deno.env.get('R2_BUCKET'),
+    async signGet(endpoint, credentials) {
+      const aws = new AwsClient({ ...credentials, service: 's3', region: 'auto' });
+      return (await aws.sign(new Request(endpoint, { method: 'GET' }), { aws: { signQuery: true } })).url;
+    },
+  });
   const handler = createModerationHandler({
     secret: Deno.env.get('MODERATION_SECRET'),
     trustedSupabaseUrl: Deno.env.get('SUPABASE_URL'),
+    resolveModerationImage,
     async loadSource(table, id) {
       const src = columns[table];
       const selected = [src.text, ...(src.image ? [src.image] : [])].join(',');
