@@ -1,12 +1,5 @@
 -- 0096: atomic, service-only quarantine for AI-moderated user content.
 
-begin;
-
--- Ordinary callbacks take ROW EXCLUSIVE for INSERT/UPDATE. SHARE is the least
--- table-lock mode that blocks those writes, while remaining compatible with the
--- SHARE lock used by CREATE INDEX below. PostgreSQL holds it to transaction end.
-lock table public.moderation_flags in share mode;
-
 alter table public.posts add column if not exists moderation_state text not null default 'visible';
 alter table public.post_comments add column if not exists moderation_state text not null default 'visible';
 alter table public.stories add column if not exists moderation_state text not null default 'visible';
@@ -43,6 +36,13 @@ begin
   end if;
 end
 $constraint$;
+
+-- Keep this transaction deliberately narrow: source-table DDL is complete and
+-- no source-table policy/function work begins until after COMMIT. Ordinary
+-- callbacks take ROW EXCLUSIVE for INSERT/UPDATE; SHARE is the least mode that
+-- blocks those writes and is compatible with CREATE INDEX's own SHARE lock.
+begin;
+lock table public.moderation_flags in share mode;
 
 -- Older callbacks could create multiple open rows for the same source. Keep the
 -- newest row as the canonical review item, merge useful evidence into it, and
@@ -96,6 +96,8 @@ update public.moderation_flags f
 create unique index if not exists moderation_flags_open_source_idx
   on public.moderation_flags(source_table, source_id)
   where status = 'open';
+
+commit;
 
 create or replace function public.quarantine_moderated_content(
   p_source_table text,
@@ -319,5 +321,3 @@ revoke execute on function public.get_public_share(uuid) from public;
 grant execute on function public.get_public_share(uuid) to anon, authenticated, service_role;
 revoke all on function public.resolve_public_share_post(uuid) from public, anon;
 grant execute on function public.resolve_public_share_post(uuid) to authenticated, service_role;
-
-commit;
