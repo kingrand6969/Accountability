@@ -20,7 +20,7 @@ type QuarantineArgs = {
   p_source_id: string;
   p_categories: string[];
   p_max_score: number;
-  p_reason: 'automatic' | 'manual_report';
+  p_excerpt: string;
 };
 type Dependencies = {
   secret: string | undefined;
@@ -52,9 +52,11 @@ export function parseModerationResult(value: unknown): ModerationDecision {
 
 export function retryPolicy(attempt: number, reason: 'automatic' | 'manual_report') {
   const current = Number.isInteger(attempt) && attempt > 0 ? attempt : 1;
-  if (reason === 'manual_report') return { schedule: true as const, nextAttempt: current + 1, delaySeconds: 0 };
   if (current >= 3) return { schedule: false as const };
-  return { schedule: true as const, nextAttempt: current + 1, delaySeconds: current === 1 ? 15 : 60 };
+  const delaySeconds = reason === 'manual_report'
+    ? (current === 1 ? 5 : 30)
+    : (current === 1 ? 30 : 120);
+  return { schedule: true as const, nextAttempt: current + 1, delaySeconds };
 }
 
 function json(body: unknown, status = 200) {
@@ -87,7 +89,7 @@ export function createModerationHandler(deps: Dependencies) {
         p_source_id: body.id,
         p_categories: decision.categories,
         p_max_score: decision.maxScore,
-        p_reason: reason,
+        p_excerpt: `${reason === 'manual_report' ? 'manual report' : 'automatic'} AI confirmation: ${row.text.slice(0, 300)}`,
       });
       if (error) return json({
         ok: false, outcome: 'confirmed', retryable: true, attempt,

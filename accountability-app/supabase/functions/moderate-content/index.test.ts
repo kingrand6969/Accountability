@@ -23,11 +23,23 @@ test('malformed moderation results are uncertain', () => {
     null,
     { ...validResult, flagged: 'yes' },
     { ...validResult, categories: { unknown_category: true } },
+    { ...validResult, categories: { harassment: 1 } },
+    { ...validResult, category_scores: { harassment: -0.01 } },
     { ...validResult, category_scores: { harassment: NaN } },
+    { ...validResult, category_scores: { harassment: Infinity } },
     { ...validResult, category_scores: { harassment: 1.1 } },
     { ...validResult, categories: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`x${i}`, false])) },
+    { ...validResult, category_scores: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`x${i}`, 0.5])) },
   ];
   for (const value of malformed) assert.equal(parseModerationResult(value).outcome, 'uncertain');
+});
+
+test('accepts category score boundaries zero and one', () => {
+  assert.deepEqual(parseModerationResult({
+    flagged: true,
+    categories: { harassment: true, violence: false },
+    category_scores: { harassment: 1, violence: 0 },
+  }), { outcome: 'confirmed', categories: ['harassment'], maxScore: 1 });
 });
 
 function request(body: unknown) {
@@ -36,11 +48,11 @@ function request(body: unknown) {
   });
 }
 
-function setup(result: unknown = validResult, rpcError: unknown = null) {
+function setup(result: unknown = validResult, rpcError: unknown = null, sourceText = 'private content') {
   const calls = { source: 0, moderate: 0, rpc: [] as unknown[], logs: [] as unknown[] };
   const handler = createModerationHandler({
     secret: 'secret',
-    loadSource: async () => { calls.source++; return { text: 'private content', image: null }; },
+    loadSource: async () => { calls.source++; return { text: sourceText, image: null }; },
     moderate: async () => { calls.moderate++; if (result instanceof Error) throw result; return result; },
     quarantine: async (args) => { calls.rpc.push(args); return rpcError ? { error: rpcError } : { data: true, error: null }; },
     log: (event) => { calls.logs.push(event); },
@@ -64,21 +76,28 @@ test('safe, uncertain, and moderation errors never quarantine', async () => {
   }
 });
 
-test('confirmed result quarantines once with exact trusted RPC arguments', async () => {
+test('confirmed result quarantines once with exact trusted RPC arguments and bounded context', async () => {
   const { handler, calls } = setup();
   const id = crypto.randomUUID();
   const response = await handler(request({ table: 'post_comments', id, reason: 'manual_report' }));
   assert.equal(response.status, 200);
   assert.deepEqual(calls.rpc, [{
     p_source_table: 'post_comments', p_source_id: id, p_categories: ['harassment'],
-    p_max_score: 0.91, p_reason: 'manual_report',
+    p_max_score: 0.91, p_excerpt: 'manual report AI confirmation: private content',
   }]);
 });
 
 test('untrusted reason becomes automatic', async () => {
   const { handler, calls } = setup();
   await handler(request({ table: 'stories', id: crypto.randomUUID(), reason: 'invented' }));
-  assert.equal((calls.rpc[0] as { p_reason: string }).p_reason, 'automatic');
+  assert.equal((calls.rpc[0] as { p_excerpt: string }).p_excerpt, 'automatic AI confirmation: private content');
+});
+
+test('RPC excerpt includes no more than 300 source characters', async () => {
+  const { handler, calls } = setup(validResult, null, 'x'.repeat(1000));
+  await handler(request({ table: 'posts', id: crypto.randomUUID(), reason: 'attacker-controlled' }));
+  assert.equal((calls.rpc[0] as { p_excerpt: string }).p_excerpt,
+    `automatic AI confirmation: ${'x'.repeat(300)}`);
 });
 
 test('database quarantine errors return retryable non-2xx metadata', async () => {
@@ -86,14 +105,26 @@ test('database quarantine errors return retryable non-2xx metadata', async () =>
   const response = await handler(request({ table: 'posts', id: crypto.randomUUID(), attempt: 2 }));
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), {
-    ok: false, outcome: 'confirmed', retryable: true, attempt: 2, retry: { schedule: true, nextAttempt: 3, delaySeconds: 60 },
+    ok: false, outcome: 'confirmed', retryable: true, attempt: 2, retry: { schedule: true, nextAttempt: 3, delaySeconds: 120 },
   });
 });
 
 test('retry policy caps automated attempts at three and prioritizes manual reports', () => {
-  assert.deepEqual(retryPolicy(1, 'automatic'), { schedule: true, nextAttempt: 2, delaySeconds: 15 });
+  assert.deepEqual(retryPolicy(1, 'automatic'), { schedule: true, nextAttempt: 2, delaySeconds: 30 });
+  assert.deepEqual(retryPolicy(2, 'automatic'), { schedule: true, nextAttempt: 3, delaySeconds: 120 });
+  assert.deepEqual(retryPolicy(1, 'manual_report'), { schedule: true, nextAttempt: 2, delaySeconds: 5 });
+  assert.deepEqual(retryPolicy(2, 'manual_report'), { schedule: true, nextAttempt: 3, delaySeconds: 30 });
   assert.deepEqual(retryPolicy(3, 'automatic'), { schedule: false });
-  assert.deepEqual(retryPolicy(3, 'manual_report'), { schedule: true, nextAttempt: 4, delaySeconds: 0 });
+  assert.deepEqual(retryPolicy(3, 'manual_report'), { schedule: false });
+});
+
+test('malformed moderation output never calls quarantine', async () => {
+  const { handler, calls } = setup({
+    flagged: true, categories: { harassment: 'true' }, category_scores: { harassment: 0.9 },
+  });
+  const response = await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.equal(response.status, 200);
+  assert.equal(calls.rpc.length, 0);
 });
 
 test('logging is bounded metadata and excludes content and API responses', async () => {
