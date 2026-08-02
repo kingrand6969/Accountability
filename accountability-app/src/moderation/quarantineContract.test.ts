@@ -26,6 +26,8 @@ const migration = readFileSync(
   require.resolve('../../supabase/migrations/0096_ai_moderation_quarantine.sql'),
   'utf8',
 );
+const postDetailSource = readFileSync(require.resolve('../app/post/[id]'), 'utf8');
+const storyViewerSource = readFileSync(require.resolve('../app/story/[userId]'), 'utf8');
 
 beforeEach(() => {
   rpc.mockReset().mockResolvedValue({ data: null, error: null });
@@ -215,15 +217,26 @@ describe('manual-report screen contract', () => {
   test('dispose prevents confirmation from submitting after unmount', async () => {
     let confirmation!: ReportConfirmation;
     const report = jest.fn<(id: string) => Promise<void>>().mockResolvedValue(undefined);
+    const pendingChanged = jest.fn<(ids: ReadonlySet<string>) => void>();
     const action = createReportAction({
       kind: 'comment', report, confirm: (next) => { confirmation = next; },
       announce: jest.fn(), toast: jest.fn(), alertError: jest.fn(),
+      pendingChanged,
       getContextKey: (id) => `viewer:${id}:1`,
     });
     action.request('comment-1', 'viewer', 'author');
+    expect(pendingChanged).toHaveBeenCalledTimes(1);
     action.dispose();
+    expect(pendingChanged).toHaveBeenCalledTimes(1);
     await expect(confirmation.onConfirm()).resolves.toBe(false);
     expect(report).not.toHaveBeenCalled();
+  });
+
+  test('screen unmount cleanup disposes while blur and context changes invalidate', () => {
+    expect(postDetailSource).toMatch(/mountedRef\.current = false;[\s\S]{0,300}commentReportAction\.current\?\.dispose\(\)/);
+    expect(storyViewerSource).toMatch(/mountedRef\.current = false;[\s\S]{0,300}storyReportAction\.current\?\.dispose\(\)/);
+    expect(postDetailSource).toContain('commentReportAction.current?.invalidate()');
+    expect(storyViewerSource).toContain('storyReportAction.current?.invalidate()');
   });
 
   test('old completion cannot clear a same-target replacement after invalidation', async () => {

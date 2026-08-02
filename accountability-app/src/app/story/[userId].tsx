@@ -82,7 +82,7 @@ export default function StoryViewer() {
     return () => {
       mountedRef.current = false;
       focusedRef.current = false;
-      storyReportAction.current?.invalidate();
+      storyReportAction.current?.dispose();
     };
   }, []);
 

@@ -171,7 +171,7 @@ function PostDetailView({
       requestGeneration.current += 1;
       viewGeneration.current += 1;
       operationCoordinator.rotate();
-      commentReportAction.current?.invalidate();
+      commentReportAction.current?.dispose();
     };
   }, []);
 
