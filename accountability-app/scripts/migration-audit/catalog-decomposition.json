@@ -23,7 +23,7 @@
     "splitRule": "For a failing inclusive range, execute both frozen children split at floor((start + end) / 2), then descend into the first failing child in manifest order.",
     "outcomes": ["FIRST_FAILING_CATEGORY", "UNION_WRAPPER_RANGE", "INCOMPLETE"],
     "maximumProbeCalls": 10,
-    "maximumTotalCalls": 15,
+    "maximumTotalCalls": 16,
     "nodes": [
       { "range": [1, 10], "filename": "catalog-diagnostic-01-10-readonly.sql", "sha256": "467327bb529aaee39e9cd09cd778f2ce4c30789cd16f01106371b6affb1cbcc5" },
       { "range": [1, 5], "filename": "catalog-diagnostic-01-05-readonly.sql", "sha256": "34fa4d6614ca4c481175dc35e93ce75d1c03495835db6430635ae7fb0dc621dc" },

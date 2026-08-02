@@ -15,12 +15,42 @@ const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(MODULE_DIRECTORY, '..', '..');
 export const LOCAL_EVIDENCE_ROOT = path.join(PROJECT_ROOT, '.tmp', 'local-canonical-evidence');
 
-function cleanMigrationBytes(filename) {
-  return execFileSync('git', ['show', `:accountability-app/supabase/migrations/${filename}`], {
-    cwd: path.resolve(PROJECT_ROOT, '..'),
+const REPOSITORY_ROOT = path.resolve(PROJECT_ROOT, '..');
+
+function headBytes(relative) {
+  return execFileSync('git', ['show', `HEAD:accountability-app/${relative}`], {
+    cwd: REPOSITORY_ROOT,
     encoding: 'buffer',
     maxBuffer: 2 * 1024 * 1024,
   });
+}
+
+export function headProvenance() {
+  return {
+    commitOid: execFileSync('git', ['rev-parse', 'HEAD^{commit}'], { cwd: REPOSITORY_ROOT, encoding: 'utf8' }).trim(),
+    migrationTreeOid: execFileSync('git', ['rev-parse', 'HEAD:accountability-app/supabase/migrations'], { cwd: REPOSITORY_ROOT, encoding: 'utf8' }).trim(),
+  };
+}
+
+export function assertRelevantHeadClean(relativeFiles) {
+  const paths = [...new Set([
+    ...relativeFiles.map((filename) => `accountability-app/${filename}`),
+    'accountability-app/supabase/functions/moderate-content',
+    'accountability-app/supabase/functions/admin-actions',
+  ])];
+  const output = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all', '--', ...paths], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+  }).trim();
+  assertNoRelevantStatus(output);
+  return true;
+}
+
+export function assertNoRelevantStatus(output) {
+  const status = String(output).trim();
+  if (status) throw new Error(`Relevant HEAD provenance drift: ${status.split(/\r?\n/, 1)[0]}`);
+  return true;
 }
 
 export const LOCAL_QUERY_PLAN = Object.freeze([
@@ -28,18 +58,19 @@ export const LOCAL_QUERY_PLAN = Object.freeze([
   Object.freeze({ evidenceType: 'catalog', filename: 'catalog-union-readonly.sql' }),
   Object.freeze({ evidenceType: 'deterministic-config', filename: 'deterministic-config-readonly.sql' }),
   Object.freeze({ evidenceType: 'current-state-flags', filename: 'current-state-flags-readonly.sql' }),
+  Object.freeze({ evidenceType: 'moderation-postconditions', filename: '0096-postconditions-readonly.sql' }),
   Object.freeze({ evidenceType: 'cron-presence', filename: 'cron-presence-readonly.sql' }),
   Object.freeze({ evidenceType: 'cron-config', filename: 'cron-config-readonly.sql' }),
   Object.freeze({ evidenceType: 'auth-signup-trigger', filename: 'local-auth-signup-trigger-readonly.sql' }),
 ]);
-const LOCAL_PLAN_SHA256 = 'a3dd6e05d9ff13a3752ef9d6d94a191e897b93d1f92edd0e209a4c485160f5d4';
+const LOCAL_PLAN_SHA256 = '9faf5cf5a6624ebb611dfc9cab7199f94aa1806785212fdbc02c7dae30bcf53c';
 const LOCAL_QUERY_SHA256 = Object.freeze({
   'local-auth-signup-trigger-readonly.sql': '0e5aa23be101209c5aa1c38a18d9a98dcbe862120209ea21620ff78f5fc012a8',
 });
 
 export function localPackageIdentity() {
-  const collectorSha256 = sha256(readFileSync(fileURLToPath(import.meta.url)));
-  const collectorTestSha256 = sha256(readFileSync(path.join(MODULE_DIRECTORY, 'local-canonical-collector.test.mjs')));
+  const collectorSha256 = sha256(headBytes('scripts/migration-audit/local-canonical-collector.mjs'));
+  const collectorTestSha256 = sha256(headBytes('scripts/migration-audit/local-canonical-collector.test.mjs'));
   const queryPlanSha256 = sha256(normalizedJson(LOCAL_QUERY_PLAN));
   const packageSha256 = sha256(normalizedJson(localPackageManifest()));
   return { collectorSha256, collectorTestSha256, queryPlanSha256, packageSha256 };
@@ -64,7 +95,6 @@ export function localPackageManifest() {
     'scripts/migration-audit/frozen-ledger.json',
     'scripts/migration-audit/frozen-artifacts.json',
     'scripts/migration-audit/0095-postconditions-readonly.sql',
-    'scripts/migration-audit/0096-postconditions-readonly.sql',
     'scripts/migration-audit/moderate-content-bundle-manifest.json',
     'scripts/migration-audit/admin-actions-bundle-manifest.json',
     'supabase/functions/moderate-content/index.ts',
@@ -80,12 +110,10 @@ export function localPackageManifest() {
     if (!info.isFile() || info.isSymbolicLink() || realpathSync.native(absolute).toLowerCase() !== path.resolve(absolute).toLowerCase()) {
       throw new Error(`Local package input must be a canonical regular file: ${filename}.`);
     }
-    const bytes = filename.startsWith('supabase/migrations/')
-      ? cleanMigrationBytes(path.basename(filename))
-      : readFileSync(absolute);
+    const bytes = headBytes(filename);
     return { filename, sha256: sha256(bytes) };
   });
-  return { formatVersion: 1, scope: 'LOCAL_CANONICAL_REPLAY_0001_0096_ONLY', files };
+  return { formatVersion: 1, scope: 'LOCAL_CANONICAL_REPLAY_0001_0096_ONLY', head: headProvenance(), files };
 }
 
 export function replayProvenance() {
@@ -95,10 +123,10 @@ export function replayProvenance() {
     throw new Error('Frozen replay provenance does not end at 0096.');
   }
   for (const migration of migrations) {
-    const actual = cleanMigrationBytes(migration.filename);
+    const actual = headBytes(`supabase/migrations/${migration.filename}`);
     if (sha256(actual) !== migration.sha256) throw new Error(`Migration provenance drift: ${migration.filename}.`);
   }
-  return { formatVersion: 1, range: '0001-0096', migrations };
+  return { formatVersion: 1, range: '0001-0096', head: headProvenance(), migrations };
 }
 
 export function validateReplayLedger(rows) {
@@ -374,11 +402,13 @@ export function createLocalCanonicalCollector({
   runDocker = defaultRunDocker, approvedPin,
   verifyRuntime = verifyPinnedLocalRuntime,
   protectEvidence = defaultProtectEvidence,
+  enforceHeadClean = false,
 } = {}) {
   if (typeof runDocker !== 'function') throw new Error('Local Docker runner is required.');
   if (!approvedPin || approvedPin.status !== 'APPROVED' || !/^[0-9a-f]{64}$/u.test(approvedPin.pinSha256 ?? '')) throw new Error('Validated approved local pin is required.');
   if (normalizedJson(approvedPin.package) !== normalizedJson(localPackageIdentity())) throw new Error('Approved local package hash mismatch.');
   return async function collect({ outputDir }) {
+    if (enforceHeadClean) assertRelevantHeadClean(localPackageManifest().files.map(({ filename }) => filename));
     if (normalizedJson(approvedPin.package) !== normalizedJson(localPackageIdentity())) throw new Error('Approved local package changed before collection.');
     const absoluteOutput = assertOutputTarget(outputDir);
     if (sha256(readFileSync(DOCKER_EXECUTABLE)) !== DOCKER_SHA256) throw new Error('Pinned Docker executable hash mismatch.');

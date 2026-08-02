@@ -25,6 +25,7 @@ const queryFiles = {
   'replay-ledger': 'catalog-ledger-readonly.sql', 'ledger-presence': 'catalog-presence-readonly.sql',
   catalog: 'catalog-union-readonly.sql', 'deterministic-config': 'deterministic-config-readonly.sql',
   'current-state-flags': 'current-state-flags-readonly.sql', 'cron-presence': 'cron-presence-readonly.sql',
+  'moderation-postconditions': '0096-postconditions-readonly.sql',
   'cron-config': 'cron-config-readonly.sql', 'auth-signup-trigger': 'auth-signup-trigger-readonly.sql',
   'server-version': 'server-version-readonly.sql', 'operational-counts': 'catalog-operational-readonly.sql',
 };
@@ -61,6 +62,13 @@ function commonRows(type) {
   if (type === 'catalog') return [{ category: 'relation', object_key: 'public.x', definition: { rls: true } }];
   if (type === 'deterministic-config') return [{ category: 'rate_limit_config', object_key: 'posts', definition: { maximum_rows: 30 } }];
   if (type === 'current-state-flags') return [{ category: 'current_state_flag', object_key: '0078_posts_photo_type_mismatch', definition: { present: false } }];
+  if (type === 'moderation-postconditions') return [{ category: 'moderation_postconditions', object_key: '0096', definition: {
+    moderation_columns_present: true, moderation_constraints_present: true,
+    queue_indexes_present: true, reports_projection: true, flags_projection: true,
+    no_private_messages_source: true, decision_status_outcome: true,
+    manual_resolution_outcome: true, quarantined_shares_blocked: true,
+    report_privileges: true, no_client_quarantine_mutation: true, no_client_review_mutation: true,
+  } }];
   if (type === 'cron-presence') return [{ category: 'cron_presence', object_key: 'cron.job', definition: { relation: 'cron.job' } }];
   if (type === 'cron-config') return [{ category: 'cron_job_config', object_key: 'purge-old-messages', definition: { schedule: '17 3 * * *' } }];
   return [{ category: 'auth_signup_trigger', object_key: 'auth.users.on_auth_user_created', definition: { definition_sha256: 'a'.repeat(64), enabled: 'O', function: 'public.handle_new_user' } }];
@@ -80,7 +88,7 @@ function runtime(pin) {
 function writeLocal(root, pin) {
   mkdirSync(root);
   const evidence = {};
-  for (const type of ['replay-ledger', 'catalog', 'deterministic-config', 'current-state-flags', 'cron-presence', 'cron-config', 'auth-signup-trigger']) {
+  for (const type of ['replay-ledger', 'catalog', 'deterministic-config', 'current-state-flags', 'moderation-postconditions', 'cron-presence', 'cron-config', 'auth-signup-trigger']) {
     const rows = type === 'replay-ledger' ? pin.ledgerVersions.map((version) => ({ category: 'ledger_version', object_key: version, definition: { version } })) : commonRows(type);
     const queryFilename = type === 'auth-signup-trigger' ? 'local-auth-signup-trigger-readonly.sql' : queryFiles[type];
     const bytes = Buffer.from(json({ formatVersion: 1, evidenceType: type, container: DISPOSABLE_CONTAINER, queryFilename,
@@ -115,7 +123,7 @@ function writeStaging(root, packageSha256, anchor, mutate = () => {}) {
     nonce: 'a'.repeat(32), issuedAt: new Date(issued).toISOString(), expiresAt: new Date(issued + 300_000).toISOString() };
   const receipt = { ...body, receiptSha256: sha256(json(body)) };
   writeFileSync(path.join(root, 'receipt.json'), json(receipt));
-  for (const type of ['ledger-presence', 'cron-presence', 'catalog', 'deterministic-config', 'current-state-flags', 'auth-signup-trigger', 'server-version', 'operational-counts', 'cron-config']) {
+  for (const type of ['ledger-presence', 'cron-presence', 'catalog', 'deterministic-config', 'current-state-flags', 'moderation-postconditions', 'auth-signup-trigger', 'server-version', 'operational-counts', 'cron-config']) {
     const records = type === 'ledger-presence' ? [{ category: 'ledger_presence', object_key: 'supabase_migrations.schema_migrations', definition: { relation: null } }]
       : type === 'server-version' ? [{ category: 'postgres_server_version', object_key: 'server', definition: { server_version_num: '170006' } }]
       : type === 'operational-counts' ? [] : commonRows(type);

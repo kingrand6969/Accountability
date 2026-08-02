@@ -10,6 +10,7 @@ import {
   DISPOSABLE_CONTAINER,
   LOCAL_QUERY_PLAN,
   createLocalCanonicalCollector,
+  assertNoRelevantStatus,
   localPackageIdentity,
   localPackageManifest,
   verifyPinnedLocalRuntime,
@@ -22,6 +23,14 @@ const evidenceTestRoot = path.resolve('.tmp/local-canonical-evidence');
 mkdirSync(evidenceTestRoot, { recursive: true });
 function testRoot(prefix) { return mkdtempSync(path.join(evidenceTestRoot, prefix)); }
 function requireFiles(target) { return readdirSync(target).sort(); }
+
+test('HEAD cleanliness rejects unstaged, staged, and untracked relevant paths', () => {
+  assert.equal(assertNoRelevantStatus(''), true);
+  assert.throws(() => assertNoRelevantStatus(' M accountability-app/supabase/migrations/0057_r2_sign_limit.sql'), /0057_r2_sign_limit/u);
+  assert.throws(() => assertNoRelevantStatus('M  accountability-app/supabase/migrations/0096_ai_moderation_quarantine.sql'), /0096_ai_moderation/u);
+  assert.throws(() => assertNoRelevantStatus(' M accountability-app/scripts/migration-audit/core.mjs'), /core\.mjs/u);
+  assert.throws(() => assertNoRelevantStatus('?? accountability-app/supabase/functions/moderate-content/extra.ts'), /extra\.ts/u);
+});
 const testPin = { status: 'APPROVED', pinSha256: '8'.repeat(64), package: localPackageIdentity(), container: { id: 'f'.repeat(64) }, psql: { absolutePath: '/canonical/psql' }, database: {}, ledgerVersions: [] };
 const collector = (options = {}) => createLocalCanonicalCollector({
   approvedPin: testPin, verifyRuntime: () => ({ identity: 'verified' }), protectEvidence: () => {}, ...options,
@@ -129,6 +138,16 @@ const validRows = {
     ['current_state_flag', '0078_posts_event_type_mismatch', { present: false }],
     ['current_state_flag', '0078_posts_photo_type_mismatch', { present: false }],
   ],
+  '0096-postconditions-readonly.sql': [[
+    'moderation_postconditions', '0096', {
+      moderation_columns_present: true, moderation_constraints_present: true,
+      queue_indexes_present: true, reports_projection: true, flags_projection: true,
+      no_private_messages_source: true, decision_status_outcome: true,
+      manual_resolution_outcome: true, quarantined_shares_blocked: true,
+      report_privileges: true, no_client_quarantine_mutation: true,
+      no_client_review_mutation: true,
+    },
+  ]],
   'cron-presence-readonly.sql': [['cron_presence', 'cron.job', { relation: 'cron.job' }]],
   'cron-config-readonly.sql': [['cron_job_config', 'purge-old-messages', {
     schedule: '17 3 * * *', command_sha256: 'c9258a59aa0e7449631eb5b4cbc76adebcf982c8ea00808779d29147ee2acb7d',
@@ -244,7 +263,7 @@ test('replay provenance is exactly the frozen 0001 through 0096 filename and has
 
 test('local plan proves replay ledger and auth signup trigger and excludes operational counts', () => {
   assert.deepEqual(LOCAL_QUERY_PLAN.map(({ evidenceType }) => evidenceType), [
-    'replay-ledger', 'catalog', 'deterministic-config', 'current-state-flags',
+    'replay-ledger', 'catalog', 'deterministic-config', 'current-state-flags', 'moderation-postconditions',
     'cron-presence', 'cron-config', 'auth-signup-trigger',
   ]);
   assert.equal(LOCAL_QUERY_PLAN.some(({ filename }) => filename === 'catalog-operational-readonly.sql'), false);

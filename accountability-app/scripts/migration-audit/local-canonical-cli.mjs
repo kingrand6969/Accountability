@@ -19,7 +19,7 @@ async function main() {
     throw new Error('Approved local pin must be a canonical regular non-link file.');
   }
   const approvedPin = validateApprovedLocalPin(readFileSync(request.pinPath), request.approvedDigest);
-  const result = await createLocalCanonicalCollector({ approvedPin })(request);
+  const result = await createLocalCanonicalCollector({ approvedPin, enforceHeadClean: true })(request);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

@@ -29,6 +29,7 @@ const BASE_QUERIES = [
   ['cron-presence', 'cron-presence-readonly.sql', 1],
   ['deterministic-config', 'deterministic-config-readonly.sql', undefined],
   ['current-state-flags', 'current-state-flags-readonly.sql', 7],
+  ['moderation-postconditions', '0096-postconditions-readonly.sql', 1],
   ['auth-signup-trigger', 'auth-signup-trigger-readonly.sql', 1],
   ['server-version', 'server-version-readonly.sql', 1],
   ['operational-counts', 'catalog-operational-readonly.sql', undefined],
@@ -93,7 +94,7 @@ export const CONFIG_DIAGNOSTIC_PLAN = Object.freeze([
   Object.freeze({ source: 'storage_bucket', filename: 'deterministic-config-storage-bucket-readonly.sql' }),
   Object.freeze({ source: 'official_challenge', filename: 'deterministic-config-official-challenge-readonly.sql' }),
 ]);
-export const MAX_QUERY_CALLS = 15;
+export const MAX_QUERY_CALLS = 16;
 export const FINALIZATION_MARGIN_MS = 30_000;
 
 export const PINNED_CLI_JSON_WRAPPER = Object.freeze({
@@ -112,6 +113,7 @@ const CATEGORY_KEYS = {
   'cron-config': { cron_job_config: ['schedule', 'command_sha256'] },
   'operational-counts': { storage_bucket_object_count: ['count'] },
   'current-state-flags': { current_state_flag: ['present'] },
+  'moderation-postconditions': { moderation_postconditions: ['moderation_columns_present', 'moderation_constraints_present', 'queue_indexes_present', 'reports_projection', 'flags_projection', 'no_private_messages_source', 'decision_status_outcome', 'manual_resolution_outcome', 'quarantined_shares_blocked', 'report_privileges', 'no_client_quarantine_mutation', 'no_client_review_mutation'] },
   'auth-signup-trigger': { auth_signup_trigger: ['definition_sha256', 'enabled', 'function'] },
   'server-version': { postgres_server_version: ['server_version_num'] },
   'deterministic-config': {
@@ -398,6 +400,11 @@ export function validateQueryRows(rows, filename, evidenceType) {
     const value = rows[0]?.definition?.relation;
     if (rows.length !== 1 || (value !== null && value !== 'supabase_migrations.schema_migrations')) {
       throw new Error('Ledger presence leaf rejected.');
+    }
+  }
+  if (evidenceType === 'moderation-postconditions') {
+    if (rows.length !== 1 || rows[0].object_key !== '0096' || Object.values(rows[0].definition).some((value) => value !== true)) {
+      throw new Error('Migration 0096 postconditions rejected.');
     }
   }
   if (evidenceType === 'cron-presence') {

@@ -49,6 +49,7 @@ const RUNTIME_SQL_FILENAMES = Object.freeze([
   'catalog-union-readonly.sql',
   'deterministic-config-readonly.sql',
   'current-state-flags-readonly.sql',
+  '0096-postconditions-readonly.sql',
   'auth-signup-trigger-readonly.sql',
   'server-version-readonly.sql',
   'catalog-operational-readonly.sql',

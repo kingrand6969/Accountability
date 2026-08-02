@@ -12,9 +12,9 @@ import { validateApprovedLocalPin } from './local-reviewed-pin.mjs';
 const DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_REF = 'ksvcjvwawamwyquzsizk';
 const DIGEST = /^[0-9a-f]{64}$/u;
-const COMPARISON_TYPES = Object.freeze(['catalog', 'deterministic-config', 'current-state-flags', 'cron-presence', 'cron-config', 'auth-signup-trigger']);
+const COMPARISON_TYPES = Object.freeze(['catalog', 'deterministic-config', 'current-state-flags', 'moderation-postconditions', 'cron-presence', 'cron-config', 'auth-signup-trigger']);
 const LOCAL_TYPES = Object.freeze(['replay-ledger', ...COMPARISON_TYPES]);
-const STAGING_REQUIRED = Object.freeze(['ledger-presence', 'cron-presence', 'catalog', 'deterministic-config', 'current-state-flags', 'auth-signup-trigger', 'server-version', 'operational-counts']);
+const STAGING_REQUIRED = Object.freeze(['ledger-presence', 'cron-presence', 'catalog', 'deterministic-config', 'current-state-flags', 'moderation-postconditions', 'auth-signup-trigger', 'server-version', 'operational-counts']);
 const STAGING_OPTIONAL = Object.freeze(['ledger', 'cron-config']);
 const PACKAGE_FILES = Object.freeze([
   'audit.mjs', 'core.mjs', 'core.test.mjs', 'frozen-artifacts.json', 'one-process-executor.mjs',
@@ -27,6 +27,7 @@ const QUERY_FILES = Object.freeze({
   'replay-ledger': 'catalog-ledger-readonly.sql', ledger: 'catalog-ledger-readonly.sql',
   'ledger-presence': 'catalog-presence-readonly.sql', catalog: 'catalog-union-readonly.sql',
   'deterministic-config': 'deterministic-config-readonly.sql', 'current-state-flags': 'current-state-flags-readonly.sql',
+  'moderation-postconditions': '0096-postconditions-readonly.sql',
   'cron-presence': 'cron-presence-readonly.sql', 'cron-config': 'cron-config-readonly.sql',
   'auth-signup-trigger': 'auth-signup-trigger-readonly.sql', 'server-version': 'server-version-readonly.sql',
   'operational-counts': 'catalog-operational-readonly.sql',

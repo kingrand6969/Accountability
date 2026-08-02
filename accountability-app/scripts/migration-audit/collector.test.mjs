@@ -127,6 +127,22 @@ test('current state evidence rejects identifiers and values outside the fixed bo
   );
 });
 
+test('0096 postconditions require one exact identity and every named boolean true', () => {
+  const definition = {
+    moderation_columns_present: true, moderation_constraints_present: true,
+    queue_indexes_present: true, reports_projection: true, flags_projection: true,
+    no_private_messages_source: true, decision_status_outcome: true,
+    manual_resolution_outcome: true, quarantined_shares_blocked: true,
+    report_privileges: true, no_client_quarantine_mutation: true,
+    no_client_review_mutation: true,
+  };
+  const valid = [{ category: 'moderation_postconditions', object_key: '0096', definition }];
+  assert.deepEqual(validateQueryRows(valid, '0096-postconditions-readonly.sql', 'moderation-postconditions'), valid);
+  assert.throws(() => validateQueryRows([{ ...valid[0], object_key: '0096-overload' }], 'x.sql', 'moderation-postconditions'), /postconditions/u);
+  assert.throws(() => validateQueryRows([{ ...valid[0], definition: { ...definition, queue_indexes_present: false } }], 'x.sql', 'moderation-postconditions'), /postconditions/u);
+  assert.throws(() => validateQueryRows([{ ...valid[0], definition: { ...definition, unexpected_overload: true } }], 'x.sql', 'moderation-postconditions'), /definition keys/u);
+});
+
 test('auth signup trigger audit is fixed to one value-free security fingerprint', () => {
   const sql = readFileSync(new URL('./auth-signup-trigger-readonly.sql', import.meta.url), 'utf8');
   assertReadOnlyCatalogSql(sql);
@@ -170,7 +186,7 @@ test('server version query returns one value-minimized fixed record', () => {
 test('catalog failure localization plan is a complete deterministic read-only binary tree', () => {
   const plan = executorModule.CATALOG_DIAGNOSTIC_PLAN;
   assert.ok(plan);
-  assert.equal(MAX_QUERY_CALLS, 15);
+  assert.equal(MAX_QUERY_CALLS, 16);
   assert.deepEqual(plan.rootRanges, [[1, 10], [11, 19]]);
   assert.equal(plan.maximumProbeCalls, 10);
   assert.deepEqual(
@@ -302,6 +318,16 @@ function fixture({ ledger = false, cron = false, failAt = null } = {}) {
       { category: 'current_state_flag', object_key: '0078_posts_event_type_mismatch', definition: { present: false } },
       { category: 'current_state_flag', object_key: '0078_posts_photo_type_mismatch', definition: { present: false } },
     ],
+    '0096-postconditions-readonly.sql': [{
+      category: 'moderation_postconditions', object_key: '0096', definition: {
+        moderation_columns_present: true, moderation_constraints_present: true,
+        queue_indexes_present: true, reports_projection: true, flags_projection: true,
+        no_private_messages_source: true, decision_status_outcome: true,
+        manual_resolution_outcome: true, quarantined_shares_blocked: true,
+        report_privileges: true, no_client_quarantine_mutation: true,
+        no_client_review_mutation: true,
+      },
+    }],
     'auth-signup-trigger-readonly.sql': [{
       category: 'auth_signup_trigger', object_key: 'auth.users.on_auth_user_created',
       definition: { definition_sha256: 'a'.repeat(64), enabled: 'O', function: 'public.handle_new_user' },
@@ -353,11 +379,12 @@ test('collector uses exact absolute CLI arguments and absence gates optional que
     'catalog-union-readonly.sql',
     'deterministic-config-readonly.sql',
     'current-state-flags-readonly.sql',
+    '0096-postconditions-readonly.sql',
     'auth-signup-trigger-readonly.sql',
     'server-version-readonly.sql',
     'catalog-operational-readonly.sql',
   ]);
-  assert.equal(f.calls.length, 8);
+  assert.equal(f.calls.length, 9);
   for (const call of f.calls) {
     assert.equal(path.isAbsolute(call.executable), true);
     assert.deepEqual(call.args.slice(0, 4), ['db', 'query', '--linked', '--file']);
@@ -516,13 +543,13 @@ test('collector gates present ledger and cron queries in order', async () => {
     'catalog-ledger-readonly.sql',
     'cron-config-readonly.sql',
   ]);
-  assert.equal(f.calls.length, 10);
+  assert.equal(f.calls.length, 11);
 });
 
 test('collector reserves the formal worst-case receipt window before any query', async () => {
-  assert.equal(MAX_QUERY_CALLS, 15);
+  assert.equal(MAX_QUERY_CALLS, 16);
   assert.equal(FINALIZATION_MARGIN_MS, 30_000);
-  assert.equal(MAX_QUERY_CALLS * 15_000 + FINALIZATION_MARGIN_MS, 255_000);
+  assert.equal(MAX_QUERY_CALLS * 15_000 + FINALIZATION_MARGIN_MS, 270_000);
   const f = fixture();
   f.dependencies.timeoutMs = 15_000;
   f.dependencies.now = () => new Date('2026-07-30T00:03:00.001Z');
@@ -543,16 +570,16 @@ test('collector caps every subprocess to the remaining global deadline', async (
   f.dependencies.timeoutMs = 15_000;
   let nowCalls = 0;
   f.dependencies.now = () => new Date(
-    nowCalls++ === 0 ? '2026-07-30T00:00:45.000Z' : '2026-07-30T00:04:20.000Z',
+    nowCalls++ === 0 ? '2026-07-30T00:00:15.000Z' : '2026-07-30T00:04:20.000Z',
   );
   await createReadOnlyCollector(f.dependencies)({
     anchorPath: 'outside.json',
     approvedDigest: 'd'.repeat(64),
     outputDir: path.resolve('evidence'),
   });
-  assert.equal(f.calls.length, 8);
+  assert.equal(f.calls.length, 9);
   assert.deepEqual(f.calls.map((call) => call.options.timeoutMs), [
-    10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000,
+    10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000,
   ]);
   assert.notEqual(f.bundle, null);
 });
@@ -562,7 +589,7 @@ test('collector refuses atomic publication after the finalization margin is lost
   f.dependencies.timeoutMs = 15_000;
   let nowCalls = 0;
   f.dependencies.now = () => new Date(
-    nowCalls++ < 17 ? '2026-07-30T00:00:45.000Z' : '2026-07-30T00:04:31.000Z',
+    nowCalls++ < 19 ? '2026-07-30T00:00:15.000Z' : '2026-07-30T00:04:31.000Z',
   );
   await assert.rejects(
     () => createReadOnlyCollector(f.dependencies)({
