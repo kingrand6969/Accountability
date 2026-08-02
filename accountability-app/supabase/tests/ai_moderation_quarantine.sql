@@ -55,6 +55,11 @@ declare
   comment_parent_id uuid := gen_random_uuid();
   comment_id uuid := gen_random_uuid();
   story_id uuid := gen_random_uuid();
+  report_post_id uuid := gen_random_uuid();
+  report_comment_parent_id uuid := gen_random_uuid();
+  report_comment_id uuid := gen_random_uuid();
+  report_story_id uuid := gen_random_uuid();
+  structured_report_id uuid;
   share_id uuid := gen_random_uuid();
   n integer;
   state text;
@@ -77,6 +82,15 @@ begin
   if to_regprocedure('public.quarantine_moderated_content(text,uuid,text[],numeric,text)') is null then
     raise exception 'quarantine function is missing';
   end if;
+  if to_regprocedure('public.report_content(text,uuid,text)') is null then
+    raise exception 'structured report function is missing';
+  end if;
+  if has_function_privilege('public', 'public.report_content(text,uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.report_content(text,uuid,text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.report_content(text,uuid,text)', 'execute')
+     or not has_function_privilege('service_role', 'public.report_content(text,uuid,text)', 'execute') then
+    raise exception 'structured report function grants are unsafe';
+  end if;
   if has_function_privilege('public', 'public.quarantine_moderated_content(text,uuid,text[],numeric,text)', 'execute')
      or has_function_privilege('anon', 'public.quarantine_moderated_content(text,uuid,text[],numeric,text)', 'execute')
      or has_function_privilege('authenticated', 'public.quarantine_moderated_content(text,uuid,text[],numeric,text)', 'execute')
@@ -96,13 +110,74 @@ begin
     (viewer_id, viewer_id || '@test.invalid');
   insert into public.posts(id, user_id, body, audience) values
     (post_id, owner_id, 'quarantine post', 'public'),
-    (comment_parent_id, owner_id, 'visible comment parent', 'public');
+    (comment_parent_id, owner_id, 'visible comment parent', 'public'),
+    (report_post_id, owner_id, 'reported but still visible', 'public'),
+    (report_comment_parent_id, owner_id, 'reported comment parent', 'public');
   insert into public.post_comments(id, post_id, user_id, body) values
-    (comment_id, comment_parent_id, owner_id, 'quarantine comment');
+    (comment_id, comment_parent_id, owner_id, 'quarantine comment'),
+    (report_comment_id, report_comment_parent_id, owner_id, 'reported comment');
   insert into public.stories(id, user_id, image_url) values
-    (story_id, owner_id, 'r2://test/story');
+    (story_id, owner_id, 'r2://test/story'),
+    (report_story_id, owner_id, 'r2://test/reported-story');
+  insert into public.buddy_links(user_a, user_b)
+    values (least(owner_id, viewer_id), greatest(owner_id, viewer_id));
   insert into public.public_shares(id, owner_id, post_id, title)
     values (share_id, owner_id, post_id, 'share');
+
+  -- Manual reports derive both identities, retain a structured source, enqueue
+  -- a manual priority recheck, and never change visibility on their own. A bad
+  -- queue endpoint exercises fail-open retention without special test hooks.
+  insert into public.internal_config(key, value) values
+    ('moderation_url', 'http://127.0.0.1:1'),
+    ('moderation_secret', 'test-secret')
+  on conflict (key) do update set value = excluded.value;
+  perform set_config('request.jwt.claim.sub', viewer_id::text, true);
+  set local role authenticated;
+  structured_report_id := public.report_content('posts', report_post_id, '  harmful   claim  ');
+  perform public.report_content('post_comments', report_comment_id, null);
+  perform public.report_content('stories', report_story_id, 'unsafe');
+  begin
+    perform public.report_content('buddy_messages', report_post_id, null);
+    raise exception 'unsupported structured report source was accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  reset role;
+
+  if not exists (select 1 from public.buddy_reports
+    where id = structured_report_id and reporter = viewer_id and reported = owner_id
+      and source_table = 'posts' and source_id = report_post_id
+      and reason = 'harmful claim') then
+    raise exception 'structured report payload or server-derived identities are wrong';
+  end if;
+  if (select count(*) from public.buddy_reports where reporter=viewer_id
+      and source_table is not null) <> 3 then
+    raise exception 'structured reports were not retained';
+  end if;
+  if (select moderation_state from public.posts where id=report_post_id) <> 'visible'
+     or (select moderation_state from public.post_comments where id=report_comment_id) <> 'visible'
+     or (select moderation_state from public.stories where id=report_story_id) <> 'visible' then
+    raise exception 'manual report quarantined content before AI confirmation';
+  end if;
+  if not exists (select 1 from net.http_request_queue
+    where convert_from(body, 'utf8')::jsonb @> jsonb_build_object('table','posts','id',report_post_id,
+      'reason','manual_report','report_id',structured_report_id)) then
+    raise exception 'priority manual moderation payload was not queued';
+  end if;
+
+  perform set_config('request.jwt.claim.sub', owner_id::text, true);
+  set local role authenticated;
+  begin
+    perform public.report_content('posts', report_post_id, 'self report');
+    raise exception 'self report was accepted';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
+
+  perform public.quarantine_moderated_content('posts', report_post_id, array['hate'], .99, 'confirmed later');
+  if not exists (select 1 from public.buddy_reports where id=structured_report_id)
+     or (select moderation_state from public.posts where id=report_post_id) <> 'quarantined' then
+    raise exception 'later confirmed quarantine did not retain the original report';
+  end if;
 
   begin
     perform public.quarantine_moderated_content('buddy_messages', post_id, array['x'], .9, 'bad');

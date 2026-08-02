@@ -85,16 +85,21 @@ export async function deletePost(postId: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Report a post to the team — lands in the admin Reports queue with the
- *  post's text quoted so it can be reviewed even if later deleted. */
+/** File a structured report; the server derives the author and queues a recheck. */
 export async function reportPost(post: { id: string; user_id: string; body: string | null }): Promise<void> {
-  const me = await currentUserId();
-  if (!me) throw new Error('Not signed in.');
-  const excerpt = (post.body ?? '(no text — image post)').slice(0, 140);
-  const { error } = await supabase.from('buddy_reports').insert({
-    reporter: me,
-    reported: post.user_id,
-    reason: `Reported a post: "${excerpt}" (post ${post.id})`,
+  const { error } = await supabase.rpc('report_content', {
+    p_source_table: 'posts',
+    p_source_id: post.id,
+    p_reason: null,
+  });
+  if (error) throw error;
+}
+
+export async function reportComment(commentId: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc('report_content', {
+    p_source_table: 'post_comments',
+    p_source_id: commentId,
+    p_reason: reason?.trim() || null,
   });
   if (error) throw error;
 }

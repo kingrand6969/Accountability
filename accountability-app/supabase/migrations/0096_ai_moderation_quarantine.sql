@@ -4,6 +4,23 @@ alter table public.posts add column if not exists moderation_state text not null
 alter table public.post_comments add column if not exists moderation_state text not null default 'visible';
 alter table public.stories add column if not exists moderation_state text not null default 'visible';
 
+alter table public.buddy_reports
+  add column if not exists source_table text,
+  add column if not exists source_id uuid;
+
+do $report_constraint$
+begin
+  if not exists (select 1 from pg_constraint
+    where conrelid = 'public.buddy_reports'::regclass
+      and conname = 'buddy_reports_source_check') then
+    alter table public.buddy_reports add constraint buddy_reports_source_check check (
+      (source_table is null and source_id is null)
+      or (source_table in ('posts', 'post_comments', 'stories') and source_id is not null)
+    );
+  end if;
+end
+$report_constraint$;
+
 do $constraints$
 declare t text;
 begin
@@ -155,6 +172,91 @@ revoke all on function public.quarantine_moderated_content(text, uuid, text[], n
   from public, anon, authenticated;
 grant execute on function public.quarantine_moderated_content(text, uuid, text[], numeric, text)
   to service_role;
+
+create or replace function public.report_content(
+  p_source_table text,
+  p_source_id uuid,
+  p_reason text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $function$
+declare
+  v_reporter_id uuid := auth.uid();
+  v_author_id uuid;
+  v_parent_post_id uuid;
+  v_report_id uuid;
+  v_reason text := nullif(left(regexp_replace(trim(coalesce(p_reason, '')), '\s+', ' ', 'g'), 500), '');
+  v_url text;
+  v_secret text;
+begin
+  if v_reporter_id is null then
+    raise exception 'Authentication required.' using errcode = '42501';
+  end if;
+  if p_source_id is null or p_source_table not in ('posts', 'post_comments', 'stories') then
+    raise exception 'Unsupported report source.' using errcode = '22023';
+  end if;
+
+  if p_source_table = 'posts' then
+    select user_id into v_author_id from public.posts
+     where id = p_source_id and moderation_state = 'visible'
+       and public.can_view_post(id, v_reporter_id);
+  elsif p_source_table = 'post_comments' then
+    select user_id, post_id into v_author_id, v_parent_post_id
+      from public.post_comments
+     where id = p_source_id and moderation_state = 'visible';
+    if found and not public.can_view_post(v_parent_post_id, v_reporter_id) then
+      v_author_id := null;
+    end if;
+  else
+    select user_id into v_author_id from public.stories
+     where id = p_source_id and moderation_state = 'visible' and expires_at > now()
+       and (user_id = v_reporter_id or (
+         public.are_buddies(user_id, v_reporter_id)
+         and not public.users_blocked(v_reporter_id, user_id)
+       ));
+  end if;
+
+  if v_author_id is null then
+    raise exception 'Content is unavailable.' using errcode = '42501';
+  end if;
+  if v_author_id = v_reporter_id then
+    raise exception 'You cannot report your own content.' using errcode = '42501';
+  end if;
+
+  insert into public.buddy_reports(reporter, reported, reason, source_table, source_id)
+  values (v_reporter_id, v_author_id, coalesce(v_reason, 'User reported content'),
+          p_source_table, p_source_id)
+  returning id into v_report_id;
+
+  begin
+    select value into v_url from public.internal_config where key = 'moderation_url';
+    select value into v_secret from public.internal_config where key = 'moderation_secret';
+    if coalesce(v_url, '') <> '' then
+      perform net.http_post(
+        url := v_url,
+        body := jsonb_build_object(
+          'table', p_source_table, 'id', p_source_id,
+          'reason', 'manual_report', 'report_id', v_report_id
+        ),
+        headers := jsonb_build_object(
+          'Content-Type', 'application/json',
+          'x-moderation-secret', coalesce(v_secret, '')
+        )
+      );
+    end if;
+  exception when others then
+    return v_report_id;
+  end;
+
+  return v_report_id;
+end
+$function$;
+
+revoke all on function public.report_content(text, uuid, text) from public, anon;
+grant execute on function public.report_content(text, uuid, text) to authenticated, service_role;
 
 -- Central post visibility remains the single predicate used by feed reads and
 -- interactions; quarantine is checked before every existing audience branch.

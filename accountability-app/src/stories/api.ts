@@ -71,3 +71,12 @@ export async function deleteStory(id: string): Promise<void> {
   const { error } = await supabase.from('stories').delete().eq('id', id);
   if (error) throw error;
 }
+
+export async function reportStory(storyId: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc('report_content', {
+    p_source_table: 'stories',
+    p_source_id: storyId,
+    p_reason: reason?.trim() || null,
+  });
+  if (error) throw error;
+}
