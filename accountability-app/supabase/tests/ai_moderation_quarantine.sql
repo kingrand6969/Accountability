@@ -90,6 +90,9 @@ declare
   legacy_post_id uuid := gen_random_uuid();
   legacy_report_id uuid := gen_random_uuid();
   malformed_legacy_report_id uuid := gen_random_uuid();
+  allowed_post_id uuid := gen_random_uuid();
+  allowed_report_id uuid := gen_random_uuid();
+  legacy_resolved_report_id uuid := gen_random_uuid();
   report_post_id uuid := gen_random_uuid();
   report_comment_parent_id uuid := gen_random_uuid();
   report_comment_id uuid := gen_random_uuid();
@@ -127,6 +130,16 @@ begin
     where table_schema = 'public' and table_name = 'stories'
       and column_name = 'moderation_state'
   ) then raise exception 'stories.moderation_state is missing'; end if;
+  if not exists (select 1 from information_schema.columns
+    where table_schema='public' and table_name='buddy_reports'
+      and column_name='resolution_outcome') then
+    raise exception 'buddy report resolution outcome is missing';
+  end if;
+  if not exists (select 1 from pg_constraint
+    where conrelid='public.buddy_reports'::regclass
+      and conname='buddy_reports_resolution_outcome_check') then
+    raise exception 'buddy report resolution outcome constraint is missing';
+  end if;
   if to_regprocedure('public.quarantine_moderated_content(text,uuid,text[],numeric,text)') is null then
     raise exception 'quarantine function is missing';
   end if;
@@ -171,6 +184,11 @@ begin
      or has_function_privilege('authenticated', 'public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)', 'execute')
      or not has_function_privilege('service_role', 'public.remove_reported_post(uuid,uuid,uuid,uuid,text,text)', 'execute') then
     raise exception 'reported-post removal grants are unsafe';
+  end if;
+  if has_function_privilege('public','public.admin_resolve_report(uuid,boolean)','execute')
+     or has_function_privilege('anon','public.admin_resolve_report(uuid,boolean)','execute')
+     or not has_function_privilege('authenticated','public.admin_resolve_report(uuid,boolean)','execute') then
+    raise exception 'admin report resolution grants changed';
   end if;
   if has_function_privilege('public', 'public.report_content(text,uuid,text)', 'execute')
      or has_function_privilege('anon', 'public.report_content(text,uuid,text)', 'execute')
@@ -223,6 +241,7 @@ begin
     (stale_post_id, owner_id, 'stale review post', 'public'),
     (manual_post_id, owner_id, 'manual removal post', 'public'),
     (legacy_post_id, owner_id, 'legacy removal post', 'public'),
+    (allowed_post_id, owner_id, 'allowed reported post', 'public'),
     (unsafe_url_post_id, owner_id, 'unsafe config report', 'public'),
     (missing_secret_post_id, owner_id, 'missing secret report', 'public'),
     (sync_failure_post_id, owner_id, 'sync failure report', 'public');
@@ -440,7 +459,8 @@ begin
                  and warning_message=repeat('W', 2000) and length(warning_message)=2000
                  and warned_at is not null and warning_ack_at is null)
      or not exists (select 1 from public.buddy_reports where id=review_report_id
-                    and resolved_at is not null and resolved_by=reviewer_id) then
+                    and resolved_at is not null and resolved_by=reviewer_id
+                    and resolution_outcome='removed') then
     raise exception 'removal did not atomically warn the author and resolve its report';
   end if;
   review_result := public.review_quarantined_content(
@@ -485,6 +505,53 @@ begin
     raise exception 'stale source changed strike count';
   end if;
 
+  insert into public.buddy_reports(id,reporter,reported,reason,source_table,source_id)
+  values(allowed_report_id,viewer_id,owner_id,'allowed report','posts',allowed_post_id);
+  perform set_config('request.jwt.claim.sub',reviewer_id::text,true);
+  set local role authenticated;
+  perform public.admin_resolve_report(allowed_report_id,true);
+  reset role;
+  if not exists(select 1 from public.buddy_reports where id=allowed_report_id
+    and resolved_at is not null and resolved_by=reviewer_id and resolution_outcome='allowed') then
+    raise exception 'admin report resolution did not record allowed outcome';
+  end if;
+  begin
+    perform public.remove_reported_post(
+      allowed_report_id,reviewer_id,allowed_post_id,owner_id,'conflict','must not remove'
+    );
+    raise exception 'allowed report was later treated as removed';
+  exception when invalid_parameter_value then null;
+  end;
+  if not exists(select 1 from public.posts where id=allowed_post_id)
+     or (select strike_count from public.profiles where id=owner_id)<>1
+     or (select resolution_outcome from public.buddy_reports where id=allowed_report_id)<>'allowed' then
+    raise exception 'allowed/removal conflict changed content or sanctions';
+  end if;
+  insert into public.buddy_reports(id,reporter,reported,reason,resolved_at,resolved_by)
+  values(legacy_resolved_report_id,reviewer_id,owner_id,
+    'Legacy resolved report (post '||allowed_post_id::text||')',now(),reviewer_id);
+  begin
+    perform public.remove_reported_post(
+      legacy_resolved_report_id,reviewer_id,allowed_post_id,owner_id,null,null
+    );
+    raise exception 'legacy null-outcome resolution was treated as removal';
+  exception when invalid_parameter_value then null;
+  end;
+  if not exists(select 1 from public.posts where id=allowed_post_id)
+     or (select strike_count from public.profiles where id=owner_id)<>1 then
+    raise exception 'legacy null-outcome conflict changed content or sanctions';
+  end if;
+  set local role authenticated;
+  perform public.admin_resolve_report(allowed_report_id,false);
+  reset role;
+  if exists(select 1 from public.buddy_reports where id=allowed_report_id
+    and (resolved_at is not null or resolved_by is not null or resolution_outcome is not null)) then
+    raise exception 'reopening report did not clear resolution audit fields';
+  end if;
+  set local role authenticated;
+  perform public.admin_resolve_report(allowed_report_id,true);
+  reset role;
+
   insert into public.buddy_reports(id,reporter,reported,reason,source_table,source_id) values
     (manual_report_id,viewer_id,owner_id,'structured manual post','posts',manual_post_id),
     (manual_other_report_id,reviewer_id,owner_id,'second structured report','posts',manual_post_id);
@@ -518,7 +585,8 @@ begin
      or (select strike_count from public.profiles where id=owner_id)<>2
      or (select count(*) from public.user_sanctions where user_id=owner_id and action='remove')<>2
      or (select count(*) from public.buddy_reports where id in (manual_report_id,manual_other_report_id)
-         and resolved_by=reviewer_id and resolved_at is not null)<>2
+         and resolved_by=reviewer_id and resolved_at is not null
+         and resolution_outcome='removed')<>2
      or exists(select 1 from public.moderation_flags where source_table='posts' and source_id=manual_post_id and status='open') then
     raise exception 'reported-post removal transaction was incomplete';
   end if;
@@ -544,7 +612,8 @@ begin
   );
   if review_result->>'status'<>'removed' or exists(select 1 from public.posts where id=legacy_post_id)
      or not exists(select 1 from public.buddy_reports where id=legacy_report_id
-                    and resolved_by=reviewer_id and resolved_at is not null)
+                    and resolved_by=reviewer_id and resolved_at is not null
+                    and resolution_outcome='removed')
      or (select strike_count from public.profiles where id=owner_id)<>3 then
     raise exception 'strict legacy reported-post removal failed';
   end if;

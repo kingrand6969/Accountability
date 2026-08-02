@@ -6,7 +6,19 @@ alter table public.stories add column if not exists moderation_state text not nu
 
 alter table public.buddy_reports
   add column if not exists source_table text,
-  add column if not exists source_id uuid;
+  add column if not exists source_id uuid,
+  add column if not exists resolution_outcome text;
+
+do $report_outcome_constraint$
+begin
+  if not exists (select 1 from pg_constraint
+    where conrelid='public.buddy_reports'::regclass
+      and conname='buddy_reports_resolution_outcome_check') then
+    alter table public.buddy_reports add constraint buddy_reports_resolution_outcome_check
+      check (resolution_outcome in ('allowed','removed'));
+  end if;
+end
+$report_outcome_constraint$;
 
 do $report_constraint$
 begin
@@ -29,6 +41,26 @@ create policy "File own reports" on public.buddy_reports
   with check (
     auth.uid() = reporter and source_table is null and source_id is null
   );
+
+create or replace function public.admin_resolve_report(
+  p_report uuid, p_resolve boolean default true
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $function$
+begin
+  perform admin_assert();
+  update public.buddy_reports
+     set resolved_at = case when p_resolve then now() else null end,
+         resolved_by = case when p_resolve then auth.uid() else null end,
+         resolution_outcome = case when p_resolve then 'allowed' else null end
+   where id = p_report;
+end
+$function$;
+revoke all on function public.admin_resolve_report(uuid, boolean) from public, anon;
+grant execute on function public.admin_resolve_report(uuid, boolean) to authenticated;
 
 -- Serialize buddy report admission and its count in one trigger invocation.
 -- Other rate-limited tables retain the generic 0056 behavior unchanged.
@@ -346,7 +378,9 @@ begin
   end if;
 
   update public.buddy_reports
-     set resolved_at=coalesce(resolved_at, now()), resolved_by=coalesce(resolved_by, p_admin_actor)
+     set resolved_at=coalesce(resolved_at, now()),
+         resolved_by=coalesce(resolved_by, p_admin_actor),
+         resolution_outcome=case when p_decision='approve' then 'allowed' else 'removed' end
    where source_table=v_flag.source_table and source_id=v_flag.source_id and resolved_at is null;
 
   return jsonb_build_object(
@@ -432,8 +466,11 @@ begin
     raise exception 'Report changed during review' using errcode='40001';
   end if;
   if v_locked_report.resolved_at is not null then
-    return jsonb_build_object('ok',true,'status','removed','idempotent',true,
-      'strikes',coalesce((select strike_count from public.profiles where id=v_author_id),0));
+    if v_locked_report.resolution_outcome = 'removed' then
+      return jsonb_build_object('ok',true,'status','removed','idempotent',true,
+        'strikes',coalesce((select strike_count from public.profiles where id=v_author_id),0));
+    end if;
+    raise exception 'Report was resolved without removal' using errcode='22023';
   end if;
   if v_author_id = p_admin_actor then
     raise exception 'Administrators cannot sanction themselves' using errcode='42501';
@@ -452,7 +489,8 @@ begin
   insert into public.user_sanctions(user_id,admin_id,action,reason,message)
   values(v_author_id,p_admin_actor,'remove',nullif(left(trim(coalesce(p_reason,'')),500),''),
          nullif(left(coalesce(p_message,''),2000),''));
-  update public.buddy_reports set resolved_at=now(), resolved_by=p_admin_actor
+  update public.buddy_reports
+     set resolved_at=now(), resolved_by=p_admin_actor, resolution_outcome='removed'
    where (id=p_report or (source_table='posts' and source_id=v_post_id)) and resolved_at is null;
   update public.moderation_flags set status='removed',reviewed_at=now(),reviewed_by=p_admin_actor
    where source_table='posts' and source_id=v_post_id and status='open';
