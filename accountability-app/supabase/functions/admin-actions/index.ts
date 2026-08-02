@@ -24,6 +24,15 @@ const ACTIONS = new Set([
   'ban', 'unban', 'restrict', 'warning', 'clear',
 ]);
 
+// Public-error contract: responses are fixed allowlisted text. Never forward a
+// database message, detail, hint, stack, request payload, or member identifier.
+const moderationRpcError = (code?: string) => {
+  if (code === 'P0002') return { status: 404, error: 'moderation item not found' };
+  if (code === '22023') return { status: 400, error: 'invalid moderation request' };
+  if (code === '42501') return { status: 403, error: 'moderation action forbidden' };
+  return { status: 500, error: 'moderation action failed' };
+};
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
@@ -108,10 +117,8 @@ Deno.serve(async (req) => {
         p_message: typeof message === 'string' ? message : null,
       });
       if (error) {
-        const status = error.code === 'P0002' ? 404
-          : error.code === '22023' ? 400
-          : error.code === '42501' ? 403 : 500;
-        return json({ error: error.message }, status);
+        const safe = moderationRpcError(error.code);
+        return json({ error: safe.error }, safe.status);
       }
       return json(data);
     }
@@ -159,7 +166,7 @@ Deno.serve(async (req) => {
       days: d || null, expires_at: expires,
     });
     return json({ ok: true });
-  } catch (e) {
-    return json({ error: String((e as Error).message ?? e) }, 500);
+  } catch {
+    return json({ error: 'internal server error' }, 500);
   }
 });

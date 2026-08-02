@@ -101,6 +101,9 @@ declare
   story_flag_id uuid;
   stale_flag_id uuid;
   review_result jsonb;
+  review_report_id uuid := gen_random_uuid();
+  first_warned_at timestamptz;
+  first_resolved_at timestamptz;
 begin
   if not exists (
     select 1 from information_schema.columns
@@ -359,6 +362,8 @@ begin
    where source_table='posts' and source_id=stale_post_id and status='open';
 
   insert into public.admins(user_id) values(reviewer_id);
+  insert into public.buddy_reports(id, reporter, reported, reason, source_table, source_id)
+  values (review_report_id, viewer_id, owner_id, 'review story report', 'stories', review_story_id);
   review_result := public.review_quarantined_content(comment_flag_id, 'approve', reviewer_id, null, null);
   if review_result->>'status' <> 'approved'
      or (select moderation_state from public.post_comments where id=review_comment_id) <> 'visible'
@@ -372,16 +377,33 @@ begin
     raise exception 'approved decision retry/conflict was not an idempotent no-op';
   end if;
 
-  review_result := public.review_quarantined_content(story_flag_id, 'remove', reviewer_id, 'violence', 'Story removed');
+  review_result := public.review_quarantined_content(
+    story_flag_id, 'remove', reviewer_id, 'violence', repeat('W', 2100)
+  );
   if review_result->>'status' <> 'removed' or exists (select 1 from public.stories where id=review_story_id)
      or not exists (select 1 from public.moderation_flags where id=story_flag_id
                     and status='removed' and reviewed_by=reviewer_id and reviewed_at is not null) then
     raise exception 'story removal did not delete content';
   end if;
-  review_result := public.review_quarantined_content(story_flag_id, 'remove', reviewer_id, 'violence', 'Story removed');
+  select warned_at into first_warned_at from public.profiles where id=owner_id;
+  select resolved_at into first_resolved_at from public.buddy_reports where id=review_report_id;
+  if not exists (select 1 from public.profiles where id=owner_id
+                 and warning_message=repeat('W', 2000) and length(warning_message)=2000
+                 and warned_at is not null and warning_ack_at is null)
+     or not exists (select 1 from public.buddy_reports where id=review_report_id
+                    and resolved_at is not null and resolved_by=reviewer_id) then
+    raise exception 'removal did not atomically warn the author and resolve its report';
+  end if;
+  review_result := public.review_quarantined_content(
+    story_flag_id, 'remove', reviewer_id, 'changed retry', repeat('X', 100)
+  );
   if not (review_result->>'idempotent')::boolean
      or (select strike_count from public.profiles where id=owner_id) <> 1
-     or (select count(*) from public.user_sanctions where user_id=owner_id and action='remove') <> 1 then
+     or (select count(*) from public.user_sanctions where user_id=owner_id and action='remove') <> 1
+     or (select warned_at from public.profiles where id=owner_id) is distinct from first_warned_at
+     or (select warning_message from public.profiles where id=owner_id) <> repeat('W', 2000)
+     or (select resolved_at from public.buddy_reports where id=review_report_id) is distinct from first_resolved_at
+     or (select count(*) from public.buddy_reports where id=review_report_id and resolved_by=reviewer_id) <> 1 then
     raise exception 'repeated removal added more than one strike/sanction';
   end if;
   if public.review_quarantined_content(story_flag_id, 'approve', reviewer_id, null, null)->>'status' <> 'removed'
