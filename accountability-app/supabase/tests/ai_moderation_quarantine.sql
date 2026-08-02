@@ -1,10 +1,52 @@
-begin;
-
 -- Integration coverage for 0096. Run as postgres against a disposable database.
--- Idempotency harness (PowerShell, from the repository root):
---   Get-Content -Raw supabase/migrations/0096_ai_moderation_quarantine.sql | docker exec -i <disposable-db> psql -v ON_ERROR_STOP=1 -U postgres -d postgres
---   Get-Content -Raw supabase/migrations/0096_ai_moderation_quarantine.sql | docker exec -i <disposable-db> psql -v ON_ERROR_STOP=1 -U postgres -d postgres
---   Get-Content -Raw supabase/tests/ai_moderation_quarantine.sql | docker exec -i <disposable-db> psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+-- Enable the upgrade harness only on a disposable database. This file and the
+-- migrations directory must retain their repository-relative layout:
+--   psql -v ON_ERROR_STOP=1 -v quarantine_upgrade_harness=1 \
+--     -f supabase/tests/ai_moderation_quarantine.sql
+
+\set ON_ERROR_STOP on
+\if :{?quarantine_upgrade_harness}
+drop index if exists public.moderation_flags_open_source_idx;
+delete from public.moderation_flags
+ where source_table='posts' and source_id='11111111-1111-1111-1111-111111111111';
+insert into public.moderation_flags
+  (id,source_table,source_id,excerpt,image_url,categories,max_score,status,created_at)
+values
+  ('21111111-1111-1111-1111-111111111111','posts','11111111-1111-1111-1111-111111111111',
+   'older evidence','r2://legacy/older-image',array['hate'],.4,'open','2026-01-01 00:00:00+00'),
+  ('31111111-1111-1111-1111-111111111111','posts','11111111-1111-1111-1111-111111111111',
+   'newer evidence',null,array['violence'],.9,'open','2026-01-02 00:00:00+00');
+
+-- Run the exact migration reconciliation rather than a test-side copy.
+\ir ../migrations/0096_ai_moderation_quarantine.sql
+do $upgrade_test$
+begin
+  if not exists (select 1 from public.moderation_flags
+    where id='31111111-1111-1111-1111-111111111111' and status='open'
+      and excerpt='newer evidence' and image_url='r2://legacy/older-image'
+      and categories=array['hate','violence'] and max_score=.9) then
+    raise exception 'newest duplicate was not retained with merged evidence';
+  end if;
+  if not exists (select 1 from public.moderation_flags
+    where id='21111111-1111-1111-1111-111111111111'
+      and status='dismissed' and reviewed_at is not null) then
+    raise exception 'older duplicate was not preserved as dismissed audit';
+  end if;
+  if (select count(*) from public.moderation_flags
+    where source_table='posts' and source_id='11111111-1111-1111-1111-111111111111'
+      and status='open') <> 1 then
+    raise exception 'duplicate upgrade did not leave exactly one open flag';
+  end if;
+end
+$upgrade_test$;
+delete from public.moderation_flags
+ where source_table='posts' and source_id='11111111-1111-1111-1111-111111111111';
+
+-- Prove a subsequent safe application after the upgrade application above.
+\ir ../migrations/0096_ai_moderation_quarantine.sql
+\endif
+
+begin;
 do $test$
 declare
   owner_id uuid := gen_random_uuid();
