@@ -3,6 +3,12 @@ import { readFileSync } from 'node:fs';
 import { reportComment, reportPost } from '../feed/api';
 import { reportStory } from '../stories/api';
 import { supabase } from '../lib/supabase';
+import {
+  REPORT_VISIBILITY_MESSAGE,
+  canReportContent,
+  createReportAction,
+  type ReportConfirmation,
+} from './reportAction';
 
 jest.mock('../lib/supabase', () => ({
   supabase: { auth: { getUser: jest.fn() }, rpc: jest.fn(), from: jest.fn() },
@@ -19,8 +25,6 @@ const migration = readFileSync(
   require.resolve('../../supabase/migrations/0096_ai_moderation_quarantine.sql'),
   'utf8',
 );
-const postDetailSource = readFileSync(require.resolve('../app/post/[id]'), 'utf8');
-const storyViewerSource = readFileSync(require.resolve('../app/story/[userId]'), 'utf8');
 
 beforeEach(() => {
   rpc.mockReset().mockResolvedValue({ data: null, error: null });
@@ -49,32 +53,82 @@ describe('structured content reporting clients', () => {
 });
 
 describe('manual-report screen contract', () => {
-  test('only offers the accessible comment report action to non-owners', () => {
-    expect(postDetailSource).toMatch(/item\.user_id\s*!==\s*myId[\s\S]*accessibilityLabel="Report this comment"/);
-    expect(postDetailSource).toMatch(/accessibilityRole="button"[\s\S]*>\s*<Text[^>]*>Report<\/Text>/);
+  test('only permits a report action for signed-in non-owners', () => {
+    expect(canReportContent('viewer', 'author')).toBe(true);
+    expect(canReportContent('owner', 'owner')).toBe(false);
+    expect(canReportContent(null, 'author')).toBe(false);
   });
 
-  test('comment reporting confirms visibility, locks duplicate submissions, and reports the exact comment', () => {
-    expect(postDetailSource).toMatch(/Report comment\?[\s\S]*stays visible unless AI confirms a violation or an admin removes it/i);
-    expect(postDetailSource).toMatch(/commentReportsInFlight\.current\.has\(target\.id\)[\s\S]*commentReportsInFlight\.current\.add\(target\.id\)/);
-    expect(postDetailSource).toContain('await reportComment(target.id)');
-    expect(postDetailSource).toMatch(/showToast\('Comment reported'\)/);
-    expect(postDetailSource).toMatch(/Alert\.alert\('Could not report comment'/);
-    expect(postDetailSource).toMatch(/commentReportsInFlight\.current\.delete\(target\.id\)/);
-  });
+  test.each(['comment', 'story'] as const)(
+    '%s reporting confirms visibility, rejects a duplicate pending attempt, and announces success',
+    async (kind) => {
+      let confirmation: ReportConfirmation | undefined;
+      let resolveReport!: () => void;
+      const pendingReport = new Promise<void>((resolve) => {
+        resolveReport = resolve;
+      });
+      const report = jest.fn<(id: string) => Promise<void>>(() => pendingReport);
+      const announce = jest.fn<(message: string) => void>();
+      const toast = jest.fn<(message: string) => void>();
+      const alertError = jest.fn<(title: string, message: string) => void>();
+      const pendingChanges = jest.fn<(ids: ReadonlySet<string>) => void>();
+      const action = createReportAction({
+        kind,
+        report,
+        confirm: (next) => {
+          confirmation = next;
+        },
+        announce,
+        toast,
+        alertError,
+        pendingChanged: pendingChanges,
+      });
 
-  test('only offers the accessible story report action to non-owners', () => {
-    expect(storyViewerSource).toMatch(/!group\.isMe[\s\S]*accessibilityLabel="Report this story"/);
-    expect(storyViewerSource).toContain('accessibilityRole="button"');
-  });
+      expect(action.request(`${kind}-current`, 'viewer', 'author')).toBe(true);
+      expect(confirmation).toMatchObject({
+        title: `Report ${kind}?`,
+        message: REPORT_VISIBILITY_MESSAGE,
+      });
+      const first = confirmation!.onConfirm();
+      const duplicate = await confirmation!.onConfirm();
+      expect(duplicate).toBe(false);
+      expect(action.isPending(`${kind}-current`)).toBe(true);
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(report).toHaveBeenCalledWith(`${kind}-current`);
 
-  test('story reporting confirms visibility, locks duplicate submissions, and reports the exact active story', () => {
-    expect(storyViewerSource).toMatch(/Report story\?[\s\S]*stays visible unless AI confirms a violation or an admin removes it/i);
-    expect(storyViewerSource).toMatch(/reportInFlight\.current[\s\S]*reportInFlight\.current = true/);
-    expect(storyViewerSource).toContain('await reportStory(target.id)');
-    expect(storyViewerSource).toMatch(/showToast\('Story reported'\)/);
-    expect(storyViewerSource).toMatch(/Alert\.alert\('Could not report story'/);
-    expect(storyViewerSource).toMatch(/reportInFlight\.current = false/);
+      resolveReport();
+      await expect(first).resolves.toBe(true);
+      expect(action.isPending(`${kind}-current`)).toBe(false);
+      expect(toast).toHaveBeenCalledWith(`${kind === 'comment' ? 'Comment' : 'Story'} reported`);
+      expect(announce).toHaveBeenCalledWith(
+        `${kind === 'comment' ? 'Comment' : 'Story'} reported successfully.`,
+      );
+      expect(alertError).not.toHaveBeenCalled();
+      expect(pendingChanges).toHaveBeenCalled();
+    },
+  );
+
+  test.each(['comment', 'story'] as const)('%s reporting resets pending state and alerts on error', async (kind) => {
+    let confirmation: ReportConfirmation | undefined;
+    const report = jest.fn<(id: string) => Promise<void>>().mockRejectedValue(new Error('network down'));
+    const announce = jest.fn<(message: string) => void>();
+    const alertError = jest.fn<(title: string, message: string) => void>();
+    const action = createReportAction({
+      kind,
+      report,
+      confirm: (next) => {
+        confirmation = next;
+      },
+      announce,
+      toast: jest.fn(),
+      alertError,
+    });
+
+    action.request(`${kind}-failed`, 'viewer', 'author');
+    await expect(confirmation!.onConfirm()).resolves.toBe(false);
+    expect(action.isPending(`${kind}-failed`)).toBe(false);
+    expect(alertError).toHaveBeenCalledWith(`Could not report ${kind}`, 'network down');
+    expect(announce).not.toHaveBeenCalled();
   });
 });
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AccessibilityInfo,
   Alert,
   FlatList,
   Pressable,
@@ -35,6 +36,7 @@ import { colors, font, radius, spacing } from '../../ui/theme';
 import { EncouragementSheet } from '../../feed/EncouragementSheet';
 import { VoiceEncouragementRecorder } from '../../feed/VoiceEncouragementRecorder';
 import { BroadcastSheet } from '../../feed/BroadcastSheet';
+import { canReportContent, createReportAction } from '../../moderation/reportAction';
 import {
   ImmersivePost,
   ImmersiveOperationCoordinator,
@@ -110,7 +112,22 @@ function PostDetailView({
   const dataViewKeyRef = useRef<string | null>(null);
   const currentIdRef = useRef(id ?? '');
   const currentUserIdRef = useRef(myId);
-  const commentReportsInFlight = useRef(new Set<string>());
+  const commentReportAction = useRef<ReturnType<typeof createReportAction> | null>(null);
+  if (!commentReportAction.current) {
+    commentReportAction.current = createReportAction({
+      kind: 'comment',
+      report: reportComment,
+      confirm: ({ title, message, onConfirm }) =>
+        Alert.alert(title, message, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Report', style: 'destructive', onPress: () => void onConfirm() },
+        ]),
+      toast: showToast,
+      announce: (message) => AccessibilityInfo.announceForAccessibility(message),
+      alertError: (title, message) => Alert.alert(title, message),
+      pendingChanged: (ids) => setReportingCommentIds(new Set(ids)),
+    });
+  }
 
   const supporters = (() => {
     const people = new Map<string, PostEncourager>();
@@ -390,36 +407,7 @@ function PostDetailView({
   }
 
   function onReportComment(target: PostComment) {
-    if (!myId || target.user_id === myId || commentReportsInFlight.current.has(target.id)) return;
-    Alert.alert(
-      'Report comment?',
-      'This content stays visible unless AI confirms a violation or an admin removes it.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Report',
-          style: 'destructive',
-          onPress: async () => {
-            if (commentReportsInFlight.current.has(target.id)) return;
-            commentReportsInFlight.current.add(target.id);
-            setReportingCommentIds((current) => new Set(current).add(target.id));
-            try {
-              await reportComment(target.id);
-              showToast('Comment reported');
-            } catch (error) {
-              Alert.alert('Could not report comment', String((error as Error).message ?? error));
-            } finally {
-              commentReportsInFlight.current.delete(target.id);
-              setReportingCommentIds((current) => {
-                const next = new Set(current);
-                next.delete(target.id);
-                return next;
-              });
-            }
-          },
-        },
-      ],
-    );
+    commentReportAction.current?.request(target.id, myId, target.user_id);
   }
 
   const viewState = deriveImmersivePostState({
@@ -545,7 +533,7 @@ function PostDetailView({
                 <Text style={styles.commentTime}>· {timeAgo(item.created_at)}</Text>
               </Text>
               <Text style={styles.commentText}>{item.body}</Text>
-              {item.user_id !== myId ? (
+              {canReportContent(myId, item.user_id) ? (
                 <Pressable
                   onPress={() => onReportComment(item)}
                   disabled={reportingCommentIds.has(item.id)}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AccessibilityInfo,
   Alert,
   Image,
   Pressable,
@@ -18,6 +19,7 @@ import { Avatar } from '../../feed/Avatar';
 import { font, spacing } from '../../ui/theme';
 import { useAuth } from '../../auth/AuthProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
+import { canReportContent, createReportAction } from '../../moderation/reportAction';
 
 const STORY_DURATION_MS = 6000;
 
@@ -42,8 +44,29 @@ export default function StoryViewer() {
   const [dataViewKey, setDataViewKey] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reportInFlight = useRef(false);
   const [reporting, setReporting] = useState(false);
+  const storyReportAction = useRef<ReturnType<typeof createReportAction> | null>(null);
+  if (!storyReportAction.current) {
+    storyReportAction.current = createReportAction({
+      kind: 'story',
+      report: reportStory,
+      confirm: ({ title, message, onConfirm }) => {
+        setPaused(true);
+        Alert.alert(title, message, [
+          { text: 'Cancel', style: 'cancel', onPress: () => setPaused(false) },
+          { text: 'Report', style: 'destructive', onPress: () => void onConfirm() },
+        ]);
+      },
+      toast: showToast,
+      announce: (message) => AccessibilityInfo.announceForAccessibility(message),
+      alertError: (title, message) => Alert.alert(title, message),
+      pendingChanged: (ids) => {
+        const pending = ids.size > 0;
+        setReporting(pending);
+        if (!pending) setPaused(false);
+      },
+    });
+  }
 
   useEffect(() => {
     const lifecycle = ++lifecycleGeneration.current;
@@ -216,45 +239,9 @@ export default function StoryViewer() {
   }
 
   function onReport() {
-    const requestOwner = ownerId;
-    const requestViewKey = viewKey;
-    const lifecycle = lifecycleGeneration.current;
-    const targetGroup = group;
     const target = story;
-    if (!requestOwner || targetGroup?.isMe || !target || target.user_id === requestOwner || reportInFlight.current)
-      return;
-    setPaused(true);
-    Alert.alert(
-      'Report story?',
-      'This content stays visible unless AI confirms a violation or an admin removes it.',
-      [
-        { text: 'Cancel', style: 'cancel', onPress: () => setPaused(false) },
-        {
-          text: 'Report',
-          style: 'destructive',
-          onPress: async () => {
-            if (reportInFlight.current || !isCurrentMutation(requestOwner, lifecycle, requestViewKey))
-              return;
-            reportInFlight.current = true;
-            setReporting(true);
-            try {
-              await reportStory(target.id);
-              if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
-              showToast('Story reported');
-            } catch (error) {
-              if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
-              Alert.alert('Could not report story', String((error as Error).message ?? error));
-            } finally {
-              reportInFlight.current = false;
-              if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
-                setReporting(false);
-                setPaused(false);
-              }
-            }
-          },
-        },
-      ],
-    );
+    if (!target) return;
+    storyReportAction.current?.request(target.id, ownerId, target.user_id);
   }
 
   if (loading || dataViewKey !== viewKey) {
@@ -343,7 +330,7 @@ export default function StoryViewer() {
           <Ionicons name="trash-outline" size={22} color="#fff" />
         </Pressable>
       ) : null}
-      {!group.isMe ? (
+      {canReportContent(ownerId, story.user_id) ? (
         <Pressable
           style={({ pressed }) => [
             styles.reportBtn,
