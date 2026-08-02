@@ -50,8 +50,33 @@ language plpgsql
 security definer
 set search_path = public
 as $function$
+declare
+  v_source_table text;
+  v_source_id uuid;
+  v_report public.buddy_reports%rowtype;
 begin
   perform admin_assert();
+  select source_table,source_id into v_source_table,v_source_id
+    from public.buddy_reports where id=p_report;
+  if not found then
+    raise exception 'Report not found' using errcode='P0002';
+  end if;
+  if v_source_table is not null then
+    if v_source_id is null or v_source_table not in ('posts','post_comments','stories') then
+      raise exception 'Invalid structured report source' using errcode='22023';
+    end if;
+    perform pg_advisory_xact_lock(hashtextextended(
+      'moderation-source:'||v_source_table||':'||v_source_id::text,0
+    ));
+  end if;
+  select * into v_report from public.buddy_reports where id=p_report for update;
+  if not found or v_report.source_table is distinct from v_source_table
+     or v_report.source_id is distinct from v_source_id then
+    raise exception 'Report changed during resolution' using errcode='40001';
+  end if;
+  if v_report.resolution_outcome='removed' then
+    raise exception 'Removed report resolution is final' using errcode='22023';
+  end if;
   update public.buddy_reports
      set resolved_at = case when p_resolve then now() else null end,
          resolved_by = case when p_resolve then auth.uid() else null end,

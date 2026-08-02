@@ -114,6 +114,7 @@ declare
   first_warned_at timestamptz;
   first_resolved_at timestamptz;
   function_def text;
+  removed_report_resolved_at timestamptz;
 begin
   if not exists (
     select 1 from information_schema.columns
@@ -172,6 +173,12 @@ begin
   if position('moderation-source:posts:' in function_def) = 0
      or position('pg_advisory_xact_lock' in function_def) > position('for update' in function_def) then
     raise exception 'reported-post removal does not acquire the source lock before row locks';
+  end if;
+  select pg_get_functiondef('public.admin_resolve_report(uuid,boolean)'::regprocedure)
+    into function_def;
+  if position('moderation-source:' in function_def)=0
+     or position('pg_advisory_xact_lock' in function_def)>position('for update' in function_def) then
+    raise exception 'structured report resolution does not lock source before report';
   end if;
   if has_function_privilege('public', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute')
      or has_function_privilege('anon', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute')
@@ -589,6 +596,25 @@ begin
          and resolution_outcome='removed')<>2
      or exists(select 1 from public.moderation_flags where source_table='posts' and source_id=manual_post_id and status='open') then
     raise exception 'reported-post removal transaction was incomplete';
+  end if;
+  select resolved_at into removed_report_resolved_at
+    from public.buddy_reports where id=manual_report_id;
+  set local role authenticated;
+  begin
+    perform public.admin_resolve_report(manual_report_id,true);
+    raise exception 'removed report was overwritten as allowed';
+  exception when invalid_parameter_value then null;
+  end;
+  begin
+    perform public.admin_resolve_report(manual_report_id,false);
+    raise exception 'removed report was reopened';
+  exception when invalid_parameter_value then null;
+  end;
+  reset role;
+  if not exists(select 1 from public.buddy_reports where id=manual_report_id
+    and resolution_outcome='removed' and resolved_by=reviewer_id
+    and resolved_at=removed_report_resolved_at) then
+    raise exception 'final removed report audit changed after allow/reopen attempts';
   end if;
   review_result := public.remove_reported_post(
     manual_report_id,reviewer_id,manual_post_id,owner_id,'changed','Changed retry'
