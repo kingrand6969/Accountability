@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createModerationHandler, parseModerationResult, retryPolicy } from './index.ts';
+import { createModerationHandler, parseModerationResult, retryPolicy, validateModerationImageUrl } from './index.ts';
 
 const validResult = {
   flagged: true,
@@ -10,8 +10,10 @@ const validResult = {
 };
 
 test('strictly parses safe and confirmed moderation results', () => {
-  assert.deepEqual(parseModerationResult({ ...validResult, flagged: false }), {
-    outcome: 'safe', categories: [], maxScore: 0.91,
+  assert.deepEqual(parseModerationResult({
+    ...validResult, flagged: false, categories: { harassment: false, violence: false },
+  }), {
+    outcome: 'safe', categories: [], maxScore: 0,
   });
   assert.deepEqual(parseModerationResult(validResult), {
     outcome: 'confirmed', categories: ['harassment'], maxScore: 0.91,
@@ -42,18 +44,46 @@ test('accepts category score boundaries zero and one', () => {
   }), { outcome: 'confirmed', categories: ['harassment'], maxScore: 1 });
 });
 
+test('rejects contradictory or mismatched category maps', () => {
+  const cases = [
+    { flagged: false, categories: { harassment: true }, category_scores: { harassment: 0.4 } },
+    { flagged: true, categories: { harassment: true }, category_scores: {} },
+    { flagged: true, categories: { harassment: true }, category_scores: { harassment: 0.4, violence: 0.2 } },
+    { flagged: true, categories: { harassment: true, violence: false }, category_scores: { harassment: 0.4 } },
+  ];
+  for (const value of cases) assert.equal(parseModerationResult(value).outcome, 'uncertain');
+});
+
+test('max score is computed only from enabled categories', () => {
+  assert.deepEqual(parseModerationResult({
+    flagged: true,
+    categories: { harassment: true, violence: false },
+    category_scores: { harassment: 0.4, violence: 0.99 },
+  }), { outcome: 'confirmed', categories: ['harassment'], maxScore: 0.4 });
+});
+
+test('accepts only HTTPS images on the exact trusted hostname', () => {
+  const trusted = 'https://project.supabase.co';
+  assert.equal(validateModerationImageUrl('https://project.supabase.co/storage/v1/object/a.jpg', trusted),
+    'https://project.supabase.co/storage/v1/object/a.jpg');
+  for (const raw of ['r2://bucket/a.jpg', 'https://evil.example/a.jpg', 'https://project.supabase.co.evil/a.jpg',
+    'http://project.supabase.co/a.jpg', 'data:image/png;base64,abc', 'file:///a.jpg', 'not a url',
+    'https://project.supabase.co/a.mp4']) assert.equal(validateModerationImageUrl(raw, trusted), null);
+});
+
 function request(body: unknown) {
   return new Request('http://localhost', {
     method: 'POST', headers: { 'x-moderation-secret': 'secret' }, body: JSON.stringify(body),
   });
 }
 
-function setup(result: unknown = validResult, rpcError: unknown = null, sourceText = 'private content') {
-  const calls = { source: 0, moderate: 0, rpc: [] as unknown[], logs: [] as unknown[] };
+function setup(result: unknown = validResult, rpcError: unknown = null, sourceText = 'private content', image: string | null = null,
+  secret: string | null = 'secret') {
+  const calls = { source: 0, moderate: 0, inputs: [] as unknown[][], rpc: [] as unknown[], logs: [] as unknown[] };
   const handler = createModerationHandler({
-    secret: 'secret',
-    loadSource: async () => { calls.source++; return { text: sourceText, image: null }; },
-    moderate: async () => { calls.moderate++; if (result instanceof Error) throw result; return result; },
+    secret: secret ?? undefined, trustedSupabaseUrl: 'https://project.supabase.co',
+    loadSource: async () => { calls.source++; return { text: sourceText, image }; },
+    moderate: async (input) => { calls.moderate++; calls.inputs.push(input); if (result instanceof Error) throw result; return result; },
     quarantine: async (args) => { calls.rpc.push(args); return rpcError ? { error: rpcError } : { data: true, error: null }; },
     log: (event) => { calls.logs.push(event); },
   });
@@ -64,7 +94,53 @@ test('rejects buddy_messages before external calls', async () => {
   const { handler, calls } = setup();
   const response = await handler(request({ table: 'buddy_messages', id: crypto.randomUUID() }));
   assert.equal(response.status, 400);
-  assert.deepEqual(calls, { source: 0, moderate: 0, rpc: [], logs: [] });
+  assert.deepEqual(calls, { source: 0, moderate: 0, inputs: [], rpc: [], logs: [] });
+});
+
+test('authentication fails closed for absent configuration and missing, empty, or wrong headers', async () => {
+  for (const secret of [null, '']) {
+    const { handler } = setup(validResult, null, 'private content', null, secret);
+    assert.equal((await handler(request({ table: 'posts', id: crypto.randomUUID() }))).status, 401);
+  }
+  const { handler, calls } = setup();
+  for (const header of [undefined, '', 'wrong']) {
+    const headers = new Headers();
+    if (header !== undefined) headers.set('x-moderation-secret', header);
+    const response = await handler(new Request('http://localhost', { method: 'POST', headers,
+      body: JSON.stringify({ table: 'posts', id: crypto.randomUUID() }) }));
+    assert.equal(response.status, 401);
+  }
+  assert.equal(calls.source, 0);
+});
+
+test('unsupported images are omitted while text is moderated', async () => {
+  for (const image of ['r2://bucket/private.jpg', 'https://project.supabase.co/a.mp4', 'bad']) {
+    const { handler, calls } = setup(validResult, null, 'text survives', image);
+    await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+    assert.equal(calls.moderate, 1);
+    assert.deepEqual(calls.inputs[0], [{ type: 'text', text: 'text survives' }]);
+  }
+});
+
+test('trusted HTTPS image is included in moderation input', async () => {
+  let received: unknown[] = [];
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
+    loadSource: async () => ({ text: '', image: 'https://project.supabase.co/a.png' }),
+    moderate: async (input) => { received = input; return { ...validResult, flagged: false }; },
+    quarantine: async () => ({ data: true, error: null }),
+  });
+  await handler(request({ table: 'stories', id: crypto.randomUUID() }));
+  assert.deepEqual(received, [{ type: 'image_url', image_url: { url: 'https://project.supabase.co/a.png' } }]);
+});
+
+test('unsupported image-only source is never reported safe', async () => {
+  const { handler, calls } = setup(validResult, null, '', 'r2://bucket/private.jpg');
+  const response = await handler(request({ table: 'stories', id: crypto.randomUUID() }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).outcome, 'unsupported_media');
+  assert.equal(calls.moderate, 0);
+  assert.equal(calls.rpc.length, 0);
 });
 
 test('safe, uncertain, and moderation errors never quarantine', async () => {
@@ -107,6 +183,34 @@ test('database quarantine errors return retryable non-2xx metadata', async () =>
   assert.deepEqual(await response.json(), {
     ok: false, outcome: 'confirmed', retryable: true, attempt: 2, retry: { schedule: true, nextAttempt: 3, delaySeconds: 120 },
   });
+});
+
+test('source query errors return retryable non-2xx metadata', async () => {
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
+    loadSource: async () => { throw new Error('query failed'); },
+    moderate: async () => validResult,
+    quarantine: async () => ({ data: true, error: null }),
+  });
+  const response = await handler(request({ table: 'posts', id: crypto.randomUUID(), attempt: 2 }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).retryable, true);
+});
+
+test('RPC false means source disappeared and null is retryable', async () => {
+  for (const [data, status, outcome] of [[false, 200, 'row_gone'], [null, 503, 'confirmed']] as const) {
+    const calls = { rpc: 0 };
+    const handler = createModerationHandler({
+      secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
+      loadSource: async () => ({ text: 'content', image: null }),
+      moderate: async () => validResult,
+      quarantine: async () => { calls.rpc++; return { data, error: null }; },
+    });
+    const response = await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+    assert.equal(response.status, status);
+    assert.equal((await response.json()).outcome, outcome);
+    assert.equal(calls.rpc, 1);
+  }
 });
 
 test('retry policy caps automated attempts at three and prioritizes manual reports', () => {

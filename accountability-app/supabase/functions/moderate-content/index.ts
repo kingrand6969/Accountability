@@ -24,14 +24,48 @@ type QuarantineArgs = {
 };
 type Dependencies = {
   secret: string | undefined;
+  trustedSupabaseUrl: string | undefined;
+  trustedMediaUrl?: string | undefined;
   loadSource(table: string, id: string): Promise<SourceRow | null>;
   moderate(input: unknown[]): Promise<unknown>;
-  quarantine(args: QuarantineArgs): Promise<{ data?: unknown; error: unknown }>;
+  quarantine(args: QuarantineArgs): Promise<{ data: boolean | null; error: unknown }>;
   log?: (event: { outcome: string; attempt: number }) => void;
 };
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const encoder = new TextEncoder();
+  const a = encoder.encode(left);
+  const b = encoder.encode(right);
+  let difference = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index++) difference |= (a[index] ?? 0) ^ (b[index] ?? 0);
+  return difference === 0;
+}
+
+export function validateModerationImageUrl(
+  raw: unknown,
+  trustedSupabaseUrl: string | undefined,
+  trustedMediaUrl?: string | undefined,
+): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const candidate = new URL(raw);
+    if (candidate.protocol !== 'https:' || candidate.username || candidate.password) return null;
+    const trustedHosts = [trustedSupabaseUrl, trustedMediaUrl]
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .map((value) => new URL(value))
+      .filter((value) => value.protocol === 'https:')
+      .map((value) => value.hostname);
+    if (!trustedHosts.includes(candidate.hostname)) return null;
+    if (!/\.(?:avif|gif|jpe?g|png|webp)$/i.test(candidate.pathname)) return null;
+    return candidate.href;
+  } catch {
+    return null;
+  }
 }
 
 export function parseModerationResult(value: unknown): ModerationDecision {
@@ -44,9 +78,15 @@ export function parseModerationResult(value: unknown): ModerationDecision {
       scoreEntries.some(([name, score]) => !CATEGORY_NAMES.has(name) || typeof score !== 'number' ||
         !Number.isFinite(score) || score < 0 || score > 1)) return { outcome: 'uncertain' };
 
+  const categoryKeys = categoryEntries.map(([name]) => name).sort();
+  const scoreKeys = scoreEntries.map(([name]) => name).sort();
+  if (categoryKeys.length !== scoreKeys.length || categoryKeys.some((name, index) => name !== scoreKeys[index])) {
+    return { outcome: 'uncertain' };
+  }
+
   const categories = categoryEntries.filter(([, enabled]) => enabled).map(([name]) => name);
-  const maxScore = Math.max(0, ...scoreEntries.map(([, score]) => score as number));
-  if (value.flagged && categories.length === 0) return { outcome: 'uncertain' };
+  if ((!value.flagged && categories.length > 0) || (value.flagged && categories.length === 0)) return { outcome: 'uncertain' };
+  const maxScore = Math.max(0, ...categories.map((name) => value.category_scores[name] as number));
   return { outcome: value.flagged ? 'confirmed' : 'safe', categories: value.flagged ? categories : [], maxScore };
 }
 
@@ -65,7 +105,10 @@ function json(body: unknown, status = 200) {
 
 export function createModerationHandler(deps: Dependencies) {
   return async (req: Request): Promise<Response> => {
-    if (req.headers.get('x-moderation-secret') !== deps.secret) return new Response('unauthorized', { status: 401 });
+    const suppliedSecret = req.headers.get('x-moderation-secret') ?? '';
+    if (!deps.secret || !suppliedSecret || !constantTimeEqual(suppliedSecret, deps.secret)) {
+      return new Response('unauthorized', { status: 401 });
+    }
     const body = await req.json().catch(() => null);
     if (!record(body) || typeof body.table !== 'string' || !SOURCES.has(body.table) || typeof body.id !== 'string') {
       return json({ ok: false, reason: 'bad input' }, 400);
@@ -76,15 +119,19 @@ export function createModerationHandler(deps: Dependencies) {
       const row = await deps.loadSource(body.table, body.id);
       if (!row) return json({ ok: true, outcome: 'safe', reason: 'row gone' });
       if (!row.text.trim() && !row.image) return json({ ok: true, outcome: 'safe', reason: 'nothing to check' });
+      const image = validateModerationImageUrl(row.image, deps.trustedSupabaseUrl, deps.trustedMediaUrl);
+      if (!row.text.trim() && row.image && !image) return json({
+        ok: false, outcome: 'unsupported_media', retryable: true, attempt, retry: retryPolicy(attempt, reason),
+      }, 503);
       const input: unknown[] = [];
       if (row.text.trim()) input.push({ type: 'text', text: row.text.slice(0, 4000) });
-      if (row.image) input.push({ type: 'image_url', image_url: { url: row.image } });
+      if (image) input.push({ type: 'image_url', image_url: { url: image } });
 
       const decision = parseModerationResult(await deps.moderate(input));
       deps.log?.({ outcome: decision.outcome, attempt });
       if (decision.outcome !== 'confirmed') return json({ ok: true, ...decision });
 
-      const { error } = await deps.quarantine({
+      const { data, error } = await deps.quarantine({
         p_source_table: body.table,
         p_source_id: body.id,
         p_categories: decision.categories,
@@ -94,6 +141,10 @@ export function createModerationHandler(deps: Dependencies) {
       if (error) return json({
         ok: false, outcome: 'confirmed', retryable: true, attempt,
         retry: retryPolicy(attempt, reason),
+      }, 503);
+      if (data === false) return json({ ok: true, outcome: 'row_gone' });
+      if (data !== true) return json({
+        ok: false, outcome: 'confirmed', retryable: true, attempt, retry: retryPolicy(attempt, reason),
       }, 503);
       return json({ ok: true, outcome: 'confirmed', categories: decision.categories });
     } catch {
@@ -118,10 +169,12 @@ if (typeof Deno !== 'undefined') {
   };
   const handler = createModerationHandler({
     secret: Deno.env.get('MODERATION_SECRET'),
+    trustedSupabaseUrl: Deno.env.get('SUPABASE_URL'),
     async loadSource(table, id) {
       const src = columns[table];
       const selected = [src.text, ...(src.image ? [src.image] : [])].join(',');
-      const { data } = await admin.from(table).select(selected).eq('id', id).maybeSingle();
+      const { data, error } = await admin.from(table).select(selected).eq('id', id).maybeSingle();
+      if (error) throw error;
       if (!data) return null;
       const row = data as Record<string, string | null>;
       return { text: row[src.text] ?? '', image: src.image ? row[src.image] ?? null : null };
