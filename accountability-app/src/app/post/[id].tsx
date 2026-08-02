@@ -117,15 +117,19 @@ function PostDetailView({
     commentReportAction.current = createReportAction({
       kind: 'comment',
       report: reportComment,
-      confirm: ({ title, message, onConfirm }) =>
+      confirm: ({ title, message, onConfirm, onCancel, onDismiss }) =>
         Alert.alert(title, message, [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Cancel', style: 'cancel', onPress: onCancel },
           { text: 'Report', style: 'destructive', onPress: () => void onConfirm() },
-        ]),
+        ], { cancelable: true, onDismiss }),
       toast: showToast,
       announce: (message) => AccessibilityInfo.announceForAccessibility(message),
       alertError: (title, message) => Alert.alert(title, message),
       pendingChanged: (ids) => setReportingCommentIds(new Set(ids)),
+      getContextKey: (targetId) =>
+        mountedRef.current && focusedRef.current
+          ? `${targetId}:${currentUserIdRef.current ?? ''}:${viewGeneration.current}`
+          : null,
     });
   }
 
@@ -167,6 +171,7 @@ function PostDetailView({
       requestGeneration.current += 1;
       viewGeneration.current += 1;
       operationCoordinator.rotate();
+      commentReportAction.current?.invalidate();
     };
   }, []);
 
@@ -176,6 +181,8 @@ function PostDetailView({
     requestGeneration.current += 1;
     viewGeneration.current += 1;
     operations.current.rotate();
+    commentReportAction.current?.invalidate();
+    setReportingCommentIds(new Set());
     dataViewKeyRef.current = null;
   }, [id, myId]);
 
@@ -289,6 +296,7 @@ function PostDetailView({
       setVoiceOpen(false);
       setSending(false);
       setSendingVoice(false);
+      setReportingCommentIds(new Set());
       setText('');
       setEncouragementOpen(encouragement === '1');
       if (sameLoadedView && !onlineRef.current) {
@@ -302,6 +310,7 @@ function PostDetailView({
         requestGeneration.current += 1;
         viewGeneration.current += 1;
         operations.current.rotate();
+        commentReportAction.current?.invalidate();
       };
     }, [encouragement, id, load, myId, renderViewKey]),
   );

@@ -34,6 +34,9 @@ export default function StoryViewer() {
   const currentViewKeyRef = useRef(viewKey);
   const loadGeneration = useRef(0);
   const lifecycleGeneration = useRef(0);
+  const mountedRef = useRef(true);
+  const focusedRef = useRef(false);
+  const currentStoryIdRef = useRef<string | null>(null);
 
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [groupIndex, setGroupIndex] = useState(0);
@@ -50,12 +53,12 @@ export default function StoryViewer() {
     storyReportAction.current = createReportAction({
       kind: 'story',
       report: reportStory,
-      confirm: ({ title, message, onConfirm }) => {
+      confirm: ({ title, message, onConfirm, onCancel, onDismiss }) => {
         setPaused(true);
         Alert.alert(title, message, [
-          { text: 'Cancel', style: 'cancel', onPress: () => setPaused(false) },
+          { text: 'Cancel', style: 'cancel', onPress: onCancel },
           { text: 'Report', style: 'destructive', onPress: () => void onConfirm() },
-        ]);
+        ], { cancelable: true, onDismiss });
       },
       toast: showToast,
       announce: (message) => AccessibilityInfo.announceForAccessibility(message),
@@ -65,14 +68,30 @@ export default function StoryViewer() {
         setReporting(pending);
         if (!pending) setPaused(false);
       },
+      getContextKey: (targetId) =>
+        mountedRef.current &&
+        focusedRef.current &&
+        currentStoryIdRef.current === targetId
+          ? `${targetId}:${currentOwnerRef.current ?? ''}:${currentViewKeyRef.current}:${lifecycleGeneration.current}`
+          : null,
     });
   }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      focusedRef.current = false;
+      storyReportAction.current?.invalidate();
+    };
+  }, []);
 
   useEffect(() => {
     const lifecycle = ++lifecycleGeneration.current;
     currentOwnerRef.current = ownerId;
     currentViewKeyRef.current = viewKey;
     loadGeneration.current += 1;
+    storyReportAction.current?.invalidate();
     queueMicrotask(() => {
       if (
         lifecycle !== lifecycleGeneration.current ||
@@ -86,6 +105,7 @@ export default function StoryViewer() {
       setDataViewKey(null);
       setUnavailable(false);
       setPaused(false);
+      setReporting(false);
       setLoading(ownerId !== null);
     });
   }, [ownerId, viewKey]);
@@ -137,10 +157,13 @@ export default function StoryViewer() {
 
   useFocusEffect(
     useCallback(() => {
+      focusedRef.current = true;
       void load();
       return () => {
+        focusedRef.current = false;
         loadGeneration.current += 1;
         lifecycleGeneration.current += 1;
+        storyReportAction.current?.invalidate();
         if (timer.current) clearTimeout(timer.current);
         setPaused(false);
       };
@@ -153,6 +176,7 @@ export default function StoryViewer() {
 
   const group: StoryGroup | undefined = groups[groupIndex];
   const story = group?.stories[storyIndex];
+  currentStoryIdRef.current = story?.id ?? null;
 
   const goNext = useCallback(() => {
     if (!group) return;
