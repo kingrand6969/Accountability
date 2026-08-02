@@ -526,6 +526,89 @@ revoke all on function public.remove_reported_post(uuid,uuid,uuid,uuid,text,text
   from public, anon, authenticated;
 grant execute on function public.remove_reported_post(uuid,uuid,uuid,uuid,text,text) to service_role;
 
+create or replace function public.admin_list_reports(
+  p_open_only boolean default false, p_limit int default 100
+)
+returns json language plpgsql stable security definer set search_path=public as $function$
+declare result json;
+begin
+  perform admin_assert();
+  select coalesce(json_agg(row_to_json(t)),'[]'::json) into result from (
+    select r.id,r.reason,r.created_at,r.resolved_at,
+           r.reporter,rp.display_name as reporter_name,
+           r.reported,rd.display_name as reported_name,
+           coalesce(rd.strike_count,0) as reported_strikes,
+           r.source_table,r.source_id,r.resolution_outcome,
+           af.id as ai_flag_id,af.check_status as ai_check_status,
+           af.categories as ai_categories,af.max_score as ai_max_score,
+           coalesce(cs.moderation_state,
+             case when af.status='removed' then 'removed'
+                  when r.source_table is not null then 'missing' end) as content_moderation_state
+      from public.buddy_reports r
+      left join public.profiles rp on rp.id=r.reporter
+      left join public.profiles rd on rd.id=r.reported
+      left join lateral (
+        select f.id,f.check_status,f.categories,f.max_score,f.status
+          from public.moderation_flags f
+         where f.source_table=r.source_table and f.source_id=r.source_id
+         order by (f.status='open') desc,f.created_at desc,f.id desc limit 1
+      ) af on r.source_table is not null
+      left join lateral (
+        select p.moderation_state from public.posts p
+         where r.source_table='posts' and p.id=r.source_id
+        union all
+        select c.moderation_state from public.post_comments c
+         where r.source_table='post_comments' and c.id=r.source_id
+        union all
+        select s.moderation_state from public.stories s
+         where r.source_table='stories' and s.id=r.source_id
+      ) cs on true
+     where (not p_open_only) or r.resolved_at is null
+     order by (r.resolved_at is null) desc,r.created_at desc
+     limit greatest(1,least(coalesce(p_limit,100),300))
+  ) t;
+  return result;
+end
+$function$;
+revoke all on function public.admin_list_reports(boolean,int) from public,anon;
+grant execute on function public.admin_list_reports(boolean,int) to authenticated;
+
+create or replace function public.admin_list_flags(
+  p_open_only boolean default true, p_limit int default 100
+)
+returns json language plpgsql stable security definer set search_path=public as $function$
+declare result json;
+begin
+  perform admin_assert();
+  select coalesce(json_agg(row_to_json(t)),'[]'::json) into result from (
+    select f.id,f.source_table,f.source_id,f.excerpt,f.image_url,f.categories,f.max_score,
+           f.status,f.created_at,f.author_id,p.display_name as author_name,
+           coalesce(p.strike_count,0) as author_strikes,
+           f.check_status,f.quarantine_reason,
+           coalesce(cs.moderation_state,
+             case when f.status='removed' then 'removed' else 'missing' end) as content_moderation_state
+      from public.moderation_flags f
+      left join public.profiles p on p.id=f.author_id
+      left join lateral (
+        select x.moderation_state from public.posts x
+         where f.source_table='posts' and x.id=f.source_id
+        union all
+        select x.moderation_state from public.post_comments x
+         where f.source_table='post_comments' and x.id=f.source_id
+        union all
+        select x.moderation_state from public.stories x
+         where f.source_table='stories' and x.id=f.source_id
+      ) cs on true
+     where (not p_open_only) or f.status='open'
+     order by (f.status='open') desc,f.created_at desc
+     limit greatest(1,least(coalesce(p_limit,100),300))
+  ) t;
+  return result;
+end
+$function$;
+revoke all on function public.admin_list_flags(boolean,int) from public,anon;
+grant execute on function public.admin_list_flags(boolean,int) to authenticated;
+
 create or replace function public.enqueue_manual_moderation(
   p_source_table text,
   p_source_id uuid,

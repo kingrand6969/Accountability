@@ -115,6 +115,9 @@ declare
   first_resolved_at timestamptz;
   function_def text;
   removed_report_resolved_at timestamptz;
+  contract_post_ids uuid[] := array[gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid()];
+  contract_report_ids uuid[] := array[gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid()];
+  queue_json jsonb;
 begin
   if not exists (
     select 1 from information_schema.columns
@@ -196,6 +199,14 @@ begin
      or has_function_privilege('anon','public.admin_resolve_report(uuid,boolean)','execute')
      or not has_function_privilege('authenticated','public.admin_resolve_report(uuid,boolean)','execute') then
     raise exception 'admin report resolution grants changed';
+  end if;
+  if has_function_privilege('public','public.admin_list_reports(boolean,int)','execute')
+     or has_function_privilege('anon','public.admin_list_reports(boolean,int)','execute')
+     or not has_function_privilege('authenticated','public.admin_list_reports(boolean,int)','execute')
+     or has_function_privilege('public','public.admin_list_flags(boolean,int)','execute')
+     or has_function_privilege('anon','public.admin_list_flags(boolean,int)','execute')
+     or not has_function_privilege('authenticated','public.admin_list_flags(boolean,int)','execute') then
+    raise exception 'admin queue grants are unsafe';
   end if;
   if has_function_privilege('public', 'public.report_content(text,uuid,text)', 'execute')
      or has_function_privilege('anon', 'public.report_content(text,uuid,text)', 'execute')
@@ -435,6 +446,64 @@ begin
    where source_table='posts' and source_id=stale_post_id and status='open';
 
   insert into public.admins(user_id) values(reviewer_id);
+  insert into public.posts(id,user_id,body,audience)
+  select contract_post_ids[i],owner_id,'queue contract '||i,'public'
+    from generate_series(1,4) i;
+  update public.posts set moderation_state='quarantined' where id=contract_post_ids[4];
+  insert into public.buddy_reports(id,reporter,reported,reason,source_table,source_id)
+  select contract_report_ids[i],viewer_id,owner_id,'queue contract report '||i,
+         'posts',contract_post_ids[i] from generate_series(1,4) i;
+  insert into public.moderation_flags(
+    source_table,source_id,author_id,excerpt,categories,max_score,status,check_status,quarantine_reason
+  )
+  select 'posts',contract_post_ids[i],owner_id,'contract excerpt '||i,
+         array['category-'||i],i::numeric/10,'open',
+         (array['safe','uncertain','error','confirmed'])[i],'contract reason '||i
+    from generate_series(1,4) i;
+  perform set_config('request.jwt.claim.sub',reviewer_id::text,true);
+  set local role authenticated;
+  queue_json := public.admin_list_reports(false,100)::jsonb;
+  reset role;
+  if (select count(*) from jsonb_array_elements(queue_json) q
+      where q->>'id'=any(contract_report_ids::text[])
+        and q->>'source_table'='posts' and (q->>'source_id') is not null
+        and (q->>'ai_flag_id') is not null
+        and q->>'ai_check_status' in ('safe','uncertain','error','confirmed')
+        and jsonb_typeof(q->'ai_categories')='array'
+        and (q->>'ai_max_score') is not null
+        and q->>'content_moderation_state' in ('visible','quarantined'))<>4 then
+    raise exception 'report queue omitted linked AI moderation fields';
+  end if;
+  if not exists(select 1 from jsonb_array_elements(queue_json) q
+    where q->>'reason'='legacy profile or voice report'
+      and q->'source_table'='null'::jsonb and q->'source_id'='null'::jsonb
+      and q->'ai_flag_id'='null'::jsonb and q->'ai_check_status'='null'::jsonb
+      and q->'content_moderation_state'='null'::jsonb) then
+    raise exception 'legacy report queue fields are not null-safe';
+  end if;
+  set local role authenticated;
+  queue_json := public.admin_list_flags(true,100)::jsonb;
+  reset role;
+  if (select count(*) from jsonb_array_elements(queue_json) q
+      where q->>'source_id'=any(contract_post_ids::text[])
+        and q->>'check_status' in ('safe','uncertain','error','confirmed')
+        and q->>'quarantine_reason' like 'contract reason %'
+        and q->>'content_moderation_state' in ('visible','quarantined'))<>4 then
+    raise exception 'flag queue omitted AI/content moderation fields';
+  end if;
+  perform set_config('request.jwt.claim.sub',viewer_id::text,true);
+  set local role authenticated;
+  begin
+    perform public.admin_list_reports(false,100);
+    raise exception 'non-admin listed moderation reports';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.admin_list_flags(true,100);
+    raise exception 'non-admin listed moderation flags';
+  exception when insufficient_privilege then null;
+  end;
+  reset role;
   insert into public.buddy_reports(id, reporter, reported, reason, source_table, source_id)
   values (review_report_id, viewer_id, owner_id, 'review story report', 'stories', review_story_id);
   set local role service_role;
@@ -469,6 +538,14 @@ begin
                     and resolved_at is not null and resolved_by=reviewer_id
                     and resolution_outcome='removed') then
     raise exception 'removal did not atomically warn the author and resolve its report';
+  end if;
+  perform set_config('request.jwt.claim.sub',reviewer_id::text,true);
+  set local role authenticated;
+  queue_json := public.admin_list_flags(false,100)::jsonb;
+  reset role;
+  if not exists(select 1 from jsonb_array_elements(queue_json) q
+    where q->>'id'=story_flag_id::text and q->>'content_moderation_state'='removed') then
+    raise exception 'removed flag content state was not represented predictably';
   end if;
   review_result := public.review_quarantined_content(
     story_flag_id, 'remove', reviewer_id, 'changed retry', repeat('X', 100)
