@@ -164,7 +164,7 @@ export function createModerationHandler(deps: Dependencies) {
 
       const decision = parseModerationResult(await deps.moderate(input));
       deps.log?.({ outcome: decision.outcome, attempt });
-      if (decision.outcome === 'safe' && row.image && !image) return json({
+      if (decision.outcome !== 'confirmed' && row.image && !image) return json({
         ok: false, outcome: 'image_unresolved', retryable: true, attempt, retry: retryPolicy(attempt, reason),
       }, 503);
       if (decision.outcome !== 'confirmed') return json({ ok: true, ...decision });

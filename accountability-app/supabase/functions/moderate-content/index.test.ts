@@ -252,6 +252,21 @@ test('resolver failure plus text-safe is retryable and never quarantines', async
   assert.equal(quarantines, 0);
 });
 
+test('resolver failure plus uncertain text result is retryable and never quarantines', async () => {
+  let quarantines = 0;
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co',
+    loadSource: async () => ({ text: 'text', image: 'r2://post-images/00000000-0000-4000-8000-000000000000/a.jpg' }),
+    resolveModerationImage: async () => null,
+    moderate: async () => ({ flagged: true }),
+    quarantine: async () => { quarantines++; return { data: true, error: null }; },
+  });
+  const response = await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).outcome, 'image_unresolved');
+  assert.equal(quarantines, 0);
+});
+
 test('resolver failure plus text-confirmed can quarantine', async () => {
   const { handler, calls } = setup(validResult, null, 'violating text',
     'r2://post-images/00000000-0000-4000-8000-000000000000/a.jpg');
