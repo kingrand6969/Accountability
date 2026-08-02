@@ -30,6 +30,44 @@ create policy "File own reports" on public.buddy_reports
     auth.uid() = reporter and source_table is null and source_id is null
   );
 
+-- Serialize buddy report admission and its count in one trigger invocation.
+-- Other rate-limited tables retain the generic 0056 behavior unchanged.
+create or replace function public.enforce_rate_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  cfg public.rate_limits%rowtype;
+  n int;
+  uid uuid := auth.uid();
+begin
+  if tg_table_name = 'buddy_reports' then
+    perform pg_advisory_xact_lock(
+      hashtextextended('report_content:' || new.reporter::text, 0)
+    );
+  end if;
+
+  if uid is null then
+    return new;
+  end if;
+  select * into cfg from public.rate_limits where tbl = tg_table_name;
+  if not found then
+    return new;
+  end if;
+  execute format(
+    'select count(*) from public.%I where %I = $1 and created_at > now() - make_interval(secs => $2)',
+    tg_table_name, cfg.owner_col
+  ) into n using uid, cfg.window_secs;
+  if n >= cfg.max_rows then
+    raise exception 'Too many actions in a short time — please slow down and try again shortly.'
+      using errcode = '54000';
+  end if;
+  return new;
+end
+$function$;
+
 do $constraints$
 declare t text;
 begin

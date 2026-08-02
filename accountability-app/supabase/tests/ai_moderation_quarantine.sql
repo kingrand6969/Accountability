@@ -175,6 +175,23 @@ begin
   end;
   reset role;
 
+  -- The buddy-specific limiter admits/counts under the same reporter lock used
+  -- by report_content. Legacy null-source reports still use their direct path.
+  update public.rate_limits
+     set max_rows = (select count(*) + 1 from public.buddy_reports where reporter=viewer_id)
+   where tbl='buddy_reports';
+  set local role authenticated;
+  insert into public.buddy_reports(reporter, reported, reason)
+    values(viewer_id, owner_id, 'legacy report at remaining capacity');
+  begin
+    insert into public.buddy_reports(reporter, reported, reason)
+      values(viewer_id, owner_id, 'legacy report over capacity');
+    raise exception 'serialized buddy report limit was exceeded';
+  exception when program_limit_exceeded then null;
+  end;
+  reset role;
+  update public.rate_limits set max_rows=20 where tbl='buddy_reports';
+
   -- Local HTTP is test-only and requires an explicit server-side opt-in.
   insert into public.internal_config(key, value) values
     ('moderation_url', 'http://127.0.0.1:1/functions/v1/moderate-content'),

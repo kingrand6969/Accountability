@@ -62,6 +62,8 @@ describe('manual-report database contract', () => {
     expect(reportFunction).toMatch(/pg_advisory_xact_lock\(hashtextextended\('report_content:' \|\| v_reporter_id::text, 0\)\)/i);
     expect(migration).toMatch(/create unique index if not exists buddy_reports_open_structured_idx[\s\S]*where source_table is not null and resolved_at is null/i);
     expect(reportFunction).toMatch(/on conflict \(reporter, source_table, source_id\)[\s\S]*where source_table is not null and resolved_at is null[\s\S]*do nothing/i);
+    const limiterFunction = migration.match(/create or replace function public\.enforce_rate_limit[\s\S]*?\$function\$;/i)?.[0] ?? '';
+    expect(limiterFunction).toMatch(/if tg_table_name = 'buddy_reports'[\s\S]*pg_advisory_xact_lock\([\s\S]*hashtextextended\('report_content:' \|\| new\.reporter::text, 0\)[\s\S]*select \* into cfg[\s\S]*select count\(\*\)/i);
   });
 
   test('is authenticated-only, fail-open, and never quarantines by itself', () => {
