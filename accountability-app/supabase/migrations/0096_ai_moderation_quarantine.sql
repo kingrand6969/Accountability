@@ -90,6 +90,13 @@ alter table public.moderation_flags
   add column if not exists quarantine_reason text,
   add column if not exists check_status text not null default 'confirmed';
 
+-- 0063 introduced `removed`; administrator review adds the explicit positive
+-- outcome without collapsing older actioned/dismissed audit history.
+alter table public.moderation_flags drop constraint if exists moderation_flags_status_check;
+alter table public.moderation_flags
+  add constraint moderation_flags_status_check
+  check (status in ('open', 'approved', 'actioned', 'dismissed', 'removed'));
+
 do $constraint$
 begin
   if not exists (select 1 from pg_constraint
@@ -238,6 +245,121 @@ revoke all on function public.quarantine_moderated_content(text, uuid, text[], n
   from public, anon, authenticated;
 grant execute on function public.quarantine_moderated_content(text, uuid, text[], numeric, text)
   to service_role;
+
+-- Complete a human quarantine decision as one transaction.  The Edge Function
+-- supplies the already-authenticated actor, but this function independently
+-- verifies that identity against admins before exercising service authority.
+create or replace function public.review_quarantined_content(
+  p_flag uuid,
+  p_decision text,
+  p_admin_actor uuid,
+  p_reason text,
+  p_message text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_flag public.moderation_flags%rowtype;
+  v_state text;
+  v_strikes integer := 0;
+begin
+  if p_flag is null or p_admin_actor is null then
+    raise exception 'flag and administrator are required' using errcode = '22023';
+  end if;
+  if p_decision not in ('approve', 'remove') then
+    raise exception 'Unsupported review decision' using errcode = '22023';
+  end if;
+  if not exists (select 1 from public.admins where user_id = p_admin_actor) then
+    raise exception 'Administrator privileges required' using errcode = '42501';
+  end if;
+
+  select * into v_flag from public.moderation_flags where id = p_flag for update;
+  if not found then
+    raise exception 'Moderation flag not found' using errcode = 'P0002';
+  end if;
+  if v_flag.source_table not in ('posts', 'post_comments', 'stories') then
+    raise exception 'Unsupported moderation source' using errcode = '22023';
+  end if;
+
+  -- A retry (including a conflicting retry) observes and preserves the first
+  -- committed final decision. It never re-deletes, re-warns, or re-strikes.
+  if v_flag.status <> 'open' then
+    return jsonb_build_object(
+      'ok', true, 'status', v_flag.status, 'idempotent', true,
+      'strikes', coalesce((select strike_count from public.profiles where id=v_flag.author_id), 0)
+    );
+  end if;
+
+  execute format('select moderation_state from public.%I where id=$1 for update', v_flag.source_table)
+    into v_state using v_flag.source_id;
+  if v_state is distinct from 'quarantined' then
+    raise exception 'Quarantined source not found' using errcode = 'P0002';
+  end if;
+
+  if p_decision = 'approve' then
+    execute format('update public.%I set moderation_state=''visible'' where id=$1', v_flag.source_table)
+      using v_flag.source_id;
+    update public.moderation_flags
+       set status='approved', reviewed_at=now(), reviewed_by=p_admin_actor
+     where id=p_flag;
+  else
+    if v_flag.author_id = p_admin_actor then
+      raise exception 'Administrators cannot sanction themselves' using errcode = '42501';
+    end if;
+    execute format('delete from public.%I where id=$1', v_flag.source_table) using v_flag.source_id;
+    if v_flag.author_id is not null then
+      update public.profiles
+         set strike_count=strike_count+1,
+             warning_message=nullif(left(coalesce(p_message, ''), 2000), ''),
+             warned_at=now(), warning_ack_at=null
+       where id=v_flag.author_id
+       returning strike_count into v_strikes;
+      if not found then
+        raise exception 'Content author profile not found' using errcode = 'P0002';
+      end if;
+      insert into public.user_sanctions(user_id, admin_id, action, reason, message)
+      values (v_flag.author_id, p_admin_actor, 'remove',
+              nullif(left(trim(coalesce(p_reason, '')), 500), ''),
+              nullif(left(coalesce(p_message, ''), 2000), ''));
+    end if;
+    update public.moderation_flags
+       set status='removed', reviewed_at=now(), reviewed_by=p_admin_actor
+     where id=p_flag;
+  end if;
+
+  update public.buddy_reports
+     set resolved_at=coalesce(resolved_at, now()), resolved_by=coalesce(resolved_by, p_admin_actor)
+   where source_table=v_flag.source_table and source_id=v_flag.source_id and resolved_at is null;
+
+  return jsonb_build_object(
+    'ok', true,
+    'status', case when p_decision='approve' then 'approved' else 'removed' end,
+    'idempotent', false,
+    'strikes', v_strikes
+  );
+end
+$function$;
+
+revoke all on function public.review_quarantined_content(uuid, text, uuid, text, text)
+  from public, anon, authenticated;
+grant execute on function public.review_quarantined_content(uuid, text, uuid, text, text)
+  to service_role;
+
+-- Minimal service API for callers that deliberately propagate a user JWT.
+create or replace function public.review_quarantined_content(p_flag uuid, p_decision text)
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $function$
+  select public.review_quarantined_content(p_flag, p_decision, auth.uid(), null, null)
+$function$;
+revoke all on function public.review_quarantined_content(uuid, text)
+  from public, anon, authenticated;
+grant execute on function public.review_quarantined_content(uuid, text) to service_role;
 
 create or replace function public.enqueue_manual_moderation(
   p_source_table text,

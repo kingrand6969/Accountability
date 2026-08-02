@@ -74,10 +74,16 @@ do $test$
 declare
   owner_id uuid := gen_random_uuid();
   viewer_id uuid := gen_random_uuid();
+  reviewer_id uuid := gen_random_uuid();
   post_id uuid := gen_random_uuid();
   comment_parent_id uuid := gen_random_uuid();
   comment_id uuid := gen_random_uuid();
   story_id uuid := gen_random_uuid();
+  review_post_id uuid := gen_random_uuid();
+  review_comment_parent_id uuid := gen_random_uuid();
+  review_comment_id uuid := gen_random_uuid();
+  review_story_id uuid := gen_random_uuid();
+  stale_post_id uuid := gen_random_uuid();
   report_post_id uuid := gen_random_uuid();
   report_comment_parent_id uuid := gen_random_uuid();
   report_comment_id uuid := gen_random_uuid();
@@ -90,6 +96,11 @@ declare
   share_id uuid := gen_random_uuid();
   n integer;
   state text;
+  post_flag_id uuid;
+  comment_flag_id uuid;
+  story_flag_id uuid;
+  stale_flag_id uuid;
+  review_result jsonb;
 begin
   if not exists (
     select 1 from information_schema.columns
@@ -111,6 +122,24 @@ begin
   end if;
   if to_regprocedure('public.report_content(text,uuid,text)') is null then
     raise exception 'structured report function is missing';
+  end if;
+  if to_regprocedure('public.review_quarantined_content(uuid,text,uuid,text,text)') is null then
+    raise exception 'administrator quarantine review function is missing';
+  end if;
+  if to_regprocedure('public.review_quarantined_content(uuid,text)') is null then
+    raise exception 'minimal administrator quarantine review function is missing';
+  end if;
+  if has_function_privilege('public', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute')
+     or has_function_privilege('anon', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute')
+     or not has_function_privilege('service_role', 'public.review_quarantined_content(uuid,text,uuid,text,text)', 'execute') then
+    raise exception 'administrator quarantine review grants are unsafe';
+  end if;
+  if has_function_privilege('public', 'public.review_quarantined_content(uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.review_quarantined_content(uuid,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.review_quarantined_content(uuid,text)', 'execute')
+     or not has_function_privilege('service_role', 'public.review_quarantined_content(uuid,text)', 'execute') then
+    raise exception 'minimal administrator quarantine review grants are unsafe';
   end if;
   if has_function_privilege('public', 'public.report_content(text,uuid,text)', 'execute')
      or has_function_privilege('anon', 'public.report_content(text,uuid,text)', 'execute')
@@ -134,20 +163,26 @@ begin
 
   insert into auth.users(id, email) values
     (owner_id, owner_id || '@test.invalid'),
-    (viewer_id, viewer_id || '@test.invalid');
+    (viewer_id, viewer_id || '@test.invalid'),
+    (reviewer_id, reviewer_id || '@test.invalid');
   insert into public.posts(id, user_id, body, audience) values
     (post_id, owner_id, 'quarantine post', 'public'),
     (comment_parent_id, owner_id, 'visible comment parent', 'public'),
     (report_post_id, owner_id, 'reported but still visible', 'public'),
     (report_comment_parent_id, owner_id, 'reported comment parent', 'public'),
+    (review_post_id, owner_id, 'review post', 'public'),
+    (review_comment_parent_id, owner_id, 'review comment parent', 'public'),
+    (stale_post_id, owner_id, 'stale review post', 'public'),
     (unsafe_url_post_id, owner_id, 'unsafe config report', 'public'),
     (missing_secret_post_id, owner_id, 'missing secret report', 'public'),
     (sync_failure_post_id, owner_id, 'sync failure report', 'public');
   insert into public.post_comments(id, post_id, user_id, body) values
     (comment_id, comment_parent_id, owner_id, 'quarantine comment'),
+    (review_comment_id, review_comment_parent_id, owner_id, 'review comment'),
     (report_comment_id, report_comment_parent_id, owner_id, 'reported comment');
   insert into public.stories(id, user_id, image_url) values
     (story_id, owner_id, 'r2://test/story'),
+    (review_story_id, owner_id, 'r2://test/review-story'),
     (report_story_id, owner_id, 'r2://test/reported-story');
   insert into public.buddy_links(user_a, user_b)
     values (least(owner_id, viewer_id), greatest(owner_id, viewer_id));
@@ -309,6 +344,75 @@ begin
   perform public.quarantine_moderated_content('stories', story_id, array['violence'], .7, 'bad story');
   perform public.quarantine_moderated_content('posts', post_id, array['hate'], .95, 'bad post');
   perform public.quarantine_moderated_content('posts', post_id, array['hate','violence'], .99, 'updated excerpt');
+  perform public.quarantine_moderated_content('posts', review_post_id, array['hate'], .8, 'review post');
+  perform public.quarantine_moderated_content('post_comments', review_comment_id, array['harassment'], .8, 'review comment');
+  perform public.quarantine_moderated_content('stories', review_story_id, array['violence'], .8, 'review story');
+  perform public.quarantine_moderated_content('posts', stale_post_id, array['hate'], .8, 'stale post');
+
+  select id into post_flag_id from public.moderation_flags
+   where source_table='posts' and source_id=review_post_id and status='open';
+  select id into comment_flag_id from public.moderation_flags
+   where source_table='post_comments' and source_id=review_comment_id and status='open';
+  select id into story_flag_id from public.moderation_flags
+   where source_table='stories' and source_id=review_story_id and status='open';
+  select id into stale_flag_id from public.moderation_flags
+   where source_table='posts' and source_id=stale_post_id and status='open';
+
+  insert into public.admins(user_id) values(reviewer_id);
+  review_result := public.review_quarantined_content(comment_flag_id, 'approve', reviewer_id, null, null);
+  if review_result->>'status' <> 'approved'
+     or (select moderation_state from public.post_comments where id=review_comment_id) <> 'visible'
+     or not exists (select 1 from public.moderation_flags where id=comment_flag_id
+                    and status='approved' and reviewed_by=reviewer_id and reviewed_at is not null) then
+    raise exception 'comment approval did not restore content';
+  end if;
+  if not (public.review_quarantined_content(comment_flag_id, 'approve', reviewer_id, null, null)->>'idempotent')::boolean
+     or public.review_quarantined_content(comment_flag_id, 'remove', reviewer_id, null, null)->>'status' <> 'approved'
+     or not exists (select 1 from public.post_comments where id=review_comment_id) then
+    raise exception 'approved decision retry/conflict was not an idempotent no-op';
+  end if;
+
+  review_result := public.review_quarantined_content(story_flag_id, 'remove', reviewer_id, 'violence', 'Story removed');
+  if review_result->>'status' <> 'removed' or exists (select 1 from public.stories where id=review_story_id)
+     or not exists (select 1 from public.moderation_flags where id=story_flag_id
+                    and status='removed' and reviewed_by=reviewer_id and reviewed_at is not null) then
+    raise exception 'story removal did not delete content';
+  end if;
+  review_result := public.review_quarantined_content(story_flag_id, 'remove', reviewer_id, 'violence', 'Story removed');
+  if not (review_result->>'idempotent')::boolean
+     or (select strike_count from public.profiles where id=owner_id) <> 1
+     or (select count(*) from public.user_sanctions where user_id=owner_id and action='remove') <> 1 then
+    raise exception 'repeated removal added more than one strike/sanction';
+  end if;
+  if public.review_quarantined_content(story_flag_id, 'approve', reviewer_id, null, null)->>'status' <> 'removed'
+     or exists (select 1 from public.stories where id=review_story_id) then
+    raise exception 'removed decision was reversed by conflicting approval';
+  end if;
+
+  begin
+    perform public.review_quarantined_content(post_flag_id, 'approve', viewer_id, null, null);
+    raise exception 'non-admin reviewed quarantined content';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.review_quarantined_content(post_flag_id, 'invalid', reviewer_id, null, null);
+    raise exception 'invalid review decision was accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  review_result := public.review_quarantined_content(post_flag_id, 'approve', reviewer_id, null, null);
+  if review_result->>'status' <> 'approved'
+     or (select moderation_state from public.posts where id=review_post_id) <> 'visible' then
+    raise exception 'post approval did not restore content';
+  end if;
+  delete from public.posts where id=stale_post_id;
+  begin
+    perform public.review_quarantined_content(stale_flag_id, 'remove', reviewer_id, null, null);
+    raise exception 'stale source was sanctioned';
+  exception when no_data_found then null;
+  end;
+  if (select strike_count from public.profiles where id=owner_id) <> 1 then
+    raise exception 'stale source changed strike count';
+  end if;
 
   select moderation_state into state from public.posts where id = post_id;
   if state <> 'quarantined' then raise exception 'post was not quarantined'; end if;

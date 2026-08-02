@@ -18,8 +18,11 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } });
 
 const DAY = 86400000;
-// only these tables can ever be touched by remove_content
-const REMOVABLE = ['posts', 'post_comments', 'stories', 'buddy_messages'];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ACTIONS = new Set([
+  'approve_content', 'remove_content', 'remove_post',
+  'ban', 'unban', 'restrict', 'warning', 'clear',
+]);
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -37,14 +40,19 @@ Deno.serve(async (req) => {
 
     const { action, user_id, reason, message, days, flag_id, ban_ips, post_id, report_id } =
       await req.json().catch(() => ({}));
-    if (!action) return json({ error: 'bad input' }, 400);
+    if (typeof action !== 'string' || !ACTIONS.has(action)) return json({ error: 'unknown action' }, 400);
+    if (user_id != null && (typeof user_id !== 'string' || !UUID.test(user_id))) {
+      return json({ error: 'valid user_id required' }, 400);
+    }
 
     // ── remove_post: a USER-reported post (no flag row) — delete it, warn the
     //    author with a strike, and resolve the report. Same discipline as
     //    remove_content but keyed by an explicit post id from the report. ──
     if (action === 'remove_post') {
-      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!post_id || !UUID.test(String(post_id))) return json({ error: 'valid post_id required' }, 400);
+      if (report_id != null && (typeof report_id !== 'string' || !UUID.test(report_id))) {
+        return json({ error: 'valid report_id required' }, 400);
+      }
       if (user_id && user_id === user.id) return json({ error: 'you cannot sanction yourself' }, 400);
 
       // 1) delete the post (idempotent — may already be gone)
@@ -88,48 +96,24 @@ Deno.serve(async (req) => {
     }
 
     // ── remove_content: delete flagged content + warn author + add a strike ──
-    if (action === 'remove_content') {
-      if (!flag_id) return json({ error: 'flag_id required' }, 400);
-      const { data: flag } = await admin.from('moderation_flags').select('*').eq('id', flag_id).maybeSingle();
-      if (!flag) return json({ error: 'flag not found' }, 404);
-      if (!REMOVABLE.includes(flag.source_table)) return json({ error: 'not removable' }, 400);
-      if (flag.author_id === user.id) return json({ error: 'you cannot sanction yourself' }, 400);
-
-      // 1) delete the content itself (idempotent — may already be gone)
-      await admin.from(flag.source_table).delete().eq('id', flag.source_id);
-
-      // 2) one more strike for the author + a warning they must acknowledge
-      let strikes = 0;
-      if (flag.author_id) {
-        const { data: prof } = await admin.from('profiles').select('strike_count').eq('id', flag.author_id).maybeSingle();
-        strikes = (prof?.strike_count ?? 0) + 1;
-        await admin.from('profiles').update({
-          strike_count: strikes,
-          warning_message: message || null,
-          warned_at: new Date().toISOString(),
-          warning_ack_at: null,
-        }).eq('id', flag.author_id);
-        await admin.from('user_sanctions').insert({
-          user_id: flag.author_id, admin_id: user.id, action: 'remove',
-          reason: reason || null, message: message || null,
-        });
+    if (action === 'approve_content' || action === 'remove_content') {
+      if (typeof flag_id !== 'string' || !UUID.test(flag_id)) {
+        return json({ error: 'valid flag_id required' }, 400);
       }
-
-      // 3) close the flag as removed
-      await admin.from('moderation_flags').update({
-        status: 'removed', reviewed_at: new Date().toISOString(), reviewed_by: user.id,
-      }).eq('id', flag_id);
-
-      // 3b) if this was a post, also resolve any user REPORT about the same post
-      //     so it's gone from the Reports tab too — no second warning for one
-      //     offense. (Reports reference the post id inside their reason text.)
-      if (flag.source_table === 'posts') {
-        await admin.from('buddy_reports').update({
-          resolved_at: new Date().toISOString(), resolved_by: user.id,
-        }).is('resolved_at', null).like('reason', `%${flag.source_id}%`);
+      const { data, error } = await admin.rpc('review_quarantined_content', {
+        p_flag: flag_id,
+        p_decision: action === 'approve_content' ? 'approve' : 'remove',
+        p_admin_actor: user.id,
+        p_reason: typeof reason === 'string' ? reason : null,
+        p_message: typeof message === 'string' ? message : null,
+      });
+      if (error) {
+        const status = error.code === 'P0002' ? 404
+          : error.code === '22023' ? 400
+          : error.code === '42501' ? 403 : 500;
+        return json({ error: error.message }, status);
       }
-
-      return json({ ok: true, strikes });
+      return json(data);
     }
 
     // ── account-level sanctions ──────────────────────────────────────────────
