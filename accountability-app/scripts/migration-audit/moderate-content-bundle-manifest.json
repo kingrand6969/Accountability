@@ -1,10 +1,10 @@
 [
   {
     "path": "supabase/functions/moderate-content/index.test.ts",
-    "sha256": "932925a7b77ca4844f0c5ddc759f15053189e0ce7dff01b5bc2c48a07751b3d1"
+    "sha256": "b67a4a43b6acbfb43c5cd4d9d7ae1286915b73ba88699831b05db9363ebe9066"
   },
   {
     "path": "supabase/functions/moderate-content/index.ts",
-    "sha256": "0736078020fbdd70198439508ab9c87093b5f8efeabc2d2895f630f4b9968d9b"
+    "sha256": "2327a570642fff9ae852a088831c7089a398e8c45ddf7333deb424047c4a3e45"
   }
 ]

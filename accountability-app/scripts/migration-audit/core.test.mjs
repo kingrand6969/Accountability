@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +22,7 @@ import {
   enumerateSqlCallExpressions,
   fingerprintCatalogRecords,
   hashFiles,
+  materializeCrlf,
   normalizedJson,
   normalizeSqlCode,
   optionalLedgerScriptForPresence,
@@ -496,10 +498,6 @@ test('checked-in ledger, status manifest and catalog SQL are internally safe and
   assert.equal(assertStatusTransition('UNPROVABLE', 'PROVEN'), true);
   assert.throws(() => assertStatusTransition('SUPERSEDED', 'PROVEN'), /Forbidden/);
   assert.equal(
-    verifyFrozenInventory(path.resolve(directory, '../../supabase/migrations'), frozen),
-    true,
-  );
-  assert.equal(
     assertReadOnlyCatalogSql(readFileSync(path.join(directory, 'catalog-readonly.sql'), 'utf8')),
     true,
   );
@@ -534,6 +532,34 @@ test('checked-in ledger, status manifest and catalog SQL are internally safe and
     ),
     true,
   );
+});
+
+test('every frozen migration is tracked and its clean CRLF materialization matches the ledger', () => {
+  const directory = path.dirname(fileURLToPath(import.meta.url));
+  const projectRoot = path.resolve(directory, '../..');
+  const repositoryRoot = path.resolve(projectRoot, '..');
+  const frozen = JSON.parse(readFileSync(path.join(directory, 'frozen-ledger.json'), 'utf8'));
+  for (const migration of frozen.migrations) {
+    const relative = `accountability-app/supabase/migrations/${migration.filename}`;
+    assert.doesNotThrow(() => execFileSync('git', ['ls-files', '--error-unmatch', '--', relative], {
+      cwd: repositoryRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }), `${relative} must be tracked`);
+    const attribute = execFileSync('git', ['check-attr', 'eol', '--', relative], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    assert.equal(attribute, `${relative}: eol: crlf`);
+    const blob = execFileSync('git', ['show', `:${relative}`], {
+      cwd: repositoryRoot,
+      encoding: 'buffer',
+      maxBuffer: 2 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const cleanMaterialized = materializeCrlf(blob);
+    assert.equal(sha256(cleanMaterialized), migration.sha256, relative);
+  }
 });
 
 test('function bundle manifests exactly bind every regular file in each function directory', () => {

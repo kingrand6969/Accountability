@@ -4,7 +4,7 @@
     {
       "version": "0001",
       "filename": "0001_profiles.sql",
-      "canonicalSha256": "13bf0ae361bf6c26d277239d9f89f58c2c9f6090143e8e2e78e4849b0f07176b",
+      "canonicalSha256": "e6ef59f0e84e54495a790515d71364dae72f7da79b3aaf4409987ca7a477583e",
       "invariants": [
         {
           "invariantId": "0001:001:9f78536cdd6bff8308fb0820cd93738d3391c6a6e848e6c0ef7717b01f4e91e9",
@@ -2084,7 +2084,7 @@
     {
       "version": "0020",
       "filename": "0020_realtime_chat.sql",
-      "canonicalSha256": "d52271ac97e2488e2f849f70325f82ac0bf8e404609d133a4032be3fdffe7f7b",
+      "canonicalSha256": "dc85b45c31950700d22625e889d2ceea42aa7d93cb15e5ee5dce5a5ac7b254dc",
       "invariants": [
         {
           "invariantId": "0020:001:3c837e013b1ec2b5c1d08426992e8f06b7c6d14059759e409f5e3bedad300c2a",
@@ -2100,7 +2100,7 @@
     {
       "version": "0021",
       "filename": "0021_timeline_mirror_triggers.sql",
-      "canonicalSha256": "94c57fdb82004630385c89e873b3fa9b78c6e0dfc37cd653dd842f6982e2fef6",
+      "canonicalSha256": "d098c132f5ed9d109f77b62318884abcd9753541e821d4a19b42c94cbc07d3cd",
       "invariants": [
         {
           "invariantId": "0021:001:1a7e4a71049ab93edd9bc11dcc6cb7401377afd6159af407f90ef623e9600aea",
@@ -2197,7 +2197,7 @@
     {
       "version": "0022",
       "filename": "0022_activity_mirror_trigger.sql",
-      "canonicalSha256": "a61a060d7ba924f78f418e093d05e72fb298ea322425f2bf516de8c28f853895",
+      "canonicalSha256": "6ef811f5fac6b8a630855a71df69e73b1d8533f983644162c6d18c07c1358ac6",
       "invariants": [
         {
           "invariantId": "0022:001:bf74cc3175f172ad4ae32af315de8c6e8e583e078d6c33dafe5b6a319f8a9996",
@@ -2240,7 +2240,7 @@
     {
       "version": "0023",
       "filename": "0023_stories_groups.sql",
-      "canonicalSha256": "a8bb8eeab8f6daeeead187040275474bf97cd78f9b70deed23530e4d0f63877b",
+      "canonicalSha256": "9cccc9e8cd4423c5ba7da3eea367acc319ea100bd42541ba3751d6d2ffaaad1f",
       "invariants": [
         {
           "invariantId": "0023:001:51c38bd877e9911d305664bd887ed17b89eda1aef7a70c8d8b824b05d261ec71",
@@ -2635,7 +2635,7 @@
     {
       "version": "0024",
       "filename": "0024_cover_photo.sql",
-      "canonicalSha256": "321de8b1dd2e8f43a76e1f56b6760baf39e9f8e1c0b6a34710fc8f025e745eea",
+      "canonicalSha256": "ebb44f8afe4db8cae30c4af0a9a03400aadab8ecf7fa6423bf0965c632c62f40",
       "invariants": [
         {
           "invariantId": "0024:001:2382c2a9bd2eb17ece28a77865c1d66435308202f922c212082545cdda1d5c3b",
@@ -2692,7 +2692,7 @@
     {
       "version": "0025",
       "filename": "0025_pages.sql",
-      "canonicalSha256": "4856e8823d92f2e5f935513a17f988d8ab42d2d5a005cbb185386a5c2dcdcbad",
+      "canonicalSha256": "81161e738c90b0deed3d9a1c7f334993cdfcb77809aaa1066576b7778472a779",
       "invariants": [
         {
           "invariantId": "0025:001:47f14f842356ae94ccd5de671824be20aa7e1eb62c41713d4451000fbf07ab75",
@@ -2955,7 +2955,7 @@
     {
       "version": "0026",
       "filename": "0026_buddy_card.sql",
-      "canonicalSha256": "b53c3689b4c4f9493d72ae079966f5025a1dbd4f85dd23d73cfbc87d268cca57",
+      "canonicalSha256": "d371ffd770706aa4947f8e01e6f031777adb6aa8d2914e084363843d112094b3",
       "invariants": [
         {
           "invariantId": "0026:001:07ef03c3f9dd948f5600f2e8638c8d69b4ab507354ca7c4e7dc64690c164bfcf",
@@ -3012,7 +3012,7 @@
     {
       "version": "0027",
       "filename": "0027_buddy_stars_stats.sql",
-      "canonicalSha256": "7b291f689b2057d074e8c629e90542fc30d2d55d734d577da2c3de34118c5591",
+      "canonicalSha256": "b70f466706632b8e1acae41bb113f8f9e770645bacc5ad27f01db5be4f6cd51e",
       "invariants": [
         {
           "invariantId": "0027:001:c9130d7da9d52972671d4913d8d87907fe6054cec523672838f8aaf9ac0587fb",
@@ -3133,7 +3133,7 @@
     {
       "version": "0028",
       "filename": "0028_events.sql",
-      "canonicalSha256": "8301fbc3ee574e3ad9d12aba2efa734745089de6e47ee0451b78d42b5e6b138b",
+      "canonicalSha256": "ef07afd6dca3d87f68034a0aa3a6fd6d30f6086835afb560741a76041e8af628",
       "invariants": [
         {
           "invariantId": "0028:001:046799a1c9b533c78846de3ee246d837c0a48d9d1b93fbc1efb69a88351419e1",
@@ -3242,7 +3242,7 @@
     {
       "version": "0029",
       "filename": "0029_privacy_gatekeys.sql",
-      "canonicalSha256": "5cf6d7f386f6ab6407ad460dfa3ba3aa6f4ba9a6e1128a6798699f5f10acf596",
+      "canonicalSha256": "639fb62f93604171b99e22b786361ad67a55cfd9e6155a8b9aa444099e2093bd",
       "invariants": [
         {
           "invariantId": "0029:001:3ed7fae946c8cd2fb8a35761243d6ca58a41776e01980f180941e790e2c1df4c",
@@ -3376,7 +3376,7 @@
     {
       "version": "0030",
       "filename": "0030_timeline_checklist.sql",
-      "canonicalSha256": "2f21801a9a7a8b7dc59563bdd8007a1e855da0c1f5f28e896bd0203bb8086170",
+      "canonicalSha256": "517b1c348d2bcb85f51bc8207bf91e2b920ea8d83dc6147ab1b7f362b18531da",
       "invariants": [
         {
           "invariantId": "0030:001:4d7157c4d746fcc94bbbfac15a4cdd42917076da70e4774740265a1b78f227e9",
@@ -3393,7 +3393,7 @@
     {
       "version": "0031",
       "filename": "0031_timeline_grocery_other.sql",
-      "canonicalSha256": "13ead07a4bc7f883ffff23b560d36193f4e855a691f2361725fcf3ada5bd3b7d",
+      "canonicalSha256": "00c372052d822d8977c96d262e60feff1afc945ca22a12dc9e8b2c5af511c77b",
       "invariants": [
         {
           "invariantId": "0031:001:731bbff59b821791417cfba3d1d632c9097b33f86d20073c4cfb26943ea055d8",
@@ -3421,7 +3421,7 @@
     {
       "version": "0032",
       "filename": "0032_gatekey_admin_read.sql",
-      "canonicalSha256": "2a5cc6d7a65e1b28e7b702b0e7fced833f9490fb7955de04618e0f93448556f2",
+      "canonicalSha256": "c3e77d3fbcf0751c9d6bd69506db000b526b2e14332d89135ed8da5f88466428",
       "invariants": [
         {
           "invariantId": "0032:001:05b473f01b0e78d824494a5356af0e4292654d4034c7498789d9de07613a2173",
@@ -3451,7 +3451,7 @@
     {
       "version": "0033",
       "filename": "0033_memories.sql",
-      "canonicalSha256": "8fa8321d69449e064e42f59bced1e768f532585ebb2667eb25d6069de462ed5a",
+      "canonicalSha256": "3dbe9c3049f8167b7facec1643d785de1001806d237947073d1f76f7d38efef0",
       "invariants": [
         {
           "invariantId": "0033:001:908312646a8ce0d06fc1afea476494ece494704dddc6c00044a6e89865e8447d",
@@ -3678,7 +3678,7 @@
     {
       "version": "0034",
       "filename": "0034_bills.sql",
-      "canonicalSha256": "3fda1a36269070bd1af4468df0a1ee7ca6cace10db3b0201140b8015de066be2",
+      "canonicalSha256": "1db0cc910bc6f5f8dd458fc0a51f248d5f7795435b7053b67218515db8dbb623",
       "invariants": [
         {
           "invariantId": "0034:001:1ebe3bf26d151fd52708ba5c2969e7f9def79dad0602010a5377ecf0f2ae7cff",
@@ -3774,7 +3774,7 @@
     {
       "version": "0035",
       "filename": "0035_memories_location.sql",
-      "canonicalSha256": "d10321cf8fa9cdf86ab1a62e1810d88332f3d902eb0979277023e7045f260c31",
+      "canonicalSha256": "bf6959ebe8ccb5acae1186505e2491baf4ff138124454120c35840f9a79f9c93",
       "invariants": [
         {
           "invariantId": "0035:001:8c06d12ac94aacdcf989c4ca9cf7d101cded5bf4eb50609ab375c9bb08e20017",
@@ -3794,7 +3794,7 @@
     {
       "version": "0036",
       "filename": "0036_post_tags.sql",
-      "canonicalSha256": "b942a0f20bb5c817afc943f240f99fe590c889dff8c7cddf3c95101cf96fda69",
+      "canonicalSha256": "365518ff181b706be82d3d8edff39c6dbac37fa5e082637057c873eb88d974a4",
       "invariants": [
         {
           "invariantId": "0036:001:35eaa35865fc83585f5f4813f7360159095afa486540872c4675501e03ce06b3",
@@ -3875,7 +3875,7 @@
     {
       "version": "0037",
       "filename": "0037_search_history.sql",
-      "canonicalSha256": "6e4f10257937d86b233d567da2576c6234f6bccccfd41d8e348edb48bb4a61bd",
+      "canonicalSha256": "619a19ca66dad0d6682844c0b7958fb247392dda876510897e96be4ea1f3f0ec",
       "invariants": [
         {
           "invariantId": "0037:001:b5a0bee7e3ca367c0c96a53d4e9cd103f4486ada1ff7929e61b0f0c675348c18",
@@ -3958,7 +3958,7 @@
     {
       "version": "0038",
       "filename": "0038_accounts_savings.sql",
-      "canonicalSha256": "4bd6b91d919511ddd3a2ac78c76c6fdc9c41de66dffbc7ac2b7ff7733ba7cbad",
+      "canonicalSha256": "6117372d68fa29f132039f97f3d8b3f47ddbec8d143bacc2dcac777fa1a85b47",
       "invariants": [
         {
           "invariantId": "0038:001:26a639c5e452cad8e3af31c78bd9c7c3acc980cf3bdfa7a84ccf04c1f32f3c61",
@@ -4121,7 +4121,7 @@
     {
       "version": "0039",
       "filename": "0039_debts.sql",
-      "canonicalSha256": "6ef044b5a1e64670e5de89d04a5c9fb2d5c95ad2076654cb9d12ed490f7a1a28",
+      "canonicalSha256": "e06ee74ae3d736bc1365c48957b5d6d5eae7d3649834d7535803da91e05f536c",
       "invariants": [
         {
           "invariantId": "0039:001:adb387afd2bdb1993796235859c77188052ebe1e05f0bad2db92f3067f1b2d51",
@@ -4217,7 +4217,7 @@
     {
       "version": "0040",
       "filename": "0040_compete.sql",
-      "canonicalSha256": "15b301daf3bf0e5c37dc4c04200ae31d2e044c29180a5f67e56c526163a8ab43",
+      "canonicalSha256": "9567944890c8a9dd9a4b4fe77dbcc0ff1ecd994686dd0e87655992a455d67ac1",
       "invariants": [
         {
           "invariantId": "0040:001:9adbc28805ef0732e8f698ed81329e0b9424c06ffdf0161ce98749f113215a47",
@@ -4780,7 +4780,7 @@
     {
       "version": "0041",
       "filename": "0041_compete_fixes.sql",
-      "canonicalSha256": "f279162d5e1e42b2b0f29195c068b1ff68a22070e51415725d6915e9a46d9653",
+      "canonicalSha256": "45cadaa6dea7adffba753cc037c30739b21a5f7bd834ef953de7b5ed81e8ec5a",
       "invariants": [
         {
           "invariantId": "0041:001:946d040a605d865f85da2dfe0305e371704eba4ec4c025156fb436ba1beb8f2d",
@@ -4834,7 +4834,7 @@
     {
       "version": "0042",
       "filename": "0042_missions.sql",
-      "canonicalSha256": "f959cd220a7a757e4626132ae466f022da3b6042e46ea0cf928afb52c391656b",
+      "canonicalSha256": "844d5964f4138a6a7fc36debf4fe2e8a7b6dcd41a3aa973deb92bd4fa83b2095",
       "invariants": [
         {
           "invariantId": "0042:001:040746bcd6f061fed668db4f4972c81d6e39f2d4d2e39bcbbc41c405aed73ba5",
@@ -4969,7 +4969,7 @@
     {
       "version": "0043",
       "filename": "0043_avgkm_metric.sql",
-      "canonicalSha256": "f292f623b39bdc21145fbcecd1e75765fd1a2598ae0597b7c9ea8d14f30897d4",
+      "canonicalSha256": "73b08269ea999aaf3d4a03b38626f0a861bf3ad1adb7367140663cb8353e9eb5",
       "invariants": [
         {
           "invariantId": "0043:001:1b8114bedd44085864b5aa78d0fb1f43e042c499447067bbbcc6a71ae74b8c22",
@@ -5003,7 +5003,7 @@
     {
       "version": "0044",
       "filename": "0044_notifications.sql",
-      "canonicalSha256": "ce371501e266b3aa01ce4b1f1dbd19cb3017cab11a8ee399f0495dd58f99822d",
+      "canonicalSha256": "1b35f82ac790acdb7f451fdccb281aacbd68927e1d830c8b07d9da0456a38dbd",
       "invariants": [
         {
           "invariantId": "0044:001:b7141428416f0ed5e4e9997725641cc4933a5e46763fdfc3c9c4114abf517e26",
@@ -5261,7 +5261,7 @@
     {
       "version": "0045",
       "filename": "0045_member_board_rank.sql",
-      "canonicalSha256": "0b14f511fd24da4e7aa7ee5407b3b082d75cc88a33ae5a9bd14cf8464b468570",
+      "canonicalSha256": "7c8f517094d501f02da1be52772ce09f37d73fe12146ae8bc228d157abe00da9",
       "invariants": [
         {
           "invariantId": "0045:001:0f5c2b793e664e829160449d732447e0d2e141f40a073fff77a468883940591b",
@@ -5306,7 +5306,7 @@
     {
       "version": "0046",
       "filename": "0046_posts_on_card.sql",
-      "canonicalSha256": "b0de99eec12b313b906f169e9758ab26506165e70ef9263ced0436eca761c542",
+      "canonicalSha256": "b4c17f7d995093f45cbe5c25ac71edbe7a3c0fc777792a2b8cd0098d0d2eaa4f",
       "invariants": [
         {
           "invariantId": "0046:001:a809222bd17735f8602da6b05419c5b36ba1c17fa8e391756f9e290a56a0f771",
@@ -5334,7 +5334,7 @@
     {
       "version": "0047",
       "filename": "0047_shared_goals.sql",
-      "canonicalSha256": "a2c33b6aada243aa4f386a5765c7df5ee23254824a75b95d67979590c0c1e0d0",
+      "canonicalSha256": "0c9c3863ef04dd8dde7435a831c19d3fa87925906b9333cbf0c9178d61230367",
       "invariants": [
         {
           "invariantId": "0047:001:91d01f161b45eb52fe1adb00e55af42f5b0c14b699e06ddcf32580b2a8a6b188",
@@ -5685,7 +5685,7 @@
     {
       "version": "0048",
       "filename": "0048_shared_goals_fixes.sql",
-      "canonicalSha256": "9aab82e59a65c4c6529bc87e181bd1943cb6ee45f03e5ae8639a905cfa689c13",
+      "canonicalSha256": "d3c16402c5e2e8908bd8e406053fa4c1fcce2d831db7d27602e6a5142e6f47a0",
       "invariants": [
         {
           "invariantId": "0048:001:e75c7b9e36c761dfaeef4ceb785c7a7d605074a2ce2082ea4d508a277ef96bc5",
@@ -5746,7 +5746,7 @@
     {
       "version": "0049",
       "filename": "0049_challenge_wins.sql",
-      "canonicalSha256": "744b6b0902bda6d9758b29aac90e2229c396a32aafcf88b2dbafcf8e2703bfda",
+      "canonicalSha256": "7a4b49dd9400e2126381a81cba65046989038c60c56b6f79263bb038773f5e2b",
       "invariants": [
         {
           "invariantId": "0049:001:4f6cf7d8db39a5d04b7c4361192923708ee17b4eec75c7dca810e9ab3fbfdadc",
@@ -5807,7 +5807,7 @@
     {
       "version": "0050",
       "filename": "0050_challenge_record_min2.sql",
-      "canonicalSha256": "451caa64c2d9fc7712bfe395dac1f8b5b9b731630c651ad6c80d8a08c742dd59",
+      "canonicalSha256": "38eac68cf44f7a911e528828608851ee87657ff0b073f93e4b7f4aaf5b5a0b8f",
       "invariants": [
         {
           "invariantId": "0050:001:9711cd9f2d8935896670f993cdec72c60346f6a383ac1c47cad966d90e372576",
@@ -5842,7 +5842,7 @@
     {
       "version": "0051",
       "filename": "0051_messages_inbox.sql",
-      "canonicalSha256": "97afb9be5dee6739861a80d167e2be694dd6306f0042ffd3f0f4273273a74c7c",
+      "canonicalSha256": "b9cac6a5d68fc890bfb03c95dd5c828c23a48963a716ec5a35376259424aac65",
       "invariants": [
         {
           "invariantId": "0051:001:d6ab3e33f05599d7cebb3369cb9cc96f7ea6a09ebb51a7d4a09ea0caeedbe470",
@@ -6017,7 +6017,7 @@
     {
       "version": "0052",
       "filename": "0052_delete_account.sql",
-      "canonicalSha256": "df4ed16beee7b4468cdf3123de94b94b855903040ae42812c9c54909a239ffaa",
+      "canonicalSha256": "53a221567d2ef80feefdf56f81dd3c7c41e45d50cd6db4470367173d3c32b201",
       "invariants": [
         {
           "invariantId": "0052:001:47b31771f830d15144a37099ab7fa5cf44346213a15f2a2e4a39bebca1502a09",
@@ -6115,7 +6115,7 @@
     {
       "version": "0053",
       "filename": "0053_member_card_stats.sql",
-      "canonicalSha256": "8f0680dd76f94527b0bb2df00e71846e4b85d7d2b9ff2903aee3f7175c1322ee",
+      "canonicalSha256": "7891d532fb8a51747aceb92be14507d18fea37f6baa511928753253ad0a050ea",
       "invariants": [
         {
           "invariantId": "0053:001:fb3c0055fc9d45f06ff32e92d115340de0d835fd34ffe4765119fdcfcebfba27",
@@ -6161,7 +6161,7 @@
     {
       "version": "0054",
       "filename": "0054_referrals.sql",
-      "canonicalSha256": "c6bb4059fa33aef18561509f5e4f161c280df1bb99c2b365accd6a8c3e3860a3",
+      "canonicalSha256": "7a9b21a67e2d7e3ab5b065f75a1a572af0094ce9c31e610bc26861c63ee124da",
       "invariants": [
         {
           "invariantId": "0054:001:e76703c8e7f764a2cc3e143ecdec16adc4be5f61954b28b76ad01fd9c7208ca2",
@@ -6246,7 +6246,7 @@
     {
       "version": "0055",
       "filename": "0055_metric_rollups.sql",
-      "canonicalSha256": "7f17a940a277aee34bcbdbc770e0380dcf844b9734e203e23585d0164462bc93",
+      "canonicalSha256": "32a329ae7287321806ca27b61ca13155741e133e8e5bae01861ba9dd02b72616",
       "invariants": [
         {
           "invariantId": "0055:001:262c83fa1ed7294f3954b65d25d4e52af0866ba84a75c4ca85b2e70f49dc8836",
@@ -6329,7 +6329,7 @@
     {
       "version": "0056",
       "filename": "0056_rate_limits.sql",
-      "canonicalSha256": "8ae54aeb0b7054f7cd6f7e0d53a11ec7ae9b924f15b70e822ef2088a8c97fffb",
+      "canonicalSha256": "71e00410b624edfdbe983b543d7155f38ca195280e14535a693f100af8718b4a",
       "invariants": [
         {
           "invariantId": "0056:001:f3c96fa1c3a1feb6758bb83b388dbea397d6a44452b6c36ca9931875f1edefea",
@@ -6562,7 +6562,7 @@
     {
       "version": "0057",
       "filename": "0057_r2_sign_limit.sql",
-      "canonicalSha256": "56f93cf677a5c664b5d7aa1ec5c9c91623dca49f571aa2b9edc6e72eb762c78c",
+      "canonicalSha256": "66f0084b1360a58ae0f2ea1a03166ccf532e8c1ed6a33e9407b3eb4883e5e48b",
       "invariants": [
         {
           "invariantId": "0057:001:8279f6fc98ac4095a8504c97cc7ea53006f2f77d76a4c490854e3d3df3b05d63",
@@ -6671,7 +6671,7 @@
     {
       "version": "0058",
       "filename": "0058_consent.sql",
-      "canonicalSha256": "a6fc2840281cd5f0b939320d70e3c13cf28c20bf1b9895214d9e45bb636cc1f3",
+      "canonicalSha256": "8ec3ae8267cf0db7a0b7df941ffcad3652bd3507439d69bcea039d8dfefd8843",
       "invariants": [
         {
           "invariantId": "0058:001:0a63c77a7544ddadab887f819139a51f83e4758d59a7997c380e035fe21a6e6a",
@@ -6725,7 +6725,7 @@
     {
       "version": "0059",
       "filename": "0059_support_messages.sql",
-      "canonicalSha256": "60b6bc124d8ae05da26a5319c1275c012235d33432756f2f6f31b0ce2059748c",
+      "canonicalSha256": "25110a7687b5c04dbf94256114ba00ee9ba55a82c2610b349774bc5f73ef1fce",
       "invariants": [
         {
           "invariantId": "0059:001:eef32034bc7ad54d3806a05177f6f866a5a83655c51d074c46d06489aa1d2d55",
@@ -6824,7 +6824,7 @@
     {
       "version": "0060",
       "filename": "0060_admin.sql",
-      "canonicalSha256": "c4eb4f9da25e6fdf9a140e0d9423b23a4020c78649ed8a89e109bc2623a4d24f",
+      "canonicalSha256": "656834185ef3d557179a7ef48599658dc5f6bbf07952e8880e837b36a6cdf03b",
       "invariants": [
         {
           "invariantId": "0060:001:5f180398bf33fd4c3b50646be96a5c457d41830b43393b0ad571a1f2397e6e2f",
@@ -7019,7 +7019,7 @@
     {
       "version": "0061",
       "filename": "0061_moderation.sql",
-      "canonicalSha256": "0b46879cac651779f4b4bc82b88027992051a6768c5ab1c9dc0af63330b1fca2",
+      "canonicalSha256": "f495e481275143e0e929a03c864a3f84553743378c54d87fdacdfc4ab42d5b08",
       "invariants": [
         {
           "invariantId": "0061:001:31faccc15b088fc2054027f98fa860e6e34b0a693748de44fb191eaec5297a2c",
@@ -7181,7 +7181,7 @@
     {
       "version": "0062",
       "filename": "0062_sanctions.sql",
-      "canonicalSha256": "5c56ff7239449992ee323cb02db592e0a74dae7674bf3d45c5218fc24c5a8cb7",
+      "canonicalSha256": "fb1d6632197c3a3e68b12d0982a7dbbaaf9aa7227a98842c10dce231912a4013",
       "invariants": [
         {
           "invariantId": "0062:001:1e176c3ead9ab629092e71c039e916ed8d38b4b798c9f78483aa8bd4cd573f68",
@@ -7348,7 +7348,7 @@
     {
       "version": "0063",
       "filename": "0063_strikes_ips.sql",
-      "canonicalSha256": "9b8e6ca626c9b03218dec87620f9f852f3a6a5ae656c57ca8bb43099c1d5d4fb",
+      "canonicalSha256": "583ab020a97241e6326654ecd30f2c8071546047e2902cf95f5df86f27c29d27",
       "invariants": [
         {
           "invariantId": "0063:001:581b39af67faa57900da0606c84db7c36e20073f08868cb13e5d1154e9d5534a",
@@ -7559,7 +7559,7 @@
     {
       "version": "0064",
       "filename": "0064_cases_system.sql",
-      "canonicalSha256": "115e17431faa11b76ef8d85b667d1541242ca869d275a2588e1d704c120e1fe6",
+      "canonicalSha256": "6aaba630ab5ffe2efaed289c03e260f8225f3921f03b0394cfc99909746aa5ca",
       "invariants": [
         {
           "invariantId": "0064:001:5934f17d8b174191f431c543284797d18cb34899a336ca4acdf00add28bea37a",
@@ -7639,7 +7639,7 @@
     {
       "version": "0065",
       "filename": "0065_system_detail.sql",
-      "canonicalSha256": "1f8c30001604e555fec88a181f02d826d60c2cd7df484ada12f260613c2fc63c",
+      "canonicalSha256": "e852f6e17634418dc06003ad99be4bb2d2fef1c72122defa1864059b5d8077d4",
       "invariants": [
         {
           "invariantId": "0065:001:6ab3650e232d5d847ec5e835e5c584c3e781ff9bc73c19425ed0229ed7148b1f",
@@ -7682,7 +7682,7 @@
     {
       "version": "0066",
       "filename": "0066_post_hides.sql",
-      "canonicalSha256": "30bd663ed21a215a4c4f48874a4fc68778c463b3e2121b560b5ed6daae06267c",
+      "canonicalSha256": "0867f9d63eca6576d04b8456ba70a6355040652a505d41d65647bcab231272db",
       "invariants": [
         {
           "invariantId": "0066:001:6abdc7355df72dd684159a16993330f085b1df60bcfdc9850b74a0ed1da5e644",
@@ -7779,7 +7779,7 @@
     {
       "version": "0067",
       "filename": "0067_location_integrity.sql",
-      "canonicalSha256": "7d0c3cf77898525334d8a57c9319359b4351f87c637bc62ddcc4e0a674ab2fe1",
+      "canonicalSha256": "138d7383a984573011d4159396911fccf34a057f3a2650cb6db16cd2acbbcaa5",
       "invariants": [
         {
           "invariantId": "0067:001:11ac16ece104f1550be1cb16ae7e6f89e5c2b629896c539e690b8db21dfcbfc1",
@@ -7937,7 +7937,7 @@
     {
       "version": "0068",
       "filename": "0068_income_trend.sql",
-      "canonicalSha256": "5a6040a3b58f13a079df98a1ef0c6afce5b6fb186978aeec9294602e4f97720a",
+      "canonicalSha256": "b0e97c20f725a6114a155d31cc376cf4bf1e06fe55a18b05e489ea7e16137ef4",
       "invariants": [
         {
           "invariantId": "0068:001:187696b3b15948e2da76de7eee6daa613e9f51828819a15e3f1567f3c9db9942",
@@ -7972,7 +7972,7 @@
     {
       "version": "0069",
       "filename": "0069_ai_scans.sql",
-      "canonicalSha256": "a63f04346c82a6e2d2e2bf3b0c8cee805e3faaeb902566dbd1d231fc6d7b1a62",
+      "canonicalSha256": "4f51767e63011bad4685a13202404eacfd653ef9116ac9f02f1a6ee4b9642270",
       "invariants": [
         {
           "invariantId": "0069:001:a629a937b61aec731e32d9926365ee7c72b0e9521def67fa918d7a3193448eb5",
@@ -8064,7 +8064,7 @@
     {
       "version": "0070",
       "filename": "0070_business_tracker.sql",
-      "canonicalSha256": "d165aab4bd44a44b08d61355c1b9c04b55c4c3dff3f7728b6b7f01bbdd58325f",
+      "canonicalSha256": "b031efe7929b6d1b14ef34576f6e0cf1b9500d8446cab45b14186516654cd1e6",
       "invariants": [
         {
           "invariantId": "0070:001:3ed45eed5fbbffe18863ff49bf823ce2a1296c9077736f41a9926acb68a604f8",
@@ -8409,7 +8409,7 @@
     {
       "version": "0071",
       "filename": "0071_cards_tenants.sql",
-      "canonicalSha256": "e54d2802f2c370518ab5a03eeeabee70bf01c97f45b483b2ee4840032470cd5c",
+      "canonicalSha256": "3a459a94393385a208a903c92559786aa2b304c1f0f8ca5c27906cffc6ccabee",
       "invariants": [
         {
           "invariantId": "0071:001:4672657568692733773ae9dd771369a72b47dac54953b7f57c975c2b4b706778",
@@ -8600,7 +8600,7 @@
     {
       "version": "0072",
       "filename": "0072_card_credit_limit.sql",
-      "canonicalSha256": "a97e0893be2c1cfe8dae3cf0519bcb338a52e7d459c4e9742f98bec2ec4f5629",
+      "canonicalSha256": "b8b7a611d9449dee0405c49d898e53baf7427d07850ef2294f6f140f2a062470",
       "invariants": [
         {
           "invariantId": "0072:001:9d464074f67e8451d854657e8ec57aeb86bf8d2d8f4e24002a423a41fac47d6a",
@@ -8617,7 +8617,7 @@
     {
       "version": "0073",
       "filename": "0073_reports_strikes.sql",
-      "canonicalSha256": "de37ca76d9c2e4bc7233e2354ebd322e8a316e5e275a62b3980caeae0bfcf965",
+      "canonicalSha256": "7d32c3061716407a5772beb359e840f4d70a30fff930d847a8ababd4e5c9c79c",
       "invariants": [
         {
           "invariantId": "0073:001:355be19a02cbf5ba21aa08478512c55c580aaa7443631327c47d503de8dbe796",
@@ -8643,7 +8643,7 @@
     {
       "version": "0074",
       "filename": "0074_security_hardening.sql",
-      "canonicalSha256": "2f2f064ede8f8982fe8cdda67292ba21e914a28c7ee438efaca0b2875ddaadd1",
+      "canonicalSha256": "e3ac17da31ba3e71b366fbe5d02ad3ce92e86e6d8603084908114c8bf8a7ae3e",
       "invariants": [
         {
           "invariantId": "0074:001:9c4477e3454dc79a8b414acae5b80dc69002a282b170ca2cf27d87ace5a31832",
@@ -8745,7 +8745,7 @@
     {
       "version": "0075",
       "filename": "0075_biz_costfn_lockdown.sql",
-      "canonicalSha256": "7792e0cb3cd8ab3cf05a2c0c94a7238ae80a4f799f57fa28884caf9d5314bd57",
+      "canonicalSha256": "5d105d59feea1101c1d0a6f0c61479c800ecf6e0a8e39e380ed8cb178c7cf122",
       "invariants": [
         {
           "invariantId": "0075:001:fb34703011715d2321df7f95964e50765fd099d9e54ea4ef4c53597459737364",
@@ -8763,7 +8763,7 @@
     {
       "version": "0076",
       "filename": "0076_like_flood_fix.sql",
-      "canonicalSha256": "147e30987171b780c35420f2e84d1660f7a76b674e73ead2ee643eeffcf02a62",
+      "canonicalSha256": "a8c9c51b7a9397885317f2e8e0d651d46f8c8b629d1ba24c91a7a3ba70259507",
       "invariants": [
         {
           "invariantId": "0076:001:1da70be99ee602b9aa2ebba83df9e76f3236066ac8d78ff970c221e9e1a170f5",
@@ -8852,7 +8852,7 @@
     {
       "version": "0077",
       "filename": "0077_buddy_cheers.sql",
-      "canonicalSha256": "90fea864e158a88bd177779111f1d84ba918e0e2c35ea0f38aaa59cadf7472df",
+      "canonicalSha256": "17b17e80a8ef32b10233d0d6c52de3c4d5d49db7623d804af737cb69039c8076",
       "invariants": [
         {
           "invariantId": "0077:001:38f7e3fad0dd6f9b71ad86c6f6e31d8e8196ab6303f16cbf3ba7370089c68652",
@@ -8896,7 +8896,7 @@
     {
       "version": "0078",
       "filename": "0078_discover_and_verified_shares.sql",
-      "canonicalSha256": "7ab99fad0b8f0fcd5a99d37e4423ad5820a88d303f5bbd4ec97ec371418bb4b8",
+      "canonicalSha256": "822c06dc953b0f50a2e68fc5827e98ecc5b32e75fbb682bbceccc4ba52ecadd0",
       "invariants": [
         {
           "invariantId": "0078:001:8b40071814464cec8e42f27ee54e7f063858ad81b22f2ee9af76520a25f8cd29",
@@ -9271,7 +9271,7 @@
     {
       "version": "0079",
       "filename": "0079_post_idempotency.sql",
-      "canonicalSha256": "4f6d2b1be7b191dcea508833db6a3595cd037864f9a2c3689104e67a38bdb48f",
+      "canonicalSha256": "f29f3155183a66728709c34e68c1f887a8862346ee32ab65403a2ad7d6d8704e",
       "invariants": [
         {
           "invariantId": "0079:001:c751aa0a7822210c6bd2874ce4b4ce01fc8f82c43e6d7bddcd806d5df2be89e3",
@@ -9299,7 +9299,7 @@
     {
       "version": "0080",
       "filename": "0080_official_challenges.sql",
-      "canonicalSha256": "825174af5ee07f924bf82b20b1abb86dfe70d92d0fc58a0ebe4c612d8d5d788b",
+      "canonicalSha256": "bc5540f69a269e27fab3bc3f2698351baffa53ee88d6a9335c178f64436babcd",
       "invariants": [
         {
           "invariantId": "0080:001:402090e2ec19c53a67e5811d4cc9b36c17b3be977c173b73a04707f24b332433",
@@ -9431,7 +9431,7 @@
     {
       "version": "0081",
       "filename": "0081_public_share_links.sql",
-      "canonicalSha256": "dc7608fb1fd795891b3bc6219c45fe813c81feb8bfaae565d8c0d0087de2cbc9",
+      "canonicalSha256": "b0da1e64d279fe3067f3a938654a937afbc9c523e76589c227aed43859770a51",
       "invariants": [
         {
           "invariantId": "0081:001:ea573de9d59b9336bec61e20063f70a492ac315c4f51ce15f9ebf8d4eb3c6d04",
@@ -9593,7 +9593,7 @@
     {
       "version": "0082",
       "filename": "0082_media_upload_telemetry.sql",
-      "canonicalSha256": "d23aa4782f1b55029db1eac86a106fce1ce0806f25b5175d8132fe79ecb484c5",
+      "canonicalSha256": "90dbc9d4dbcbceec96c56b7ac1e723e871d3a73271b119b1ace3864bfc2a85a3",
       "invariants": [
         {
           "invariantId": "0082:001:d708f4acf6a2ed8f3bcc3b6eedfd48ba85f2d47706536f22fd651fe9c34ad889",
@@ -9730,7 +9730,7 @@
     {
       "version": "0083",
       "filename": "0083_private_media_reads.sql",
-      "canonicalSha256": "70396db19c785a54aff1032db98e7eb2553edd177517cd4e8e94c26080d6cb93",
+      "canonicalSha256": "1b883449ec4bde8ec53650976bc94d3586c92c494e49ef850fcfc66e01ea04ca",
       "invariants": [
         {
           "invariantId": "0083:001:3fb9c1e23fdd0de213101c7d3d8b8bd03f7a802e77f4893081c0cdbd4f77934d",
@@ -9854,7 +9854,7 @@
     {
       "version": "0084",
       "filename": "0084_repair_staging_post_insert_policy.sql",
-      "canonicalSha256": "cf49ad9711e8224c95379bc8a67a92c17eba2d7113654fbcfa314cfec4ec03d7",
+      "canonicalSha256": "0a23b986d5853c51687938fbeb43a7e74a198354323fdfb9e125a485613ed776",
       "invariants": [
         {
           "invariantId": "0084:001:0cc65f227d7d3e190157b909dcbf3f42e5965689055acf1da6999276126e739b",
@@ -9893,7 +9893,7 @@
     {
       "version": "0085",
       "filename": "0085_posts_owner_readback.sql",
-      "canonicalSha256": "22015fa7fe355eb780b99f4cf9b313dea64c31c93f0b6feecb800ed540799637",
+      "canonicalSha256": "da289d196151e3e030a6c0e91c4196cc580f9118a6dea09bad0f0ae5c5bb8fcb",
       "invariants": [
         {
           "invariantId": "0085:001:5bc481cc543131e707173c8268bfb8f2157c6be1c4d6848b8e03063eb9c9a839",
@@ -9922,7 +9922,7 @@
     {
       "version": "0086",
       "filename": "0086_voice_encouragement.sql",
-      "canonicalSha256": "27da1c6c3623fef2dc4a12c16f37d841a4a6885bc59ffaec1258c1afd25037b5",
+      "canonicalSha256": "9ad0c15acb1b7d9a8ea20b3b296fc7299661d411a62111cb6015814fc379ae36",
       "invariants": [
         {
           "invariantId": "0086:001:d5cdb7e29807355451a60f7c7053d8a0a8082c1a37612c321a93eff9e1101b83",
@@ -10026,7 +10026,7 @@
     {
       "version": "0087",
       "filename": "0087_member_card_stats_privacy.sql",
-      "canonicalSha256": "6c2899ce7dc696f6533965e5383d4225f8125ec80e3bc62f742d58089e1161da",
+      "canonicalSha256": "0015858486c410e5f72f3dea8fad291ec8fb61218025ca0c0a919ff27464653a",
       "invariants": [
         {
           "invariantId": "0087:001:d1ea6ba950512075cc9521288a02fdcd192a833c53ee617d93c50fcc15ae168c",
@@ -10085,7 +10085,7 @@
     {
       "version": "0088",
       "filename": "0088_public_profiles_buddy_card_privacy.sql",
-      "canonicalSha256": "e67b071aac8dafdeaa2a3f445d6484d4b277195e70474c90921cf7d64d4693f5",
+      "canonicalSha256": "1ace755d0cda21e409c964277ab364c41c8804b4c1276ee117a9a0d791ca6156",
       "invariants": [
         {
           "invariantId": "0088:001:8b6c1af868a7de8b31dbf46b6c03a0690f0d09dab9e9599345d643dfd00a2f44",
@@ -10134,7 +10134,7 @@
     {
       "version": "0089",
       "filename": "0089_atomic_bill_payments.sql",
-      "canonicalSha256": "c156b8ddb94d7bcad20510fa7ae62432428deff3523b5733e8b203f18e66baca",
+      "canonicalSha256": "1a27586d39e7c4f5b157cefb37f47d04679af922b55b3c8265c6b2e481848eea",
       "invariants": [
         {
           "invariantId": "0089:001:53a47059496233da9f611e264f436a984dc1826446d92024942e0510c76ccec5",
@@ -10212,7 +10212,7 @@
     {
       "version": "0090",
       "filename": "0090_atomic_card_payments.sql",
-      "canonicalSha256": "92893bf04bafef97c3c5de1a5285828cd904853f7bbf519e83b416218aa35421",
+      "canonicalSha256": "fa7b69339ef8e67a6627e41bc50daaa1612cc54c540280daae612ccbe081eba1",
       "invariants": [
         {
           "invariantId": "0090:001:d91c2573981f4944971f175a94525c9af74498acb57862a862fc7ed0deceac4f",
@@ -10277,7 +10277,7 @@
     {
       "version": "0091",
       "filename": "0091_private_rendered_public_shares.sql",
-      "canonicalSha256": "f13075cb3b46254d8e3acf99a4542419647780fdff6b3aa20efa2bd29874ddcc",
+      "canonicalSha256": "02adec62dcfb58dd687516a51f5a967a0e17b38a0687d0260f43e1e1bc704a5e",
       "invariants": [
         {
           "invariantId": "0091:001:715737763c90db88be69085fd0e345cdef5b2fb25613b6255226e67a749086f2",
@@ -10412,7 +10412,7 @@
     {
       "version": "0092",
       "filename": "0092_video_posts.sql",
-      "canonicalSha256": "5e2fae74d504870d565dc82be05f2ae4b6ad8fed5d132f6296ce641db845f715",
+      "canonicalSha256": "9867680044fa5f1f132cfea224ea698cac5c696709dd739934937c5a788d2c47",
       "invariants": [
         {
           "invariantId": "0092:001:86679dac856c918c5ffd62f3f0488171993e5980e749c592ff21bf56748d98ce",
@@ -10439,7 +10439,7 @@
     {
       "version": "0093",
       "filename": "0093_voice_encouragement_operations.sql",
-      "canonicalSha256": "579eb00bbf8a564824ff212a0d9b5bba644ac2f584affb681437950eba0b9ddb",
+      "canonicalSha256": "4645e1df5223a12eb52d29faaa17da28d75f7498ddaa70a1612f9273d67ed89f",
       "invariants": [
         {
           "invariantId": "0093:001:d61fcc11fd637b3a0851d90d1b7c23d1edf283657700a92a40fdec50c7c5ec84",
@@ -10468,7 +10468,7 @@
     {
       "version": "0094",
       "filename": "0094_repair_staging_missing_invariants.sql",
-      "canonicalSha256": "4caeadbd11d347d61d299b5b22fbf5da02fe0d45ac3be6b25cf41f4efb89adf2",
+      "canonicalSha256": "24736ea90fe1925daf8e108a00fdae79802502105f203193ac3518b9b44f18a2",
       "invariants": [
         {
           "invariantId": "0094:001:e6f07d43b5c21db0fbb9a31feac2dc599787763393dd5acbfad80e247eb02ad5",
@@ -10697,7 +10697,7 @@
     {
       "version": "0095",
       "filename": "0095_harden_security_definer_execute.sql",
-      "canonicalSha256": "149a33daceacc47aacefe19f37d6460004e7f464568c6103b01c7fe84142c08a",
+      "canonicalSha256": "5797f2c79d7e29c33ef4a17c115ceee9a2608e1c3807261defe8026ded017c12",
       "invariants": [
         {
           "invariantId": "0095:001:d4396e619579205cfb63b700b034ea2ee4ecdf233732de3059001c9b610a72c7",
@@ -10741,7 +10741,7 @@
     {
       "version": "0096",
       "filename": "0096_ai_moderation_quarantine.sql",
-      "canonicalSha256": "7afddb789478273413b40fcde4a17d8363617b35ebe193411964319ca1e775b7",
+      "canonicalSha256": "1080a30ff71b3fe3c80ce700d679f04e5d561e73c66bd555424a030aa908db95",
       "invariants": [
         {
           "invariantId": "0096:001:91a3c94ad7aa8d4503d9a444c7a04a38018db157046d0abbe562eb477bb4a8b8",

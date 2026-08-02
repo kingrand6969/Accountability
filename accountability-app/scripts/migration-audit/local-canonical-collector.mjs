@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { assertReadOnlyCatalogSql, assertReadOnlyCurrentStateSql, normalizedJson } from './core.mjs';
+import { assertReadOnlyCatalogSql, assertReadOnlyCurrentStateSql, materializeCrlf, normalizedJson } from './core.mjs';
 import { validateQueryRows } from './one-process-executor.mjs';
 import { restrictAndVerifyWindowsAcl } from './collect-readonly.mjs';
 
@@ -14,6 +14,14 @@ const DOCKER_SHA256 = 'c11b843b727ea76e6c63b393bccb73d957b6fcc12ba871c8265699e3a
 const MODULE_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(MODULE_DIRECTORY, '..', '..');
 export const LOCAL_EVIDENCE_ROOT = path.join(PROJECT_ROOT, '.tmp', 'local-canonical-evidence');
+
+function cleanMigrationBytes(filename) {
+  return materializeCrlf(execFileSync('git', ['show', `:accountability-app/supabase/migrations/${filename}`], {
+    cwd: path.resolve(PROJECT_ROOT, '..'),
+    encoding: 'buffer',
+    maxBuffer: 2 * 1024 * 1024,
+  }));
+}
 
 export const LOCAL_QUERY_PLAN = Object.freeze([
   Object.freeze({ evidenceType: 'replay-ledger', filename: 'catalog-ledger-readonly.sql' }),
@@ -72,7 +80,10 @@ export function localPackageManifest() {
     if (!info.isFile() || info.isSymbolicLink() || realpathSync.native(absolute).toLowerCase() !== path.resolve(absolute).toLowerCase()) {
       throw new Error(`Local package input must be a canonical regular file: ${filename}.`);
     }
-    return { filename, sha256: sha256(readFileSync(absolute)) };
+    const bytes = filename.startsWith('supabase/migrations/')
+      ? cleanMigrationBytes(path.basename(filename))
+      : readFileSync(absolute);
+    return { filename, sha256: sha256(bytes) };
   });
   return { formatVersion: 1, scope: 'LOCAL_CANONICAL_REPLAY_0001_0096_ONLY', files };
 }
@@ -84,7 +95,7 @@ export function replayProvenance() {
     throw new Error('Frozen replay provenance does not end at 0096.');
   }
   for (const migration of migrations) {
-    const actual = readFileSync(path.join(PROJECT_ROOT, 'supabase', 'migrations', migration.filename));
+    const actual = cleanMigrationBytes(migration.filename);
     if (sha256(actual) !== migration.sha256) throw new Error(`Migration provenance drift: ${migration.filename}.`);
   }
   return { formatVersion: 1, range: '0001-0096', migrations };

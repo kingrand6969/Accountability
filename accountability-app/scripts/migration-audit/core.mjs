@@ -10,6 +10,10 @@ export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+export function materializeCrlf(value) {
+  return Buffer.from(Buffer.from(value).toString('utf8').replace(/\r?\n/g, '\r\n'), 'utf8');
+}
+
 export function enumeratePathExecutableCandidates(
   executableName,
   pathValue = process.env.PATH ?? '',
@@ -512,7 +516,7 @@ export function verifyFrozenInventory(root, frozen) {
     const absolute = path.join(root, entry.filename);
     let actual = null;
     try {
-      actual = sha256(readFileSync(absolute));
+      actual = sha256(materializeCrlf(readFileSync(absolute)));
     } catch {
       actual = 'MISSING';
     }

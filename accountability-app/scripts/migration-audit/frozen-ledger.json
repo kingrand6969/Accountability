@@ -5,7 +5,7 @@
   "migrations": [
     {
       "filename": "0001_profiles.sql",
-      "sha256": "13bf0ae361bf6c26d277239d9f89f58c2c9f6090143e8e2e78e4849b0f07176b"
+      "sha256": "e6ef59f0e84e54495a790515d71364dae72f7da79b3aaf4409987ca7a477583e"
     },
     {
       "filename": "0002_profile_identity.sql",
@@ -81,311 +81,311 @@
     },
     {
       "filename": "0020_realtime_chat.sql",
-      "sha256": "d52271ac97e2488e2f849f70325f82ac0bf8e404609d133a4032be3fdffe7f7b"
+      "sha256": "dc85b45c31950700d22625e889d2ceea42aa7d93cb15e5ee5dce5a5ac7b254dc"
     },
     {
       "filename": "0021_timeline_mirror_triggers.sql",
-      "sha256": "94c57fdb82004630385c89e873b3fa9b78c6e0dfc37cd653dd842f6982e2fef6"
+      "sha256": "d098c132f5ed9d109f77b62318884abcd9753541e821d4a19b42c94cbc07d3cd"
     },
     {
       "filename": "0022_activity_mirror_trigger.sql",
-      "sha256": "a61a060d7ba924f78f418e093d05e72fb298ea322425f2bf516de8c28f853895"
+      "sha256": "6ef811f5fac6b8a630855a71df69e73b1d8533f983644162c6d18c07c1358ac6"
     },
     {
       "filename": "0023_stories_groups.sql",
-      "sha256": "a8bb8eeab8f6daeeead187040275474bf97cd78f9b70deed23530e4d0f63877b"
+      "sha256": "9cccc9e8cd4423c5ba7da3eea367acc319ea100bd42541ba3751d6d2ffaaad1f"
     },
     {
       "filename": "0024_cover_photo.sql",
-      "sha256": "321de8b1dd2e8f43a76e1f56b6760baf39e9f8e1c0b6a34710fc8f025e745eea"
+      "sha256": "ebb44f8afe4db8cae30c4af0a9a03400aadab8ecf7fa6423bf0965c632c62f40"
     },
     {
       "filename": "0025_pages.sql",
-      "sha256": "4856e8823d92f2e5f935513a17f988d8ab42d2d5a005cbb185386a5c2dcdcbad"
+      "sha256": "81161e738c90b0deed3d9a1c7f334993cdfcb77809aaa1066576b7778472a779"
     },
     {
       "filename": "0026_buddy_card.sql",
-      "sha256": "b53c3689b4c4f9493d72ae079966f5025a1dbd4f85dd23d73cfbc87d268cca57"
+      "sha256": "d371ffd770706aa4947f8e01e6f031777adb6aa8d2914e084363843d112094b3"
     },
     {
       "filename": "0027_buddy_stars_stats.sql",
-      "sha256": "7b291f689b2057d074e8c629e90542fc30d2d55d734d577da2c3de34118c5591"
+      "sha256": "b70f466706632b8e1acae41bb113f8f9e770645bacc5ad27f01db5be4f6cd51e"
     },
     {
       "filename": "0028_events.sql",
-      "sha256": "8301fbc3ee574e3ad9d12aba2efa734745089de6e47ee0451b78d42b5e6b138b"
+      "sha256": "ef07afd6dca3d87f68034a0aa3a6fd6d30f6086835afb560741a76041e8af628"
     },
     {
       "filename": "0029_privacy_gatekeys.sql",
-      "sha256": "5cf6d7f386f6ab6407ad460dfa3ba3aa6f4ba9a6e1128a6798699f5f10acf596"
+      "sha256": "639fb62f93604171b99e22b786361ad67a55cfd9e6155a8b9aa444099e2093bd"
     },
     {
       "filename": "0030_timeline_checklist.sql",
-      "sha256": "2f21801a9a7a8b7dc59563bdd8007a1e855da0c1f5f28e896bd0203bb8086170"
+      "sha256": "517b1c348d2bcb85f51bc8207bf91e2b920ea8d83dc6147ab1b7f362b18531da"
     },
     {
       "filename": "0031_timeline_grocery_other.sql",
-      "sha256": "13ead07a4bc7f883ffff23b560d36193f4e855a691f2361725fcf3ada5bd3b7d"
+      "sha256": "00c372052d822d8977c96d262e60feff1afc945ca22a12dc9e8b2c5af511c77b"
     },
     {
       "filename": "0032_gatekey_admin_read.sql",
-      "sha256": "2a5cc6d7a65e1b28e7b702b0e7fced833f9490fb7955de04618e0f93448556f2"
+      "sha256": "c3e77d3fbcf0751c9d6bd69506db000b526b2e14332d89135ed8da5f88466428"
     },
     {
       "filename": "0033_memories.sql",
-      "sha256": "8fa8321d69449e064e42f59bced1e768f532585ebb2667eb25d6069de462ed5a"
+      "sha256": "3dbe9c3049f8167b7facec1643d785de1001806d237947073d1f76f7d38efef0"
     },
     {
       "filename": "0034_bills.sql",
-      "sha256": "3fda1a36269070bd1af4468df0a1ee7ca6cace10db3b0201140b8015de066be2"
+      "sha256": "1db0cc910bc6f5f8dd458fc0a51f248d5f7795435b7053b67218515db8dbb623"
     },
     {
       "filename": "0035_memories_location.sql",
-      "sha256": "d10321cf8fa9cdf86ab1a62e1810d88332f3d902eb0979277023e7045f260c31"
+      "sha256": "bf6959ebe8ccb5acae1186505e2491baf4ff138124454120c35840f9a79f9c93"
     },
     {
       "filename": "0036_post_tags.sql",
-      "sha256": "b942a0f20bb5c817afc943f240f99fe590c889dff8c7cddf3c95101cf96fda69"
+      "sha256": "365518ff181b706be82d3d8edff39c6dbac37fa5e082637057c873eb88d974a4"
     },
     {
       "filename": "0037_search_history.sql",
-      "sha256": "6e4f10257937d86b233d567da2576c6234f6bccccfd41d8e348edb48bb4a61bd"
+      "sha256": "619a19ca66dad0d6682844c0b7958fb247392dda876510897e96be4ea1f3f0ec"
     },
     {
       "filename": "0038_accounts_savings.sql",
-      "sha256": "4bd6b91d919511ddd3a2ac78c76c6fdc9c41de66dffbc7ac2b7ff7733ba7cbad"
+      "sha256": "6117372d68fa29f132039f97f3d8b3f47ddbec8d143bacc2dcac777fa1a85b47"
     },
     {
       "filename": "0039_debts.sql",
-      "sha256": "6ef044b5a1e64670e5de89d04a5c9fb2d5c95ad2076654cb9d12ed490f7a1a28"
+      "sha256": "e06ee74ae3d736bc1365c48957b5d6d5eae7d3649834d7535803da91e05f536c"
     },
     {
       "filename": "0040_compete.sql",
-      "sha256": "15b301daf3bf0e5c37dc4c04200ae31d2e044c29180a5f67e56c526163a8ab43"
+      "sha256": "9567944890c8a9dd9a4b4fe77dbcc0ff1ecd994686dd0e87655992a455d67ac1"
     },
     {
       "filename": "0041_compete_fixes.sql",
-      "sha256": "f279162d5e1e42b2b0f29195c068b1ff68a22070e51415725d6915e9a46d9653"
+      "sha256": "45cadaa6dea7adffba753cc037c30739b21a5f7bd834ef953de7b5ed81e8ec5a"
     },
     {
       "filename": "0042_missions.sql",
-      "sha256": "f959cd220a7a757e4626132ae466f022da3b6042e46ea0cf928afb52c391656b"
+      "sha256": "844d5964f4138a6a7fc36debf4fe2e8a7b6dcd41a3aa973deb92bd4fa83b2095"
     },
     {
       "filename": "0043_avgkm_metric.sql",
-      "sha256": "f292f623b39bdc21145fbcecd1e75765fd1a2598ae0597b7c9ea8d14f30897d4"
+      "sha256": "73b08269ea999aaf3d4a03b38626f0a861bf3ad1adb7367140663cb8353e9eb5"
     },
     {
       "filename": "0044_notifications.sql",
-      "sha256": "ce371501e266b3aa01ce4b1f1dbd19cb3017cab11a8ee399f0495dd58f99822d"
+      "sha256": "1b35f82ac790acdb7f451fdccb281aacbd68927e1d830c8b07d9da0456a38dbd"
     },
     {
       "filename": "0045_member_board_rank.sql",
-      "sha256": "0b14f511fd24da4e7aa7ee5407b3b082d75cc88a33ae5a9bd14cf8464b468570"
+      "sha256": "7c8f517094d501f02da1be52772ce09f37d73fe12146ae8bc228d157abe00da9"
     },
     {
       "filename": "0046_posts_on_card.sql",
-      "sha256": "b0de99eec12b313b906f169e9758ab26506165e70ef9263ced0436eca761c542"
+      "sha256": "b4c17f7d995093f45cbe5c25ac71edbe7a3c0fc777792a2b8cd0098d0d2eaa4f"
     },
     {
       "filename": "0047_shared_goals.sql",
-      "sha256": "a2c33b6aada243aa4f386a5765c7df5ee23254824a75b95d67979590c0c1e0d0"
+      "sha256": "0c9c3863ef04dd8dde7435a831c19d3fa87925906b9333cbf0c9178d61230367"
     },
     {
       "filename": "0048_shared_goals_fixes.sql",
-      "sha256": "9aab82e59a65c4c6529bc87e181bd1943cb6ee45f03e5ae8639a905cfa689c13"
+      "sha256": "d3c16402c5e2e8908bd8e406053fa4c1fcce2d831db7d27602e6a5142e6f47a0"
     },
     {
       "filename": "0049_challenge_wins.sql",
-      "sha256": "744b6b0902bda6d9758b29aac90e2229c396a32aafcf88b2dbafcf8e2703bfda"
+      "sha256": "7a4b49dd9400e2126381a81cba65046989038c60c56b6f79263bb038773f5e2b"
     },
     {
       "filename": "0050_challenge_record_min2.sql",
-      "sha256": "451caa64c2d9fc7712bfe395dac1f8b5b9b731630c651ad6c80d8a08c742dd59"
+      "sha256": "38eac68cf44f7a911e528828608851ee87657ff0b073f93e4b7f4aaf5b5a0b8f"
     },
     {
       "filename": "0051_messages_inbox.sql",
-      "sha256": "97afb9be5dee6739861a80d167e2be694dd6306f0042ffd3f0f4273273a74c7c"
+      "sha256": "b9cac6a5d68fc890bfb03c95dd5c828c23a48963a716ec5a35376259424aac65"
     },
     {
       "filename": "0052_delete_account.sql",
-      "sha256": "df4ed16beee7b4468cdf3123de94b94b855903040ae42812c9c54909a239ffaa"
+      "sha256": "53a221567d2ef80feefdf56f81dd3c7c41e45d50cd6db4470367173d3c32b201"
     },
     {
       "filename": "0053_member_card_stats.sql",
-      "sha256": "8f0680dd76f94527b0bb2df00e71846e4b85d7d2b9ff2903aee3f7175c1322ee"
+      "sha256": "7891d532fb8a51747aceb92be14507d18fea37f6baa511928753253ad0a050ea"
     },
     {
       "filename": "0054_referrals.sql",
-      "sha256": "c6bb4059fa33aef18561509f5e4f161c280df1bb99c2b365accd6a8c3e3860a3"
+      "sha256": "7a9b21a67e2d7e3ab5b065f75a1a572af0094ce9c31e610bc26861c63ee124da"
     },
     {
       "filename": "0055_metric_rollups.sql",
-      "sha256": "7f17a940a277aee34bcbdbc770e0380dcf844b9734e203e23585d0164462bc93"
+      "sha256": "32a329ae7287321806ca27b61ca13155741e133e8e5bae01861ba9dd02b72616"
     },
     {
       "filename": "0056_rate_limits.sql",
-      "sha256": "8ae54aeb0b7054f7cd6f7e0d53a11ec7ae9b924f15b70e822ef2088a8c97fffb"
+      "sha256": "71e00410b624edfdbe983b543d7155f38ca195280e14535a693f100af8718b4a"
     },
     {
       "filename": "0057_r2_sign_limit.sql",
-      "sha256": "56f93cf677a5c664b5d7aa1ec5c9c91623dca49f571aa2b9edc6e72eb762c78c"
+      "sha256": "66f0084b1360a58ae0f2ea1a03166ccf532e8c1ed6a33e9407b3eb4883e5e48b"
     },
     {
       "filename": "0058_consent.sql",
-      "sha256": "a6fc2840281cd5f0b939320d70e3c13cf28c20bf1b9895214d9e45bb636cc1f3"
+      "sha256": "8ec3ae8267cf0db7a0b7df941ffcad3652bd3507439d69bcea039d8dfefd8843"
     },
     {
       "filename": "0059_support_messages.sql",
-      "sha256": "60b6bc124d8ae05da26a5319c1275c012235d33432756f2f6f31b0ce2059748c"
+      "sha256": "25110a7687b5c04dbf94256114ba00ee9ba55a82c2610b349774bc5f73ef1fce"
     },
     {
       "filename": "0060_admin.sql",
-      "sha256": "c4eb4f9da25e6fdf9a140e0d9423b23a4020c78649ed8a89e109bc2623a4d24f"
+      "sha256": "656834185ef3d557179a7ef48599658dc5f6bbf07952e8880e837b36a6cdf03b"
     },
     {
       "filename": "0061_moderation.sql",
-      "sha256": "0b46879cac651779f4b4bc82b88027992051a6768c5ab1c9dc0af63330b1fca2"
+      "sha256": "f495e481275143e0e929a03c864a3f84553743378c54d87fdacdfc4ab42d5b08"
     },
     {
       "filename": "0062_sanctions.sql",
-      "sha256": "5c56ff7239449992ee323cb02db592e0a74dae7674bf3d45c5218fc24c5a8cb7"
+      "sha256": "fb1d6632197c3a3e68b12d0982a7dbbaaf9aa7227a98842c10dce231912a4013"
     },
     {
       "filename": "0063_strikes_ips.sql",
-      "sha256": "9b8e6ca626c9b03218dec87620f9f852f3a6a5ae656c57ca8bb43099c1d5d4fb"
+      "sha256": "583ab020a97241e6326654ecd30f2c8071546047e2902cf95f5df86f27c29d27"
     },
     {
       "filename": "0064_cases_system.sql",
-      "sha256": "115e17431faa11b76ef8d85b667d1541242ca869d275a2588e1d704c120e1fe6"
+      "sha256": "6aaba630ab5ffe2efaed289c03e260f8225f3921f03b0394cfc99909746aa5ca"
     },
     {
       "filename": "0065_system_detail.sql",
-      "sha256": "1f8c30001604e555fec88a181f02d826d60c2cd7df484ada12f260613c2fc63c"
+      "sha256": "e852f6e17634418dc06003ad99be4bb2d2fef1c72122defa1864059b5d8077d4"
     },
     {
       "filename": "0066_post_hides.sql",
-      "sha256": "30bd663ed21a215a4c4f48874a4fc68778c463b3e2121b560b5ed6daae06267c"
+      "sha256": "0867f9d63eca6576d04b8456ba70a6355040652a505d41d65647bcab231272db"
     },
     {
       "filename": "0067_location_integrity.sql",
-      "sha256": "7d0c3cf77898525334d8a57c9319359b4351f87c637bc62ddcc4e0a674ab2fe1"
+      "sha256": "138d7383a984573011d4159396911fccf34a057f3a2650cb6db16cd2acbbcaa5"
     },
     {
       "filename": "0068_income_trend.sql",
-      "sha256": "5a6040a3b58f13a079df98a1ef0c6afce5b6fb186978aeec9294602e4f97720a"
+      "sha256": "b0e97c20f725a6114a155d31cc376cf4bf1e06fe55a18b05e489ea7e16137ef4"
     },
     {
       "filename": "0069_ai_scans.sql",
-      "sha256": "a63f04346c82a6e2d2e2bf3b0c8cee805e3faaeb902566dbd1d231fc6d7b1a62"
+      "sha256": "4f51767e63011bad4685a13202404eacfd653ef9116ac9f02f1a6ee4b9642270"
     },
     {
       "filename": "0070_business_tracker.sql",
-      "sha256": "d165aab4bd44a44b08d61355c1b9c04b55c4c3dff3f7728b6b7f01bbdd58325f"
+      "sha256": "b031efe7929b6d1b14ef34576f6e0cf1b9500d8446cab45b14186516654cd1e6"
     },
     {
       "filename": "0071_cards_tenants.sql",
-      "sha256": "e54d2802f2c370518ab5a03eeeabee70bf01c97f45b483b2ee4840032470cd5c"
+      "sha256": "3a459a94393385a208a903c92559786aa2b304c1f0f8ca5c27906cffc6ccabee"
     },
     {
       "filename": "0072_card_credit_limit.sql",
-      "sha256": "a97e0893be2c1cfe8dae3cf0519bcb338a52e7d459c4e9742f98bec2ec4f5629"
+      "sha256": "b8b7a611d9449dee0405c49d898e53baf7427d07850ef2294f6f140f2a062470"
     },
     {
       "filename": "0073_reports_strikes.sql",
-      "sha256": "de37ca76d9c2e4bc7233e2354ebd322e8a316e5e275a62b3980caeae0bfcf965"
+      "sha256": "7d32c3061716407a5772beb359e840f4d70a30fff930d847a8ababd4e5c9c79c"
     },
     {
       "filename": "0074_security_hardening.sql",
-      "sha256": "2f2f064ede8f8982fe8cdda67292ba21e914a28c7ee438efaca0b2875ddaadd1"
+      "sha256": "e3ac17da31ba3e71b366fbe5d02ad3ce92e86e6d8603084908114c8bf8a7ae3e"
     },
     {
       "filename": "0075_biz_costfn_lockdown.sql",
-      "sha256": "7792e0cb3cd8ab3cf05a2c0c94a7238ae80a4f799f57fa28884caf9d5314bd57"
+      "sha256": "5d105d59feea1101c1d0a6f0c61479c800ecf6e0a8e39e380ed8cb178c7cf122"
     },
     {
       "filename": "0076_like_flood_fix.sql",
-      "sha256": "147e30987171b780c35420f2e84d1660f7a76b674e73ead2ee643eeffcf02a62"
+      "sha256": "a8c9c51b7a9397885317f2e8e0d651d46f8c8b629d1ba24c91a7a3ba70259507"
     },
     {
       "filename": "0077_buddy_cheers.sql",
-      "sha256": "90fea864e158a88bd177779111f1d84ba918e0e2c35ea0f38aaa59cadf7472df"
+      "sha256": "17b17e80a8ef32b10233d0d6c52de3c4d5d49db7623d804af737cb69039c8076"
     },
     {
       "filename": "0078_discover_and_verified_shares.sql",
-      "sha256": "7ab99fad0b8f0fcd5a99d37e4423ad5820a88d303f5bbd4ec97ec371418bb4b8"
+      "sha256": "822c06dc953b0f50a2e68fc5827e98ecc5b32e75fbb682bbceccc4ba52ecadd0"
     },
     {
       "filename": "0079_post_idempotency.sql",
-      "sha256": "4f6d2b1be7b191dcea508833db6a3595cd037864f9a2c3689104e67a38bdb48f"
+      "sha256": "f29f3155183a66728709c34e68c1f887a8862346ee32ab65403a2ad7d6d8704e"
     },
     {
       "filename": "0080_official_challenges.sql",
-      "sha256": "825174af5ee07f924bf82b20b1abb86dfe70d92d0fc58a0ebe4c612d8d5d788b"
+      "sha256": "bc5540f69a269e27fab3bc3f2698351baffa53ee88d6a9335c178f64436babcd"
     },
     {
       "filename": "0081_public_share_links.sql",
-      "sha256": "dc7608fb1fd795891b3bc6219c45fe813c81feb8bfaae565d8c0d0087de2cbc9"
+      "sha256": "b0da1e64d279fe3067f3a938654a937afbc9c523e76589c227aed43859770a51"
     },
     {
       "filename": "0082_media_upload_telemetry.sql",
-      "sha256": "d23aa4782f1b55029db1eac86a106fce1ce0806f25b5175d8132fe79ecb484c5"
+      "sha256": "90dbc9d4dbcbceec96c56b7ac1e723e871d3a73271b119b1ace3864bfc2a85a3"
     },
     {
       "filename": "0083_private_media_reads.sql",
-      "sha256": "70396db19c785a54aff1032db98e7eb2553edd177517cd4e8e94c26080d6cb93"
+      "sha256": "1b883449ec4bde8ec53650976bc94d3586c92c494e49ef850fcfc66e01ea04ca"
     },
     {
       "filename": "0084_repair_staging_post_insert_policy.sql",
-      "sha256": "cf49ad9711e8224c95379bc8a67a92c17eba2d7113654fbcfa314cfec4ec03d7"
+      "sha256": "0a23b986d5853c51687938fbeb43a7e74a198354323fdfb9e125a485613ed776"
     },
     {
       "filename": "0085_posts_owner_readback.sql",
-      "sha256": "22015fa7fe355eb780b99f4cf9b313dea64c31c93f0b6feecb800ed540799637"
+      "sha256": "da289d196151e3e030a6c0e91c4196cc580f9118a6dea09bad0f0ae5c5bb8fcb"
     },
     {
       "filename": "0086_voice_encouragement.sql",
-      "sha256": "27da1c6c3623fef2dc4a12c16f37d841a4a6885bc59ffaec1258c1afd25037b5"
+      "sha256": "9ad0c15acb1b7d9a8ea20b3b296fc7299661d411a62111cb6015814fc379ae36"
     },
     {
       "filename": "0087_member_card_stats_privacy.sql",
-      "sha256": "6c2899ce7dc696f6533965e5383d4225f8125ec80e3bc62f742d58089e1161da"
+      "sha256": "0015858486c410e5f72f3dea8fad291ec8fb61218025ca0c0a919ff27464653a"
     },
     {
       "filename": "0088_public_profiles_buddy_card_privacy.sql",
-      "sha256": "e67b071aac8dafdeaa2a3f445d6484d4b277195e70474c90921cf7d64d4693f5"
+      "sha256": "1ace755d0cda21e409c964277ab364c41c8804b4c1276ee117a9a0d791ca6156"
     },
     {
       "filename": "0089_atomic_bill_payments.sql",
-      "sha256": "c156b8ddb94d7bcad20510fa7ae62432428deff3523b5733e8b203f18e66baca"
+      "sha256": "1a27586d39e7c4f5b157cefb37f47d04679af922b55b3c8265c6b2e481848eea"
     },
     {
       "filename": "0090_atomic_card_payments.sql",
-      "sha256": "92893bf04bafef97c3c5de1a5285828cd904853f7bbf519e83b416218aa35421"
+      "sha256": "fa7b69339ef8e67a6627e41bc50daaa1612cc54c540280daae612ccbe081eba1"
     },
     {
       "filename": "0091_private_rendered_public_shares.sql",
-      "sha256": "f13075cb3b46254d8e3acf99a4542419647780fdff6b3aa20efa2bd29874ddcc"
+      "sha256": "02adec62dcfb58dd687516a51f5a967a0e17b38a0687d0260f43e1e1bc704a5e"
     },
     {
       "filename": "0092_video_posts.sql",
-      "sha256": "5e2fae74d504870d565dc82be05f2ae4b6ad8fed5d132f6296ce641db845f715"
+      "sha256": "9867680044fa5f1f132cfea224ea698cac5c696709dd739934937c5a788d2c47"
     },
     {
       "filename": "0093_voice_encouragement_operations.sql",
-      "sha256": "579eb00bbf8a564824ff212a0d9b5bba644ac2f584affb681437950eba0b9ddb"
+      "sha256": "4645e1df5223a12eb52d29faaa17da28d75f7498ddaa70a1612f9273d67ed89f"
     },
     {
       "filename": "0094_repair_staging_missing_invariants.sql",
-      "sha256": "4caeadbd11d347d61d299b5b22fbf5da02fe0d45ac3be6b25cf41f4efb89adf2"
+      "sha256": "24736ea90fe1925daf8e108a00fdae79802502105f203193ac3518b9b44f18a2"
     },
     {
       "filename": "0095_harden_security_definer_execute.sql",
-      "sha256": "149a33daceacc47aacefe19f37d6460004e7f464568c6103b01c7fe84142c08a"
+      "sha256": "5797f2c79d7e29c33ef4a17c115ceee9a2608e1c3807261defe8026ded017c12"
     },
     {
       "filename": "0096_ai_moderation_quarantine.sql",
-      "sha256": "7afddb789478273413b40fcde4a17d8363617b35ebe193411964319ca1e775b7"
+      "sha256": "1080a30ff71b3fe3c80ce700d679f04e5d561e73c66bd555424a030aa908db95"
     }
   ]
 }

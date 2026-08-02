@@ -21,9 +21,9 @@
   "instructions": "Pending review only. This checked-in file is deliberately unusable as approval. An authorized reviewer must create a distinct APPROVED file outside the audit package.",
   "packageSha256": {
     "audit.mjs": "046cde96c7d441ec34bc099c13e9af63957ea7fffa150a5a720150c0af0bf780",
-    "core.mjs": "76600fc78aac581898081c04721776162037ad4ffc825fb31220bd1983876330",
-    "core.test.mjs": "bb0912e97b3bbc902083c673d5042c0f3843ca26a91c4b2a2b8875bc1f488df6",
-    "frozen-artifacts.json": "d86dc5cad1d611526f75cf94b1c10ba5b33f77b96adb9ce10bb3da24f0079732",
+    "core.mjs": "c9b219cfa87c63f45745bc81c5afcaee1f1d9c765d06a76b7668bbcb70aa784f",
+    "core.test.mjs": "ab55acb5cc00355116f2b82d82bc9b829278cb8f2d88d6236a5ba520f749a6ec",
+    "frozen-artifacts.json": "fe88f4dc438d42ecad9df81d3a76697b1bac77fd9e5d65b0adad25c95570f099",
     "one-process-executor.mjs": "1b43e4d4fa984e169de7a63be7167b4c2b000de9817eca7f028be6934ca748c3",
     "bounded-subprocess.mjs": "1a4ed9fa607fe8a663f00ceca2121fe59e32dabb040c7324b5edf117c59f1d03",
     "collector.test.mjs": "18909aacb6b2d729f8c98d908fe8a524240ba63ddd85015a2f70acb29ad92d55",
@@ -32,7 +32,7 @@
     "supabase-2.110.0-json-envelope-provenance.json": "f4aec86303d709ebeaba1aac86de797eeb12a7ac97dafc22a3c4fce9503ee7d0",
     "0095-postconditions-readonly.sql": "e19365452cb441880d65fda2de50b8abb3ca64439253c1e9956e23ffbd12c7cd",
     "0096-postconditions-readonly.sql": "67e925b3fa79bd87aee145766fb16eaade16b49d63330e76f5b649d1fbffac5a",
-    "moderate-content-bundle-manifest.json": "49f5c5ca5d1225ce8e0b063cc2ce8264928d5a2c112f33e869878240796b48ba",
+    "moderate-content-bundle-manifest.json": "2005a575bf766839cfb3a4ec1d6721982f19e5921a9d6fab5b30ee8efbced62c",
     "admin-actions-bundle-manifest.json": "f567b194f64502671f11f8c8bb78dfd58faa7cd84fe5062bc9e1e346d8337d12"
   }
 }
