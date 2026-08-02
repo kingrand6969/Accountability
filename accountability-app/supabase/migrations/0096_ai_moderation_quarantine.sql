@@ -226,6 +226,15 @@ create unique index if not exists moderation_flags_open_source_idx
   on public.moderation_flags(source_table, source_id)
   where status = 'open';
 
+-- Supports the report queue's "open flag first, otherwise newest history"
+-- lookup for one allowlisted source. The partial unique index above continues
+-- to enforce one open flag; this general index serves final-state history too.
+-- Representative lookup shape:
+--   where source_table=$1 and source_id=$2
+--   order by (status='open') desc, created_at desc, id desc limit 1
+create index if not exists moderation_flags_source_history_idx
+  on public.moderation_flags(source_table, source_id, created_at desc, id desc);
+
 -- Preserve duplicate report history while closing every older unresolved copy.
 with ranked_reports as (
   select id, row_number() over (

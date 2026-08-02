@@ -34,6 +34,19 @@ values
 \ir ../migrations/0096_ai_moderation_quarantine.sql
 do $upgrade_test$
 begin
+  if not exists (
+    select 1
+      from pg_index i
+      join pg_class c on c.oid=i.indexrelid
+     where c.relnamespace='public'::regnamespace
+       and c.relname='moderation_flags_source_history_idx'
+       and i.indrelid='public.moderation_flags'::regclass
+       and i.indisvalid and i.indisready and i.indpred is null
+       and pg_get_indexdef(i.indexrelid) like
+         '%(source_table, source_id, created_at DESC, id DESC)%'
+  ) then
+    raise exception 'moderation flag source-history index is missing or malformed';
+  end if;
   if not exists (select 1 from public.moderation_flags
     where id='31111111-1111-1111-1111-111111111111' and status='open'
       and excerpt='newer evidence' and image_url='r2://legacy/older-image'
@@ -119,6 +132,17 @@ declare
   contract_report_ids uuid[] := array[gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid()];
   queue_json jsonb;
 begin
+  if not exists (
+    select 1 from pg_index i join pg_class c on c.oid=i.indexrelid
+     where c.relnamespace='public'::regnamespace
+       and c.relname='moderation_flags_source_history_idx'
+       and i.indrelid='public.moderation_flags'::regclass
+       and i.indisvalid and i.indisready and i.indpred is null
+       and pg_get_indexdef(i.indexrelid) like
+         '%(source_table, source_id, created_at DESC, id DESC)%'
+  ) then
+    raise exception 'moderation flag source-history index is missing or malformed';
+  end if;
   if not exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'posts'
