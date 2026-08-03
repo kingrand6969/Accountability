@@ -241,6 +241,149 @@ export default function ActivityTrack() {
     }
   }, [authLoading, getCompletionController, session?.user.id]);
 
+  // hide the floating tab bar while actually recording or sharing, so the run
+  // stays immersive; show it (highlighted) in the idle pre-start state
+  const immersive = tracking || !!shareRun;
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: immersive ? { display: 'none' } : floatingTabBarStyle(W, insets.bottom),
+    });
+  }, [immersive, navigation, W, insets.bottom]);
+
+  useEffect(() => {
+    if (!tracking) {
+      pulse.stopAnimation();
+      pulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.timing(pulse, { toValue: 1, duration: 1500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [tracking, pulse]);
+
+  const startTrackingTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(async () => {
+      setElapsed(
+        Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
+      );
+      try {
+        const pts = await readTrackPoints();
+        setLivePoints(pts);
+        setDistance(totalDistanceMeters(pts));
+      } catch {
+        // Keep the last safe in-memory view while local storage recovers.
+      }
+    }, 1000);
+  }, []);
+
+  const restorePausedRecovery = useCallback(
+    (recovery: Extract<TrackRecordingRecovery, { kind: 'active' }>) => {
+      getCompletionController().reset('recovery');
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+      recordingRef.current = {
+        activityId: recovery.activityId,
+        ownerId: recovery.ownerId,
+        startedAt: recovery.startedAt,
+      };
+      setDetailOwnerId(recovery.ownerId);
+      setRecoveryReadState('error');
+      setRecoveryNotice('tracking_paused');
+      setTracking(false);
+      setPending(null);
+      setDistance(0);
+      setElapsed(0);
+      setLivePoints([]);
+    },
+    [getCompletionController],
+  );
+
+  const restoreRecovery = useCallback(
+    (recovery: TrackRecordingRecovery) => {
+      getCompletionController().reset('recovery');
+      setRecoveryReadState('ready');
+      if (recovery.kind === 'legacy_unclaimed') {
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = null;
+        recordingRef.current = null;
+        setDetailOwnerId(null);
+        setTracking(false);
+        setPending(null);
+        setDistance(0);
+        setElapsed(0);
+        setLivePoints([]);
+        setRecoveryNotice('legacy_unclaimed');
+        return;
+      }
+      if (
+        recovery.kind === 'needs_owner' ||
+        recovery.kind === 'owner_mismatch'
+      ) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = null;
+        recordingRef.current = null;
+        setDetailOwnerId(
+          recovery.kind === 'owner_mismatch' ? recovery.ownerId : null,
+        );
+        setTracking(false);
+        setPending(null);
+        setDistance(0);
+        setElapsed(0);
+        setLivePoints([]);
+        setRecoveryNotice(recovery.kind);
+        return;
+      }
+      if (recovery.kind === 'none') {
+        setDetailOwnerId(null);
+        setRecoveryNotice(null);
+        return;
+      }
+      if (recovery.kind === 'completed') {
+        const recording = recovery.recording;
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = null;
+        recordingRef.current = {
+          activityId: recording.activityId,
+          ownerId: recording.ownerId,
+          startedAt: recording.activity.started_at,
+        };
+        setDetailOwnerId(recording.ownerId);
+        startedAtRef.current = recording.activity.started_at;
+        setTracking(false);
+        setRecoveryNotice(null);
+        setType(recording.activity.type);
+        setDistance(recording.activity.distance_m);
+        setElapsed(recording.activity.duration_s);
+        setLivePoints(recording.activity.route);
+        setPending(recording);
+        return;
+      }
+
+      recordingRef.current = {
+        activityId: recovery.activityId,
+        ownerId: recovery.ownerId,
+        startedAt: recovery.startedAt,
+      };
+      setDetailOwnerId(recovery.ownerId);
+      startedAtRef.current = recovery.startedAt;
+      startMsRef.current = Date.parse(recovery.startedAt);
+      setRecoveryNotice(null);
+      setPending(null);
+      setType(recovery.type);
+      setLivePoints(recovery.points);
+      setDistance(totalDistanceMeters(recovery.points));
+      setElapsed(
+        Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
+      );
+      setTracking(true);
+      startTrackingTimer();
+    },
+    [getCompletionController, startTrackingTimer],
+  );
+
   useEffect(() => {
     if (authLoading) return;
     let active = true;
@@ -267,146 +410,13 @@ export default function ActivityTrack() {
     return () => {
       active = false;
     };
-  }, [authLoading, getCompletionController, session?.user.id]);
-
-  // hide the floating tab bar while actually recording or sharing, so the run
-  // stays immersive; show it (highlighted) in the idle pre-start state
-  const immersive = tracking || !!shareRun;
-  useEffect(() => {
-    navigation.setOptions({
-      tabBarStyle: immersive ? { display: 'none' } : floatingTabBarStyle(W, insets.bottom),
-    });
-  }, [immersive, navigation, W, insets.bottom]);
-
-  useEffect(() => {
-    if (!tracking) {
-      pulse.stopAnimation();
-      pulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.timing(pulse, { toValue: 1, duration: 1500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [tracking, pulse]);
-
-  function startTrackingTimer() {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(async () => {
-      setElapsed(
-        Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
-      );
-      try {
-        const pts = await readTrackPoints();
-        setLivePoints(pts);
-        setDistance(totalDistanceMeters(pts));
-      } catch {
-        // Keep the last safe in-memory view while local storage recovers.
-      }
-    }, 1000);
-  }
-
-  function restorePausedRecovery(
-    recovery: Extract<TrackRecordingRecovery, { kind: 'active' }>,
-  ) {
-    getCompletionController().reset('recovery');
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = null;
-    recordingRef.current = {
-      activityId: recovery.activityId,
-      ownerId: recovery.ownerId,
-      startedAt: recovery.startedAt,
-    };
-    setDetailOwnerId(recovery.ownerId);
-    setRecoveryReadState('error');
-    setRecoveryNotice('tracking_paused');
-    setTracking(false);
-    setPending(null);
-    setDistance(0);
-    setElapsed(0);
-    setLivePoints([]);
-  }
-
-  function restoreRecovery(recovery: TrackRecordingRecovery) {
-    getCompletionController().reset('recovery');
-    setRecoveryReadState('ready');
-    if (recovery.kind === 'legacy_unclaimed') {
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = null;
-      recordingRef.current = null;
-      setDetailOwnerId(null);
-      setTracking(false);
-      setPending(null);
-      setDistance(0);
-      setElapsed(0);
-      setLivePoints([]);
-      setRecoveryNotice('legacy_unclaimed');
-      return;
-    }
-    if (
-      recovery.kind === 'needs_owner' ||
-      recovery.kind === 'owner_mismatch'
-    ) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = null;
-      recordingRef.current = null;
-      setDetailOwnerId(
-        recovery.kind === 'owner_mismatch' ? recovery.ownerId : null,
-      );
-      setTracking(false);
-      setPending(null);
-      setDistance(0);
-      setElapsed(0);
-      setLivePoints([]);
-      setRecoveryNotice(recovery.kind);
-      return;
-    }
-    if (recovery.kind === 'none') {
-      setDetailOwnerId(null);
-      setRecoveryNotice(null);
-      return;
-    }
-    if (recovery.kind === 'completed') {
-      const recording = recovery.recording;
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = null;
-      recordingRef.current = {
-        activityId: recording.activityId,
-        ownerId: recording.ownerId,
-        startedAt: recording.activity.started_at,
-      };
-      setDetailOwnerId(recording.ownerId);
-      startedAtRef.current = recording.activity.started_at;
-      setTracking(false);
-      setRecoveryNotice(null);
-      setType(recording.activity.type);
-      setDistance(recording.activity.distance_m);
-      setElapsed(recording.activity.duration_s);
-      setLivePoints(recording.activity.route);
-      setPending(recording);
-      return;
-    }
-
-    recordingRef.current = {
-      activityId: recovery.activityId,
-      ownerId: recovery.ownerId,
-      startedAt: recovery.startedAt,
-    };
-    setDetailOwnerId(recovery.ownerId);
-    startedAtRef.current = recovery.startedAt;
-    startMsRef.current = Date.parse(recovery.startedAt);
-    setRecoveryNotice(null);
-    setPending(null);
-    setType(recovery.type);
-    setLivePoints(recovery.points);
-    setDistance(totalDistanceMeters(recovery.points));
-    setElapsed(
-      Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
-    );
-    setTracking(true);
-    startTrackingTimer();
-  }
+  }, [
+    authLoading,
+    getCompletionController,
+    restorePausedRecovery,
+    restoreRecovery,
+    session?.user.id,
+  ]);
 
   async function onClaimLegacy() {
     const ownerId = session?.user.id;

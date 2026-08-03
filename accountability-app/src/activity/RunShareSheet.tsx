@@ -157,8 +157,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   currentOwnerRef.current = session?.user.id ?? null;
   const ownerMatches =
     !!run.ownerId && currentOwnerRef.current === run.ownerId;
-  const ownerBoundary = () =>
-    createOwnerBoundary(run.ownerId ?? '', () => currentOwnerRef.current);
+  const ownerBoundary = useCallback(
+    () => createOwnerBoundary(run.ownerId ?? '', () => currentOwnerRef.current),
+    [run.ownerId],
+  );
   const {
     queued,
     status: activitySyncStatus,
@@ -259,7 +261,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       createRunMediaCompletionEffects((distanceKm) =>
         ownerBoundary().runSideEffect(() => recordRunSelfie(distanceKm)),
       ),
-    [run.ownerId],
+    [ownerBoundary],
   );
   const busy = activeDestination !== null;
   const syncPresentation =
