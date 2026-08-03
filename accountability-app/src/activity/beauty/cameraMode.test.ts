@@ -140,6 +140,24 @@ describe('createSingleFlightCapture', () => {
     await expect(capture()).resolves.toBe('second');
     expect(calls).toBe(2);
   });
+
+  it('uses the current capture task only when starting a new flight', async () => {
+    let resolveFirst!: (value: string) => void;
+    const first = new Promise<string>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const capture = createSingleFlightCapture(
+      (task: () => Promise<string>) => task(),
+    );
+
+    const a = capture(() => first);
+    const b = capture(async () => 'stale replacement');
+    expect(b).toBe(a);
+
+    resolveFirst('first');
+    await expect(a).resolves.toBe('first');
+    await expect(capture(async () => 'second')).resolves.toBe('second');
+  });
 });
 
 describe('capture ownership transfer', () => {
