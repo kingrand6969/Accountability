@@ -475,58 +475,66 @@ export function BusinessPane({ width, topInset }: { width: number; topInset: num
         </Text>
       </ScrollView>
 
-      <LossSheet
-        item={lossFor}
-        sym={sym}
-        onClose={() => setLossFor(null)}
-        onSave={async (reason, qty) => {
-          if (!biz || !lossFor) return;
-          try {
-            await recordLoss({ business_id: biz.id, item: lossFor, qty, reason });
-            showToast('Loss recorded — it counts against today.');
-            setLossFor(null);
-            load();
-          } catch {
-            showToast('Could not record that loss.');
-          }
-        }}
-      />
-      <CostSheet
-        visible={showCost}
-        sym={sym}
-        onClose={() => setShowCost(false)}
-        onSave={async (amount, chip, note) => {
-          if (!biz) return;
-          try {
-            await recordCost({ business_id: biz.id, amount, type: chip.type, category_key: chip.key, note });
-            showToast('Recorded.');
-            setShowCost(false);
-            load();
-          } catch {
-            showToast('Could not record that.');
-          }
-        }}
-      />
-      <ItemSheet
-        visible={showItemNew || !!editItem}
-        biz={biz}
-        item={editItem}
-        onClose={() => { setShowItemNew(false); setEditItem(null); }}
-        onSaved={() => { setShowItemNew(false); setEditItem(null); load(); }}
-      />
-      <TenantSheet
-        visible={showTenantNew}
-        biz={biz}
-        onClose={() => setShowTenantNew(false)}
-        onSaved={() => { setShowTenantNew(false); load(); }}
-      />
-      <FixedSheet
-        visible={showFixed}
-        biz={biz}
-        fixed={fixed}
-        onClose={() => setShowFixed(false)}
-        onChanged={load}
-      />
+      {lossFor ? (
+        <LossSheet
+          key={lossFor.id}
+          item={lossFor}
+          sym={sym}
+          onClose={() => setLossFor(null)}
+          onSave={async (reason, qty) => {
+            if (!biz || !lossFor) return;
+            try {
+              await recordLoss({ business_id: biz.id, item: lossFor, qty, reason });
+              showToast('Loss recorded — it counts against today.');
+              setLossFor(null);
+              load();
+            } catch {
+              showToast('Could not record that loss.');
+            }
+          }}
+        />
+      ) : null}
+      {showCost ? (
+        <CostSheet
+          sym={sym}
+          onClose={() => setShowCost(false)}
+          onSave={async (amount, chip, note) => {
+            if (!biz) return;
+            try {
+              await recordCost({ business_id: biz.id, amount, type: chip.type, category_key: chip.key, note });
+              showToast('Recorded.');
+              setShowCost(false);
+              load();
+            } catch {
+              showToast('Could not record that.');
+            }
+          }}
+        />
+      ) : null}
+      {(showItemNew || editItem) && biz ? (
+        <ItemSheet
+          key={editItem?.id ?? 'new'}
+          biz={biz}
+          item={editItem}
+          onClose={() => { setShowItemNew(false); setEditItem(null); }}
+          onSaved={() => { setShowItemNew(false); setEditItem(null); load(); }}
+        />
+      ) : null}
+      {showTenantNew && biz ? (
+        <TenantSheet
+          biz={biz}
+          onClose={() => setShowTenantNew(false)}
+          onSaved={() => { setShowTenantNew(false); load(); }}
+        />
+      ) : null}
+      {showFixed && biz ? (
+        <FixedSheet
+          biz={biz}
+          fixed={fixed}
+          onClose={() => setShowFixed(false)}
+          onChanged={load}
+        />
+      ) : null}
       <SwitcherSheet
         visible={showSwitcher}
         businesses={businesses}
@@ -770,15 +778,14 @@ function SheetShell({ visible, title, onClose, children }: {
 }
 
 function LossSheet({ item, sym, onClose, onSave }: {
-  item: BizItem | null; sym: string; onClose: () => void;
+  item: BizItem; sym: string; onClose: () => void;
   onSave: (reason: string, qty: number) => void;
 }) {
   const [qty, setQty] = useState('1');
-  useEffect(() => { if (item) setQty('1'); }, [item]);
   const q = Math.max(1, Number(qty) || 1);
-  const value = item ? q * ((item.unit_cost ?? 0) + (item.extra_cost ?? 0)) : 0;
+  const value = q * ((item.unit_cost ?? 0) + (item.extra_cost ?? 0));
   return (
-    <SheetShell visible={!!item} title={item ? `Lost: ${item.name}` : ''} onClose={onClose}>
+    <SheetShell visible title={`Lost: ${item.name}`} onClose={onClose}>
       <Text style={styles.sheetSub}>
         It left the business with no cash attached. That&apos;s the leak — record it so it counts.
       </Text>
@@ -803,16 +810,15 @@ function LossSheet({ item, sym, onClose, onSave }: {
   );
 }
 
-function CostSheet({ visible, sym, onClose, onSave }: {
-  visible: boolean; sym: string; onClose: () => void;
+function CostSheet({ sym, onClose, onSave }: {
+  sym: string; onClose: () => void;
   onSave: (amount: number, chip: (typeof COST_CHIPS)[number], note?: string) => void;
 }) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  useEffect(() => { if (visible) { setAmount(''); setNote(''); } }, [visible]);
   const a = Number(amount) || 0;
   return (
-    <SheetShell visible={visible} title="Money out" onClose={onClose}>
+    <SheetShell visible title="Money out" onClose={onClose}>
       <Text style={styles.sheetSub}>Amount, one tap on what it was, done.</Text>
       <TextInput
         style={[styles.input, styles.amountInput]}
@@ -848,19 +854,19 @@ function CostSheet({ visible, sym, onClose, onSave }: {
 
 /** Create/edit an item. For food-style costing the recipe builder lives here:
  *  supplies (pack price → unit cost, yields included) + lines per dish. */
-function ItemSheet({ visible, biz, item, onClose, onSaved }: {
-  visible: boolean; biz: Business | null; item: BizItem | null;
+function ItemSheet({ biz, item, onClose, onSaved }: {
+  biz: Business; item: BizItem | null;
   onClose: () => void; onSaved: () => void;
 }) {
-  const isFood = biz?.preset === 'food';
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [cost, setCost] = useState('');
-  const [yieldN, setYieldN] = useState('1');
-  const [useRecipe, setUseRecipe] = useState(false);
+  const isFood = biz.preset === 'food';
+  const [name, setName] = useState(item?.name ?? '');
+  const [price, setPrice] = useState(item ? String(item.price) : '');
+  const [cost, setCost] = useState(item ? String(item.direct_cost ?? '') : '');
+  const [yieldN, setYieldN] = useState(item ? String(item.recipe_yield || 1) : '1');
+  const [useRecipe, setUseRecipe] = useState(item?.cost_source === 'recipe');
   const [supplies, setSupplies] = useState<BizSupply[]>([]);
   const [lines, setLines] = useState<RecipeLine[]>([]);
-  const [savedId, setSavedId] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(item?.id ?? null);
   const [saving, setSaving] = useState(false);
   // new supply mini-form
   const [supName, setSupName] = useState('');
@@ -872,23 +878,19 @@ function ItemSheet({ visible, biz, item, onClose, onSaved }: {
   const [lineQty, setLineQty] = useState('');
 
   useEffect(() => {
-    if (!visible) return;
-    setName(item?.name ?? '');
-    setPrice(item ? String(item.price) : '');
-    setCost(item ? String(item.direct_cost ?? '') : '');
-    setYieldN(item ? String(item.recipe_yield || 1) : '1');
-    setUseRecipe(item ? item.cost_source === 'recipe' : false);
-    setSavedId(item?.id ?? null);
-    setLines([]);
-    setLineSupply(null);
-    setLineQty('');
-    if (biz && isFood) {
-      listSupplies(biz.id).then(setSupplies).catch(() => {});
-      if (item?.cost_source === 'recipe') listRecipe(item.id).then(setLines).catch(() => {});
+    if (!isFood) return;
+    let active = true;
+    listSupplies(biz.id)
+      .then((next) => { if (active) setSupplies(next); })
+      .catch(() => {});
+    if (item?.cost_source === 'recipe') {
+      listRecipe(item.id)
+        .then((next) => { if (active) setLines(next); })
+        .catch(() => {});
     }
-  }, [visible, item, biz, isFood]);
+    return () => { active = false; };
+  }, [biz.id, isFood, item?.cost_source, item?.id]);
 
-  if (!biz) return null;
   const meta = PRESETS[biz.preset];
   const sym = biz.currency_symbol;
 
@@ -974,7 +976,7 @@ function ItemSheet({ visible, biz, item, onClose, onSaved }: {
 
   return (
     <SheetShell
-      visible={visible}
+      visible
       title={item ? `Edit ${meta.itemLabel.toLowerCase()}` : `New ${meta.itemLabel.toLowerCase()}`}
       onClose={onClose}
     >
@@ -1095,8 +1097,8 @@ function ItemSheet({ visible, biz, item, onClose, onSaved }: {
   );
 }
 
-function TenantSheet({ visible, biz, onClose, onSaved }: {
-  visible: boolean; biz: Business | null; onClose: () => void; onSaved: () => void;
+function TenantSheet({ biz, onClose, onSaved }: {
+  biz: Business; onClose: () => void; onSaved: () => void;
 }) {
   const [name, setName] = useState('');
   const [property, setProperty] = useState('');
@@ -1104,12 +1106,8 @@ function TenantSheet({ visible, biz, onClose, onSaved }: {
   const [dueDay, setDueDay] = useState('1');
   const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (visible) { setName(''); setProperty(''); setRent(''); setDueDay('1'); setPhone(''); }
-  }, [visible]);
-  if (!biz) return null;
   return (
-    <SheetShell visible={visible} title="New renter" onClose={onClose}>
+    <SheetShell visible title="New renter" onClose={onClose}>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Renter's name" placeholderTextColor="rgba(30,27,75,0.35)" />
       <TextInput style={styles.input} value={property} onChangeText={setProperty} placeholder="Unit / property (e.g. Unit 2A)" placeholderTextColor="rgba(30,27,75,0.35)" />
       <View style={styles.twoCol}>
@@ -1151,19 +1149,17 @@ function TenantSheet({ visible, biz, onClose, onSaved }: {
   );
 }
 
-function FixedSheet({ visible, biz, fixed, onClose, onChanged }: {
-  visible: boolean; biz: Business | null; fixed: FixedCost[];
+function FixedSheet({ biz, fixed, onClose, onChanged }: {
+  biz: Business; fixed: FixedCost[];
   onClose: () => void; onChanged: () => void;
 }) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDay, setDueDay] = useState('');
-  useEffect(() => { if (visible) { setName(''); setAmount(''); setDueDay(''); } }, [visible]);
-  if (!biz) return null;
   const sym = biz.currency_symbol;
   const total = fixed.reduce((a, f) => a + f.amount, 0);
   return (
-    <SheetShell visible={visible} title="Business bills" onClose={onClose}>
+    <SheetShell visible title="Business bills" onClose={onClose}>
       <Text style={styles.sheetSub}>
         Rent, electricity, water, employee pay — what the business owes every month whether you
         open or not. This is what sets your daily break-even.
