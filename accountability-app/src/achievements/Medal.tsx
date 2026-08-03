@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -63,9 +63,9 @@ function MedalCoin({
   animate?: boolean;
 }) {
   const meta = state.unlocked ? TIER_META[medalMetal(state.def, state.tierIndex)] : LOCKED_META;
-  const shine = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
-  const float = useRef(new Animated.Value(0)).current;
+  const [shine] = useState(() => new Animated.Value(0));
+  const [pulse] = useState(() => new Animated.Value(0));
+  const [float] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (!animate || !state.unlocked) return;
