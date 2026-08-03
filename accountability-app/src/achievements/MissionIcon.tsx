@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -55,17 +55,18 @@ export function MissionIcon({
 
   const move = animated && !reducedMotion && !sysReduce;
 
-  const sheen = useRef(new Animated.Value(0)).current;
-  const aura = useRef(new Animated.Value(0)).current;
+  const [sheen] = useState(() => new Animated.Value(0));
+  const [aura] = useState(() => new Animated.Value(0));
 
   // deterministic stagger from the source (require() returns a number on native,
   // an object on web) — hash whatever we get so grids never sync up.
-  const seed = useRef(
-    [...String((source as { uri?: string })?.uri ?? source ?? '')].reduce(
-      (a, c) => a + c.charCodeAt(0),
-      0,
-    ) % 1300,
-  ).current;
+  const [seed] = useState(
+    () =>
+      [...String((source as { uri?: string })?.uri ?? source ?? '')].reduce(
+        (a, c) => a + c.charCodeAt(0),
+        0,
+      ) % 1300,
+  );
 
   useEffect(() => {
     if (!move) {
