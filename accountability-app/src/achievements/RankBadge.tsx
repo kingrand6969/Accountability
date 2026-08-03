@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -82,9 +82,9 @@ export function RankBadge({
   const rise = h * (0.55 + lvl * 1.0); // taller plume up top
   const puffSize = h * (0.95 + lvl * 0.5); // soft cloud — bigger for higher ranks
 
-  const shine = useRef(new Animated.Value(0)).current;
-  const flick = useRef(new Animated.Value(1)).current;
-  const hover = useRef(new Animated.Value(0)).current;
+  const [shine] = useState(() => new Animated.Value(0));
+  const [flick] = useState(() => new Animated.Value(1));
+  const [hover] = useState(() => new Animated.Value(0));
   const twinkles = useMemo(
     () => Array.from({ length: cfg.sparkles }, () => new Animated.Value(0)),
     [cfg.sparkles],
