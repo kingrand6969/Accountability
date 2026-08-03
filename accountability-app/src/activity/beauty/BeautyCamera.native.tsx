@@ -103,7 +103,10 @@ export function BeautyCamera({
   const [cameraAttempt, setCameraAttempt] = useState(0);
   const [permissionAttemptNonce, setPermissionAttemptNonce] = useState(0);
   const [isCapturing, setIsCapturing] = useState(false);
-  captureLifecycleActive.current = isFocused && appState === 'active';
+
+  useEffect(() => {
+    captureLifecycleActive.current = isFocused && appState === 'active';
+  }, [appState, isFocused]);
 
   useEffect(() => {
     mounted.current = true;
