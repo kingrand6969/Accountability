@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { GlassCard } from '../ui/Glass';
@@ -5,15 +6,11 @@ import { SwipeDeck } from './SwipeDeck';
 import { metricMeta, type ChallengeCard } from '../compete/api';
 import { MissionIcon } from './MissionIcon';
 import { challengeArtFor } from './missionArt';
+import { challengeEnded, daysLeft } from './challengeTime';
 import { font, radius, spacing } from '../ui/theme';
 import { INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
 
-function daysLeft(ends: string): string {
-  const ms = new Date(ends).getTime() - Date.now();
-  if (ms <= 0) return 'Ended';
-  const d = Math.ceil(ms / 86400000);
-  return d === 1 ? '1 day left' : `${d} days left`;
-}
+const MINUTE_MS = 60_000;
 
 /** The member's live challenges, previewed as a swipeable deck on the Trophy Case. */
 export function ChallengesCarousel({
@@ -25,6 +22,13 @@ export function ChallengesCarousel({
   onOpen: (id: string) => void;
   onBrowse: () => void;
 }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), MINUTE_MS);
+    return () => clearInterval(interval);
+  }, []);
+
   if (items === null) {
     return (
       <GlassCard>
@@ -63,14 +67,14 @@ export function ChallengesCarousel({
       count={items.length}
       ariaUnit="challenge"
       itemLabel={(i) => `Open ${items[i].title}`}
-      renderItem={(i) => <ChallengePage c={items[i]} onOpen={onOpen} />}
+      renderItem={(i) => <ChallengePage c={items[i]} now={now} onOpen={onOpen} />}
     />
   );
 }
 
-function ChallengePage({ c, onOpen }: { c: ChallengeCard; onOpen: (id: string) => void }) {
+function ChallengePage({ c, now, onOpen }: { c: ChallengeCard; now: number; onOpen: (id: string) => void }) {
   const meta = metricMeta(c.metric);
-  const ended = new Date(c.ends_at).getTime() <= Date.now();
+  const ended = challengeEnded(c.ends_at, now);
   return (
     <GlassCard>
       <Pressable
@@ -93,7 +97,7 @@ function ChallengePage({ c, onOpen }: { c: ChallengeCard; onOpen: (id: string) =
           {c.title}
         </Text>
         <Text style={styles.meta}>
-          {meta.label} · {c.participants} in · {daysLeft(c.ends_at)}
+          {meta.label} · {c.participants} in · {daysLeft(c.ends_at, now)}
         </Text>
         <View style={[styles.pill, c.joined && styles.pillJoined]}>
           <Text style={c.joined ? styles.pillJoinedText : styles.pillText}>
