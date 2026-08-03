@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, font, radius, spacing } from './theme';
+import { colors, font, radius } from './theme';
 
 type Privacy = 'public' | 'private';
 

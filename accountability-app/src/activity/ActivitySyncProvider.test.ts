@@ -450,11 +450,11 @@ describe('createSyncTriggerController', () => {
 
 describe('ActivitySyncProvider owner render boundary', () => {
   it('commits an empty value before effects on A-to-B and A-to-signout renders', async () => {
-    const commits: Array<{
+    const commits: {
       queuedIds: string[];
       status: string;
       error: string | null;
-    }> = [];
+    }[] = [];
     const mockDrain = jest.fn(async () => undefined);
     jest.mocked(createActivitySynchronizer).mockReturnValue({
       drain: mockDrain,

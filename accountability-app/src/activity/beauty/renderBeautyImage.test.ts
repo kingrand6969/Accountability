@@ -15,8 +15,11 @@ import {
   planBeautyResize,
   runBeautySourcePreflight,
 } from './renderBeautyImage.native';
-import { BEAUTY_SHADER_CHILDREN, buildBeautyShaderUniforms } from './beautyShader';
-import { referenceBeautyPixel } from './beautyShader';
+import {
+  BEAUTY_SHADER_CHILDREN,
+  buildBeautyShaderUniforms,
+  referenceBeautyPixel,
+} from './beautyShader';
 import { DEFAULT_BEAUTY } from './types';
 
 describe('beauty final render contract', () => {

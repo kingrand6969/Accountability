@@ -390,7 +390,7 @@ describe('BeautyEditor render and lease orchestration', () => {
 
   test('Clean then Golden Hour invalidates real sheet staging and opens the gate twice', async () => {
     const gate = createShareOperationGate();
-    const shared: Array<{ uri: string; exportKey: string }> = [];
+    const shared: { uri: string; exportKey: string }[] = [];
     let generation = 0;
     let staged: { id: string } | null = null;
     const release = jest.fn(async () => undefined);

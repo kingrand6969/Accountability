@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -40,7 +40,6 @@ import {
   recordLoss,
   recordSale,
   removeRecipeLine,
-  undoSale,
   addTenant,
   endTenant,
   listTenants,
@@ -569,7 +568,7 @@ function SwitcherSheet({ visible, businesses, currentId, onClose, onPick, onNew,
   return (
     <SheetShell visible={visible} title="Your businesses" onClose={onClose}>
       <Text style={styles.sheetSub}>
-        Run more than one? Keep them side by side — a food stall, a rental, whatever you've got.
+        Run more than one? Keep them side by side — a food stall, a rental, whatever you&apos;ve got.
       </Text>
       {businesses.map((b) => {
         const meta = PRESETS[b.preset];
@@ -669,7 +668,7 @@ function SetupWizard({ onDone, onCancel, width, topInset }: {
               ) : null}
             </View>
             <Text style={styles.setupBody}>
-              Three questions, then you're tracking. You can change everything later.
+              Three questions, then you&apos;re tracking. You can change everything later.
             </Text>
             <Text style={styles.inputLabel}>Business name</Text>
             <TextInput
@@ -781,7 +780,7 @@ function LossSheet({ item, sym, onClose, onSave }: {
   return (
     <SheetShell visible={!!item} title={item ? `Lost: ${item.name}` : ''} onClose={onClose}>
       <Text style={styles.sheetSub}>
-        It left the business with no cash attached. That's the leak — record it so it counts.
+        It left the business with no cash attached. That&apos;s the leak — record it so it counts.
       </Text>
       <View style={styles.qtyRow}>
         <Pressable style={styles.qtyBtn} onPress={() => setQty(String(Math.max(1, q - 1)))}>
@@ -1067,7 +1066,7 @@ function ItemSheet({ visible, biz, item, onClose, onSaved }: {
               <Text style={styles.smallBtnTxt}>Save supply</Text>
             </Pressable>
             <Text style={styles.recipeHint}>
-              "{sym}2,400 for a 50 kg sack" is enough — the per-gram cost is computed for you.
+              &ldquo;{sym}2,400 for a 50 kg sack&rdquo; is enough — the per-gram cost is computed for you.
             </Text>
           </View>
         ) : null}
@@ -1119,7 +1118,7 @@ function TenantSheet({ visible, biz, onClose, onSaved }: {
       </View>
       <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone (optional)" placeholderTextColor="rgba(30,27,75,0.35)" />
       <Text style={styles.recipeHint}>
-        Tip: add the property's mortgage under Bills — it goes into your daily break-even.
+        Tip: add the property&apos;s mortgage under Bills — it goes into your daily break-even.
       </Text>
       <Pressable
         style={[styles.proBtn, saving && { opacity: 0.6 }]}

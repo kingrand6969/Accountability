@@ -113,7 +113,7 @@ function insertResult(result: DatabaseResultInput) {
 }
 
 function arrangeDatabase(
-  ...builders: Array<Record<string, unknown>>
+  ...builders: Record<string, unknown>[]
 ): void {
   mockedSupabase.from.mockImplementation(() => builders.shift());
 }

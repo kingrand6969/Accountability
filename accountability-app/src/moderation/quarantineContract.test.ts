@@ -241,7 +241,7 @@ describe('manual-report screen contract', () => {
 
   test('old completion cannot clear a same-target replacement after invalidation', async () => {
     const confirmations: ReportConfirmation[] = [];
-    const completions: Array<() => void> = [];
+    const completions: (() => void)[] = [];
     const report = jest.fn<(id: string) => Promise<void>>(
       () => new Promise<void>((resolve) => completions.push(resolve)),
     );

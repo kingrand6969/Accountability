@@ -1,5 +1,28 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
+import {
+  createRunMediaCompletionEffects,
+  createRunMediaOperationId,
+  persistRunMedia,
+  retainFeedOperationContext,
+  runMediaRenderSizeKey,
+  stageRunMediaForGeneration,
+  stageRunMedia,
+  type RunMediaPersistenceDependencies,
+  type RunMediaStagingDependencies,
+} from './saveRunMedia';
+import {
+  createRunMediaCache,
+  type MediaOwner,
+  type RunMediaCacheItem,
+  type RunMediaFileSystem,
+} from './runMediaCache';
+import { feedDisabledReasonFor, runMediaErrorMessage } from './RunMediaActions';
+import {
+  confirmMemoryRowAfterInsertError,
+  saveImageToMemories,
+} from '../memories/api';
+
 jest.mock('../lib/supabase', () => {
   const insert = jest.fn();
   const maybeSingle = jest.fn();
@@ -35,29 +58,6 @@ jest.mock('expo-image-manipulator', () => ({
   manipulateAsync: jest.fn(async () => ({ base64: 'AQ==' })),
   SaveFormat: { JPEG: 'jpeg' },
 }));
-
-import {
-  createRunMediaCompletionEffects,
-  createRunMediaOperationId,
-  persistRunMedia,
-  retainFeedOperationContext,
-  runMediaRenderSizeKey,
-  stageRunMediaForGeneration,
-  stageRunMedia,
-  type RunMediaPersistenceDependencies,
-  type RunMediaStagingDependencies,
-} from './saveRunMedia';
-import {
-  createRunMediaCache,
-  type MediaOwner,
-  type RunMediaCacheItem,
-  type RunMediaFileSystem,
-} from './runMediaCache';
-import { feedDisabledReasonFor, runMediaErrorMessage } from './RunMediaActions';
-import {
-  confirmMemoryRowAfterInsertError,
-  saveImageToMemories,
-} from '../memories/api';
 
 const memoryApiMocks = (
   jest.requireMock('../lib/supabase') as {
