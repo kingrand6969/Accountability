@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
@@ -25,7 +25,7 @@ export function ProgressRing({
   animate?: boolean;
 }) {
   const target = Math.min(1, Math.max(0, progress));
-  const anim = useRef(new Animated.Value(0)).current;
+  const [anim] = useState(() => new Animated.Value(0));
   const [animatedShown, setAnimatedShown] = useState(0);
 
   useEffect(() => {
