@@ -109,7 +109,7 @@ describe('Supabase React Native authentication lifecycle', () => {
     jest.doMock('react-native-url-polyfill/auto', () => ({}));
 
     jest.isolateModules(() => {
-      require('../lib/supabase');
+      jest.requireActual('../lib/supabase');
     });
 
     expect(createClient).toHaveBeenCalledWith(
@@ -172,10 +172,10 @@ describe('Supabase React Native authentication lifecycle', () => {
     jest.doMock('react-native-url-polyfill/auto', () => ({}));
 
     jest.isolateModules(() => {
-      require('../lib/supabase');
+      jest.requireActual('../lib/supabase');
     });
     jest.isolateModules(() => {
-      require('../lib/supabase');
+      jest.requireActual('../lib/supabase');
     });
 
     expect(firstRemove).toHaveBeenCalledTimes(1);
@@ -217,11 +217,11 @@ describe('Supabase React Native authentication lifecycle', () => {
     jest.doMock('react-native-url-polyfill/auto', () => ({}));
 
     jest.isolateModules(() => {
-      require('../lib/supabase');
+      jest.requireActual('../lib/supabase');
     });
     platform.OS = 'web';
     jest.isolateModules(() => {
-      require('../lib/supabase');
+      jest.requireActual('../lib/supabase');
     });
 
     expect(remove).toHaveBeenCalledTimes(1);
@@ -261,10 +261,10 @@ describe('Supabase React Native authentication lifecycle', () => {
     jest.doMock('react-native-url-polyfill/auto', () => ({}));
 
     jest.isolateModules(() => {
-      require('../lib/supabase');
+      jest.requireActual('../lib/supabase');
     });
     jest.isolateModules(() => {
-      require('../lib/supabase');
+      jest.requireActual('../lib/supabase');
     });
 
     expect(firstAuth.dispose).toHaveBeenCalledTimes(1);
