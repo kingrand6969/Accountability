@@ -1,6 +1,6 @@
 import { createElement, forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { buildOsmHtml } from './osmHtml';
+import { buildOsmHtml, type LatLng, type MapMarker } from './osmHtml';
 import type { OsmMapHandle, OsmMapProps } from './OsmMap';
 
 /**
@@ -12,9 +12,16 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   ref,
 ) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const serializedMapData = JSON.stringify({ markers, route });
   const html = useMemo(
-    () => buildOsmHtml({ markers, route, interactive, tiles }),
-    [JSON.stringify(markers), JSON.stringify(route), interactive, tiles],
+    () => {
+      const stableMapData = JSON.parse(serializedMapData) as {
+        markers: MapMarker[];
+        route: LatLng[];
+      };
+      return buildOsmHtml({ ...stableMapData, interactive, tiles });
+    },
+    [serializedMapData, interactive, tiles],
   );
 
   useImperativeHandle(ref, () => ({
