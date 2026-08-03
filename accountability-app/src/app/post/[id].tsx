@@ -113,7 +113,9 @@ function PostDetailView({
   const currentIdRef = useRef(id ?? '');
   const currentUserIdRef = useRef(myId);
   const commentReportAction = useRef<ReturnType<typeof createReportAction> | null>(null);
-  if (!commentReportAction.current) {
+
+  useLayoutEffect(() => {
+    if (commentReportAction.current !== null) return;
     commentReportAction.current = createReportAction({
       kind: 'comment',
       report: reportComment,
@@ -131,7 +133,7 @@ function PostDetailView({
           ? `${targetId}:${currentUserIdRef.current ?? ''}:${viewGeneration.current}`
           : null,
     });
-  }
+  }, []);
 
   const supporters = (() => {
     const people = new Map<string, PostEncourager>();
@@ -182,7 +184,6 @@ function PostDetailView({
     viewGeneration.current += 1;
     operations.current.rotate();
     commentReportAction.current?.invalidate();
-    setReportingCommentIds(new Set());
     dataViewKeyRef.current = null;
   }, [id, myId]);
 
