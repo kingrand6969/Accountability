@@ -28,14 +28,14 @@ import {
   type StandingRow,
 } from '../../compete/api';
 import { MissionIcon } from '../../achievements/MissionIcon';
+import { challengeEnded, daysLeft } from '../../achievements/challengeTime';
 import { challengeArtFor } from '../../achievements/missionArt';
 
-function fmtRange(startsAt: string, endsAt: string): string {
+function fmtRange(startsAt: string, endsAt: string, checkedAt: number): string {
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
   const s = new Date(startsAt).toLocaleDateString(undefined, opts);
   const e = new Date(endsAt).toLocaleDateString(undefined, opts);
-  const ms = new Date(endsAt).getTime() - Date.now();
-  const left = ms <= 0 ? 'Ended' : `${Math.ceil(ms / 86400000)} days left`;
+  const left = daysLeft(endsAt, checkedAt);
   return `${s} – ${e} · ${left}`;
 }
 
@@ -51,12 +51,14 @@ export default function ChallengeDetail() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [challengeCheckedAt, setChallengeCheckedAt] = useState(0);
 
   const load = useCallback(() => {
     if (!id) return;
     setFailed(false);
     Promise.all([getChallenge(id), getChallengeStandings(id)])
       .then(([c, s]) => {
+        setChallengeCheckedAt(Date.now());
         setChallenge(c);
         setStandings(s);
       })
@@ -140,7 +142,7 @@ export default function ChallengeDetail() {
   }
 
   const meta = metricMeta(challenge.metric);
-  const ended = new Date(challenge.ends_at).getTime() <= Date.now();
+  const ended = challengeEnded(challenge.ends_at, challengeCheckedAt);
 
   return (
     <View style={styles.screen}>
@@ -162,7 +164,9 @@ export default function ChallengeDetail() {
             <Text style={styles.meta}>
               {meta.label} · {challenge.participants} competing
             </Text>
-            <Text style={styles.range}>{fmtRange(challenge.starts_at, challenge.ends_at)}</Text>
+            <Text style={styles.range}>
+              {fmtRange(challenge.starts_at, challenge.ends_at, challengeCheckedAt)}
+            </Text>
             {ended ? (
               <View style={[styles.joinBtn, styles.endedBtn]}>
                 <Text style={styles.endedText}>Challenge ended</Text>
