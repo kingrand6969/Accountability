@@ -1,27 +1,17 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { createConfettiGeometry } from './confettiGeometry';
 
 const COLORS = ['#F2B33D', '#2563eb', '#ef4444', '#16a34a', '#2563eb', '#F49AC6', '#57B6C7'];
 
 /** A one-shot confetti burst from the centre. Mount it when a medal unlocks. */
 export function Confetti({ count = 28 }: { count?: number }) {
-  const parts = useMemo(
-    () =>
-      Array.from({ length: count }, (_, i) => {
-        const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
-        return {
-          color: COLORS[i % COLORS.length],
-          angle,
-          dist: 90 + Math.random() * 130,
-          delay: Math.random() * 120,
-          duration: 850 + Math.random() * 500,
-          rot: (Math.random() - 0.5) * 900,
-          w: 6 + Math.random() * 7,
-          h: 4 + Math.random() * 6,
-          anim: new Animated.Value(0),
-        };
-      }),
-    [count],
+  const [parts] = useState(() =>
+    createConfettiGeometry(count, Math.random).map((geometry, i) => ({
+      color: COLORS[i % COLORS.length],
+      ...geometry,
+      anim: new Animated.Value(0),
+    })),
   );
 
   useEffect(() => {
