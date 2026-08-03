@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AccessibilityInfo,
@@ -49,7 +49,9 @@ export default function StoryViewer() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [reporting, setReporting] = useState(false);
   const storyReportAction = useRef<ReturnType<typeof createReportAction> | null>(null);
-  if (!storyReportAction.current) {
+
+  useLayoutEffect(() => {
+    if (storyReportAction.current !== null) return;
     storyReportAction.current = createReportAction({
       kind: 'story',
       report: reportStory,
@@ -75,7 +77,7 @@ export default function StoryViewer() {
           ? `${targetId}:${currentOwnerRef.current ?? ''}:${currentViewKeyRef.current}:${lifecycleGeneration.current}`
           : null,
     });
-  }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -177,7 +179,10 @@ export default function StoryViewer() {
 
   const group: StoryGroup | undefined = groups[groupIndex];
   const story = group?.stories[storyIndex];
-  currentStoryIdRef.current = story?.id ?? null;
+
+  useLayoutEffect(() => {
+    currentStoryIdRef.current = story?.id ?? null;
+  }, [story?.id]);
 
   const goNext = useCallback(() => {
     if (!group) return;
