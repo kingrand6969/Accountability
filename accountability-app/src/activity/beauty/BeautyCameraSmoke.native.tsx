@@ -15,7 +15,10 @@ import {
 } from 'react-native-vision-camera';
 import { Camera as FaceDetectorCamera } from 'react-native-vision-camera-face-detector';
 
-import { getBeautyCameraCapability } from './cameraCapability';
+import {
+  getBeautyCameraCapability,
+  reconcileBeautyCameraDeviceLookup,
+} from './cameraCapability';
 
 const DEVICE_LOOKUP_GRACE_MS = 1_500;
 const StableFaceDetectorCamera = memo(FaceDetectorCamera);
@@ -28,7 +31,10 @@ export function BeautyCameraSmoke() {
   const frontDevice = useCameraDevice('front');
   const permissionRequestStarted = useRef(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
-  const [isDeviceLookupSettled, setIsDeviceLookupSettled] = useState(false);
+  const [deviceLookup, setDeviceLookup] = useState(() => ({
+    permissionStatus,
+    isSettled: permissionStatus === 'authorized' && frontDevice != null,
+  }));
   const [appState, setAppState] = useState<AppStateStatus>(
     AppState.currentState,
   );
@@ -68,19 +74,23 @@ export function BeautyCameraSmoke() {
     requestCameraAccess();
   }, [permissionStatus, requestCameraAccess]);
 
+  const reconciledDeviceLookup = reconcileBeautyCameraDeviceLookup(
+    deviceLookup,
+    permissionStatus,
+    frontDevice != null,
+  );
+  if (reconciledDeviceLookup !== deviceLookup) {
+    setDeviceLookup(reconciledDeviceLookup);
+  }
+
   useEffect(() => {
-    if (permissionStatus !== 'authorized') {
-      setIsDeviceLookupSettled(false);
-      return;
-    }
-
-    if (frontDevice) {
-      setIsDeviceLookupSettled(true);
-      return;
-    }
-
+    if (permissionStatus !== 'authorized' || frontDevice) return;
     const timeout = setTimeout(() => {
-      setIsDeviceLookupSettled(true);
+      setDeviceLookup((current) =>
+        current.permissionStatus === permissionStatus
+          ? { ...current, isSettled: true }
+          : current,
+      );
     }, DEVICE_LOOKUP_GRACE_MS);
 
     return () => clearTimeout(timeout);
@@ -90,7 +100,7 @@ export function BeautyCameraSmoke() {
     permissionStatus,
     isRequestingPermission,
     hasFrontCamera: frontDevice != null,
-    isDeviceLookupSettled,
+    isDeviceLookupSettled: deviceLookup.isSettled,
     cameraError,
   });
 
