@@ -168,7 +168,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     refreshQueue,
   } = useActivitySync();
   const { width, height } = useWindowDimensions();
-  const [checkedOwnerId, setCheckedOwnerId] = useState<string | null>(null);
+  const [completedQueueCheckKey, setCompletedQueueCheckKey] = useState<
+    string | null
+  >(null);
   const [mode, setMode] = useState<Mode>('map');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | null>(null);
@@ -239,7 +241,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         renderGeneration.current += 1;
         feedOperation.current = null;
         hasPersistentDestination.current = false;
-        setCheckedOwnerId(null);
+        setCompletedQueueCheckKey(null);
         setActiveDestination(null);
         setPhotoUri(null);
         setPhotoKind(null);
@@ -269,6 +271,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       ? runSyncPresentation(run.activityId, run.syncStatus, queued)
       : null;
   const currentOwnerId = session?.user.id ?? null;
+  const queueCheckKey =
+    run.activityId && run.ownerId && currentOwnerId === run.ownerId
+      ? `${run.activityId}:${run.ownerId}`
+      : null;
   const feedAvailability =
     run.activityId && run.ownerId
       ? runFeedAvailability(
@@ -277,8 +283,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           currentOwnerId,
           {
             queueChecked:
-              checkedOwnerId === run.ownerId &&
-              currentOwnerId === run.ownerId,
+              queueCheckKey !== null &&
+              completedQueueCheckKey === queueCheckKey,
             syncStatus: activitySyncStatus,
             syncError: activitySyncError,
             queuedActivities: queued,
@@ -301,24 +307,17 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           : syncPresentation?.detail;
 
   useEffect(() => {
-    setCheckedOwnerId(null);
-    if (
-      !run.activityId ||
-      !run.ownerId ||
-      currentOwnerId !== run.ownerId
-    ) {
-      return;
-    }
+    if (!queueCheckKey) return;
     let active = true;
     void refreshQueue().finally(() => {
-      if (active) setCheckedOwnerId(run.ownerId);
+      if (active) setCompletedQueueCheckKey(queueCheckKey);
     });
     return () => {
       active = false;
     };
     // Refresh once for this completed activity; live queue events update later.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run.activityId, run.ownerId, currentOwnerId]);
+  }, [queueCheckKey]);
 
   useEffect(() => {
     if (ownerMatches) {
@@ -342,14 +341,21 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     void capturedSourceLeases.current!.releaseAll();
     feedOperation.current = null;
     hasPersistentDestination.current = false;
-    setActiveDestination(null);
-    setPhotoUri(null);
-    setPhotoKind(null);
-    setOriginalRatio(null);
-    setMode('map');
-    setShowEnds(false);
-    setBeautyStage(null);
-    setBeautySource(null);
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setActiveDestination(null);
+      setPhotoUri(null);
+      setPhotoKind(null);
+      setOriginalRatio(null);
+      setMode('map');
+      setShowEnds(false);
+      setBeautyStage(null);
+      setBeautySource(null);
+    });
+    return () => {
+      active = false;
+    };
   }, [ownerMatches]);
 
   // size the 4:5 card to fit BOTH the width and the space left after the
@@ -1007,6 +1013,7 @@ function PlatformBeautyCamera(props: BeautyCameraProps) {
   // Kept lazy so pure RunShareSheet helper tests never initialize native camera
   // modules. Metro resolves this path to .native or .web for the app bundle.
   const CameraComponent = (
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro selects the native/web camera at runtime.
     require('./beauty/BeautyCamera') as {
       BeautyCamera: ComponentType<BeautyCameraProps>;
     }
