@@ -343,7 +343,7 @@ test('external approval rejects pending templates and requires exact scoped curr
     scope: 'STAGING_READ_ONLY_MIGRATION_AUDIT',
     singleUsePolicy: 'ONE_PROCESS_FRESH_PREFLIGHT',
     windowsTrust: {
-      systemRoot: 'C:\\Windows',
+      systemRoot: path.resolve('trusted-system-root'),
       toolSha256: {
         icacls: 'b'.repeat(64),
         powershell: 'c'.repeat(64),
