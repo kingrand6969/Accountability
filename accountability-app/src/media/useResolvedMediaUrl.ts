@@ -1,17 +1,30 @@
 import { useEffect, useState } from 'react';
 import { isPrivateMediaRef, resolveMediaUrl } from './privateMedia';
 
+type PrivateMediaResolution = {
+  ref: string;
+  url: string | null;
+};
+
 export function useResolvedMediaUrl(value: string | null | undefined): string | null {
-  const [resolved, setResolved] = useState<string | null>(value && !isPrivateMediaRef(value) ? value : null);
+  const privateRef = value && isPrivateMediaRef(value) ? value : null;
+  const [privateResolution, setPrivateResolution] =
+    useState<PrivateMediaResolution | null>(null);
+
   useEffect(() => {
+    if (!privateRef) return;
     let active = true;
-    if (!value) setResolved(null);
-    else if (!isPrivateMediaRef(value)) setResolved(value);
-    else {
-      setResolved(null);
-      resolveMediaUrl(value).then((url) => { if (active) setResolved(url); }).catch(() => { if (active) setResolved(null); });
-    }
+    resolveMediaUrl(privateRef)
+      .then((url) => {
+        if (active) setPrivateResolution({ ref: privateRef, url });
+      })
+      .catch(() => {
+        if (active) setPrivateResolution({ ref: privateRef, url: null });
+      });
     return () => { active = false; };
-  }, [value]);
-  return resolved;
+  }, [privateRef]);
+
+  if (!value) return null;
+  if (!privateRef) return value;
+  return privateResolution?.ref === privateRef ? privateResolution.url : null;
 }
