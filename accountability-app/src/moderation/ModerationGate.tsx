@@ -44,35 +44,39 @@ function fmtDate(iso: string | null): string {
 export function ModerationGate() {
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
+  if (!userId) return null;
+  return <AuthenticatedModerationGate key={userId} />;
+}
+
+function AuthenticatedModerationGate() {
   const [state, setState] = useState<ModerationState | null>(null);
   const [ipBanned, setIpBanned] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  // dismissed-this-session flags so a modal doesn't reappear after "Got it"
-  const ackWarning = useRef(false);
-  const ackRestrict = useRef(false);
+  const [warningAcknowledged, setWarningAcknowledged] = useState(false);
+  const [restrictionAcknowledged, setRestrictionAcknowledged] =
+    useState(false);
+  const refreshGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (!userId) {
-      setState(null);
-      setIpBanned(false);
-      return;
-    }
+    const generation = ++refreshGeneration.current;
     // the ping also records the connection server-side (abuse prevention)
     const [next, ping] = await Promise.all([fetchModerationState(), sessionPing()]);
+    if (generation !== refreshGeneration.current) return;
     setState(next);
     setIpBanned(ping.ipBanned);
-  }, [userId]);
+  }, []);
 
   useEffect(() => {
-    ackWarning.current = false;
-    ackRestrict.current = false;
-    refresh();
-  }, [userId, refresh]);
+    void refresh();
+    return () => {
+      refreshGeneration.current += 1;
+    };
+  }, [refresh]);
 
   // re-check on foreground so a mid-session ban/restrict/warn lands promptly
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') refresh();
+      if (s === 'active') void refresh();
     });
     return () => sub.remove();
   }, [refresh]);
@@ -87,12 +91,12 @@ export function ModerationGate() {
   }, []);
 
   const dismissWarning = useCallback(async () => {
-    ackWarning.current = true;
+    setWarningAcknowledged(true);
     setState((s) => (s ? { ...s, warning: null } : s));
     await acknowledgeWarning();
   }, []);
 
-  if (!userId || !state) return null;
+  if (!state) return null;
 
   // 1) Ban — a hard wall over everything (account ban or network/IP ban).
   if (state.banned) return <BanWall message={state.ban_message} onSignOut={signOut} busy={signingOut} />;
@@ -110,7 +114,7 @@ export function ModerationGate() {
   }
 
   // 2) Warning — must be acknowledged (once per session).
-  if (state.warning && !ackWarning.current) {
+  if (state.warning && !warningAcknowledged) {
     return (
       <NoticeModal
         tone="warning"
@@ -124,7 +128,7 @@ export function ModerationGate() {
   }
 
   // 3) Restriction — informational; the server already blocks posting.
-  if (state.restricted_until && !ackRestrict.current) {
+  if (state.restricted_until && !restrictionAcknowledged) {
     const until = fmtDate(state.restricted_until);
     return (
       <NoticeModal
@@ -138,10 +142,7 @@ export function ModerationGate() {
           }.`
         }
         cta="Got it"
-        onClose={() => {
-          ackRestrict.current = true;
-          setState((s) => ({ ...(s as ModerationState) }));
-        }}
+        onClose={() => setRestrictionAcknowledged(true)}
       />
     );
   }
