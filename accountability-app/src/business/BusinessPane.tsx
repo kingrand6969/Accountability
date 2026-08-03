@@ -153,10 +153,6 @@ export function BusinessPane({ width, topInset }: { width: number; topInset: num
     setShowSwitcher(false);
     setLoading(true);
   }, []);
-  useEffect(() => {
-    if (isPro && selectedId) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
 
   const onSell = useCallback(
     async (item: BizItem) => {
