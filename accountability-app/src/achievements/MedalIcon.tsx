@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -81,10 +81,10 @@ export function MedalIcon({
   }, []);
   const motion = animated && !reducedMotion && !sysReduce;
 
-  const halo = useRef(new Animated.Value(0)).current;
-  const glint = useRef(new Animated.Value(0)).current;
-  const driftV = useRef(new Animated.Value(0)).current;
-  const orbitV = useRef(new Animated.Value(0)).current;
+  const [halo] = useState(() => new Animated.Value(0));
+  const [glint] = useState(() => new Animated.Value(0));
+  const [driftV] = useState(() => new Animated.Value(0));
+  const [orbitV] = useState(() => new Animated.Value(0));
   const embers = useMemo(
     () => fx.embers.map(() => new Animated.Value(0)),
     [fx.embers],
