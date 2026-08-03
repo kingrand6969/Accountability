@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Animated,
@@ -166,8 +172,10 @@ export default function ActivityTrack() {
   const completionOwnerRef = useRef<string | null>(
     session?.user.id ?? null,
   );
-  authOwnerRef.current = session?.user.id ?? null;
-  const pulse = useRef(new Animated.Value(0)).current;
+  useLayoutEffect(() => {
+    authOwnerRef.current = session?.user.id ?? null;
+  }, [session?.user.id]);
+  const [pulse] = useState(() => new Animated.Value(0));
   const mapRef = useRef<OsmMapHandle>(null);
   // where to centre the idle map — the user's last-known spot (no prompt)
   const [idlePos, setIdlePos] = useState<{ lat: number; lng: number } | null>(null);
@@ -388,7 +396,9 @@ export default function ActivityTrack() {
     if (authLoading) return;
     let active = true;
     getCompletionController().reset('recovery');
-    setRecoveryReadState('checking');
+    queueMicrotask(() => {
+      if (active) setRecoveryReadState('checking');
+    });
     void recoverTrackRecording(session?.user.id ?? null, 'run')
       .then(async (recovery) => {
         if (!active) return;
@@ -686,10 +696,7 @@ export default function ActivityTrack() {
   const visiblePending = detailView.visible ? pending : null;
   const visibleTracking = detailView.visible && tracking;
   const confirmedBadgeStatus = activityUploadBadgeStatus(
-    shareRun?.activityId ??
-      visiblePending?.activityId ??
-      recordingRef.current?.activityId ??
-      null,
+    shareRun?.activityId ?? visiblePending?.activityId ?? null,
     durableQueueConfirmation,
   );
   const recoveryBlocked =
