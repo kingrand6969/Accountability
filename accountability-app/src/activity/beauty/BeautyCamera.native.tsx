@@ -314,11 +314,11 @@ export function BeautyCamera({
       });
   }, [isCapturing, reportError, singleFlightCapture]);
 
-  const handleRetry = useCallback(() => {
+  const handleRetry = () => {
     setCameraError(null);
     setCameraAttempt((attempt) => attempt + 1);
     setPermissionAttemptNonce((nonce) => nonce + 1);
-  }, []);
+  };
 
   if (!cameraCapability.canRenderCamera || !frontDevice) {
     const isLoading =
