@@ -61,7 +61,7 @@ describe('beauty settings', () => {
   });
 
   it('preserves every boundary and clamps values outside them', () => {
-    const bounds: Array<[NumericBeautyField, number, number]> = [
+    const bounds: [NumericBeautyField, number, number][] = [
       ['overall', 0, 100],
       ['smooth', 0, 60],
       ['blemish', 0, 60],
@@ -84,7 +84,7 @@ describe('beauty settings', () => {
   });
 
   it('falls back to defaults for invalid and non-finite values', () => {
-    const defaults: Array<[NumericBeautyField, number]> = [
+    const defaults: [NumericBeautyField, number][] = [
       ['overall', 20],
       ['smooth', 20],
       ['blemish', 20],

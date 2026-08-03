@@ -27,7 +27,6 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
     ref: frameRef,
     srcDoc: html,
     style: { border: 'none', width: '100%', height: '100%', display: 'block' },
-    // eslint-disable-next-line
     sandbox: 'allow-scripts allow-same-origin',
     title: 'Map',
   });

@@ -113,7 +113,7 @@ export default function ActivityTrack() {
   const { session, loading: authLoading } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { width: W, height: H } = useWindowDimensions();
+  const { width: W } = useWindowDimensions();
   const [type, setType] = useState<ActivityType>('run');
   const [tracking, setTracking] = useState(false);
   const [distance, setDistance] = useState(0);

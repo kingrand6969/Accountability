@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+
+import { clearPrivateMediaCache, isPrivateMediaRef, resolveMediaUrl } from './privateMedia';
+
 const mockInvoke = jest.fn<(...args: unknown[]) => Promise<{ data: any; error: any }>>();
 
 jest.mock('../lib/supabase', () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => mockInvoke(...args) } },
 }));
-
-import { clearPrivateMediaCache, isPrivateMediaRef, resolveMediaUrl } from './privateMedia';
 
 describe('private media', () => {
   beforeEach(() => {

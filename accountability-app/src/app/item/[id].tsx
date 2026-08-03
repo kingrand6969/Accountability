@@ -14,7 +14,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { getItem, updateItemChecklist } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
 import { EmptyState } from '../../ui/EmptyState';
-import { showToast } from '../../ui/Toast';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
 import type { ChecklistItem, TimelineItem } from '../../timeline/types';
 

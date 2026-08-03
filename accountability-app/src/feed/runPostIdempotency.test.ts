@@ -1,5 +1,8 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
+import { executeIdempotentPost } from './api';
+import { isExistingPostImageError, mayUseStorageFallback, postImagePath } from './uploadPostImage';
+
 jest.mock('../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../profiles/publicProfiles', () => ({
   getPublicProfiles: jest.fn(async () => new Map()),
@@ -7,9 +10,6 @@ jest.mock('../profiles/publicProfiles', () => ({
 jest.mock('../lib/r2', () => ({
   uploadToR2: jest.fn(async () => 'https://images.example/non-idempotent.jpg'),
 }));
-
-import { executeIdempotentPost } from './api';
-import { isExistingPostImageError, mayUseStorageFallback, postImagePath } from './uploadPostImage';
 
 const operationId = '123e4567-e89b-42d3-a456-426614174000';
 

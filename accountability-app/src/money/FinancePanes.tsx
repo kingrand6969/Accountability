@@ -274,7 +274,7 @@ export function AccountsPane({
 
           {cards.length === 0 ? (
             <Text style={styles.empty}>
-              Add each card's balance once. Every month, one tap logs the payment and deducts it —
+              Add each card&apos;s balance once. Every month, one tap logs the payment and deducts it —
               watch the total fall.
             </Text>
           ) : (

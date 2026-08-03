@@ -1004,7 +1004,6 @@ function ModeBtn({
 function PlatformBeautyCamera(props: BeautyCameraProps) {
   // Kept lazy so pure RunShareSheet helper tests never initialize native camera
   // modules. Metro resolves this path to .native or .web for the app bundle.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const CameraComponent = (
     require('./beauty/BeautyCamera') as {
       BeautyCamera: ComponentType<BeautyCameraProps>;

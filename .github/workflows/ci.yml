@@ -34,8 +34,7 @@ jobs:
           cache-dependency-path: accountability-app/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Lint (advisory - existing baseline)
-        continue-on-error: true
+      - name: Lint
         run: npm run lint
       - name: Type check
         run: npx tsc --noEmit
