@@ -21,7 +21,7 @@ create policy r2_sign_log_insert on public.r2_sign_log
   for insert to authenticated with check (user_id = auth.uid());
 
 insert into public.rate_limits (tbl, owner_col, max_rows, window_secs)
-  values ('r2_sign_log', 'user_id', 60, 3600)  -- generous human use; blocks scripted storage floods
+  values ('r2_sign_log', 'user_id', 150, 3600)  -- 150 uploads / hour / user
   on conflict (tbl) do update
     set owner_col = excluded.owner_col,
         max_rows = excluded.max_rows,

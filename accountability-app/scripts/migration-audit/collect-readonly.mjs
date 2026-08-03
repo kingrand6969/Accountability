@@ -514,6 +514,18 @@ function packageHashes() {
     'supabase-2.110.0-json-envelope-provenance.json': sha256(
       readFileSync(path.join(directory, 'supabase-2.110.0-json-envelope-provenance.json')),
     ),
+    '0095-postconditions-readonly.sql': sha256(
+      readFileSync(path.join(directory, '0095-postconditions-readonly.sql')),
+    ),
+    '0096-postconditions-readonly.sql': sha256(
+      readFileSync(path.join(directory, '0096-postconditions-readonly.sql')),
+    ),
+    'moderate-content-bundle-manifest.json': sha256(
+      readFileSync(path.join(directory, 'moderate-content-bundle-manifest.json')),
+    ),
+    'admin-actions-bundle-manifest.json': sha256(
+      readFileSync(path.join(directory, 'admin-actions-bundle-manifest.json')),
+    ),
   };
 }
 

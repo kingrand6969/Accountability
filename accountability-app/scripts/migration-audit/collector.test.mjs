@@ -248,12 +248,19 @@ const FROZEN_ARTIFACTS = JSON.parse(
 
 test('pending approval template exactly fingerprints the current executable package', () => {
   const directory = path.dirname(fileURLToPath(import.meta.url));
+  const collectorSource = readFileSync(path.join(directory, 'collect-readonly.mjs'), 'utf8');
   const template = JSON.parse(readFileSync(
     path.join(directory, 'external-approval-anchor.template.json'),
     'utf8',
   ));
   assert.equal(template.approval, 'PENDING');
   assert.equal(template.packageDigest, null);
+  const packageBody = collectorSource.match(/function packageHashes\(\) \{[\s\S]*?return \{([\s\S]*?)\n  \};\n\}/u)?.[1];
+  assert.ok(packageBody, 'collector packageHashes implementation must remain statically reviewable');
+  const runtimePackageFiles = [...packageBody.matchAll(/^\s*'([^']+)':/gmu)]
+    .map((match) => match[1])
+    .sort();
+  assert.deepEqual(runtimePackageFiles, Object.keys(template.packageSha256).sort());
   for (const [filename, expected] of Object.entries(template.packageSha256)) {
     assert.equal(sha256(readFileSync(path.join(directory, filename))), expected, filename);
   }
