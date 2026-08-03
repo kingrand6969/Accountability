@@ -333,11 +333,9 @@ export function createBeautyOutputUri(
 export async function renderBeautyImage(
   input: RenderBeautyImageInput,
 ): Promise<BeautyRenderResult> {
-  const { Directory, File, Paths } =
-    require('expo-file-system') as typeof import('expo-file-system');
-  const { manipulateAsync, SaveFormat } =
-    require('expo-image-manipulator') as typeof import('expo-image-manipulator');
-  const { Image } = require('react-native') as typeof import('react-native');
+  const { Directory, File, Paths } = await import('expo-file-system');
+  const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+  const { Image } = await import('react-native');
   const {
     BlendMode,
     BlurStyle,
@@ -346,10 +344,8 @@ export async function renderBeautyImage(
     MipmapMode,
     Skia,
     TileMode,
-  } =
-    require('@shopify/react-native-skia') as typeof import('@shopify/react-native-skia');
-  const { runMediaCache } =
-    require('../saveRunMedia') as typeof import('../saveRunMedia');
+  } = await import('@shopify/react-native-skia');
+  const { runMediaCache } = await import('../saveRunMedia');
 
   throwIfAborted(input.signal);
   const sourceUri = requireLocalSourceUri(input.sourceUri);
@@ -545,8 +541,9 @@ async function resolveFaces(
 }
 
 async function detectFacesFromUri(uri: string): Promise<unknown> {
-  const { createImageFaceDetector } =
-    require('react-native-vision-camera-face-detector') as typeof import('react-native-vision-camera-face-detector');
+  const { createImageFaceDetector } = await import(
+    'react-native-vision-camera-face-detector'
+  );
   const detector = createImageFaceDetector({
     performanceMode: 'accurate',
     runLandmarks: true,
