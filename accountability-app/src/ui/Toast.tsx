@@ -14,7 +14,7 @@ export function showToast(message: string): void {
 /** Mount once near the root (root _layout). */
 export function ToastHost() {
   const [msg, setMsg] = useState<string | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
+  const [opacity] = useState(() => new Animated.Value(0));
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
