@@ -39,13 +39,24 @@ function mergeNewer(cur: Message[], incoming: Message[]): Message[] {
   return fresh.length ? [...fresh, ...cur] : cur;
 }
 
-type BuddyBrief = { name: string | null; avatar: string | null; lastActive: string | null };
+type BuddyBrief = {
+  name: string | null;
+  avatar: string | null;
+  lastActive: string | null;
+  presenceCheckedAt: number | null;
+};
 
 export default function BuddyChat() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const [myId, setMyId] = useState<string | null>(null);
-  const [buddy, setBuddy] = useState<BuddyBrief>({ name: null, avatar: null, lastActive: null });
+  const [buddy, setBuddy] = useState<BuddyBrief>({
+    name: null,
+    avatar: null,
+    lastActive: null,
+    presenceCheckedAt: null,
+  });
+  const [expiredPresenceKey, setExpiredPresenceKey] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
   // newest-first — index 0 is the latest message (pairs with the inverted list)
   const [messages, setMessages] = useState<Message[]>([]);
@@ -56,7 +67,20 @@ export default function BuddyChat() {
   const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
   const messagesRef = useRef<Message[]>(messages);
-  messagesRef.current = messages;
+  const presenceKey = id && buddy.lastActive ? `${id}:${buddy.lastActive}` : null;
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    if (!presenceKey || !buddy.lastActive || buddy.presenceCheckedAt == null) return;
+    const expiresIn =
+      new Date(buddy.lastActive).getTime() + ONLINE_WINDOW_MS - buddy.presenceCheckedAt;
+    if (!Number.isFinite(expiresIn) || expiresIn <= 0) return;
+    const timer = setTimeout(() => setExpiredPresenceKey(presenceKey), expiresIn);
+    return () => clearTimeout(timer);
+  }, [buddy.lastActive, buddy.presenceCheckedAt, presenceKey]);
 
   useEffect(() => {
     (async () => {
@@ -76,6 +100,7 @@ export default function BuddyChat() {
           name: prof.display_name ?? null,
           avatar: prof.avatar_url ?? null,
           lastActive: prof.last_active_at ?? null,
+          presenceCheckedAt: Date.now(),
         });
       }
     })();
@@ -211,7 +236,9 @@ export default function BuddyChat() {
   const online =
     !deleted &&
     !!buddy.lastActive &&
-    Date.now() - new Date(buddy.lastActive).getTime() < ONLINE_WINDOW_MS;
+    buddy.presenceCheckedAt != null &&
+    expiredPresenceKey !== presenceKey &&
+    buddy.presenceCheckedAt - new Date(buddy.lastActive).getTime() < ONLINE_WINDOW_MS;
   const presence = deleted
     ? null
     : online
