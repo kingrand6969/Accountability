@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Modal,
@@ -33,6 +33,7 @@ import { reminderTriggerDate } from '../notifications/trigger';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { resolveAddRouteSeed, type AddRouteSeed } from '../navigation/scheduleRouteState';
 import type { TimelineType } from '../timeline/types';
 
 // Add is for scheduling reminders only — events, meetings, errands, grocery.
@@ -81,21 +82,30 @@ function PresetChip({
 }
 
 export default function Add() {
-  const router = useRouter();
   const params = useLocalSearchParams<{ date?: string; time?: string; type?: string }>();
+  const seed = resolveAddRouteSeed(params, {
+    date: toLocalDateString(new Date()),
+    time: nextHour(),
+  });
+
+  return <AddForm key={seed.key} seed={seed} />;
+}
+
+function AddForm({ seed }: { seed: AddRouteSeed }) {
+  const router = useRouter();
   const { isPro } = useIsPro();
-  const [type, setType] = useState<TimelineType | null>('event');
+  const [type, setType] = useState<TimelineType | null>(seed.type);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [checklist, setChecklist] = useState<string[]>([]);
   const [checkText, setCheckText] = useState('');
-  const [date, setDate] = useState(() => toLocalDateString(new Date()));
-  const [time, setTime] = useState(() => nextHour());
+  const [date, setDate] = useState(seed.date);
+  const [time, setTime] = useState(seed.time);
   const [remind, setRemind] = useState(false);
   const [offsetMin, setOffsetMin] = useState(0);
   const [phrase, setPhrase] = useState('');
   const [saving, setSaving] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(seed.detailsOpen);
 
   function openForDate(d: string) {
     setDate(d);
@@ -113,19 +123,6 @@ export default function Add() {
     setRemind(r.remind);
     setDetailsOpen(true); // pop the details form pre-filled
   }
-
-  // Prefill + open the sheet when opened from a tapped hour on the day grid,
-  // or from a quick-add chip on Today (which passes a type).
-  useEffect(() => {
-    if (typeof params.date === 'string' && params.date) setDate(params.date);
-    if (typeof params.time === 'string' && params.time) setTime(params.time);
-    const t = params.type;
-    if (t === 'event' || t === 'task' || t === 'grocery' || t === 'other') {
-      setType(t);
-      setDetailsOpen(true);
-    }
-    if (typeof params.date === 'string' && params.date) setDetailsOpen(true);
-  }, [params.date, params.time, params.type]);
 
   async function onSave() {
     if (!type) {
