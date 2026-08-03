@@ -246,6 +246,12 @@ const FROZEN_ARTIFACTS = JSON.parse(
   readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'frozen-artifacts.json'), 'utf8'),
 );
 
+test('0096 postcondition identifiers are explicitly frozen before staging collection', () => {
+  const sql = readFileSync(new URL('./0096-postconditions-readonly.sql', import.meta.url), 'utf8');
+  assertReadOnlyCatalogSql(sql);
+  assertCatalogIdentifiersAllowlisted(sql, FROZEN_ARTIFACTS);
+});
+
 test('pending approval template exactly fingerprints the current executable package', () => {
   const directory = path.dirname(fileURLToPath(import.meta.url));
   const collectorSource = readFileSync(path.join(directory, 'collect-readonly.mjs'), 'utf8');
