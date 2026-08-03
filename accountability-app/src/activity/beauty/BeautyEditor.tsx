@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -565,11 +565,14 @@ export function BeautyEditor({
   const onSettingsChangeRef = useRef(onSettingsChange);
   const onSourceLeaseAcceptedRef = useRef(onSourceLeaseAccepted);
   const originalUri = source.sourceUri;
-  latestSettings.current = settings;
-  onDoneRef.current = onDone;
-  onRetakeRef.current = onRetake;
-  onSettingsChangeRef.current = onSettingsChange;
-  onSourceLeaseAcceptedRef.current = onSourceLeaseAccepted;
+
+  useLayoutEffect(() => {
+    latestSettings.current = settings;
+    onDoneRef.current = onDone;
+    onRetakeRef.current = onRetake;
+    onSettingsChangeRef.current = onSettingsChange;
+    onSourceLeaseAcceptedRef.current = onSourceLeaseAccepted;
+  }, [onDone, onRetake, onSettingsChange, onSourceLeaseAccepted, settings]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -581,14 +584,17 @@ export function BeautyEditor({
   useEffect(() => {
     const leaseAccepted = onSourceLeaseAcceptedRef.current?.() ?? true;
     if (!leaseAccepted) {
-      setProcessing(false);
-      setError(SAFE_RENDER_ERROR);
-      return;
+      let active = true;
+      queueMicrotask(() => {
+        if (!active || !mountedRef.current) return;
+        setProcessing(false);
+        setError(SAFE_RENDER_ERROR);
+      });
+      return () => {
+        active = false;
+      };
     }
-    if (Platform.OS === 'web') {
-      setProcessing(false);
-      return;
-    }
+    if (Platform.OS === 'web') return;
     const coordinator = createBeautyRenderCoordinator({
       sourceCacheItemId: source.cacheItemId,
       ownerToken,
