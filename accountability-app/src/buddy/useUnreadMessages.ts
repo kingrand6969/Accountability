@@ -11,25 +11,29 @@ export function useUnreadMessages(userId: string | null): {
   unread: number;
   refresh: () => void;
 } {
-  const [unread, setUnread] = useState(0);
-  const mounted = useRef(true);
+  const [snapshot, setSnapshot] = useState<{
+    userId: string;
+    unread: number;
+  } | null>(null);
+  const requestSequence = useRef(0);
+  const unread =
+    userId && snapshot?.userId === userId ? snapshot.unread : 0;
 
   const refresh = useCallback(() => {
+    if (!userId) return;
+    const requestedUserId = userId;
+    const request = ++requestSequence.current;
     unreadMessageCount()
       .then((count) => {
-        if (mounted.current) setUnread(count);
+        if (request === requestSequence.current) {
+          setSnapshot({ userId: requestedUserId, unread: count });
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    mounted.current = true;
-    if (!userId) {
-      setUnread(0);
-      return () => {
-        mounted.current = false;
-      };
-    }
+    if (!userId) return;
 
     refresh();
     const channel = supabase
@@ -47,7 +51,7 @@ export function useUnreadMessages(userId: string | null): {
       .subscribe();
 
     return () => {
-      mounted.current = false;
+      requestSequence.current += 1;
       void supabase.removeChannel(channel);
     };
   }, [refresh, userId]);
