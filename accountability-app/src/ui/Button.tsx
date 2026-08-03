@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -36,7 +36,7 @@ export function Button({
 }: Props) {
   const v = VARIANTS[variant];
   const inactive = disabled || loading;
-  const scale = useRef(new Animated.Value(1)).current;
+  const [scale] = useState(() => new Animated.Value(1));
 
   // springy press-in/out — motion tied to the touch, interruptible
   function pressTo(value: number) {
