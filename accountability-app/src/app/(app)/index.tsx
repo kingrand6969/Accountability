@@ -1,105 +1,96 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
-  Image,
   Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
-import { listFeed, setLiked, FEED_PAGE_SIZE } from '../../feed/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
+import {
+  FEED_PAGE_SIZE,
+  listEncouragementPreviews,
+  listFeed,
+  setLiked,
+  type EncouragementPreview,
+  type FeedMode,
+} from '../../feed/api';
 import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
 import { attendEvent } from '../../events/api';
-import { SaveToMemories } from '../../memories/SaveToMemories';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
 import { AdCard } from '../../pro/AdCard';
-import { ADS_ENABLED } from '../../pro/monetization';
+import { useFeedAdsReady } from '../../pro/adAdapter';
 import { useIsPro } from '../../pro/ProProvider';
 import { showToast } from '../../ui/Toast';
-import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
-import { Avatar } from '../../feed/Avatar';
 import { BroadcastSheet } from '../../feed/BroadcastSheet';
-import { PostImage } from '../../feed/PostImage';
+import { Avatar } from '../../feed/Avatar';
 import { useUnreadNotifications } from '../../notify/useUnread';
 import { getMyProfile } from '../../profiles/api';
 import type { FeedPost } from '../../feed/types';
 import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
 import { hapticTap } from '../../ui/haptics';
+import { DiscoverExperience } from '../../discover/DiscoverExperience';
+import { SocialBrandHeader } from '../../feed/SocialBrandHeader';
+import {
+  SocialModeSelector,
+  deriveFeedViewState,
+  deriveMyDayValues,
+  feedRowsBelongToView,
+  restoreFeedSession,
+  scheduleIdentityBoundAction,
+} from '../../feed/SocialModeSelector';
+import { MyDayRail } from '../../feed/MyDayRail';
+import { FeedProofCard } from '../../feed/FeedProofCard';
 
-type IoniconName = ComponentProps<typeof Ionicons>['name'];
-
-// a sponsored card every N posts for free members (Pro sees none)
-const AD_EVERY = 5;
+type IoniconName = keyof typeof Ionicons.glyphMap;
+type CreateItem = {
+  icon: IoniconName;
+  tint: string;
+  title: string;
+  sub: string;
+} & ({ kind: 'story' } | { kind: 'route'; route: string });
 type FeedRow = { kind: 'post'; post: FeedPost } | { kind: 'ad'; id: string };
 
-// warm hairline for subtle in-post lines (content ↔ actions).
-const HAIRLINE = '#ece9e3';
-// between-post divider — thicker + a visible light grey so the separation
-// actually reads on a phone (the near-white hairline vanished).
-const DIVIDER = '#d8dce2';
+const AD_EVERY = 5;
+const FEED_SESSION_KEY = 'feed-session-v1';
+const CREATE_ITEMS: CreateItem[] = [
+  { icon: 'create-outline', tint: colors.primary, title: 'Post', sub: 'Share a win or an update', kind: 'route', route: '/compose' },
+  { icon: 'add-circle-outline', tint: '#db2777', title: 'My Day', sub: 'Share a photo for 24 hours', kind: 'story' },
+  { icon: 'flame-outline', tint: '#f59e0b', title: 'Win card', sub: 'Share your streak as an image', kind: 'route', route: '/win-card' },
+  { icon: 'people-outline', tint: '#16a34a', title: 'Group', sub: 'Start a community', kind: 'route', route: '/group-new' },
+  { icon: 'storefront-outline', tint: '#0d9488', title: 'Page', sub: 'For your gym, coaching or brand', kind: 'route', route: '/page-new' },
+];
 
-/** The left activity spine colour, derived from what the post actually is.
- *  Muted on purpose. (True per-workout colour needs activity metadata on the
- *  post — a follow-up; today posts are free text / photo / event.) */
-function spineColor(post: FeedPost): string {
-  if (post.event) return '#88b0e8'; // event — a happening (soft blue)
-  if (post.image_url) return '#e3b184'; // a shared photo / moment (soft amber)
-  return '#d6dce4'; // plain text — quiet neutral
-}
-
-function HeaderIcon({
+function QuickShare({
   icon,
-  size = 24,
   label,
   onPress,
 }: {
   icon: IoniconName;
-  size?: number;
   label: string;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      style={({ pressed }) => [styles.quickShare, pressed && styles.pressed]}
+      accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => ({
-        minWidth: 36,
-        minHeight: 44,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: pressed ? 0.6 : 1,
-      })}
     >
-      <Ionicons name={icon} size={size} color={colors.primary} />
-    </Pressable>
-  );
-}
-
-/** Header bell with a live unread dot — opens the Notifications screen. */
-function NotificationsBell({ onPress }: { onPress: () => void }) {
-  const { unread } = useUnreadNotifications();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityLabel="Notifications"
-      style={({ pressed }) => ({
-        minWidth: 36,
-        minHeight: 44,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: pressed ? 0.6 : 1,
-      })}
-    >
-      <Ionicons name="notifications-outline" size={24} color={colors.primary} />
-      {unread > 0 ? <View style={styles.headerDot} /> : null}
+      <Ionicons name={icon} size={18} color={colors.primary} />
+      <Text style={styles.quickShareText}>{label}</Text>
     </Pressable>
   );
 }
@@ -107,106 +98,248 @@ function NotificationsBell({ onPress }: { onPress: () => void }) {
 export default function Feed() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { isPro } = useIsPro();
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
+  const [dataMode, setDataMode] = useState<FeedMode | null>(null);
+  const [encouragementPreviews, setEncouragementPreviews] = useState<Map<string, EncouragementPreview>>(new Map());
+  const [feedMode, setFeedMode] = useState<FeedMode>('buddies');
+  const [discoverVisited, setDiscoverVisited] = useState(false);
+  const [restored, setRestored] = useState(false);
+  const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [attending, setAttending] = useState<Set<string>>(new Set());
   const [broadcast, setBroadcast] = useState<FeedPost | null>(null);
-  const [me, setMe] = useState<{ name: string | null; avatar: string | null }>({
-    name: null,
-    avatar: null,
-  });
-  // posts with a like request in flight — blocks double-taps from racing
+  const [me, setMe] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
+  const [profileOwnerId, setProfileOwnerId] = useState<string | null>(null);
   const likesInFlight = useRef<Set<string>>(new Set());
+  const loadGeneration = useRef(0);
   const storyRailRef = useRef<StoryRailHandle>(null);
+  const feedListRef = useRef<FlatList<FeedRow>>(null);
+  const buddiesOffset = useRef(0);
+  const pendingBuddiesOffset = useRef<number | null>(null);
+  const listContentReady = useRef(false);
+  const connectivityRef = useRef(true);
+  const profileGeneration = useRef(0);
+  const currentUserIdRef = useRef(myId);
+  // This latest-value ref prevents a prior identity's delayed action during the render-to-effect gap.
+  // eslint-disable-next-line react-hooks/refs
+  currentUserIdRef.current = myId;
+  const pendingCreateAction = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { unread } = useUnreadNotifications();
+  const { isPro, loading: proLoading } = useIsPro();
 
-  // header: ☰ menu left; ＋ create, pages, groups right
   useEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => (
-        <View style={{ marginLeft: 8 }}>
-          <HeaderIcon icon="menu-outline" size={26} label="Menu" onPress={() => router.push('/menu' as never)} />
-        </View>
-      ),
-      headerRight: () => (
-        <View style={{ flexDirection: 'row', marginRight: 8 }}>
-          <HeaderIcon icon="search-outline" size={24} label="Search" onPress={() => router.push('/search' as never)} />
-          <HeaderIcon icon="add-circle-outline" size={25} label="Create" onPress={() => setCreateOpen(true)} />
-          <NotificationsBell onPress={() => router.push('/notifications' as never)} />
-        </View>
-      ),
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
+  useEffect(() => {
+    return () => {
+      currentUserIdRef.current = null;
+      if (pendingCreateAction.current) clearTimeout(pendingCreateAction.current);
+      pendingCreateAction.current = null;
+    };
+  }, [myId]);
+
+  useEffect(() => {
+    const generation = ++profileGeneration.current;
+    let alive = true;
+    void Promise.resolve().then(async () => {
+      if (!alive || generation !== profileGeneration.current) return;
+      setMe({ name: null, avatar: null });
+      setProfileOwnerId(null);
+      if (!myId) return;
+      try {
+        const profile = await getMyProfile();
+        if (!alive || generation !== profileGeneration.current) return;
+        setMe({ name: profile?.display_name ?? null, avatar: profile?.avatar_url ?? null });
+        setProfileOwnerId(myId);
+      } catch {
+        // The signed-in feed remains usable without profile decoration.
+      }
     });
-  }, [navigation, router]);
+    return () => {
+      alive = false;
+      profileGeneration.current += 1;
+    };
+  }, [myId]);
 
   useEffect(() => {
-    getMyProfile()
-      .then((p) => setMe({ name: p?.display_name ?? null, avatar: p?.avatar_url ?? null }))
-      .catch(() => {});
-  }, []);
-
-  const CREATE_ITEMS: { icon: IoniconName; tint: string; title: string; sub: string; action: () => void }[] = [
-    {
-      icon: 'create-outline',
-      tint: colors.primary,
-      title: 'Post',
-      sub: 'Share a win or an update',
-      action: () => router.push('/compose' as never),
-    },
-    {
-      icon: 'add-circle-outline',
-      tint: '#db2777',
-      title: 'Story',
-      sub: 'A photo that lasts 24 hours',
-      action: () => storyRailRef.current?.openPicker(),
-    },
-    {
-      icon: 'flame-outline',
-      tint: '#f59e0b',
-      title: 'Win card',
-      sub: 'Share your streak as an image',
-      action: () => router.push('/win-card'),
-    },
-    {
-      icon: 'people-outline',
-      tint: '#16a34a',
-      title: 'Group',
-      sub: 'Start a community',
-      action: () => router.push('/group-new' as never),
-    },
-    {
-      icon: 'storefront-outline',
-      tint: '#0d9488',
-      title: 'Page',
-      sub: 'For your gym, coaching or brand',
-      action: () => router.push('/page-new' as never),
-    },
-  ];
+    let alive = true;
+    loadGeneration.current += 1;
+    void Promise.resolve().then(async () => {
+      if (!alive) return;
+      setRestored(false);
+      setPosts([]);
+      setDataOwnerId(null);
+      setDataMode(null);
+      setEncouragementPreviews(new Map());
+      setLoadError(null);
+      setLoadingMore(false);
+      setRefreshing(false);
+      setEndReached(false);
+      setLoading(!!myId);
+      setMe({ name: null, avatar: null });
+      setProfileOwnerId(null);
+      setBroadcast(null);
+      setAttending(new Set());
+      setCreateOpen(false);
+      likesInFlight.current.clear();
+      pendingBuddiesOffset.current = null;
+      listContentReady.current = false;
+      try {
+        const raw = await AsyncStorage.getItem(FEED_SESSION_KEY);
+        const saved = restoreFeedSession(raw ? JSON.parse(raw) : null);
+        if (!alive) return;
+        buddiesOffset.current = saved.buddiesOffset;
+        pendingBuddiesOffset.current = saved.buddiesOffset;
+        setFeedMode(saved.mode);
+        setDiscoverVisited(saved.mode === 'discover');
+      } catch {
+        // Harmless preferences are optional.
+      } finally {
+        if (alive) setRestored(true);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [myId]);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    if (feedMode === 'buddies') {
+      pendingBuddiesOffset.current = buddiesOffset.current;
+      listContentReady.current = false;
+    }
+    setLoadError(null);
+    setLoadingMore(false);
+    if (!myId) {
+      setPosts([]);
+      setDataOwnerId(null);
+      setDataMode(null);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
-      const page = await listFeed();
+      const page = await listFeed(undefined, undefined, undefined, feedMode);
+      if (generation !== loadGeneration.current) return;
       setPosts(page);
+      setDataOwnerId(myId);
+      setDataMode(feedMode);
       setEndReached(page.length < FEED_PAGE_SIZE);
-    } catch (e) {
-      Alert.alert('Could not load the feed', String((e as Error).message ?? e));
+      try {
+        const previews = await listEncouragementPreviews(page.map((post) => post.id));
+        if (generation !== loadGeneration.current) return;
+        setEncouragementPreviews(previews);
+      } catch {
+        if (generation !== loadGeneration.current) return;
+        setEncouragementPreviews(new Map());
+      }
+    } catch (error) {
+      if (generation !== loadGeneration.current) return;
+      setLoadError(String((error as Error).message ?? error));
     } finally {
+      if (generation !== loadGeneration.current) return;
       setLoading(false);
       setRefreshing(false);
     }
+  }, [feedMode, myId]);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const nextOnline = state.isConnected !== false && state.isInternetReachable !== false;
+      connectivityRef.current = nextOnline;
+      setOnline(nextOnline);
+    });
+    return unsubscribe;
   }, []);
+
+  const previousOnline = useRef(true);
+  useEffect(() => {
+    const reconnected = !previousOnline.current && online;
+    previousOnline.current = online;
+    if (reconnected && restored && myId) void load();
+  }, [load, myId, online, restored]);
+
+  const persistFeedPosition = useCallback(() => {
+    void AsyncStorage.setItem(
+      FEED_SESSION_KEY,
+      JSON.stringify({ mode: feedMode, buddiesOffset: buddiesOffset.current }),
+    );
+  }, [feedMode]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        loadGeneration.current += 1;
+        pendingBuddiesOffset.current = buddiesOffset.current;
+        listContentReady.current = false;
+        persistFeedPosition();
+        return;
+      }
+      if (restored && myId && connectivityRef.current) void load();
+    });
+    return () => subscription.remove();
+  }, [load, myId, persistFeedPosition, restored]);
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      load();
-    }, [load]),
+      if (restored) {
+        setLoading(true);
+        void load();
+      }
+      return () => {
+        loadGeneration.current += 1;
+        pendingBuddiesOffset.current = buddiesOffset.current;
+        listContentReady.current = false;
+        persistFeedPosition();
+      };
+    }, [load, persistFeedPosition, restored]),
   );
+
+  function changeFeedMode(mode: FeedMode) {
+    if (mode === feedMode) return;
+    if (feedMode === 'buddies') {
+      pendingBuddiesOffset.current = buddiesOffset.current;
+      listContentReady.current = false;
+    }
+    if (mode === 'discover') setDiscoverVisited(true);
+    setFeedMode(mode);
+    void AsyncStorage.setItem(FEED_SESSION_KEY, JSON.stringify({ mode, buddiesOffset: buddiesOffset.current }));
+    if (mode === 'buddies') {
+      pendingBuddiesOffset.current = buddiesOffset.current;
+    }
+  }
+
+  function rememberModeOffset(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (feedMode === 'buddies') {
+      buddiesOffset.current = event.nativeEvent.contentOffset.y;
+    }
+  }
+
+  function restorePendingBuddiesOffset() {
+    if (
+      feedMode !== 'buddies' ||
+      pendingBuddiesOffset.current == null ||
+      !listContentReady.current ||
+      !feedListRef.current
+    ) return;
+    const offset = pendingBuddiesOffset.current;
+    requestAnimationFrame(() => {
+      const list = feedListRef.current;
+      if (!list) return;
+      list.scrollToOffset({ offset, animated: false });
+      if (pendingBuddiesOffset.current === offset) pendingBuddiesOffset.current = null;
+    });
+  }
 
   async function onRefresh() {
     setRefreshing(true);
@@ -216,18 +349,27 @@ export default function Feed() {
   async function onLoadMore() {
     if (loadingMore || endReached || loading || posts.length === 0) return;
     setLoadingMore(true);
+    const generation = loadGeneration.current;
     try {
       const oldest = posts[posts.length - 1].created_at;
-      const page = await listFeed(oldest);
+      const page = await listFeed(oldest, undefined, undefined, feedMode);
+      if (generation !== loadGeneration.current) return;
       if (page.length < FEED_PAGE_SIZE) setEndReached(true);
       if (page.length > 0) {
-        setPosts((cur) => {
-          const seen = new Set(cur.map((p) => p.id));
-          return [...cur, ...page.filter((p) => !seen.has(p.id))];
+        setPosts((current) => {
+          const seen = new Set(current.map((post) => post.id));
+          return [...current, ...page.filter((post) => !seen.has(post.id))];
         });
+        try {
+          const previews = await listEncouragementPreviews(page.map((post) => post.id));
+          if (generation !== loadGeneration.current) return;
+          setEncouragementPreviews((current) => new Map([...current, ...previews]));
+        } catch {
+          // Posts remain available when supporter summaries cannot refresh.
+        }
       }
     } catch {
-      // silent — user can scroll again to retry
+      // A later scroll can retry without replacing already loaded posts.
     } finally {
       setLoadingMore(false);
     }
@@ -235,94 +377,175 @@ export default function Feed() {
 
   async function onAttend(post: FeedPost) {
     if (!post.event || attending.has(post.event.group_id)) return;
-    setAttending((cur) => new Set(cur).add(post.event!.group_id));
+    setAttending((current) => new Set(current).add(post.event!.group_id));
     try {
       await attendEvent(post.event.group_id);
       showToast(`You're in! Added to the "${post.event.title}" group 🎉`);
-    } catch (e) {
-      setAttending((cur) => {
-        const n = new Set(cur);
-        n.delete(post.event!.group_id);
-        return n;
+    } catch (error) {
+      setAttending((current) => {
+        const next = new Set(current);
+        next.delete(post.event!.group_id);
+        return next;
       });
-      Alert.alert('Could not join', String((e as Error).message ?? e));
+      Alert.alert('Could not join', String((error as Error).message ?? error));
     }
   }
 
   async function onToggleLike(post: FeedPost) {
-    if (likesInFlight.current.has(post.id)) return; // one request per post at a time
+    if (likesInFlight.current.has(post.id)) return;
     likesInFlight.current.add(post.id);
     const liked = !post.liked_by_me;
     if (liked) hapticTap();
-    setPosts((cur) =>
-      cur.map((p) =>
-        p.id === post.id
-          ? { ...p, liked_by_me: liked, like_count: Math.max(0, p.like_count + (liked ? 1 : -1)) }
-          : p,
+    setPosts((current) =>
+      current.map((item) =>
+        item.id === post.id
+          ? { ...item, liked_by_me: liked, like_count: Math.max(0, item.like_count + (liked ? 1 : -1)) }
+          : item,
       ),
     );
     try {
       await setLiked(post.id, liked);
-    } catch (e) {
-      setPosts((cur) =>
-        cur.map((p) =>
-          p.id === post.id
-            ? { ...p, liked_by_me: !liked, like_count: Math.max(0, p.like_count + (liked ? -1 : 1)) }
-            : p,
+    } catch (error) {
+      setPosts((current) =>
+        current.map((item) =>
+          item.id === post.id
+            ? { ...item, liked_by_me: !liked, like_count: Math.max(0, item.like_count + (liked ? -1 : 1)) }
+            : item,
         ),
       );
-      Alert.alert('Could not update like', String((e as Error).message ?? e));
+      Alert.alert('Could not update like', String((error as Error).message ?? error));
     } finally {
       likesInFlight.current.delete(post.id);
     }
   }
 
-  // ── post ⋮ menu: hide / report a buddy's post, remove your own ────────────
-  function onPostMenu(item: FeedPost) {
-    showPostMenu(item, myId, (postId) => setPosts((cur) => cur.filter((p) => p.id !== postId)));
+  function onPostMenu(post: FeedPost) {
+    showPostMenu(post, myId, (postId) => setPosts((current) => current.filter((item) => item.id !== postId)));
   }
 
-  // interleave a sponsored card every AD_EVERY posts (free members only)
+  const adsReady = useFeedAdsReady();
+  const visiblePosts = useMemo(
+    () => (feedRowsBelongToView(dataOwnerId, myId, dataMode, feedMode) ? posts : []),
+    [dataMode, dataOwnerId, feedMode, myId, posts],
+  );
   const feedData = useMemo<FeedRow[]>(() => {
     const rows: FeedRow[] = [];
-    posts.forEach((p, i) => {
-      rows.push({ kind: 'post', post: p });
-      if (ADS_ENABLED && !isPro && (i + 1) % AD_EVERY === 0) rows.push({ kind: 'ad', id: `ad-${p.id}` });
+    visiblePosts.forEach((post, index) => {
+      rows.push({ kind: 'post', post });
+      if (adsReady && !isPro && !proLoading && (index + 1) % AD_EVERY === 0) {
+        rows.push({ kind: 'ad', id: `ad-${post.id}` });
+      }
     });
     return rows;
-  }, [posts, isPro]);
+  }, [adsReady, isPro, proLoading, visiblePosts]);
+  const connectionCount = useMemo(
+    () => [...encouragementPreviews.values()].reduce((total, preview) => total + preview.count, 0),
+    [encouragementPreviews],
+  );
+  const myDayValues = useMemo(
+    () => deriveMyDayValues(visiblePosts, myId, connectionCount),
+    [connectionCount, myId, visiblePosts],
+  );
+  const viewState = deriveFeedViewState({
+    loading,
+    loadingMore,
+    postCount: visiblePosts.length,
+    error: loadError,
+    online,
+  });
+
+  const feedHeader = (
+    <>
+      <View style={styles.promptWrap}>
+        <Pressable
+          style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
+          onPress={() => router.push('/compose' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Share a win — create a post"
+        >
+          <Avatar
+            url={profileOwnerId === myId ? me.avatar : null}
+            name={profileOwnerId === myId ? me.name : null}
+            size={36}
+          />
+          <Text style={styles.promptText} numberOfLines={1}>Inspire us today!</Text>
+        </Pressable>
+        <View style={styles.composerDivider} />
+        <View style={styles.quickShareRow}>
+          <QuickShare icon="create-outline" label="Post" onPress={() => router.push('/compose' as never)} />
+          <View style={styles.quickShareDivider} />
+          <QuickShare icon="images-outline" label="Photo" onPress={() => router.push('/compose?photo=1' as never)} />
+          <View style={styles.quickShareDivider} />
+          <QuickShare icon="sparkles-outline" label="Flex" onPress={() => router.push('/win-card' as never)} />
+        </View>
+      </View>
+      <MyDayRail values={myDayValues} />
+      {viewState === 'offline-cached' || viewState === 'offline-uncached' ? (
+        <View style={styles.offlineNotice} accessible accessibilityLabel="Offline">
+          <Ionicons name="cloud-offline-outline" size={18} color={colors.textMuted} />
+          <Text style={styles.offlineText}>
+            {viewState === 'offline-cached' ? 'Offline · showing saved posts' : 'Offline · no saved posts available'}
+          </Text>
+        </View>
+      ) : null}
+      {loadError ? (
+        <Pressable style={styles.inlineError} onPress={load} accessibilityRole="button" accessibilityLabel="Feed could not refresh. Retry">
+          <Ionicons name="cloud-offline-outline" size={19} color={colors.danger} />
+          <View style={styles.inlineErrorCopy}>
+            <Text style={styles.inlineErrorTitle}>Feed could not refresh</Text>
+            <Text style={styles.inlineErrorText} numberOfLines={2}>{loadError} Tap to retry.</Text>
+          </View>
+        </Pressable>
+      ) : null}
+    </>
+  );
 
   return (
     <View style={styles.screen}>
-      {/* ＋ create sheet */}
-      <Modal
-        visible={createOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCreateOpen(false)}
-      >
+      <SocialBrandHeader
+        unread={unread}
+        onMenu={() => router.push('/menu' as never)}
+        onSearch={() => router.push('/search' as never)}
+        onCreate={() => setCreateOpen(true)}
+        onNotifications={() => router.push('/notifications' as never)}
+      />
+      <Modal visible={!!myId && createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <BlurView
-              intensity={60}
-              tint="light"
-              style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
-            />
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <BlurView intensity={60} tint="light" style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]} />
             <View style={styles.sheetGlass} />
             <Text style={styles.sheetTitle}>Create</Text>
             {CREATE_ITEMS.map((item) => (
               <Pressable
                 key={item.title}
+                disabled={item.kind === 'story' && !myId}
                 style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
                 onPress={() => {
+                  const requestedUserId = myId;
+                  if (!requestedUserId) return;
                   setCreateOpen(false);
-                  setTimeout(item.action, 250); // let the sheet close first
+                  if (pendingCreateAction.current) clearTimeout(pendingCreateAction.current);
+                  pendingCreateAction.current = scheduleIdentityBoundAction(
+                    requestedUserId,
+                    () => currentUserIdRef.current,
+                    () => {
+                      if (item.kind === 'story') {
+                        storyRailRef.current?.openPicker();
+                      } else {
+                        router.push(item.route as never);
+                      }
+                    },
+                    250,
+                    () => {
+                      pendingCreateAction.current = null;
+                    },
+                  );
                 }}
               >
                 <View style={[styles.sheetIcon, { backgroundColor: `${item.tint}15` }]}>
                   <Ionicons name={item.icon} size={20} color={item.tint} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.sheetCopy}>
                   <Text style={styles.sheetRowTitle}>{item.title}</Text>
                   <Text style={styles.sheetRowSub}>{item.sub}</Text>
                 </View>
@@ -331,490 +554,129 @@ export default function Feed() {
           </Pressable>
         </Pressable>
       </Modal>
-
-      {/* slim prompt row — opens the full-screen composer (FB-style, above stories) */}
-      <View style={styles.promptWrap}>
-        <Pressable
-          style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
-          onPress={() => router.push('/compose' as never)}
-          accessibilityRole="button"
-          accessibilityLabel="Share a win — create a post"
-        >
-          <Avatar url={me.avatar} name={me.name} size={40} />
-          <Text style={styles.promptText}>Share a win or FLEX!</Text>
-          <Pressable
-            onPress={() => router.push('/compose?photo=1' as never)}
-            hitSlop={8}
-            style={({ pressed }) => [styles.promptPhoto, pressed && styles.pressed]}
-            accessibilityLabel="Add a photo"
-          >
-            <Ionicons name="images-outline" size={24} color={colors.primary} />
-          </Pressable>
-        </Pressable>
-      </View>
-      <View style={styles.storyStrip}>
-        <StoryRail ref={storyRailRef} />
-      </View>
-
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+      {myId ? (
+        <View style={styles.hiddenStoryController} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          <StoryRail
+            key={myId}
+            ref={storyRailRef}
+            meName={profileOwnerId === myId ? me.name : null}
+            meAvatar={profileOwnerId === myId ? me.avatar : null}
+            controllerOnly
+          />
         </View>
-      ) : (
-        <FlatList
-          data={feedData}
-          keyExtractor={(row) => (row.kind === 'post' ? row.post.id : row.id)}
-          contentContainerStyle={feedData.length === 0 ? styles.emptyWrap : styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-          }
-          onEndReached={onLoadMore}
-          onEndReachedThreshold={0.4}
-          ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator style={styles.footerSpinner} color={colors.primary} />
-            ) : null
-          }
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Ionicons name="people-outline" size={40} color={colors.textFaint} />
-              <Text style={styles.emptyTitle}>No posts yet</Text>
-              <Text style={styles.emptySub}>Be the first to share something.</Text>
-            </View>
-          }
-          renderItem={({ item: row }) => {
-            if (row.kind === 'ad') {
-              return (
-                <View style={styles.adWrap}>
-                  <AdCard onGoPro={() => router.push('/paywall' as never)} />
-                </View>
-              );
-            }
-            const item = row.post;
-            return (
-            <View style={styles.post}>
-              <View style={[styles.spine, { backgroundColor: spineColor(item) }]} />
-              <View style={styles.postBody}>
-              <View style={styles.cardHeader}>
-                <View style={[styles.avRing, { borderColor: spineColor(item) }]}>
-                  <Avatar url={item.author_avatar} name={item.author_name} size={40} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.author}>{authorLabel(item.author_name)}</Text>
-                  <Text style={styles.time}>
-                    {timeAgo(item.created_at)}
-                    {item.tagged.length > 0 ? ` · ${taggedLabel(item.tagged)}` : ''}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => onPostMenu(item)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel="Post options"
-                  style={({ pressed }) => [styles.postMenuBtn, pressed && styles.pressed]}
-                >
-                  <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
-                </Pressable>
-              </View>
-              {item.body ? (
-                <Pressable
-                  onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
-                  accessibilityRole="link"
-                  accessibilityLabel="Open post"
-                >
-                  <Text style={styles.body}>{item.body}</Text>
-                </Pressable>
-              ) : null}
-              {item.event ? (
-                <View style={styles.eventBox}>
-                  <View style={styles.eventIconWrap}>
-                    <Ionicons name="calendar" size={20} color={colors.success} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.eventTitle} numberOfLines={2}>
-                      {item.event.title}
-                    </Text>
-                    <Text style={styles.eventMeta}>
-                      {new Date(item.event.starts_at).toLocaleString(undefined, {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                      {item.event.location ? ` · ${item.event.location}` : ''}
-                    </Text>
-                  </View>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.attendBtn,
-                      attending.has(item.event!.group_id) && styles.attendDone,
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => onAttend(item)}
-                    accessibilityLabel={`Attend ${item.event.title}`}
-                  >
-                    <Text style={styles.attendText}>
-                      {attending.has(item.event.group_id) ? 'Going ✓' : 'Attend'}
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : null}
-              {item.image_url ? (
-                <View style={{ alignSelf: 'stretch' }}>
-                  <Pressable
-                    onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
-                    style={({ pressed }) => [{ alignSelf: 'stretch' as const }, pressed && { opacity: 0.9 }]}
-                    accessibilityRole="link"
-                    accessibilityLabel="Open post"
-                  >
-                    <PostImage url={item.image_url} capTall />
-                  </Pressable>
-                  <SaveToMemories url={item.image_url} />
-                </View>
-              ) : null}
-              <View style={styles.actions}>
-                <Pressable
-                  style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  onPress={() => onToggleLike(item)}
-                  hitSlop={8}
-                  accessibilityLabel={item.liked_by_me ? 'Remove cheer' : 'Cheer'}
-                >
-                  <Ionicons
-                    name={item.liked_by_me ? 'flame' : 'flame-outline'}
-                    size={19}
-                    color={item.liked_by_me ? colors.cheer : colors.textMuted}
-                  />
-                  <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
-                    {item.like_count}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-                  onPress={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
-                  hitSlop={8}
-                  accessibilityLabel="View comments"
-                >
-                  <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
-                  <Text style={styles.actionText}>{item.comment_count}</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.action, styles.actionEnd, pressed && styles.pressed]}
-                  onPress={() => setBroadcast(item)}
-                  hitSlop={8}
-                  accessibilityLabel="Broadcast this post"
-                >
-                  <Ionicons name="megaphone-outline" size={18} color={colors.textMuted} />
-                </Pressable>
-              </View>
-              </View>
-            </View>
-            );
-          }}
-        />
-      )}
+      ) : null}
 
-      {/* broadcast — send to buddies or blast to other apps */}
-      <BroadcastSheet post={broadcast} onClose={() => setBroadcast(null)} />
+      <SocialModeSelector value={feedMode} onChange={changeFeedMode} />
+      {/* Discover owns its ScrollView; explicit offset persistence is deferred to Task 3.3. */}
+      <View style={feedMode === 'discover' ? styles.modeVisible : styles.modeHidden}>
+        {discoverVisited ? <DiscoverExperience /> : null}
+      </View>
+      <View style={feedMode === 'buddies' ? styles.modeVisible : styles.modeHidden}>
+        {feedMode !== 'buddies' ? null : loading ? (
+          <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
+        ) : (
+          <FlatList
+            ref={feedListRef}
+            data={feedData}
+            onScroll={rememberModeOffset}
+            onScrollEndDrag={persistFeedPosition}
+            onMomentumScrollEnd={persistFeedPosition}
+            onContentSizeChange={() => {
+              listContentReady.current = true;
+              restorePendingBuddiesOffset();
+            }}
+            scrollEventThrottle={16}
+            ListHeaderComponent={feedHeader}
+            keyExtractor={(row) => (row.kind === 'post' ? row.post.id : row.id)}
+            contentContainerStyle={feedData.length === 0 ? styles.emptyWrap : styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+            onEndReached={onLoadMore}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.footerSpinner} color={colors.primary} /> : null}
+            ListEmptyComponent={loadError ? null : (
+              <View style={styles.emptyCard}>
+                <Ionicons name="people-outline" size={38} color={colors.primary} />
+                <Text style={styles.emptyTitle}>No buddy posts yet</Text>
+                <Text style={styles.emptySub}>Share a win or add an accountability buddy.</Text>
+                <View style={styles.emptyActions}>
+                  <Pressable onPress={() => router.push('/compose' as never)} style={styles.emptyPrimary} accessibilityRole="button">
+                    <Text style={styles.emptyPrimaryText}>Share a win</Text>
+                  </Pressable>
+                  <Pressable onPress={() => router.push('/buddy' as never)} style={styles.emptySecondary} accessibilityRole="button">
+                    <Text style={styles.emptySecondaryText}>Find buddies</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+            renderItem={({ item: row }) => {
+              if (row.kind === 'ad') return <View style={styles.adWrap}><AdCard /></View>;
+              const item = row.post;
+              return (
+                <FeedProofCard
+                  post={item}
+                  currentUserId={myId}
+                  preview={encouragementPreviews.get(item.id)}
+                  attending={!!item.event && attending.has(item.event.group_id)}
+                  onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
+                  onMenu={() => onPostMenu(item)}
+                  onAttend={() => onAttend(item)}
+                  onToggleLike={() => onToggleLike(item)}
+                  onShare={() => setBroadcast(item)}
+                  onOpenEncouragement={() => router.push({ pathname: '/post/[id]', params: { id: item.id, encouragement: '1' } } as never)}
+                />
+              );
+            }}
+          />
+        )}
+      </View>
+      <BroadcastSheet
+        post={dataOwnerId === myId && myId ? broadcast : null}
+        onClose={() => setBroadcast(null)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // soft slate feed so the white cards lift off the page (FB/LinkedIn-style)
-  screen: { flex: 1, backgroundColor: colors.surface },
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.45)',
-    justifyContent: 'flex-start',
-    paddingTop: 64,
-    alignItems: 'flex-end',
-    paddingRight: spacing.md,
-  },
-  sheet: {
-    width: 280,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    padding: spacing.sm,
-    gap: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
-  },
-  // translucent tint over the blur so dark text keeps 4.5:1 contrast
-  sheetGlass: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-  },
-  sheetTitle: {
-    fontFamily: font.bold,
-    fontSize: 13,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: 4,
-  },
-  sheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.sm,
-    minHeight: 56,
-  },
-  sheetIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  screen: { flex: 1, backgroundColor: colors.surfaceAlt },
+  modeVisible: { flex: 1 },
+  modeHidden: { display: 'none' },
+  hiddenStoryController: { width: 1, height: 1, overflow: 'hidden', opacity: 0 },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,.45)', paddingTop: 64, alignItems: 'flex-end', paddingRight: spacing.md },
+  sheet: { width: 280, borderRadius: radius.lg, overflow: 'hidden', padding: spacing.sm, ...shadow.card },
+  sheetGlass: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,.82)' },
+  sheetTitle: { fontFamily: font.bold, fontSize: 13, color: colors.textMuted, padding: spacing.md },
+  sheetRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderRadius: radius.sm },
+  sheetIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  sheetCopy: { flex: 1 },
   sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
   sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
-  // stories + composer form a white "sheet" at the top of the slate feed
-  storyStrip: {
-    ...contentMax,
-    backgroundColor: colors.card,
-  },
-  headerDot: {
-    position: 'absolute',
-    top: 8,
-    right: 6,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: '#db2777',
-    borderWidth: 1.5,
-    borderColor: colors.card,
-  },
-  // white "sheet" holding the slim compose prompt
-  promptWrap: {
-    ...contentMax,
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  // bordered like an input, so it reads as "tap here to share a win"
-  promptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 48,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    backgroundColor: colors.surfaceAlt,
-  },
-  promptText: {
-    flex: 1,
-    fontSize: 15.5,
-    fontFamily: font.regular,
-    color: colors.textMuted,
-  },
-  promptPhoto: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  composer: {
-    ...contentMax,
-    backgroundColor: colors.card,
-    padding: spacing.lg,
-    gap: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  composerInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    fontSize: 16,
-    fontFamily: font.regular,
-    color: colors.text,
-    minHeight: 48,
-    backgroundColor: colors.surfaceAlt,
-  },
-  previewWrap: { alignSelf: 'flex-start' },
-  memoriesCheck: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-    minHeight: 32,
-  },
-  memoriesCheckText: { fontFamily: font.semibold, fontSize: 13, color: colors.textMuted },
-  tagEmpty: {
-    fontFamily: font.regular,
-    fontSize: 13.5,
-    color: colors.textMuted,
-    padding: spacing.md,
-    lineHeight: 19,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    minHeight: 48,
-  },
-  tagName: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.text },
-  tagDone: {
-    alignSelf: 'stretch',
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: spacing.sm,
-  },
-  tagDoneText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
-  preview: { width: 110, height: 110, borderRadius: radius.sm, backgroundColor: colors.surface },
-  previewRemove: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: colors.text,
-    borderRadius: 11,
-    width: 22,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  composerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  eventForm: { gap: spacing.sm },
-  eventInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    fontSize: 14.5,
-    fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
-  },
-  eventHint: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted },
-  eventBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.successSoft,
-    borderWidth: 1,
-    borderColor: colors.success,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  eventIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventTitle: { fontFamily: font.bold, fontSize: 14.5, color: colors.text },
-  eventMeta: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
-  attendBtn: {
-    backgroundColor: colors.success,
-    borderRadius: radius.pill,
-    paddingVertical: 9,
-    paddingHorizontal: 15,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  attendDone: { backgroundColor: colors.textMuted },
-  attendText: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
-  photoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    minHeight: 44,
-  },
-  photoBtnText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
-  // pushes Photo/Live/Event toward the right, away from the left-anchored Post
-  firstAction: { marginLeft: 'auto' },
-  postBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    paddingVertical: 11,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  postBtnDisabled: { opacity: 0.5 },
-  postBtnText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  promptWrap: { ...contentMax, width: '93%', alignSelf: 'center', marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.card, overflow: 'hidden', ...shadow.card },
+  promptRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md },
+  promptText: { flex: 1, fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
+  composerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: spacing.lg },
+  quickShareRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center' },
+  quickShare: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  quickShareDivider: { width: StyleSheet.hairlineWidth, height: 24, backgroundColor: colors.border },
+  quickShareText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 13.5 },
+  inlineError: { minHeight: 58, margin: spacing.md, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+  inlineErrorCopy: { flex: 1 },
+  inlineErrorTitle: { color: colors.danger, fontFamily: font.bold, fontSize: 13 },
+  inlineErrorText: { color: colors.textSecondary, fontFamily: font.medium, fontSize: 11.5 },
+  offlineNotice: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md },
+  offlineText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   pressed: { opacity: 0.7 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
-  emptyWrap: { flexGrow: 1 },
-  // borderless timeline: posts are one continuous white surface split by
-  // day dividers + hairlines — no floating tiles, no gap.
-  list: { paddingBottom: 110, ...contentMax },
-  post: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderBottomWidth: 2,
-    borderBottomColor: DIVIDER,
-  },
-  spine: { width: 3, alignSelf: 'stretch' },
-  postBody: { flex: 1, padding: spacing.lg, gap: spacing.sm },
-  avRing: { borderRadius: 999, borderWidth: 1.5, padding: 2 },
-  adWrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 2, borderBottomColor: DIVIDER },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl },
+  list: { paddingTop: spacing.sm, paddingBottom: 110, ...contentMax },
+  emptyWrap: { paddingBottom: 110, ...contentMax },
+  adWrap: { marginHorizontal: spacing.md, marginBottom: spacing.md, borderRadius: radius.lg, overflow: 'hidden' },
   footerSpinner: { paddingVertical: spacing.lg },
-  emptyTitle: { fontSize: 17, fontFamily: font.bold, color: colors.text, marginTop: 4 },
-  emptySub: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadow.card,
-  },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  postMenuBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-  },
-  author: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
-  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: colors.text },
-  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: colors.surface },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xl,
-    marginTop: 4,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: HAIRLINE,
-  },
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.xs,
-    minHeight: 32,
-  },
-  // broadcast sits apart on the right — like/comment stay as a left cluster
-  actionEnd: { marginLeft: 'auto' },
-  actionText: { fontSize: 14, color: colors.textMuted, fontFamily: font.semibold },
-  liked: { color: colors.cheer },
+  emptyCard: { alignItems: 'center', gap: spacing.sm, margin: spacing.lg, padding: spacing.xxl, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  emptyTitle: { color: colors.text, fontFamily: font.bold, fontSize: 18 },
+  emptySub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 14, textAlign: 'center' },
+  emptyActions: { flexDirection: 'row', gap: spacing.sm },
+  emptyPrimary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.primary },
+  emptyPrimaryText: { color: '#fff', fontFamily: font.bold, fontSize: 13.5 },
+  emptySecondary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  emptySecondaryText: { color: colors.primary, fontFamily: font.bold, fontSize: 13.5 },
 });

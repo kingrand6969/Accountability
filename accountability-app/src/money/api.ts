@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { toLocalDateString } from '../timeline/datetime';
 import { monthRange } from './compute';
 import type { NewTransaction, Transaction } from './types';
+import { finiteNumber } from './numeric';
 
 async function currentUserId(): Promise<string | null> {
   const { data } = await supabase.auth.getUser();
@@ -25,7 +26,10 @@ export async function listMonth(month: Date): Promise<Transaction[]> {
     .order('tx_date', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((t: any) => ({ ...t, amount: Number(t.amount) })) as Transaction[];
+  return (data ?? []).map((t: any) => ({
+    ...t,
+    amount: finiteNumber(t.amount, 'transaction amount'),
+  })) as Transaction[];
 }
 
 export type IncomeMonth = { month: string; total: number };
@@ -41,7 +45,7 @@ export async function getIncomeTrend(months = 12): Promise<IncomeMonth[]> {
   if (error) throw error;
   const byMonth = new Map<string, number>();
   for (const r of (data ?? []) as { month: string; total: number | string }[]) {
-    byMonth.set(String(r.month).slice(0, 7), Number(r.total) || 0);
+    byMonth.set(String(r.month).slice(0, 7), finiteNumber(r.total, 'income trend total'));
   }
   const out: IncomeMonth[] = [];
   const cursor = new Date();

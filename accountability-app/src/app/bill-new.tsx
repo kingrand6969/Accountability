@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { BILL_CATEGORIES, type BillCategory } from '../money/billing';
 import { addBill, deleteBill, getBill, updateBill } from '../money/billsApi';
 import { Button } from '../ui/Button';

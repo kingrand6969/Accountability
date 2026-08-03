@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { ChipSelector } from '../profiles/ChipSelector';
 import { useIsPro } from '../pro/ProProvider';
 import { parseVoiceCommand } from '../voice/parse';

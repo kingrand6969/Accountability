@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useIsPro } from '../pro/ProProvider';
 import {
   clearSearchHistory,
@@ -19,18 +19,22 @@ import {
   recordSearch,
   type SearchEntry,
 } from '../search/history';
-import { timeAgo } from '../feed/format';
+import { authorLabel, timeAgo } from '../feed/format';
 import { searchBuddies, type Candidate } from '../buddy/api';
 import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
 import { Avatar } from '../feed/Avatar';
-import { authorLabel } from '../feed/format';
 import { EmptyState } from '../ui/EmptyState';
 import { colors, font, radius, spacing, contentMax } from '../ui/theme';
+import { useAuth } from '../auth/AuthProvider';
 
 export default function Search() {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(ownerId);
+  const lifecycleGeneration = useRef(0);
   const [query, setQuery] = useState('');
   const [people, setPeople] = useState<Candidate[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -38,25 +42,75 @@ export default function Search() {
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [history, setHistory] = useState<SearchEntry[]>([]);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(ownerId);
   const seq = useRef(0);
 
-  const loadHistory = useCallback(() => {
-    listSearchHistory(isPro).then(setHistory).catch(() => {});
-  }, [isPro]);
+  useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    currentOwnerRef.current = ownerId;
+    seq.current += 1;
+    queueMicrotask(() => {
+      if (
+        lifecycle !== lifecycleGeneration.current ||
+        currentOwnerRef.current !== ownerId
+      )
+        return;
+      setQuery('');
+      setPeople([]);
+      setGroups([]);
+      setPages([]);
+      setSearching(false);
+      setSearched(false);
+      setHistory([]);
+      setDataOwnerId(ownerId);
+    });
+  }, [ownerId]);
+
+  const loadHistory = useCallback(async () => {
+    const requestOwner = ownerId;
+    const lifecycle = lifecycleGeneration.current;
+    if (!requestOwner) return;
+    try {
+      const next = await listSearchHistory(isPro, requestOwner);
+      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current)
+        return;
+      setHistory(next.slice(0, isPro ? 100 : 20));
+      setDataOwnerId(requestOwner);
+    } catch {
+      // History is optional; search remains usable.
+    }
+  }, [isPro, ownerId]);
 
   useFocusEffect(
     useCallback(() => {
-      loadHistory();
+      void loadHistory();
+      return () => {
+        lifecycleGeneration.current += 1;
+        seq.current += 1;
+        setSearching(false);
+      };
     }, [loadHistory]),
   );
 
   // a committed search = keyboard submit or tapping a result
   function commit(q: string) {
-    recordSearch(q).then(loadHistory).catch(() => {});
+    const requestOwner = ownerId;
+    const lifecycle = lifecycleGeneration.current;
+    if (!requestOwner) return;
+    recordSearch(q, requestOwner)
+      .then(() => {
+        if (lifecycle === lifecycleGeneration.current && requestOwner === currentOwnerRef.current) {
+          void loadHistory();
+        }
+      })
+      .catch(() => {});
   }
 
   async function onChange(text: string) {
+    setDataOwnerId(ownerId);
     setQuery(text);
+    const requestOwner = ownerId;
+    const lifecycle = lifecycleGeneration.current;
     const q = text.trim().toLowerCase();
     if (q.length < 2) {
       setPeople([]);
@@ -65,6 +119,7 @@ export default function Search() {
       setSearched(false);
       return;
     }
+    if (!requestOwner) return;
     const mySeq = ++seq.current;
     setSearching(true);
     try {
@@ -73,23 +128,52 @@ export default function Search() {
         listGroups().catch(() => [] as Group[]),
         listPages().catch(() => [] as Page[]),
       ]);
-      if (mySeq !== seq.current) return; // a newer keystroke won
+      if (
+        mySeq !== seq.current ||
+        lifecycle !== lifecycleGeneration.current ||
+        requestOwner !== currentOwnerRef.current
+      )
+        return;
       setPeople(p.slice(0, 8));
-      setGroups(g.filter((x) => x.name.toLowerCase().includes(q)).slice(0, 8));
+      setGroups(
+        g
+          .filter((x) => x.privacy === 'public' && x.name.toLowerCase().includes(q))
+          .slice(0, 8),
+      );
       setPages(
         pg
           .filter(
-            (x) => x.name.toLowerCase().includes(q) || x.handle.toLowerCase().includes(q),
+            (x) =>
+              x.privacy === 'public' &&
+              (x.name.toLowerCase().includes(q) || x.handle.toLowerCase().includes(q)),
           )
           .slice(0, 8),
       );
       setSearched(true);
+      setDataOwnerId(requestOwner);
     } finally {
-      if (mySeq === seq.current) setSearching(false);
+      if (
+        mySeq === seq.current &&
+        lifecycle === lifecycleGeneration.current &&
+        requestOwner === currentOwnerRef.current
+      )
+        setSearching(false);
     }
   }
 
-  const nothing = searched && !searching && !people.length && !groups.length && !pages.length;
+  const ownsData = dataOwnerId === ownerId;
+  const visibleQuery = ownsData ? query : '';
+  const visiblePeople = ownsData ? people : [];
+  const visibleGroups = ownsData ? groups : [];
+  const visiblePages = ownsData ? pages : [];
+  const visibleHistory = ownsData ? history : [];
+  const nothing =
+    ownsData &&
+    searched &&
+    !searching &&
+    !visiblePeople.length &&
+    !visibleGroups.length &&
+    !visiblePages.length;
 
   return (
     <View style={styles.screen}>
@@ -100,9 +184,9 @@ export default function Search() {
             style={styles.searchInput}
             placeholder="Search people, groups, pages…"
             placeholderTextColor={colors.textFaint}
-            value={query}
+            value={visibleQuery}
             onChangeText={onChange}
-            onSubmitEditing={() => query.trim().length >= 2 && commit(query)}
+            onSubmitEditing={() => visibleQuery.trim().length >= 2 && commit(visibleQuery)}
             returnKeyType="search"
             autoFocus
             autoCapitalize="none"
@@ -112,14 +196,23 @@ export default function Search() {
         </View>
 
         {/* recent searches — shown before typing */}
-        {!searched && !searching && history.length > 0 ? (
+        {!searched && !searching && visibleHistory.length > 0 ? (
           <>
             <View style={styles.historyHeader}>
               <Text style={styles.section}>Recent searches</Text>
               <Pressable
                 onPress={() => {
-                  clearSearchHistory()
-                    .then(() => setHistory([]))
+                  const requestOwner = ownerId;
+                  const lifecycle = lifecycleGeneration.current;
+                  if (!requestOwner) return;
+                  clearSearchHistory(requestOwner)
+                    .then(() => {
+                      if (
+                        lifecycle === lifecycleGeneration.current &&
+                        requestOwner === currentOwnerRef.current
+                      )
+                        setHistory([]);
+                    })
                     .catch(() => {});
                 }}
                 hitSlop={8}
@@ -128,7 +221,7 @@ export default function Search() {
                 <Text style={styles.clearAll}>Clear all</Text>
               </Pressable>
             </View>
-            {history.map((h) => (
+            {visibleHistory.map((h) => (
               <Pressable
                 key={h.id}
                 style={({ pressed }) => [styles.historyRow, pressed && styles.pressed]}
@@ -142,8 +235,17 @@ export default function Search() {
                 <Text style={styles.historyTime}>{timeAgo(h.created_at)}</Text>
                 <Pressable
                   onPress={() => {
-                    deleteSearchEntry(h.id)
-                      .then(() => setHistory((cur) => cur.filter((x) => x.id !== h.id)))
+                    const requestOwner = ownerId;
+                    const lifecycle = lifecycleGeneration.current;
+                    if (!requestOwner) return;
+                    deleteSearchEntry(h.id, requestOwner)
+                      .then(() => {
+                        if (
+                          lifecycle === lifecycleGeneration.current &&
+                          requestOwner === currentOwnerRef.current
+                        )
+                          setHistory((cur) => cur.filter((x) => x.id !== h.id));
+                      })
                       .catch(() => {});
                   }}
                   hitSlop={10}
@@ -161,22 +263,22 @@ export default function Search() {
           </>
         ) : null}
 
-        {people.length > 0 ? <Text style={styles.section}>People</Text> : null}
-        {people.map((p) => (
+        {visiblePeople.length > 0 ? <Text style={styles.section}>People</Text> : null}
+        {visiblePeople.map((p) => (
           <Row
             key={p.id}
             title={authorLabel(p.display_name)}
             sub={p.area ?? 'Accountability buddy'}
             left={<Avatar url={p.avatar_url} name={p.display_name} size={40} />}
             onPress={() => {
-              commit(query);
+              commit(visibleQuery);
               router.push({ pathname: '/buddy-card/[id]', params: { id: p.id } } as never);
             }}
           />
         ))}
 
-        {groups.length > 0 ? <Text style={styles.section}>Groups</Text> : null}
-        {groups.map((g) => (
+        {visibleGroups.length > 0 ? <Text style={styles.section}>Groups</Text> : null}
+        {visibleGroups.map((g) => (
           <Row
             key={g.id}
             title={g.name}
@@ -187,14 +289,14 @@ export default function Search() {
               </View>
             }
             onPress={() => {
-              commit(query);
+              commit(visibleQuery);
               router.push(`/group/${g.id}` as never);
             }}
           />
         ))}
 
-        {pages.length > 0 ? <Text style={styles.section}>Pages</Text> : null}
-        {pages.map((p) => (
+        {visiblePages.length > 0 ? <Text style={styles.section}>Pages</Text> : null}
+        {visiblePages.map((p) => (
           <Row
             key={p.id}
             title={p.name}
@@ -209,7 +311,7 @@ export default function Search() {
               )
             }
             onPress={() => {
-              commit(query);
+              commit(visibleQuery);
               router.push(`/page/${p.id}` as never);
             }}
           />

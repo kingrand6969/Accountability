@@ -1,122 +1,173 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Link, router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { supabase } from '../lib/supabase';
 import { validateEmail, validatePassword } from '../auth/validation';
 import { authErrorMessage, isUnconfirmed } from '../auth/errors';
 import { AuthShell } from '../ui/AuthShell';
+import { AuthField } from '../ui/AuthField';
 import { Button } from '../ui/Button';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { WELCOME_ACTIONS, welcomeErrorState } from '../entry/welcomeContract';
+
+const CREATE_ACCOUNT_ROUTE = WELCOME_ACTIONS[1].route;
+const FORGOT_PASSWORD_ROUTE = WELCOME_ACTIONS[2].route;
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
+  const formErrorState = welcomeErrorState(formError, '');
 
   async function onSignIn() {
-    const emailError = validateEmail(email);
-    const passwordError = validatePassword(password);
-    if (emailError || passwordError) {
-      Alert.alert('Check your details', emailError ?? passwordError ?? '');
-      return;
-    }
+    const nextEmailError = validateEmail(email) ?? '';
+    const nextPasswordError = validatePassword(password) ?? '';
+    setEmailError(nextEmailError);
+    setPasswordError(nextPasswordError);
+    setFormError('');
+    if (nextEmailError || nextPasswordError) return;
+
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     setBusy(false);
     if (!error) return;
     if (isUnconfirmed(error.message)) {
-      // Never confirmed → send a fresh code and take them to the verify screen.
       supabase.auth.resend({ type: 'signup', email: email.trim() }).catch(() => {});
       router.push({ pathname: '/verify-email', params: { email: email.trim() } });
       return;
     }
-    Alert.alert('Could not log in', authErrorMessage(error.message));
+    setFormError(authErrorMessage(error.message));
   }
 
   return (
-    <AuthShell>
-      <Text style={styles.title}>Welcome back</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor={colors.textFaint}
+    <AuthShell
+      presentation="welcome"
+      footer={
+        <View style={styles.privacy}>
+          <Ionicons name="shield-checkmark-outline" size={21} color="#FFFFFF" />
+          <Text style={styles.privacyText}>
+            Your progress is private.{'\n'}We&apos;ll never share your data.
+          </Text>
+        </View>
+      }
+    >
+      <View style={styles.heading}>
+        <Text style={styles.title}>Welcome Back!</Text>
+      </View>
+
+      {formErrorState.visible ? (
+        <View style={styles.errorBanner} accessibilityLiveRegion={formErrorState.liveRegion}>
+          <Ionicons name="alert-circle-outline" size={19} color="#b91c1c" />
+          <Text style={styles.errorBannerText}>{formError}</Text>
+        </View>
+      ) : null}
+
+      <AuthField
+        label="Email"
+        icon="mail-outline"
+        placeholder="you@example.com"
         autoCapitalize="none"
         keyboardType="email-address"
         autoComplete="email"
         textContentType="emailAddress"
         value={email}
-        onChangeText={setEmail}
+        error={emailError}
+        onChangeText={(value) => {
+          setEmail(value);
+          if (emailError) setEmailError('');
+          if (formError) setFormError('');
+        }}
       />
-      <View style={styles.pwWrap}>
-        <TextInput
-          style={styles.pwInput}
-          placeholder="Password"
-          placeholderTextColor={colors.textFaint}
-          secureTextEntry={!showPw}
-          autoComplete="current-password"
-          textContentType="password"
-          value={password}
-          onChangeText={setPassword}
-        />
-        <Pressable
-          onPress={() => setShowPw((s) => !s)}
-          hitSlop={8}
-          style={styles.eye}
-          accessibilityLabel={showPw ? 'Hide password' : 'Show password'}
-        >
-          <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
-        </Pressable>
-      </View>
-      <Text style={styles.forgot} onPress={() => router.push('/forgot-password')}>
-        Forgot password?
-      </Text>
+
+      <AuthField
+        label="Password"
+        icon="lock-closed-outline"
+        placeholder="Enter your password"
+        secureTextEntry={!showPw}
+        autoComplete="current-password"
+        textContentType="password"
+        value={password}
+        error={passwordError}
+        actionLabel={showPw ? 'Hide' : 'Show'}
+        onActionPress={() => setShowPw((shown) => !shown)}
+        onChangeText={(value) => {
+          setPassword(value);
+          if (passwordError) setPasswordError('');
+          if (formError) setFormError('');
+        }}
+        onSubmitEditing={onSignIn}
+        returnKeyType="go"
+      />
+
+      <Pressable
+        onPress={() => router.push(FORGOT_PASSWORD_ROUTE)}
+        accessibilityRole="link"
+        style={({ pressed }) => [styles.forgot, pressed && styles.pressed]}
+      >
+        <Text style={styles.forgotText}>Forgot password?</Text>
+      </Pressable>
+
       <Button title="Log in" onPress={onSignIn} loading={busy} style={styles.button} />
-      <Link href="/sign-up" style={styles.link}>
-        No account yet? Sign up
-      </Link>
+
+      <Button
+        title="Create an account"
+        onPress={() => router.push(CREATE_ACCOUNT_ROUTE)}
+        variant="outline"
+      />
     </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 24, fontFamily: font.extrabold, color: colors.text, marginBottom: 2 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: 14,
-    fontSize: 16,
-    fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+  heading: { alignItems: 'center', marginBottom: spacing.xs },
+  title: {
+    color: colors.navy,
+    fontFamily: font.serif,
+    fontSize: 27,
+    lineHeight: 34,
   },
-  pwWrap: { position: 'relative', justifyContent: 'center' },
-  pwInput: {
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    padding: 12,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: 14,
-    paddingRight: 48,
-    fontSize: 16,
-    fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
   },
-  eye: { position: 'absolute', right: 8, height: 44, width: 40, alignItems: 'center', justifyContent: 'center' },
+  errorBannerText: {
+    flex: 1,
+    color: '#991b1b',
+    fontFamily: font.medium,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   forgot: {
-    textAlign: 'right',
-    color: colors.primary,
-    fontFamily: font.medium,
-    fontSize: 13.5,
-    marginTop: -2,
+    alignSelf: 'flex-end',
+    minHeight: 44,
+    justifyContent: 'center',
+    marginTop: -6,
   },
-  button: { marginTop: spacing.xs },
-  link: {
-    textAlign: 'center',
-    color: colors.primary,
+  forgotText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13.5 },
+  pressed: { opacity: 0.65 },
+  button: { marginTop: -2 },
+  privacy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+  },
+  privacyText: {
+    color: '#FFFFFF',
     fontFamily: font.medium,
-    marginTop: spacing.sm,
+    fontSize: 11.5,
+    lineHeight: 15,
   },
 });

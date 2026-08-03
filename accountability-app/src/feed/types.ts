@@ -1,3 +1,15 @@
+export type PostAudience = 'buddies' | 'public' | 'group';
+export type PostType =
+  | 'post'
+  | 'photo'
+  | 'video'
+  | 'run'
+  | 'workout'
+  | 'milestone'
+  | 'event'
+  | 'memory'
+  | 'savings';
+
 export type FeedPost = {
   id: string;
   body: string;
@@ -8,7 +20,12 @@ export type FeedPost = {
   author_avatar: string | null;
   like_count: number;
   comment_count: number;
+  voice_encouragement_count?: number;
   liked_by_me: boolean;
+  audience: PostAudience;
+  post_type: PostType;
+  share_data: Record<string, unknown>;
+  activity_id: string | null;
   tagged: { id: string; name: string | null }[];
   event: {
     id: string;

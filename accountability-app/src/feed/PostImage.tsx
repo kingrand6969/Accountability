@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { CachedImage } from '../ui/CachedImage';
 import { colors, font, radius } from '../ui/theme';
+import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
 
 /** Tallest frame the FEED shows — 4:5 portrait, like Instagram/Facebook.
  *  Anything taller is centre-cropped in the feed and shown in full on tap. */
@@ -14,16 +15,25 @@ const FEED_MIN_RATIO = 4 / 5;
  * "See full photo" hint — the whole image shows when the post is opened.
  * Parents must stretch (the feed wrappers set alignSelf: 'stretch').
  */
-export function PostImage({ url, capTall = false }: { url: string; capTall?: boolean }) {
+export function PostImage({
+  url,
+  capTall = false,
+  immersive = false,
+}: {
+  url: string;
+  capTall?: boolean;
+  immersive?: boolean;
+}) {
   const [ratio, setRatio] = useState(16 / 9);
+  const resolvedUrl = useResolvedMediaUrl(url);
 
   const capped = capTall && ratio < FEED_MIN_RATIO;
-  const shown = capped ? FEED_MIN_RATIO : ratio;
+  const shown = immersive ? FEED_MIN_RATIO : capped ? FEED_MIN_RATIO : ratio;
 
   return (
     <View style={styles.wrap}>
-      <CachedImage
-        uri={url}
+      {resolvedUrl ? <CachedImage
+        uri={resolvedUrl}
         onLoad={(e) => {
           const { width, height } = e.source;
           if (width > 0 && height > 0) setRatio(width / height);
@@ -31,11 +41,11 @@ export function PostImage({ url, capTall = false }: { url: string; capTall?: boo
         style={{
           width: '100%',
           aspectRatio: shown,
-          borderRadius: radius.sm,
+          borderRadius: immersive ? 0 : radius.sm,
           backgroundColor: colors.surface,
         }}
         contentFit="cover"
-      />
+      /> : <View style={[styles.privatePlaceholder, immersive && styles.immersivePlaceholder, { aspectRatio: shown }]} />}
       {capped ? (
         <View style={styles.hint} pointerEvents="none">
           <Ionicons name="expand-outline" size={12} color="#fff" />
@@ -48,6 +58,8 @@ export function PostImage({ url, capTall = false }: { url: string; capTall?: boo
 
 const styles = StyleSheet.create({
   wrap: { alignSelf: 'stretch', width: '100%' },
+  privatePlaceholder: { width: '100%', borderRadius: radius.sm, backgroundColor: colors.surface },
+  immersivePlaceholder: { borderRadius: 0, backgroundColor: colors.navy },
   hint: {
     position: 'absolute',
     right: 8,

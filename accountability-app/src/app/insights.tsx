@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { getInsights, type Insights } from '../insights/api';
 import { formatHours, type Period } from '../insights/compute';
 import { useIsPro } from '../pro/ProProvider';

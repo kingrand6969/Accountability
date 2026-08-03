@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { sendSupportMessage, type SupportKind } from '../support/api';
 import { CONTACT_EMAIL } from '../legal/content';
 import { Button } from '../ui/Button';

@@ -1,33 +1,95 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useIsPro } from '../pro/ProProvider';
-import { CHECKOUT_ENABLED } from '../pro/monetization';
+import {
+  billingAdapter,
+  type BillingAvailability,
+  type ProPlan,
+} from '../pro/billingAdapter';
+import { PRO_PRICING } from '../pro/monetization';
 import { Button } from '../ui/Button';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
 
 const BENEFITS = [
-  { icon: 'remove-circle-outline' as const, text: 'No ads' },
   { icon: 'trending-up-outline' as const, text: 'Unlimited history + advanced insights' },
   { icon: 'mic-outline' as const, text: 'Smart reminders & voice commands' },
   { icon: 'barbell-outline' as const, text: 'Full exercise library tools' },
   { icon: 'nutrition-outline' as const, text: 'Diet & calorie tracker' },
   { icon: 'people-outline' as const, text: 'Create challenges for your buddies & city' },
+  { icon: 'sparkles-outline' as const, text: 'Early access to new Journey tools' },
 ];
 
-type Plan = 'yearly' | 'monthly';
-
 export default function Paywall() {
-  const { isPro } = useIsPro();
-  const [plan, setPlan] = useState<Plan>('yearly');
+  const { isPro, refresh } = useIsPro();
+  const [plan, setPlan] = useState<ProPlan>('yearly');
+  const [availability, setAvailability] = useState<BillingAvailability | null>(null);
+  const [busy, setBusy] = useState<'purchase' | 'restore' | null>(null);
 
-  function onUpgrade() {
-    Alert.alert(
-      'Subscriptions coming soon',
-      'In-app purchases launch with the store release — this is where checkout will open.',
-    );
+  useEffect(() => {
+    let live = true;
+    billingAdapter()
+      .availability()
+      .then((state) => {
+        if (live) setAvailability(state);
+      })
+      .catch(() => {
+        if (live) {
+          setAvailability({
+            ready: false,
+            environment: 'development',
+            reason: 'provider_error',
+            message: 'Could not connect to the store.',
+          });
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function onUpgrade() {
+    if (!availability?.ready || busy) return;
+    setBusy('purchase');
+    try {
+      const result = await billingAdapter().purchase(plan);
+      if (result.status === 'purchased' || result.status === 'restored') {
+        await refresh();
+        Alert.alert(
+          'Purchase confirmed',
+          'We are refreshing your Pro access. Reopen this page if it does not appear immediately.',
+        );
+      } else if (result.status === 'unavailable') {
+        Alert.alert('Purchase unavailable', result.message);
+      }
+    } catch (error) {
+      Alert.alert('Purchase did not complete', String((error as Error).message ?? error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onRestore() {
+    if (busy) return;
+    setBusy('restore');
+    try {
+      const result = await billingAdapter().restore();
+      if (result.status === 'restored' || result.status === 'purchased') {
+        await refresh();
+        Alert.alert(
+          'Restore confirmed',
+          'We are refreshing your Pro access. Reopen this page if it does not appear immediately.',
+        );
+      } else if (result.status === 'unavailable') {
+        Alert.alert('Restore unavailable', result.message);
+      }
+    } catch (error) {
+      Alert.alert('Could not restore', String((error as Error).message ?? error));
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -53,79 +115,129 @@ export default function Paywall() {
       </View>
 
       <View style={styles.card}>
-        {BENEFITS.map((b) => (
-          <View key={b.text} style={styles.benefitRow}>
-            <Ionicons name={b.icon} size={18} color={colors.pro} />
-            <Text style={styles.benefit}>{b.text}</Text>
+        {BENEFITS.map((benefit) => (
+          <View key={benefit.text} style={styles.benefitRow}>
+            <Ionicons name={benefit.icon} size={18} color={colors.pro} />
+            <Text style={styles.benefit}>{benefit.text}</Text>
             <Ionicons name="checkmark-circle" size={18} color={colors.success} />
           </View>
         ))}
       </View>
 
-      {CHECKOUT_ENABLED && !isPro && (
-      <View style={styles.prices}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.price,
-            plan === 'yearly' && styles.priceSelected,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => setPlan('yearly')}
-        >
-          <View style={styles.bestBadge}>
-            <Text style={styles.bestBadgeText}>BEST VALUE</Text>
-          </View>
-          <Text style={styles.priceLabel}>Yearly</Text>
-          <Text style={styles.priceValue}>$19.99</Text>
-          <Text style={styles.priceNote}>only $1.67/mo</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [
-            styles.price,
-            plan === 'monthly' && styles.priceSelected,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => setPlan('monthly')}
-        >
-          <Text style={styles.priceLabel}>Monthly</Text>
-          <Text style={styles.priceValue}>$3.99</Text>
-          <Text style={styles.priceNote}>per month</Text>
-        </Pressable>
-      </View>
-      )}
+      {!isPro ? (
+        <View style={styles.prices} accessibilityRole="radiogroup">
+          <PlanCard
+            selected={plan === 'yearly'}
+            label="Yearly"
+            price={PRO_PRICING.yearly.displayPrice}
+            note="only $3.33/mo"
+            badge="BEST VALUE"
+            onPress={() => setPlan('yearly')}
+          />
+          <PlanCard
+            selected={plan === 'monthly'}
+            label="Monthly"
+            price={PRO_PRICING.monthly.displayPrice}
+            note="per month"
+            onPress={() => setPlan('monthly')}
+          />
+        </View>
+      ) : null}
 
       {isPro ? (
         <View style={styles.proActive}>
           <Ionicons name="star" size={17} color={colors.pro} />
           <Text style={styles.proActiveText}>You&apos;re on Pro</Text>
         </View>
-      ) : CHECKOUT_ENABLED ? (
-        <Button
-          title={plan === 'yearly' ? 'Start Pro — $19.99/yr' : 'Start Pro — $3.99/mo'}
-          onPress={onUpgrade}
-          style={styles.cta}
-        />
       ) : (
-        <View style={styles.comingSoon}>
-          <Ionicons name="sparkles-outline" size={17} color={colors.pro} />
-          <Text style={styles.comingSoonText}>
-            Pro is launching soon — these features are on the way.
-          </Text>
-        </View>
+        <>
+          {availability?.ready ? (
+            <Button
+              title={
+                plan === 'yearly'
+                  ? `Start Pro — ${PRO_PRICING.yearly.displayPrice}/yr`
+                  : `Start Pro — ${PRO_PRICING.monthly.displayPrice}/mo`
+              }
+              onPress={onUpgrade}
+              loading={busy === 'purchase'}
+              disabled={!!busy}
+              style={styles.cta}
+            />
+          ) : (
+            <View style={styles.unavailable} accessibilityRole="alert">
+              <Ionicons name="construct-outline" size={18} color={colors.pro} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.unavailableTitle}>
+                  {availability?.message ?? 'Checking store availability…'}
+                </Text>
+                {availability?.environment === 'preview' ? (
+                  <Text style={styles.unavailableDetail}>
+                    Staging does not charge real money or activate a subscription.
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          )}
+          <Button
+            title="Restore purchases"
+            onPress={onRestore}
+            loading={busy === 'restore'}
+            disabled={!!busy}
+            variant="ghost"
+          />
+        </>
       )}
 
-      {CHECKOUT_ENABLED && (
-        <Text style={styles.devNote}>
-          Subscriptions launch with the store release — checkout opens here. Cancel anytime.
-        </Text>
-      )}
+      <Text style={styles.devNote}>
+        Cancel anytime through your app-store account. Store prices and taxes may vary.
+      </Text>
     </ScrollView>
+  );
+}
+
+function PlanCard({
+  selected,
+  label,
+  price,
+  note,
+  badge,
+  onPress,
+}: {
+  selected: boolean;
+  label: string;
+  price: string;
+  note: string;
+  badge?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.price,
+        selected && styles.priceSelected,
+        pressed && styles.pressed,
+      ]}
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${label}, ${price}, ${note}`}
+    >
+      {badge ? (
+        <View style={styles.bestBadge}>
+          <Text style={styles.bestBadgeText}>{badge}</Text>
+        </View>
+      ) : null}
+      <Text style={styles.priceLabel}>{label}</Text>
+      <Text style={styles.priceValue}>{price}</Text>
+      <Text style={styles.priceNote}>{note}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     padding: spacing.xxl,
+    paddingBottom: 48,
     gap: spacing.md,
     backgroundColor: colors.background,
   },
@@ -168,12 +280,14 @@ const styles = StyleSheet.create({
   prices: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   price: {
     flex: 1,
+    minHeight: 112,
     borderWidth: 2,
     borderColor: colors.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     paddingTop: 18,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 2,
     backgroundColor: colors.card,
   },
@@ -204,19 +318,26 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   proActiveText: { fontSize: 16, fontFamily: font.bold, color: colors.pro },
-  comingSoon: {
+  unavailable: {
+    minHeight: 62,
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
+    alignItems: 'center',
+    gap: spacing.sm,
     backgroundColor: colors.proSoft,
     borderColor: colors.pro,
     borderWidth: 1,
     borderRadius: radius.md,
-    padding: spacing.lg,
-    alignItems: 'center',
+    padding: spacing.md,
     marginTop: spacing.sm,
   },
-  comingSoonText: { fontSize: 14, fontFamily: font.bold, color: colors.pro, flexShrink: 1 },
+  unavailableTitle: { fontSize: 14, fontFamily: font.bold, color: colors.pro },
+  unavailableDetail: {
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
   devNote: {
     color: colors.textFaint,
     fontFamily: font.regular,

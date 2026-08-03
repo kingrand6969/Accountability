@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+import * as Crypto from 'expo-crypto';
+import { finiteNumber, positiveFiniteNumber } from './numeric';
 
 /** Banks & wallets (left pane) and savings goals (right pane). */
 
@@ -37,7 +39,10 @@ export async function listAccounts(): Promise<Account[]> {
     .select('id,name,kind,balance,created_at')
     .order('balance', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((a: any) => ({ ...a, balance: Number(a.balance) }));
+  return (data ?? []).map((a: any) => ({
+    ...a,
+    balance: finiteNumber(a.balance, 'account balance'),
+  }));
 }
 
 export async function getAccount(id: string): Promise<Account | null> {
@@ -47,7 +52,7 @@ export async function getAccount(id: string): Promise<Account | null> {
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
-  return data ? { ...data, balance: Number(data.balance) } : null;
+  return data ? { ...data, balance: finiteNumber(data.balance, 'account balance') } : null;
 }
 
 export type AccountInput = { name: string; kind: AccountKind; balance: number };
@@ -75,8 +80,8 @@ export async function listSavings(): Promise<SavingsGoal[]> {
   if (error) throw error;
   return (data ?? []).map((g: any) => ({
     ...g,
-    target: g.target == null ? null : Number(g.target),
-    saved: Number(g.saved),
+    target: g.target == null ? null : finiteNumber(g.target, 'savings target'),
+    saved: finiteNumber(g.saved, 'savings amount'),
   }));
 }
 
@@ -90,8 +95,8 @@ export async function getSavingsGoal(id: string): Promise<SavingsGoal | null> {
   if (!data) return null;
   return {
     ...data,
-    target: data.target == null ? null : Number(data.target),
-    saved: Number(data.saved),
+    target: data.target == null ? null : finiteNumber(data.target, 'savings target'),
+    saved: finiteNumber(data.saved, 'savings amount'),
   };
 }
 
@@ -143,13 +148,30 @@ export async function listDebts(): Promise<Debt[]> {
     .order('settled')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((d: any) => ({ ...d, amount: Number(d.amount) }));
+  return (data ?? []).map((d: any) => ({
+    ...d,
+    amount: finiteNumber(d.amount, 'debt amount'),
+    monthly_payment:
+      d.monthly_payment == null ? null : finiteNumber(d.monthly_payment, 'monthly payment'),
+    credit_limit: d.credit_limit == null ? null : finiteNumber(d.credit_limit, 'credit limit'),
+  }));
 }
 
 export async function getDebt(id: string): Promise<Debt | null> {
   const { data, error } = await supabase.from('debts').select(DEBT_SELECT).eq('id', id).maybeSingle();
   if (error) throw error;
-  return data ? { ...data, amount: Number(data.amount) } : null;
+  return data
+    ? {
+        ...data,
+        amount: finiteNumber(data.amount, 'debt amount'),
+        monthly_payment:
+          data.monthly_payment == null
+            ? null
+            : finiteNumber(data.monthly_payment, 'monthly payment'),
+        credit_limit:
+          data.credit_limit == null ? null : finiteNumber(data.credit_limit, 'credit limit'),
+      }
+    : null;
 }
 
 export type DebtInput = {
@@ -199,22 +221,21 @@ export async function addCard(input: {
 }
 
 /** One tap: log the payment, deduct it from the balance. 0 left = settled. */
-export async function payCard(card: Debt, amount: number): Promise<number> {
-  const { error: pe } = await supabase
-    .from('debt_payments')
-    .insert({ debt_id: card.id, amount });
-  if (pe) throw pe;
-  const left = Math.max(0, Math.round((card.amount - amount) * 100) / 100);
-  const { error } = await supabase
-    .from('debts')
-    .update({
-      amount: left,
-      last_paid_at: new Date().toISOString().slice(0, 10),
-      settled: left <= 0,
-    })
-    .eq('id', card.id);
+export async function payCard(
+  card: Debt,
+  amount: number,
+  idempotencyKey = Crypto.randomUUID(),
+): Promise<number> {
+  const payment = positiveFiniteNumber(amount, 'Payment amount');
+  const balance = finiteNumber(card.amount, 'card balance');
+  if (payment > balance) throw new Error('Payment cannot exceed the current card balance.');
+  const { data, error } = await supabase.rpc('pay_card_atomic', {
+    p_debt_id: card.id,
+    p_amount: payment,
+    p_idempotency_key: idempotencyKey,
+  });
   if (error) throw error;
-  return left;
+  return finiteNumber(data, 'remaining card balance');
 }
 
 /** Paid within the current calendar month? */

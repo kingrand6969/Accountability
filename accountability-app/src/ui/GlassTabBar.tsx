@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react';
-import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
+import { PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BrandMark } from './BrandMark';
+import {
+  TAB_BAR_MIN_CONTENT_HEIGHT,
+  tabBarContentHeight,
+} from './floatingTabBar';
 import { hapticSelect } from './haptics';
+import { colors, semanticColors, spacing, type } from './theme';
 
 // Minimal shape of the props Expo Router's <Tabs tabBar={...}> passes — avoids a
 // direct dependency on @react-navigation/bottom-tabs' (nested) type declarations.
@@ -22,16 +26,28 @@ type TabBarProps = {
   };
 };
 
-/**
- * Custom glassmorphic floating tab bar:
- *  - real frosted glass (BlurView + translucent plate) on every screen
- *  - genuine flex:1 distribution so the icons always fill the bar evenly
- *    (React Navigation reserved a slot for the hidden Profile route on native,
- *    which left dead space on the right and made the bar look off-centre).
- */
+export const VISIBLE_TAB_LABELS = [
+  'Feed',
+  'Finance',
+  'Journey',
+  'Run',
+  'Messages',
+] as const;
+
+const visibleTabLabels = new Set<string>(VISIBLE_TAB_LABELS);
+const compactTabLabels: Record<(typeof VISIBLE_TAB_LABELS)[number], string> = {
+  Feed: 'Home',
+  Finance: 'Cash',
+  Journey: 'Path',
+  Run: 'Run',
+  Messages: 'Chat',
+};
+
+/** Quiet five-destination bottom navigation matching the approved references. */
 export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
-  const { width: winW } = useWindowDimensions();
+  const fontScale = PixelRatio.getFontScale();
+  const contentHeight = tabBarContentHeight(fontScale);
 
   // immersive screens (e.g. an active run) hide the bar via tabBarStyle:{display:'none'}
   const focusedKey = state.routes[state.index].key;
@@ -44,43 +60,36 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
     return null;
   }
 
-  // only routes that declare an icon (the hidden Profile route has none)
-  const items = state.routes.filter((r) => descriptors[r.key].options.tabBarIcon != null);
-  const barWidth = Math.min(winW - 32, 400);
-
+  const items = state.routes.filter((route) => {
+    const options = descriptors[route.key]?.options;
+    return (
+      options?.tabBarIcon != null &&
+      visibleTabLabels.has(options.title ?? route.name)
+    );
+  });
   return (
     <View
       style={[
         styles.wrap,
-        { width: barWidth, left: (winW - barWidth) / 2, bottom: Math.max(insets.bottom, 8) + 8 },
+        {
+          minHeight: contentHeight + Math.max(insets.bottom, 4),
+          paddingBottom: Math.max(insets.bottom, 4),
+        },
       ]}
     >
-      <LinearGradient
-        colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.3)', 'rgba(255,255,255,0.7)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.borderGrad}
+      <View
+        testID="primary-tab-list"
+        accessibilityRole="tablist"
+        style={[styles.row, { height: contentHeight }]}
       >
-        <View style={styles.clip}>
-          <BlurView
-            intensity={Platform.select({ ios: 40, android: 55, web: 60, default: 50 })}
-            tint="light"
-            blurMethod="dimezisBlurViewSdk31Plus"
-            blurReductionFactor={2}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.plate} />
-          <LinearGradient
-            colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-          <View style={styles.row}>
           {items.map((route) => {
             const { options } = descriptors[route.key];
             const isFocused = route.key === focusedKey;
+            const accessibleLabel = options.title ?? route.name;
+            const visualLabel =
+              fontScale >= 1.25 && visibleTabLabels.has(accessibleLabel)
+                ? compactTabLabels[accessibleLabel as (typeof VISIBLE_TAB_LABELS)[number]]
+                : accessibleLabel;
             const onPress = () => {
               const event = navigation.emit({
                 type: 'tabPress',
@@ -96,18 +105,41 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
               <Pressable
                 key={route.key}
                 onPress={onPress}
-                accessibilityRole="button"
+                accessibilityRole="tab"
                 accessibilityState={{ selected: isFocused }}
-                accessibilityLabel={options.title ?? route.name}
-                style={styles.item}
+                accessibilityLabel={accessibleLabel}
+                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
               >
-                {options.tabBarIcon?.({ focused: isFocused, color: '#475569', size: 24 })}
+                {(options.title ?? route.name) === 'Journey' ? (
+                  <BrandMark
+                    size={27}
+                    color={isFocused ? semanticColors.ink.primary : semanticColors.ink.muted}
+                    accessibilityLabel="Journey"
+                  />
+                ) : (
+                  options.tabBarIcon?.({
+                    focused: isFocused,
+                    color: semanticColors.ink.muted,
+                    size: 24,
+                  })
+                )}
+                <Text
+                  testID={`tab-label-${accessibleLabel}`}
+                  style={[styles.label, isFocused && styles.labelActive]}
+                  numberOfLines={2}
+                >
+                  {visualLabel}
+                </Text>
+                {isFocused ? (
+                  <View
+                    testID={`tab-indicator-${options.title ?? route.name}`}
+                    style={styles.indicator}
+                  />
+                ) : null}
               </Pressable>
             );
           })}
-          </View>
-        </View>
-      </LinearGradient>
+      </View>
     </View>
   );
 }
@@ -115,30 +147,45 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    height: 62,
-    borderRadius: 31,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
-  },
-  // gradient border frame (1.5px) around the frosted pill
-  borderGrad: { flex: 1, borderRadius: 31, padding: 1.5 },
-  clip: {
-    flex: 1,
-    borderRadius: 29.5,
-    overflow: 'hidden',
-  },
-  // translucent plate so the frosted content behind stays legible under the icons
-  plate: {
-    position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    minHeight: 68,
+    backgroundColor: semanticColors.surface.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: semanticColors.border.subtle,
   },
-  row: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' },
+  row: {
+    minHeight: TAB_BAR_MIN_CONTENT_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingTop: 6,
+    paddingBottom: 8,
+  },
+  item: {
+    flex: 1,
+    minHeight: spacing.touch,
+    minWidth: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: 2,
+  },
+  pressed: { opacity: 0.72 },
+  label: {
+    ...type.caption,
+    lineHeight: 16,
+    color: semanticColors.ink.muted,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  labelActive: { color: semanticColors.ink.primary },
+  indicator: {
+    position: 'absolute',
+    bottom: 3,
+    width: 18,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.navy,
+  },
 });

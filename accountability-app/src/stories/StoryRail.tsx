@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useState,
 } from 'react';
@@ -12,31 +13,65 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { CachedImage } from '../ui/CachedImage';
 import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { listStoryGroups, addStory, type StoryGroup } from './api';
 import { authorLabel } from '../feed/format';
 import { PhotoEditor, type EditedPhoto } from '../media/PhotoEditor';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing, contentMax } from '../ui/theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type StoryRailHandle = { openPicker: () => void };
+type StoryRailProps = {
+  meName?: string | null;
+  meAvatar?: string | null;
+  controllerOnly?: boolean;
+};
 
-/** Facebook-style story cards: tall image tiles, "Create story" first. */
-export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, ref) {
+export function storyTileSizeForFontScale(fontScale: number) {
+  if (fontScale >= 1.75) {
+    return { tileWidth: 140, tileHeight: 184, hintWidth: 112 };
+  }
+  if (fontScale >= 1.25) {
+    return { tileWidth: 112, tileHeight: 152, hintWidth: 90 };
+  }
+  return { tileWidth: TILE_W, tileHeight: TILE_H, hintWidth: 72 };
+}
+
+/** Compact, photo-first My Day rail. It supports the feed without becoming the feed. */
+export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function StoryRail(
+  { meName, meAvatar, controllerOnly = false },
+  ref,
+) {
   const router = useRouter();
+  const { fontScale } = useWindowDimensions();
+  const {
+    tileWidth,
+    tileHeight,
+    hintWidth,
+  } = storyTileSizeForFontScale(fontScale);
+  const tileSize = { width: tileWidth, height: tileHeight };
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [posting, setPosting] = useState(false);
   const [editorUri, setEditorUri] = useState<string | null>(null);
+  const [showHint, setShowHint] = useState(false);
+
+  useEffect(() => {
+    if (controllerOnly) return;
+    AsyncStorage.getItem('story-buddy-hint-dismissed').then((value) => setShowHint(value !== '1'));
+  }, [controllerOnly]);
 
   const load = useCallback(() => {
+    if (controllerOnly) return;
     listStoryGroups().then(setGroups).catch(() => {});
-  }, []);
+  }, [controllerOnly]);
 
   useFocusEffect(load);
 
@@ -68,7 +103,16 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
       return;
     }
     const ext = asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
-    await postStory(asset.base64, ext);
+    setPosting(true);
+    try {
+      await addStory(asset.base64, ext);
+      showToast('Flex posted — visible for 24 hours');
+      load();
+    } catch (e) {
+      Alert.alert('Could not post story', String((e as Error).message ?? e));
+    } finally {
+      setPosting(false);
+    }
   }
 
   useImperativeHandle(ref, () => ({ openPicker: onAddStory }));
@@ -91,6 +135,12 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
     postStory(photo.base64, 'jpg');
   }
 
+  if (controllerOnly) {
+    return editorUri ? (
+      <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
+    ) : null;
+  }
+
   const mine = groups.find((g) => g.isMe);
   const others = groups.filter((g) => !g.isMe);
 
@@ -107,51 +157,67 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
       ) : null}
 
       {/* create tile — shows your latest story as background once you have one */}
-      <Pressable
-        style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
-        onPress={onAddStory}
-        accessibilityLabel="Post a Flex"
-      >
-        {mine ? (
-          <CachedImage
-            uri={mine.stories[mine.stories.length - 1].image_url}
-            style={styles.tileImage}
-            contentFit="cover"
-          />
-        ) : (
+      <View style={[styles.tile, tileSize]}>
+        <Pressable
+          style={({ pressed }) => [styles.tileMainAction, pressed && styles.pressed]}
+          onPress={() => {
+            if (mine) {
+              router.push({ pathname: '/story/[userId]', params: { userId: mine.user_id } });
+            } else {
+              onAddStory();
+            }
+          }}
+          accessibilityLabel={mine ? 'View My Day' : 'Add to My Day'}
+          accessibilityRole="button"
+        >
+          {mine ? (
+            <CachedImage
+              uri={mine.stories[mine.stories.length - 1].image_url}
+              style={styles.tileImage}
+              contentFit="cover"
+            />
+          ) : (
+            <LinearGradient
+              colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.tileImage}
+            />
+          )}
           <LinearGradient
-            colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.tileImage}
+            colors={['transparent', 'rgba(0,0,0,0.6)']}
+            style={styles.tileScrim}
+            pointerEvents="none"
           />
-        )}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.6)']}
-          style={styles.tileScrim}
-          pointerEvents="none"
-        />
-        <View style={styles.createPlus}>
+          <View style={styles.createAvatarRing}>
+            {meAvatar ? (
+              <CachedImage uri={meAvatar} style={styles.createAvatar} contentFit="cover" />
+            ) : (
+              <View style={[styles.createAvatar, styles.createAvatarFallback]}>
+                <Text style={styles.createInitial}>
+                  {(meName?.trim()?.[0] ?? 'Y').toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.createLabel}>
+            My Day{'\n'}{meName?.trim().split(/\s+/)[0] || 'You'}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.createPlus, pressed && styles.pressed]}
+          onPress={onAddStory}
+          hitSlop={4}
+          accessibilityRole="button"
+          accessibilityLabel="Add to My Day"
+        >
           {posting ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Ionicons name="add" size={22} color="#fff" />
           )}
-        </View>
-        <Text style={styles.createLabel}>Post{'\n'}Flex</Text>
-      </Pressable>
-
-      {/* my story as a viewable tile */}
-      {mine ? (
-        <StoryTile
-          image={mine.stories[mine.stories.length - 1].image_url}
-          avatar={mine.avatar}
-          name="Your story"
-          onPress={() =>
-            router.push({ pathname: '/story/[userId]', params: { userId: mine.user_id } })
-          }
-        />
-      ) : null}
+        </Pressable>
+      </View>
 
       {others.map((g) => (
         <StoryTile
@@ -159,6 +225,7 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
           image={g.stories[g.stories.length - 1].image_url}
           avatar={g.avatar}
           name={authorLabel(g.name)}
+          tileSize={tileSize}
           onPress={() =>
             router.push({ pathname: '/story/[userId]', params: { userId: g.user_id } })
           }
@@ -166,17 +233,32 @@ export const StoryRail = forwardRef<StoryRailHandle>(function StoryRail(_props, 
       ))}
 
       {/* no buddies' stories yet — turn the empty rail into a useful nudge */}
-      {others.length === 0 ? (
-        <Pressable
-          style={({ pressed }) => [styles.hintTile, pressed && styles.pressed]}
-          onPress={() => router.push('/buddy')}
-          accessibilityLabel="Find accountability buddies"
-        >
-          <View style={styles.hintIcon}>
-            <Ionicons name="people" size={22} color={colors.primary} />
-          </View>
-          <Text style={styles.hintText}>Add buddies to see their stories</Text>
-        </Pressable>
+      {others.length === 0 && showHint ? (
+        <View style={[styles.hintTile, { width: hintWidth, height: tileHeight }]}>
+          <Pressable
+            style={({ pressed }) => [styles.hintContent, pressed && styles.pressed]}
+            onPress={() => router.push('/buddy')}
+            accessibilityLabel="Find accountability buddies"
+            accessibilityRole="button"
+          >
+            <View style={styles.hintIcon}>
+              <Ionicons name="people" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.hintText}>Find{'\n'}buddies</Text>
+          </Pressable>
+          <Pressable
+            style={styles.hintClose}
+            onPress={() => {
+              setShowHint(false);
+              AsyncStorage.setItem('story-buddy-hint-dismissed', '1').catch(() => {});
+            }}
+            hitSlop={6}
+            accessibilityLabel="Dismiss My Day suggestion"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={16} color={colors.textMuted} />
+          </Pressable>
+        </View>
       ) : null}
     </ScrollView>
   );
@@ -186,18 +268,21 @@ function StoryTile({
   image,
   avatar,
   name,
+  tileSize,
   onPress,
 }: {
   image: string;
   avatar: string | null;
   name: string;
+  tileSize: { width: number; height: number };
   onPress: () => void;
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.tile, tileSize, pressed && styles.pressed]}
       onPress={onPress}
       accessibilityLabel={`View ${name}`}
+      accessibilityRole="button"
     >
       <CachedImage uri={image} style={styles.tileImage} contentFit="cover" />
       <LinearGradient
@@ -221,13 +306,13 @@ function StoryTile({
   );
 }
 
-const TILE_W = 104;
-const TILE_H = 156;
+const TILE_W = 92;
+const TILE_H = 132;
 
 const styles = StyleSheet.create({
   rail: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     gap: spacing.sm,
   },
   pressed: { opacity: 0.85 },
@@ -238,15 +323,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: colors.surface,
   },
+  tileMainAction: {
+    flex: 1,
+  },
   tileImage: { width: '100%', height: '100%' },
   tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 64 },
   tileAvatarRing: {
     position: 'absolute',
     top: 8,
     left: 8,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 2.5,
     borderColor: colors.primary,
     backgroundColor: colors.card,
@@ -254,7 +342,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  tileAvatar: { width: 29, height: 29, borderRadius: 14.5 },
+  tileAvatar: { width: 25, height: 25, borderRadius: 12.5 },
   tileAvatarFallback: {
     backgroundColor: colors.primary,
     alignItems: 'center',
@@ -273,55 +361,87 @@ const styles = StyleSheet.create({
   // frosted ➕ floating over the tile — no white strip, all gradient
   createPlus: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginTop: -18,
-    marginLeft: -18,
+    right: 8,
+    bottom: 8,
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: colors.primary,
+    borderWidth: 2.5,
+    borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  createAvatarRing: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2.5,
+    borderColor: '#fff',
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  createAvatar: { width: 29, height: 29, borderRadius: 14.5 },
+  createAvatarFallback: {
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createInitial: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
   createLabel: {
     position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
+    left: 10,
+    right: 44,
+    bottom: 10,
     color: '#fff',
     fontFamily: font.bold,
-    fontSize: 12.5,
-    textAlign: 'center',
+    fontSize: 12,
+    textAlign: 'left',
     lineHeight: 16,
   },
   hintTile: {
-    width: 150,
+    width: 72,
     height: TILE_H,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    borderStyle: 'dashed',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.primarySoft,
+    overflow: 'hidden',
+  },
+  hintContent: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    padding: spacing.md,
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingVertical: spacing.md,
+  },
+  hintClose: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hintIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: colors.primarySoft,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   hintText: {
     color: colors.textMuted,
     fontFamily: font.semibold,
-    fontSize: 12.5,
+    fontSize: 11.5,
     textAlign: 'center',
     lineHeight: 17,
   },

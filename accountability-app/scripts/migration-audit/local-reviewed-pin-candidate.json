@@ -1,0 +1,39 @@
+{
+  "formatVersion": 1,
+  "status": "REVIEW_CANDIDATE_PENDING",
+  "container": {
+    "id": "a3b32ba43af8cff550d1e23b41cdd8c69f40c7faf5da1e4697c41780e228cf57",
+    "name": "supabase_db_tmp-ledger-replay-0079",
+    "imageId": "sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453",
+    "configuredImage": "public.ecr.aws/supabase/postgres:17.6.1.143",
+    "requiredLabels": {
+      "com.docker.compose.project": "tmp-ledger-replay-0079",
+      "com.supabase.cli.project": "tmp-ledger-replay-0079"
+    },
+    "mounts": [
+      {
+        "type": "volume",
+        "name": "supabase_db_tmp-ledger-replay-0079",
+        "destination": "/var/lib/postgresql/data",
+        "readWrite": true
+      }
+    ],
+    "networks": {
+      "supabase_network_tmp-ledger-replay-0079": {
+        "aliases": ["db", "db.supabase.internal"]
+      }
+    },
+    "entrypointCommandSha256": "da9d6f058bd5e185ce14b06405c7a3b11d2215230846cb2f137fc27b963983da"
+  },
+  "psql": {
+    "absolutePath": "/usr/bin/psql",
+    "version": "psql (PostgreSQL) 17.6"
+  },
+  "database": {
+    "serverVersionNum": "170006",
+    "currentDatabase": "postgres",
+    "databaseOid": "5",
+    "systemIdentifier": "7669164080203051047",
+    "ledgerRange": "0001-0078"
+  }
+}

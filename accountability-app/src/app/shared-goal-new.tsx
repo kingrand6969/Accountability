@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { createSharedGoal } from '../money/sharedGoals';
 import { listBuddies, type Buddy } from '../buddy/api';
 import { Avatar } from '../feed/Avatar';

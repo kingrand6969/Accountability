@@ -9,21 +9,27 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile } from '../../profiles/api';
 import { getHomeStats, type HomeStats } from '../../home/api';
 import { getInsights } from '../../insights/api';
 import { toLocalDateString } from '../../timeline/datetime';
+import { useActivitySync } from '../../activity/ActivitySyncProvider';
+import {
+  ActivityUploadsPanel,
+  shouldShowUploadsPanel,
+} from '../../activity/UploadStatus';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { ProgressRing } from '../../ui/ProgressRing';
 import { contentMaxWidth } from '../../ui/responsive';
-import { font, radius, spacing } from '../../ui/theme';
+import { font, spacing } from '../../ui/theme';
+import JourneyMomentum from '../../journey/MomentumScreen';
 
-const INK = '#1e1b4b';
-const INK_SOFT = 'rgba(30,27,75,0.72)';
-const ACCENT = '#2563eb';
-const PRIMARY = '#2563eb';
+const INK = '#081A3A';
+const INK_SOFT = 'rgba(8,26,58,0.70)';
+const ACCENT = '#155EEF';
+const PRIMARY = '#155EEF';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -33,63 +39,39 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/diet' | '/run' | '/insights' | '/books' | '/compete' | '/achievements';
+  route: '/gym' | '/finance' | '/today' | '/messages' | '/run' | '/insights' | '/achievements';
 }[] = [
   {
-    key: 'insights',
-    icon: 'stats-chart-outline',
-    tint: '#2563eb',
-    title: 'Progress & Insights',
-    sub: 'Your day, week & month at a glance',
-    route: '/insights',
-  },
-  {
-    key: 'achievements',
-    icon: 'medal-outline',
-    tint: '#f59e0b',
-    title: 'Trophy Case',
-    sub: 'Medals for your streaks, distance & wins',
-    route: '/achievements',
-  },
-  {
-    key: 'compete',
-    icon: 'trophy-outline',
-    tint: '#2563eb',
-    title: 'Compete & Leaderboards',
-    sub: 'Rank by city, challenge buddies & more',
-    route: '/compete',
-  },
-  {
-    key: 'gym',
-    icon: 'barbell-outline',
-    tint: '#7c3aed',
-    title: 'Exercise Library',
-    sub: 'Browse 800+ exercises, filter & log',
+    key: 'body',
+    icon: 'body-outline',
+    tint: '#155EEF',
+    title: 'Body',
+    sub: 'Workout, movement and recovery',
     route: '/gym',
   },
   {
-    key: 'diet',
-    icon: 'nutrition-outline',
-    tint: '#16a34a',
-    title: 'Diet & Calories',
-    sub: 'Track meals, calories & macros',
-    route: '/diet',
+    key: 'money',
+    icon: 'cash-outline',
+    tint: '#168B55',
+    title: 'Money',
+    sub: 'Savings promises and financial proof',
+    route: '/finance',
   },
   {
-    key: 'activity',
-    icon: 'walk-outline',
-    tint: '#ea580c',
-    title: 'Activity',
-    sub: 'GPS runs, rides & walks',
-    route: '/run',
+    key: 'focus',
+    icon: 'locate-outline',
+    tint: '#7C3AED',
+    title: 'Focus',
+    sub: 'Deep work, learning and priorities',
+    route: '/today',
   },
   {
-    key: 'books',
-    icon: 'book-outline',
-    tint: '#0d9488',
-    title: 'Daily Reads',
-    sub: 'A free e-book for your interests · Pro',
-    route: '/books',
+    key: 'people',
+    icon: 'people-outline',
+    tint: '#D45B2C',
+    title: 'People',
+    sub: 'Buddies, encouragement and connection',
+    route: '/messages',
   },
 ];
 
@@ -101,9 +83,17 @@ function weekDayDate(index: number): string {
   return toLocalDateString(d);
 }
 
-export default function Track() {
+function TrackLegacy() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const {
+    queued,
+    issueCount,
+    otherAccountPendingCount,
+    otherAccountPendingIsApproximate,
+    status: uploadStatus,
+    retryNow,
+  } = useActivitySync();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -160,6 +150,12 @@ export default function Track() {
     day: 'numeric',
     month: 'short',
   });
+  const showUploads = shouldShowUploadsPanel({
+    queuedCount: queued.length,
+    issueCount,
+    otherAccountPendingCount,
+    status: uploadStatus,
+  });
 
   return (
     <View style={styles.screen}>
@@ -171,8 +167,10 @@ export default function Track() {
         {/* greeting floats on the backdrop */}
         <View style={styles.greetingRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.hello}>Hello{firstName ? `, ${firstName}` : ''}</Text>
-            <Text style={styles.helloSub}>{today}</Text>
+            <Text style={styles.hello}>Your Journey</Text>
+            <Text style={styles.helloSub}>
+              {firstName ? `${firstName} · ` : ''}{today}
+            </Text>
           </View>
           <Pressable
             onPress={() => router.push('/profile')}
@@ -184,6 +182,36 @@ export default function Track() {
             ) : (
               <Ionicons name="person" size={16} color={INK_SOFT} />
             )}
+          </Pressable>
+        </View>
+
+        <View style={styles.journeyNav} accessibilityRole="tablist">
+          <View
+            style={[styles.journeyTab, styles.journeyTabActive]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: true }}
+          >
+            <Ionicons name="pulse-outline" size={16} color={INK} />
+            <Text style={[styles.journeyTabText, styles.journeyTabTextActive]}>Momentum</Text>
+            <View style={styles.journeyIndicator} />
+          </View>
+          <Pressable
+            onPress={() => router.push('/achievements')}
+            style={({ pressed }) => [styles.journeyTab, pressed && styles.pressed]}
+            accessibilityRole="tab"
+            accessibilityLabel="Open your Journey path"
+          >
+            <Ionicons name="trail-sign-outline" size={16} color={INK_SOFT} />
+            <Text style={styles.journeyTabText}>Path</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/today')}
+            style={({ pressed }) => [styles.journeyTab, pressed && styles.pressed]}
+            accessibilityRole="tab"
+            accessibilityLabel="Open your Journal"
+          >
+            <Ionicons name="book-outline" size={16} color={INK_SOFT} />
+            <Text style={styles.journeyTabText}>Journal</Text>
           </Pressable>
         </View>
 
@@ -256,6 +284,21 @@ export default function Track() {
           </View>
         </GlassCard>
 
+        {showUploads ? (
+          <GlassCard blurTarget={bgRef}>
+            <ActivityUploadsPanel
+              queued={queued}
+              issueCount={issueCount}
+              otherAccountPendingCount={otherAccountPendingCount}
+              otherAccountPendingIsApproximate={
+                otherAccountPendingIsApproximate
+              }
+              status={uploadStatus}
+              onRetryNow={retryNow}
+            />
+          </GlassCard>
+        ) : null}
+
         {/* pillars — frosted ledger */}
         <GlassCard blurTarget={bgRef}>
           <View style={styles.cardPad}>
@@ -304,7 +347,7 @@ export default function Track() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#E4DCF7' },
+  screen: { flex: 1, backgroundColor: '#F7F4EC' },
   scroll: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 110, // clear the floating tab bar
@@ -333,6 +376,31 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: 37, height: 37, borderRadius: 18.5 },
+  journeyNav: {
+    minHeight: 48,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(8,26,58,0.12)',
+    flexDirection: 'row',
+  },
+  journeyTab: {
+    flex: 1,
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  journeyTabActive: { position: 'relative' },
+  journeyTabText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 12.5 },
+  journeyTabTextActive: { color: INK },
+  journeyIndicator: {
+    position: 'absolute',
+    bottom: -1,
+    width: 44,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: INK,
+  },
   cardPad: { padding: spacing.lg },
   cardHeadRow: {
     flexDirection: 'row',
@@ -421,3 +489,8 @@ const styles = StyleSheet.create({
   pillarTitle: { fontSize: 15, fontFamily: font.bold, color: INK },
   pillarSub: { color: INK_SOFT, fontFamily: font.regular, fontSize: 12.5, marginTop: 1 },
 });
+
+// Keep the prior implementation available during the visual migration so no
+// behavior is deleted; the route now renders the approved Journey experience.
+void TrackLegacy;
+export default JourneyMomentum;

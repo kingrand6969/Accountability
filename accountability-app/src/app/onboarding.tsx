@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Image,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -17,6 +18,22 @@ import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../ui/Button';
 import { confirmDialog } from '../ui/ConfirmDialog';
 import { colors, font, radius, spacing } from '../ui/theme';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { BrandMark } from '../ui/BrandMark';
+import { createItem, listItemsForDay } from '../timeline/api';
+import { persistPromisesForToday } from '../entry/promisePersistence';
+import {
+  completePromiseSelection,
+  createSingleFlight,
+  togglePromiseSelection,
+} from '../entry/promiseSelection';
+
+const PROMISES = [
+  { id: 'body-run', group: 'Body', icon: 'walk' as const, color: '#2563EB', title: 'Morning run 3.2 km' },
+  { id: 'money-save', group: 'Money', icon: 'cash' as const, color: '#16A34A', title: 'Save $50' },
+  { id: 'focus-work', group: 'Focus', icon: 'radio-button-on' as const, color: '#7C3AED', title: '90 min deep work' },
+  { id: 'people-call', group: 'People', icon: 'people' as const, color: '#EA580C', title: 'Call someone I care about' },
+] as const;
 
 /** Per-user flag — a second account on the same device gets its own onboarding. */
 export function onboardedKey(userId: string): string {
@@ -73,8 +90,149 @@ async function resolveArea(text: string): Promise<AreaCheck> {
   }
 }
 
+function PromiseStep({ userId }: { userId: string | null }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [selectedPromises, setSelectedPromises] = useState<Set<string>>(new Set());
+  const [promiseError, setPromiseError] = useState<string | null>(null);
+  const [promiseLimitNotice, setPromiseLimitNotice] = useState<string | null>(null);
+  const completionFlight = useRef(createSingleFlight()).current;
+  const activeOwnerRef = useRef(true);
+  useEffect(() => () => {
+    activeOwnerRef.current = false;
+  }, []);
+  const isCurrentOwner = () => activeOwnerRef.current;
+
+  function togglePromise(id: string) {
+    setPromiseError(null);
+    if (!selectedPromises.has(id) && selectedPromises.size >= 3) {
+      setPromiseLimitNotice('You can choose up to 3. Remove one to choose another.');
+      return;
+    }
+    setPromiseLimitNotice(null);
+    setSelectedPromises((current) => togglePromiseSelection(current, id));
+  }
+
+  function finishPromises(skip = false) {
+    const expectedOwner = userId;
+    return completionFlight.run(async () => {
+      if (!skip && selectedPromises.size === 0) return;
+      if (!isCurrentOwner()) return;
+      setSaving(true);
+      setPromiseError(null);
+      const result = await completePromiseSelection(
+        { userId: expectedOwner, selected: selectedPromises, completion: skip ? 'skip' : 'start' },
+        {
+          persistTimeline: (selected) =>
+            persistPromisesForToday(selected, { listItemsForDay, createItem, isCurrentOwner }),
+          setItem: (key, value) => AsyncStorage.setItem(key, value),
+          isCurrentOwner,
+        },
+      );
+
+      if (!isCurrentOwner()) return;
+      setSaving(false);
+      if (result.outcome === 'noop' || result.outcome === 'detached') return;
+      if (result.outcome === 'stay') {
+        setPromiseError(result.error);
+        return;
+      }
+      if (!isCurrentOwner()) return;
+      router.replace('/');
+      if (result.warning) Alert.alert('Saved for this session', result.warning);
+    });
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.promiseScreen} keyboardShouldPersistTaps="handled">
+      <View style={styles.promiseIntro}>
+        <BrandMark size={34} color={colors.primary} accessibilityLabel="AccountAbility" />
+        <Text accessibilityRole="header" style={styles.promiseTitle}>
+          What will you{'\n'}show up for today?
+        </Text>
+        <Text style={styles.promiseSubtitle}>
+          Choose up to 3 promises. Start small—you can add more later.
+        </Text>
+        <View style={styles.promiseCountRow}>
+          <Text style={styles.promiseCount}>{selectedPromises.size} of 3 selected</Text>
+          <Text style={styles.promiseEncouragement}>
+            {selectedPromises.size === 0
+              ? 'Start small'
+              : selectedPromises.size === 3
+                ? 'Your day is ready'
+                : 'Keep it achievable'}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.promiseList}>
+        {PROMISES.map((promise) => {
+          const selected = selectedPromises.has(promise.id);
+          return (
+            <Pressable
+              key={promise.id}
+              onPress={() => togglePromise(promise.id)}
+              disabled={saving}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected, disabled: saving }}
+              accessibilityLabel={`${promise.group}: ${promise.title}`}
+              accessibilityHint={
+                selected
+                  ? 'Removes this promise'
+                  : selectedPromises.size >= 3
+                    ? 'Three promises are already selected'
+                    : 'Adds this promise'
+              }
+              style={({ pressed }) => [
+                styles.promiseCard,
+                selected && styles.promiseCardSelected,
+                pressed && styles.promisePressed,
+              ]}
+            >
+              <View style={[styles.promiseIcon, { backgroundColor: promise.color }]}>
+                <Ionicons name={promise.icon} size={21} color="#FFFFFF" />
+              </View>
+              <View style={styles.promiseCopy}>
+                <Text style={styles.promiseGroup}>{promise.group}</Text>
+                <Text style={styles.promiseExample}>{promise.title}</Text>
+              </View>
+              <Ionicons
+                name={selected ? 'checkbox' : 'square-outline'}
+                size={24}
+                color={selected ? colors.primary : colors.textFaint}
+              />
+            </Pressable>
+          );
+        })}
+      </View>
+      {promiseLimitNotice ? (
+        <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.promiseLimitNotice}>
+          {promiseLimitNotice}
+        </Text>
+      ) : null}
+      {promiseError ? (
+        <View accessibilityRole="alert" style={styles.promiseError}>
+          <Text style={styles.promiseErrorTitle}>Couldn&apos;t start your day</Text>
+          <Text style={styles.promiseErrorText}>{promiseError}</Text>
+          <Button title="Try again" variant="outline" onPress={() => finishPromises(false)}
+            disabled={saving || selectedPromises.size === 0} />
+        </View>
+      ) : null}
+      <View style={styles.promiseActions}>
+        <Button title="Start my day" onPress={() => finishPromises()}
+          disabled={saving || selectedPromises.size === 0} loading={saving} />
+        <Pressable onPress={() => finishPromises(true)} style={styles.skipPromises}
+          accessibilityRole="button" accessibilityLabel="Skip choosing promises for now"
+          disabled={saving} accessibilityState={{ disabled: saving }}>
+          <Text style={styles.skipPromisesText}>Skip for now</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
 export default function Onboarding() {
   const router = useRouter();
+  const { width, fontScale } = useWindowDimensions();
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
   const [firstName, setFirstName] = useState('');
@@ -82,6 +240,8 @@ export default function Onboarding() {
   const [area, setArea] = useState('');
   const [saving, setSaving] = useState(false);
   const [areaErr, setAreaErr] = useState<string | null>(null);
+  const [step, setStep] = useState<'profile' | 'promises'>('profile');
+  const stackNameFields = width < 400 || fontScale >= 1.3;
 
   // Returning member on a new device? Pre-fill what we already know.
   useEffect(() => {
@@ -98,15 +258,6 @@ export default function Onboarding() {
       .catch(() => {});
   }, []);
 
-  async function markDone() {
-    if (userId) {
-      try {
-        await AsyncStorage.setItem(onboardedKey(userId), '1');
-      } catch {
-        // storage failure shouldn't trap the user on this screen
-      }
-    }
-  }
 
   async function finish() {
     if (!validNamePart(firstName)) {
@@ -156,8 +307,7 @@ export default function Onboarding() {
         display_name: `${firstName.trim().replace(/\s+/g, ' ')} ${lastName.trim().replace(/\s+/g, ' ')}`,
         area: areaLabel,
       });
-      await markDone();
-      router.replace('/');
+      setStep('promises');
     } catch (e) {
       Alert.alert('Could not save', String((e as Error).message ?? e));
     } finally {
@@ -165,10 +315,14 @@ export default function Onboarding() {
     }
   }
 
+  if (step === 'promises') {
+    return <PromiseStep key={userId ?? 'signed-out'} userId={userId} />;
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.hero}>
-        <Image source={require('../../assets/images/logo.png')} style={styles.heroLogo} />
+        <BrandMark size={62} color={colors.primary} accessibilityLabel="AccountAbility" />
       </View>
       <Text style={styles.title}>Welcome to AccountAbility</Text>
       <Text style={styles.subtitle}>
@@ -176,7 +330,7 @@ export default function Onboarding() {
         streak alive. Let&apos;s set you up.
       </Text>
 
-      <View style={styles.nameRow}>
+      <View style={[styles.nameRow, stackNameFields && styles.nameRowStacked]}>
         <View style={styles.nameCol}>
           <Text style={styles.label}>First name</Text>
           <TextInput
@@ -187,6 +341,8 @@ export default function Onboarding() {
             onChangeText={setFirstName}
             autoComplete="given-name"
             textContentType="givenName"
+            accessibilityLabel="First name"
+            accessibilityHint="Enter your first name, using at least two letters."
           />
         </View>
         <View style={styles.nameCol}>
@@ -199,6 +355,8 @@ export default function Onboarding() {
             onChangeText={setLastName}
             autoComplete="family-name"
             textContentType="familyName"
+            accessibilityLabel="Last name"
+            accessibilityHint="Enter your last name, using at least two letters."
           />
         </View>
       </View>
@@ -215,8 +373,19 @@ export default function Onboarding() {
         }}
         autoComplete="postal-address-locality"
         textContentType="addressCity"
+        accessibilityLabel="Your location"
+        accessibilityHint="Enter your city or area to help find nearby workout buddies."
+        accessibilityValue={areaErr ? { text: `Invalid location: ${areaErr}` } : undefined}
       />
-      {areaErr ? <Text style={styles.errText}>{areaErr}</Text> : (
+      {areaErr ? (
+        <Text
+          style={styles.errText}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+        >
+          {areaErr}
+        </Text>
+      ) : (
         <Text style={styles.help}>Your city or area — used to match you with workout buddies nearby.</Text>
       )}
 
@@ -229,11 +398,23 @@ export default function Onboarding() {
 
       <Text style={styles.legalRow}>
         By continuing you agree to our{' '}
-        <Text style={styles.legalLink} onPress={() => router.push('/legal/terms')}>
+        <Text
+          style={styles.legalLink}
+          onPress={() => router.push('/legal/terms')}
+          accessibilityRole="link"
+          accessibilityLabel="Terms of Service"
+          accessibilityHint="Opens the Terms of Service."
+        >
           Terms of Service
         </Text>{' '}
         and{' '}
-        <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy')}>
+        <Text
+          style={styles.legalLink}
+          onPress={() => router.push('/legal/privacy')}
+          accessibilityRole="link"
+          accessibilityLabel="Privacy Policy"
+          accessibilityHint="Opens the Privacy Policy."
+        >
           Privacy Policy
         </Text>
         .
@@ -265,7 +446,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
     overflow: 'hidden',
   },
-  heroLogo: { width: 70, height: 70 },
   title: {
     fontSize: 26,
     fontFamily: font.extrabold,
@@ -280,6 +460,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   nameRow: { flexDirection: 'row', gap: 10 },
+  nameRowStacked: { flexDirection: 'column' },
   nameCol: { flex: 1, gap: 10 },
   label: { fontSize: 14, fontFamily: font.semibold, color: colors.textSecondary, marginTop: 10 },
   input: {
@@ -305,4 +486,93 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   legalLink: { color: colors.primary, fontFamily: font.semibold },
+  promiseScreen: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    backgroundColor: colors.cream,
+    gap: spacing.md,
+    maxWidth: 520,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  promiseIntro: { alignItems: 'center', gap: 5, alignSelf: 'stretch' },
+  promiseTitle: {
+    marginTop: 2,
+    color: colors.text,
+    fontFamily: font.serif,
+    fontSize: 31,
+    lineHeight: 35,
+    textAlign: 'center',
+    letterSpacing: -0.7,
+  },
+  promiseSubtitle: {
+    color: colors.textMuted,
+    fontFamily: font.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  promiseCountRow: {
+    minHeight: 30,
+    marginTop: 4,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    gap: spacing.sm,
+  },
+  promiseCount: { color: colors.primary, fontFamily: font.bold, fontSize: 12.5 },
+  promiseEncouragement: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12 },
+  promiseList: { alignSelf: 'stretch', gap: 8 },
+  promiseCard: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#E3DDD1',
+    backgroundColor: '#FFFFFF',
+  },
+  promiseCardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.primarySoft,
+  },
+  promiseIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  promiseCopy: { flex: 1, gap: 2 },
+  promiseGroup: { color: colors.text, fontFamily: font.bold, fontSize: 15 },
+  promiseExample: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12.5 },
+  promisePressed: { opacity: 0.65 },
+  promiseLimitNotice: {
+    alignSelf: 'stretch',
+    color: colors.danger,
+    fontFamily: font.semibold,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -4,
+  },
+  promiseError: {
+    alignSelf: 'stretch',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    backgroundColor: colors.dangerSoft,
+    marginBottom: spacing.sm,
+  },
+  promiseErrorTitle: { color: colors.danger, fontFamily: font.bold, fontSize: 15 },
+  promiseErrorText: { color: colors.textSecondary, fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
+  promiseActions: { alignSelf: 'stretch', gap: 2, marginTop: 'auto' },
+  skipPromises: { minHeight: 48, minWidth: 140, alignItems: 'center', justifyContent: 'center' },
+  skipPromisesText: { color: colors.primary, fontFamily: font.semibold, fontSize: 14 },
 });

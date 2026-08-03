@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '../lib/supabase';
+import { resolveMediaUrl } from '../media/privateMedia';
 
 /**
  * Memories: a personal photo/video vault, built to cost as little as possible.
@@ -32,8 +33,31 @@ export type Memory = {
   url: string; // signed
 };
 
+export type MemorySaveConfirmation = {
+  path: string;
+  bytes: number;
+};
+
+export async function confirmMemoryRowAfterInsertError(
+  expected: MemorySaveConfirmation,
+  insertError: unknown,
+  confirmByPath: (path: string) => Promise<MemorySaveConfirmation | null>,
+): Promise<MemorySaveConfirmation> {
+  try {
+    const confirmed = await confirmByPath(expected.path);
+    if (confirmed) return confirmed;
+  } catch (confirmationError) {
+    throw new AggregateError(
+      [insertError, confirmationError],
+      'The memory upload may have succeeded, but its database row could not be confirmed.',
+    );
+  }
+  throw insertError;
+}
+
 async function me(): Promise<string> {
-  const { data } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
   const uid = data.user?.id;
   if (!uid) throw new Error('Not signed in.');
   return uid;
@@ -101,7 +125,7 @@ async function uploadBuffer(
   kind: 'image' | 'video',
   location: string | null,
   tagged: string[] | null,
-): Promise<void> {
+): Promise<MemorySaveConfirmation> {
   const uid = await me();
   if (buf.byteLength > MAX_FILE_BYTES) {
     throw new Error(`That file is too big (max ${formatBytes(MAX_FILE_BYTES)}).`);
@@ -120,10 +144,22 @@ async function uploadBuffer(
     .from('memories')
     .insert({ path, kind, bytes: buf.byteLength, location, tagged });
   if (rowError) {
-    // quota trigger said no — don't leave an orphan file behind
-    await supabase.storage.from('memories').remove([path]).catch(() => {});
-    throw rowError;
+    return confirmMemoryRowAfterInsertError(
+      { path, bytes: buf.byteLength },
+      rowError,
+      async (candidatePath) => {
+        const { data, error: confirmationError } = await supabase
+          .from('memories')
+          .select('path,bytes')
+          .eq('path', candidatePath)
+          .maybeSingle();
+        if (confirmationError) throw confirmationError;
+        if (!data) return null;
+        return { path: data.path as string, bytes: Number(data.bytes) };
+      },
+    );
   }
+  return { path, bytes: buf.byteLength };
 }
 
 /** Save a picture at post time ("Add to Memories" checkbox). Compressed first. */
@@ -131,14 +167,14 @@ export async function saveImageToMemories(
   localUri: string,
   location: string | null = null,
   tagged: string[] | null = null,
-): Promise<void> {
+): Promise<MemorySaveConfirmation> {
   const shrunk = await ImageManipulator.manipulateAsync(
     localUri,
     [{ resize: { width: MAX_IMAGE_DIM } }],
     { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG, base64: true },
   );
   if (!shrunk.base64) throw new Error('Could not read that image.');
-  await uploadBuffer(
+  return uploadBuffer(
     decode(shrunk.base64),
     'jpg',
     'image/jpeg',
@@ -151,10 +187,11 @@ export async function saveImageToMemories(
 /** Save a picture that's already hosted (bookmark on a feed/group/page post) —
  *  it was compressed when posted, so copy the bytes as-is. */
 export async function saveRemoteImageToMemories(url: string): Promise<void> {
-  const res = await fetch(url);
+  const resolvedUrl = await resolveMediaUrl(url);
+  const res = await fetch(resolvedUrl);
   if (!res.ok) throw new Error('Could not fetch that photo.');
   const buf = await res.arrayBuffer();
-  const isPng = url.split('?')[0].toLowerCase().endsWith('.png');
+  const isPng = resolvedUrl.split('?')[0].toLowerCase().endsWith('.png');
   await uploadBuffer(
     buf,
     isPng ? 'png' : 'jpg',

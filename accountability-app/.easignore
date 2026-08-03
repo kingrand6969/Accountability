@@ -1,0 +1,57 @@
+# Local dependencies and build caches
+node_modules/
+.expo/
+dist/
+web-build/
+ios/
+android/
+.git/
+
+# Local environment files never belong in a cloud build archive.
+# EAS injects the selected preview/production environment securely.
+.env
+.env.*
+
+# Separate products and generated deployment bundles
+admin-site/
+share-site/
+share-site/**
+admin/
+legal-web/
+admin-site-deploy.tar.gz
+supabase/
+docs/
+
+# Local tooling and editor state
+.superpowers/
+.tmp-quality-web/
+.tmp-quality-web/**
+.claude/
+.vscode/
+.wrangler/
+*.tsbuildinfo
+*.log
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+*.orig.*
+.DS_Store
+
+# Recursive safeguards for no-VCS EAS archives
+**/node_modules
+**/node_modules/**
+**/.git
+**/.git/**
+**/.expo
+**/.expo/**
+**/dist
+**/dist/**
+**/web-build
+**/web-build/**
+**/.tmp-*/**
+**/*.tar
+**/*.tar.gz
+**/*.zip

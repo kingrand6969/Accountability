@@ -1,0 +1,5 @@
+{
+  "formatVersion": 2,
+  "description": "Leaf-only reviewed exceptions. Security and aggregate evidence cannot be allowlisted.",
+  "exceptions": []
+}

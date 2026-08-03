@@ -27,30 +27,37 @@ export const RunCard = forwardRef<
     durationS: number;
     points: Pt[];
     width: number;
+    aspectRatio?: number;
+    mediaFit?: 'cover' | 'contain';
   }
->(function RunCard({ mode, photoUri, distanceM, durationS, points, width }, ref) {
+>(function RunCard({ mode, photoUri, distanceM, durationS, points, width, aspectRatio = 4 / 5, mediaFit = 'cover' }, ref) {
   // 4:5 portrait — the modern share ratio (Instagram/FB): tall enough to look
   // like a card, short enough not to dominate the feed, and it matches the
   // feed's 4:5 frame so it shows whole with no crop.
-  const height = Math.round((width * 5) / 4);
+  const height = Math.round(width / aspectRatio);
   const usePhoto = mode === 'photo' && !!photoUri;
+  const landscape = aspectRatio > 1.2;
+  const compact = width < 270 || height < 310;
 
   const stats = (
-    <View style={usePhoto ? styles.statsPhoto : styles.statsMap}>
-      <Stat label="Distance" value={formatKm(distanceM)} unit="km" />
-      <Stat label="Pace" value={formatPace(distanceM, durationS)} unit="/km" />
-      <Stat label="Time" value={formatDurationLong(durationS)} />
+    <View style={landscape ? styles.statsLandscape : usePhoto ? styles.statsPhoto : styles.statsMap}>
+      <Stat label="Distance" value={formatKm(distanceM)} unit="km" compact={compact} />
+      <Stat label="Pace" value={formatPace(distanceM, durationS)} unit="/km" compact={compact} />
+      <Stat label="Time" value={formatDurationLong(durationS)} compact={compact} />
     </View>
   );
 
   const logo = (
-    <Image source={require('../../assets/images/logo-mark.png')} style={styles.logo} />
+    <Image
+      source={require('../../assets/images/logo-mark.png')}
+      style={[styles.logo, compact && styles.logoCompact]}
+    />
   );
 
   return (
     <View ref={ref} collapsable={false} style={[styles.card, { width, height }]}>
       {usePhoto ? (
-        <ImageBackground source={{ uri: photoUri! }} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <ImageBackground source={{ uri: photoUri! }} style={StyleSheet.absoluteFill} resizeMode={mediaFit}>
           <LinearGradient
             colors={[
               'rgba(0,0,0,0.62)',
@@ -97,13 +104,13 @@ export const RunCard = forwardRef<
   );
 });
 
-function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function Stat({ label, value, unit, compact = false }: { label: string; value: string; unit?: string; compact?: boolean }) {
   return (
     <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statLabel, compact && styles.statLabelCompact]}>{label}</Text>
       <View style={styles.statValRow}>
-        <Text style={styles.statVal}>{value}</Text>
-        {unit ? <Text style={styles.statUnit}>{unit}</Text> : null}
+        <Text style={[styles.statVal, compact && styles.statValCompact]}>{value}</Text>
+        {unit ? <Text style={[styles.statUnit, compact && styles.statUnitCompact]}>{unit}</Text> : null}
       </View>
     </View>
   );
@@ -119,6 +126,16 @@ const styles = StyleSheet.create({
   card: { borderRadius: 24, overflow: 'hidden', backgroundColor: '#0b1018' },
   statsPhoto: { position: 'absolute', top: '9%', left: 0, right: 0, alignItems: 'center', gap: 14 },
   statsMap: { position: 'absolute', top: '6%', left: 0, right: 0, alignItems: 'center', gap: 12 },
+  statsLandscape: {
+    position: 'absolute',
+    top: 12,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-around',
+    gap: 8,
+  },
   stat: { alignItems: 'center' },
   statLabel: {
     color: 'rgba(255,255,255,0.9)',
@@ -143,6 +160,9 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     ...shadow,
   },
+  statLabelCompact: { fontSize: 10 },
+  statValCompact: { fontSize: 27, lineHeight: 31 },
+  statUnitCompact: { fontSize: 12, marginBottom: 4 },
   stripWrap: { position: 'absolute', left: 0, right: 0, bottom: '9%' },
   logo: {
     position: 'absolute',
@@ -151,4 +171,5 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
   },
+  logoCompact: { width: 29, height: 29, left: 10, bottom: 10 },
 });

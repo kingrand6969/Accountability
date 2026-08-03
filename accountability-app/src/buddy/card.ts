@@ -5,11 +5,27 @@ export const CARD_BLUE: [string, string] = ['#60a5fa', '#1d4ed8'];
 
 export type BuddyCard = {
   bg_url?: string | null; // custom background photo (else the blue gradient)
+  /** Explicit owner opt-in for a photo-led public card. The media reference is
+   * stored in the card JSON only after the owner enables this in the editor. */
+  show_hero?: boolean;
+  hero_url?: string | null;
+  show_headline?: boolean;
+  show_traits?: boolean;
   mode?: 'profile' | 'custom';
   headline?: string;
   about?: string;
+  /** Public, owner-selected signals that help a potential buddy judge fit. */
+  traits?: string[];
   // what the owner chooses to display on their card
   show_rank?: boolean;
+  show_medals?: boolean;
+  show_area?: boolean;
+  show_bio?: boolean;
+  show_last_active?: boolean;
+  show_consistency?: boolean;
+  show_points?: boolean;
+  show_distance?: boolean;
+  show_challenge_wins?: boolean;
   rank_name?: string; // snapshotted at save time (rank only climbs)
   medals?: number; // medals earned (count), snapshotted alongside the rank
   medals_list?: { id: string; tier: number }[]; // which medals + tier, for display
@@ -23,13 +39,13 @@ export type BuddyStats = { buddies: number; km: number; stars: number; cheers: n
 /** A member's public performance line — the five Compete metrics, all-time,
  *  plus where they place among their own buddies by consistency. */
 export type CardMetrics = {
-  consistency: number;
-  points: number;
-  avgkm: number;
-  distance: number;
-  chwin: number;
+  consistency: number | null;
+  points: number | null;
+  avgkm: number | null;
+  distance: number | null;
+  chwin: number | null;
   buddiesRank: number | null;
-  buddiesTotal: number;
+  buddiesTotal: number | null;
 };
 
 export async function getCardMetrics(id: string): Promise<CardMetrics> {
@@ -37,13 +53,13 @@ export async function getCardMetrics(id: string): Promise<CardMetrics> {
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   return {
-    consistency: Number(row?.consistency ?? 0),
-    points: Number(row?.points ?? 0),
-    avgkm: Number(row?.avgkm ?? 0),
-    distance: Number(row?.distance ?? 0),
-    chwin: Number(row?.chwin ?? 0),
+    consistency: row?.consistency == null ? null : Number(row.consistency),
+    points: row?.points == null ? null : Number(row.points),
+    avgkm: row?.avgkm == null ? null : Number(row.avgkm),
+    distance: row?.distance == null ? null : Number(row.distance),
+    chwin: row?.chwin == null ? null : Number(row.chwin),
     buddiesRank: row?.buddies_rank != null ? Number(row.buddies_rank) : null,
-    buddiesTotal: Number(row?.buddies_total ?? 0),
+    buddiesTotal: row?.buddies_total == null ? null : Number(row.buddies_total),
   };
 }
 
@@ -146,6 +162,30 @@ export async function getBuddyCard(id: string): Promise<BuddyCardView | null> {
   };
 }
 
+/** One public-profile request for a Discover page; no per-card fan-out. */
+export async function getBuddyCards(ids: string[]): Promise<Map<string, BuddyCardView>> {
+  const result = new Map<string, BuddyCardView>();
+  if (ids.length === 0) return result;
+  const { data, error } = await supabase
+    .from('public_profiles')
+    .select('id,display_name,avatar_url,area,bio,created_at,last_active_at,buddy_card')
+    .in('id', ids);
+  if (error) throw error;
+  for (const row of data ?? []) {
+    result.set(row.id, {
+      id: row.id,
+      name: row.display_name ?? null,
+      avatar: row.avatar_url ?? null,
+      area: row.area ?? null,
+      bio: row.bio ?? null,
+      created_at: row.created_at,
+      last_active_at: row.last_active_at ?? null,
+      card: (row.buddy_card ?? {}) as BuddyCard,
+    });
+  }
+  return result;
+}
+
 export async function getMyBuddyCard(): Promise<BuddyCard> {
   const uid = await me();
   if (!uid) return {};
@@ -171,6 +211,7 @@ export type CardPost = {
   id: string;
   body: string;
   image_url: string | null;
+  post_type: string;
   created_at: string;
 };
 
@@ -181,7 +222,7 @@ export type CardPost = {
 export async function listCardPosts(userId: string, isBuddy: boolean): Promise<CardPost[]> {
   let q = supabase
     .from('posts')
-    .select('id,body,image_url,created_at')
+    .select('id,body,image_url,post_type,created_at')
     .eq('user_id', userId)
     .is('group_id', null)
     .is('page_id', null)
@@ -197,7 +238,7 @@ export async function listCardPosts(userId: string, isBuddy: boolean): Promise<C
  *  profile area/bio so the card is never blank. */
 export function cardText(view: BuddyCardView): { headline: string | null; about: string | null } {
   return {
-    headline: view.card.headline?.trim() || (view.area ? `Trains around ${view.area}` : null),
-    about: view.card.about?.trim() || view.bio,
+    headline: view.card.show_headline ? view.card.headline?.trim() || null : null,
+    about: view.card.show_bio ? view.card.about?.trim() || null : null,
   };
 }

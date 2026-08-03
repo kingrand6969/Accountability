@@ -282,8 +282,8 @@ export const PRIVACY: LegalDoc = {
     {
       h: '8. Advertising, identifiers & opt-outs',
       p: [
-        'Free accounts may see ads served through Google AdMob, which may use an advertising identifier and approximate location to show relevant ads. The app and its providers also use identifiers for crash reporting and basic analytics.',
-        'Under California law, letting AdMob use your advertising identifier for personalised ads counts as "sharing" for cross-context behavioural advertising. You can opt out of personalised ads in your device settings (Limit Ad Tracking / reset or delete the advertising ID), and where your browser or device sends a recognised opt-out signal such as Global Privacy Control, we treat it as a request to opt out of that sharing. Turning off personalised ads doesn’t remove ads for free members — it makes them less tailored.',
+        'Free and Pro accounts may see scrollable ads served through Google AdMob, which may use an advertising identifier and approximate location to show relevant ads. The app and its providers also use identifiers for crash reporting and basic analytics.',
+        'Under California law, letting AdMob use your advertising identifier for personalised ads counts as "sharing" for cross-context behavioural advertising. You can opt out of personalised ads in your device settings (Limit Ad Tracking / reset or delete the advertising ID), and where your browser or device sends a recognised opt-out signal such as Global Privacy Control, we treat it as a request to opt out of that sharing. Turning off personalised ads does not remove ads — it makes them less tailored.',
       ],
     },
     {

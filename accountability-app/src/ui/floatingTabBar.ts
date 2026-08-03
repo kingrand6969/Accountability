@@ -1,27 +1,38 @@
 import type { ViewStyle } from 'react-native';
 
-/** The floating-island tab bar style — shared so a screen can restore it after
+export const TAB_BAR_MIN_CONTENT_HEIGHT = 64;
+export const TAB_BAR_MAX_CONTENT_HEIGHT = 128;
+export const TAB_BAR_SAFE_AREA_ALLOWANCE = 32;
+
+export function tabBarContentHeight(fontScale: number): number {
+  const safeScale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
+  return Math.min(
+    TAB_BAR_MAX_CONTENT_HEIGHT,
+    Math.max(68, Math.round(TAB_BAR_MIN_CONTENT_HEIGHT * safeScale)),
+  );
+}
+
+/** Fixed bottom tab bar style — shared so a screen can restore it after
  *  temporarily hiding the bar (e.g. an immersive active run). */
-export function floatingTabBarStyle(winW: number, insetsBottom: number): ViewStyle {
-  const barWidth = Math.min(winW - 32, 400);
+export function floatingTabBarStyle(
+  winW: number,
+  insetsBottom: number,
+  fontScale = 1,
+): ViewStyle {
+  const contentHeight = tabBarContentHeight(fontScale);
   return {
     position: 'absolute',
-    width: barWidth,
-    left: (winW - barWidth) / 2,
-    bottom: Math.max(insetsBottom, 8) + 8,
-    height: 62,
-    borderRadius: 31,
+    width: winW,
+    left: 0,
+    bottom: 0,
+    height: contentHeight + insetsBottom,
     backgroundColor: '#ffffff',
-    borderTopWidth: 0,
-    paddingHorizontal: 8,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
   };
 }
 
 /** How far above the safe-area bottom the bar's top edge sits — so screens can
  *  keep their own bottom UI clear of the floating bar. */
-export const FLOATING_BAR_CLEARANCE = 82;
+export const FLOATING_BAR_CLEARANCE =
+  TAB_BAR_MAX_CONTENT_HEIGHT + TAB_BAR_SAFE_AREA_ALLOWANCE;

@@ -7,6 +7,10 @@ export type Candidate = {
   avatar_url: string | null;
   area: string | null;
 };
+export type DiscoveryCandidates = {
+  candidates: Candidate[];
+  viewerArea: string | null;
+};
 export type IncomingRequest = {
   id: string;
   from_user: string;
@@ -44,8 +48,18 @@ export async function setBuddyOptIn(value: boolean): Promise<void> {
 }
 
 export async function listCandidates(): Promise<Candidate[]> {
+  const result = await listDiscoveryCandidates();
+  return result.candidates.filter(
+    (candidate) =>
+      !!result.viewerArea &&
+      candidate.area?.trim().toLocaleLowerCase() === result.viewerArea.trim().toLocaleLowerCase(),
+  );
+}
+
+/** Opted-in discovery candidates plus the viewer's coarse, self-selected area. */
+export async function listDiscoveryCandidates(): Promise<DiscoveryCandidates> {
   const uid = await me();
-  if (!uid) return [];
+  if (!uid) return { candidates: [], viewerArea: null };
   const { data: meRow } = await supabase
     .from('profiles')
     .select('area')
@@ -53,18 +67,20 @@ export async function listCandidates(): Promise<Candidate[]> {
     .maybeSingle();
   const area = meRow?.area ?? null;
 
-  let q = supabase
+  const q = supabase
     .from('public_profiles')
     .select('id,display_name,avatar_url,area')
     .eq('buddy_opt_in', true)
     .neq('id', uid)
     .limit(50);
-  if (area) q = q.eq('area', area);
   const { data, error } = await q;
   if (error) throw error;
 
   const exclude = await excludedIds(uid);
-  return ((data ?? []) as Candidate[]).filter((c) => !exclude.has(c.id));
+  return {
+    candidates: ((data ?? []) as Candidate[]).filter((c) => !exclude.has(c.id)),
+    viewerArea: area,
+  };
 }
 
 /** People I've blocked, already linked with, or already requested. */

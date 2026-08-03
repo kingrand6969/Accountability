@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "approval": "PENDING",
+  "reviewer": null,
+  "authority": null,
+  "approvedAt": null,
+  "expiresAt": null,
+  "projectRef": "ksvcjvwawamwyquzsizk",
+  "accountSlug": "kingrand",
+  "scope": "STAGING_READ_ONLY_MIGRATION_AUDIT",
+  "singleUsePolicy": "ONE_PROCESS_FRESH_PREFLIGHT",
+  "windowsTrust": {
+    "systemRoot": "C:\\WINDOWS",
+    "toolSha256": {
+      "icacls": "cb9e55d4c02f4e55100724d2da9a1267f49e196bd39fcdf36cec6ea6314fad2a",
+      "powershell": "7600ffe12da441fe89d035b13801e8e91d064bc544a27b19a5cf49f6ab8b18f5",
+      "whoami": "23240ef9f8b0a9a324110b1c2331de31dc1b0e08f5359cb707e51a939af56cd3"
+    }
+  },
+  "packageDigest": null,
+  "instructions": "Pending review only. This checked-in file is deliberately unusable as approval. An authorized reviewer must create a distinct APPROVED file outside the audit package.",
+  "packageSha256": {
+    "audit.mjs": "046cde96c7d441ec34bc099c13e9af63957ea7fffa150a5a720150c0af0bf780",
+    "core.mjs": "8fb06230e0ff3bff4b7fd3fb3252b3caa9f3907d9fdb83904c53a9e1a882a625",
+    "core.test.mjs": "ec0e0ceb71fa4d419bf31d5ede3b129d4cc7abb3eec5741d6eb871efa860bcf5",
+    "frozen-artifacts.json": "9bf72dc1f373d80a6864a58fb895674597acdaab23894814021ec1a9879354c5",
+    "one-process-executor.mjs": "09034c4fe008ea8317235e75e6c2023602c8df411d17f2dcfa924c944f196b64",
+    "bounded-subprocess.mjs": "1a4ed9fa607fe8a663f00ceca2121fe59e32dabb040c7324b5edf117c59f1d03",
+    "collector.test.mjs": "8b6242da5b8462e7f98221206e1c4215f7c755788736d335f766f0b612bea9ba",
+    "collect-readonly.mjs": "f56f8833389f644173bdac20fb661beca31ac060f81372836c5f2efe7f0b6a4e",
+    "inspect-windows-acl.ps1": "451c5d31a3f9dc1ee4a484acebb953f1f9a54d72d621cd8361e347fe36318d92",
+    "supabase-2.110.0-json-envelope-provenance.json": "f4aec86303d709ebeaba1aac86de797eeb12a7ac97dafc22a3c4fce9503ee7d0",
+    "0095-postconditions-readonly.sql": "e19365452cb441880d65fda2de50b8abb3ca64439253c1e9956e23ffbd12c7cd",
+    "0096-postconditions-readonly.sql": "09b6c13ef28acbc844be273a8649cae8ce216893c85fb05bf7002e6c1ae76e49",
+    "moderate-content-bundle-manifest.json": "2005a575bf766839cfb3a4ec1d6721982f19e5921a9d6fab5b30ee8efbced62c",
+    "admin-actions-bundle-manifest.json": "f567b194f64502671f11f8c8bb78dfd58faa7cd84fe5062bc9e1e346d8337d12"
+  }
+}

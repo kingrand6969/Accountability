@@ -75,12 +75,17 @@ export type StandingRow = {
 
 export type Challenge = {
   id: string;
-  creator_id: string;
+  creator_id: string | null;
   title: string;
   metric: Metric;
   starts_at: string;
   ends_at: string;
   created_at: string;
+  is_official?: boolean;
+  cadence?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual' | null;
+  difficulty?: 'beginner' | 'intermediate' | 'advanced' | null;
+  target?: number | null;
+  rest_day_tokens?: number;
 };
 
 export type ChallengeCard = Challenge & { participants: number; joined: boolean };
@@ -270,10 +275,12 @@ export async function getBuddyStandings(metric: Metric, period: Period): Promise
 
 export async function listChallenges(): Promise<ChallengeCard[]> {
   const uid = await me();
+  const refreshed = await supabase.rpc('refresh_official_challenges');
+  if (refreshed.error) throw refreshed.error;
   const [{ data: rows, error }, joinedRes] = await Promise.all([
     supabase
       .from('challenges')
-      .select('id,creator_id,title,metric,starts_at,ends_at,created_at, challenge_participants(count)')
+      .select('id,creator_id,title,metric,starts_at,ends_at,created_at,is_official,cadence,difficulty,target,rest_day_tokens, challenge_participants(count)')
       .order('ends_at', { ascending: true })
       .limit(100),
     uid
@@ -290,6 +297,11 @@ export async function listChallenges(): Promise<ChallengeCard[]> {
     starts_at: c.starts_at,
     ends_at: c.ends_at,
     created_at: c.created_at,
+    is_official: !!c.is_official,
+    cadence: c.cadence ?? null,
+    difficulty: c.difficulty ?? null,
+    target: c.target == null ? null : Number(c.target),
+    rest_day_tokens: Number(c.rest_day_tokens ?? 0),
     participants: c.challenge_participants?.[0]?.count ?? 0,
     joined: joined.has(c.id),
   }));
@@ -299,7 +311,7 @@ export async function getChallenge(id: string): Promise<ChallengeCard | null> {
   const uid = await me();
   const { data, error } = await supabase
     .from('challenges')
-    .select('id,creator_id,title,metric,starts_at,ends_at,created_at, challenge_participants(count)')
+    .select('id,creator_id,title,metric,starts_at,ends_at,created_at,is_official,cadence,difficulty,target,rest_day_tokens, challenge_participants(count)')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -322,6 +334,11 @@ export async function getChallenge(id: string): Promise<ChallengeCard | null> {
     starts_at: data.starts_at,
     ends_at: data.ends_at,
     created_at: data.created_at,
+    is_official: !!(data as any).is_official,
+    cadence: (data as any).cadence ?? null,
+    difficulty: (data as any).difficulty ?? null,
+    target: (data as any).target == null ? null : Number((data as any).target),
+    rest_day_tokens: Number((data as any).rest_day_tokens ?? 0),
     participants: (data as any).challenge_participants?.[0]?.count ?? 0,
     joined,
   };
@@ -365,7 +382,11 @@ export async function joinChallenge(id: string): Promise<void> {
   if (!uid) throw new Error('Not signed in');
   const { error } = await supabase
     .from('challenge_participants')
-    .insert({ challenge_id: id, user_id: uid });
+    .insert({
+      challenge_id: id,
+      user_id: uid,
+      timezone_offset: new Date().getTimezoneOffset(),
+    });
   // 23505 = unique-violation (already joined) — treat as a no-op
   if (error && error.code !== '23505') throw error;
 }

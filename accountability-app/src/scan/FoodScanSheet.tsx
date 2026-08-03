@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { FoodItem, FoodScan } from './api';
 import { colors, font, radius, spacing } from '../ui/theme';
 

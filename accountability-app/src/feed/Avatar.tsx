@@ -1,14 +1,16 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { CachedImage } from '../ui/CachedImage';
+import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
 
 type Props = { url: string | null; name: string | null; size?: number };
 
 export function Avatar({ url, name, size = 40 }: Props) {
+  const resolvedUrl = useResolvedMediaUrl(url);
   const initial = (name?.trim()?.charAt(0) ?? '?').toUpperCase();
   const radius = size / 2;
-  if (url) {
+  if (resolvedUrl) {
     return (
-      <CachedImage uri={url} style={{ width: size, height: size, borderRadius: radius }} />
+      <CachedImage uri={resolvedUrl} style={{ width: size, height: size, borderRadius: radius }} />
     );
   }
   return (

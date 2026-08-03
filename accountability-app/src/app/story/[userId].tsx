@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AccessibilityInfo,
   Alert,
   Image,
   Pressable,
@@ -8,14 +9,17 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { listStoryGroups, deleteStory, type StoryGroup } from '../../stories/api';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { listStoryGroups, deleteStory, reportStory, type StoryGroup } from '../../stories/api';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
 import { font, spacing } from '../../ui/theme';
+import { useAuth } from '../../auth/AuthProvider';
+import { navigateBackSafely } from '../../navigation/routeAccessContract';
+import { canReportContent, createReportAction } from '../../moderation/reportAction';
 
 const STORY_DURATION_MS = 6000;
 
@@ -23,6 +27,16 @@ export default function StoryViewer() {
   const router = useRouter();
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const insets = useSafeAreaInsets();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const viewKey = `${ownerId ?? 'signed-out'}:${userId ?? 'missing'}`;
+  const currentOwnerRef = useRef(ownerId);
+  const currentViewKeyRef = useRef(viewKey);
+  const loadGeneration = useRef(0);
+  const lifecycleGeneration = useRef(0);
+  const mountedRef = useRef(true);
+  const focusedRef = useRef(false);
+  const currentStoryIdRef = useRef<string | null>(null);
 
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [groupIndex, setGroupIndex] = useState(0);
@@ -30,39 +44,140 @@ export default function StoryViewer() {
   const [loading, setLoading] = useState(true);
   // pauses auto-advance while the delete confirm is open
   const [paused, setPaused] = useState(false);
+  const [dataViewKey, setDataViewKey] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [reporting, setReporting] = useState(false);
+  const storyReportAction = useRef<ReturnType<typeof createReportAction> | null>(null);
+  if (!storyReportAction.current) {
+    storyReportAction.current = createReportAction({
+      kind: 'story',
+      report: reportStory,
+      confirm: ({ title, message, onConfirm, onCancel, onDismiss }) => {
+        setPaused(true);
+        Alert.alert(title, message, [
+          { text: 'Cancel', style: 'cancel', onPress: onCancel },
+          { text: 'Report', style: 'destructive', onPress: () => void onConfirm() },
+        ], { cancelable: true, onDismiss });
+      },
+      toast: showToast,
+      announce: (message) => AccessibilityInfo.announceForAccessibility(message),
+      alertError: (title, message) => Alert.alert(title, message),
+      pendingChanged: (ids) => {
+        const pending = ids.size > 0;
+        setReporting(pending);
+        if (!pending) setPaused(false);
+      },
+      getContextKey: (targetId) =>
+        mountedRef.current &&
+        focusedRef.current &&
+        currentStoryIdRef.current === targetId
+          ? `${targetId}:${currentOwnerRef.current ?? ''}:${currentViewKeyRef.current}:${lifecycleGeneration.current}`
+          : null,
+    });
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const all = await listStoryGroups();
-        if (cancelled) return;
-        const idx = all.findIndex((g) => g.user_id === userId);
-        if (idx === -1 || all[idx].stories.length === 0) {
-          router.back();
-          return;
-        }
-        setGroups(all);
-        setGroupIndex(idx);
-        setStoryIndex(0);
-      } catch (e) {
-        if (!cancelled) {
-          Alert.alert('Could not load stories', String((e as Error).message ?? e));
-          router.back();
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    mountedRef.current = true;
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
+      focusedRef.current = false;
+      storyReportAction.current?.dispose();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, []);
+
+  useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    currentOwnerRef.current = ownerId;
+    currentViewKeyRef.current = viewKey;
+    loadGeneration.current += 1;
+    storyReportAction.current?.invalidate();
+    queueMicrotask(() => {
+      if (
+        lifecycle !== lifecycleGeneration.current ||
+        currentOwnerRef.current !== ownerId ||
+        currentViewKeyRef.current !== viewKey
+      )
+        return;
+      setGroups([]);
+      setGroupIndex(0);
+      setStoryIndex(0);
+      setDataViewKey(null);
+      setUnavailable(false);
+      setPaused(false);
+      setReporting(false);
+      setLoading(ownerId !== null);
+    });
+  }, [ownerId, viewKey]);
+
+  const load = useCallback(async () => {
+    const requestOwner = ownerId;
+    const requestViewKey = viewKey;
+    const generation = ++loadGeneration.current;
+    if (!requestOwner || !userId) {
+      setUnavailable(true);
+      setDataViewKey(requestViewKey);
+      setLoading(false);
+      return;
+    }
+    try {
+      const all = await listStoryGroups();
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current ||
+        requestViewKey !== currentViewKeyRef.current
+      )
+        return;
+      const idx = all.findIndex((g) => g.user_id === userId);
+      const missing = idx === -1 || all[idx].stories.length === 0;
+      setGroups(missing ? [] : all);
+      setGroupIndex(missing ? 0 : idx);
+      setStoryIndex(0);
+      setUnavailable(missing);
+      setDataViewKey(requestViewKey);
+    } catch {
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current ||
+        requestViewKey !== currentViewKeyRef.current
+      )
+        return;
+      setGroups([]);
+      setUnavailable(true);
+      setDataViewKey(requestViewKey);
+    } finally {
+      if (
+        generation === loadGeneration.current &&
+        requestOwner === currentOwnerRef.current &&
+        requestViewKey === currentViewKeyRef.current
+      )
+        setLoading(false);
+    }
+  }, [ownerId, userId, viewKey]);
+
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      void load();
+      return () => {
+        focusedRef.current = false;
+        loadGeneration.current += 1;
+        lifecycleGeneration.current += 1;
+        storyReportAction.current?.invalidate();
+        if (timer.current) clearTimeout(timer.current);
+        setPaused(false);
+        setReporting(false);
+      };
+    }, [load]),
+  );
+
+  const safeClose = useCallback(() => {
+    navigateBackSafely(router);
+  }, [router]);
 
   const group: StoryGroup | undefined = groups[groupIndex];
   const story = group?.stories[storyIndex];
+  currentStoryIdRef.current = story?.id ?? null;
 
   const goNext = useCallback(() => {
     if (!group) return;
@@ -72,9 +187,9 @@ export default function StoryViewer() {
       setGroupIndex(groupIndex + 1);
       setStoryIndex(0);
     } else {
-      router.back();
+      safeClose();
     }
-  }, [group, groups.length, groupIndex, storyIndex, router]);
+  }, [group, groups.length, groupIndex, storyIndex, safeClose]);
 
   const goPrev = useCallback(() => {
     if (storyIndex > 0) {
@@ -96,8 +211,21 @@ export default function StoryViewer() {
     };
   }, [loading, paused, story, goNext]);
 
+  function isCurrentMutation(requestOwner: string, lifecycle: number, requestViewKey: string) {
+    return (
+      requestOwner === currentOwnerRef.current &&
+      lifecycle === lifecycleGeneration.current &&
+      requestViewKey === currentViewKeyRef.current
+    );
+  }
+
   function onDelete() {
-    if (!story) return;
+    const requestOwner = ownerId;
+    const requestViewKey = viewKey;
+    const lifecycle = lifecycleGeneration.current;
+    const targetGroup = group;
+    const target = story;
+    if (!requestOwner || !targetGroup?.isMe || !target || target.user_id !== requestOwner) return;
     setPaused(true);
     Alert.alert('Delete story?', 'This story will be removed for everyone.', [
       { text: 'Cancel', style: 'cancel', onPress: () => setPaused(false) },
@@ -105,15 +233,17 @@ export default function StoryViewer() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
+          if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
           try {
-            await deleteStory(story.id);
+            await deleteStory(target.id);
+            if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
             showToast('Story deleted');
             // Remove locally, then advance (or leave if nothing is left).
-            const remaining = group!.stories.filter((s) => s.id !== story.id);
+            const remaining = targetGroup.stories.filter((s) => s.id !== target.id);
             if (remaining.length === 0) {
               const nextGroups = groups.filter((_, i) => i !== groupIndex);
               if (nextGroups.length === 0 || groupIndex >= nextGroups.length) {
-                router.back();
+                safeClose();
                 return;
               }
               setGroups(nextGroups);
@@ -123,19 +253,36 @@ export default function StoryViewer() {
               setStoryIndex(Math.min(storyIndex, remaining.length - 1));
             }
           } catch (e) {
+            if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
             Alert.alert('Could not delete story', String((e as Error).message ?? e));
           } finally {
-            setPaused(false);
+            if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) setPaused(false);
           }
         },
       },
     ]);
   }
 
-  if (loading || !group || !story) {
+  function onReport() {
+    const target = story;
+    if (!target) return;
+    storyReportAction.current?.request(target.id, ownerId, target.user_id);
+  }
+
+  if (loading || dataViewKey !== viewKey) {
     return (
       <View style={styles.screen}>
         <ActivityIndicator size="large" color="#fff" style={styles.center} />
+      </View>
+    );
+  }
+  if (unavailable || !group || !story) {
+    return (
+      <View style={styles.unavailable}>
+        <Text style={styles.unavailableTitle}>This story is no longer available.</Text>
+        <Pressable onPress={safeClose} accessibilityRole="button" accessibilityLabel="Close stories">
+          <Text style={styles.unavailableAction}>Go back</Text>
+        </Pressable>
       </View>
     );
   }
@@ -179,7 +326,7 @@ export default function StoryViewer() {
           { top: insets.top + spacing.sm + 10 },
           pressed && styles.pressed,
         ]}
-        onPress={() => router.back()}
+        onPress={safeClose}
         hitSlop={8}
         accessibilityLabel="Close stories"
       >
@@ -208,12 +355,39 @@ export default function StoryViewer() {
           <Ionicons name="trash-outline" size={22} color="#fff" />
         </Pressable>
       ) : null}
+      {canReportContent(ownerId, story.user_id) ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.reportBtn,
+            { bottom: insets.bottom + spacing.xl },
+            pressed && styles.pressed,
+          ]}
+          onPress={onReport}
+          disabled={reporting}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Report this story"
+          accessibilityState={{ disabled: reporting, busy: reporting }}
+        >
+          <Ionicons name="flag-outline" size={22} color="#fff" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
+  unavailable: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    padding: spacing.xl,
+  },
+  unavailableTitle: { color: '#fff', fontFamily: font.bold, fontSize: 18, textAlign: 'center' },
+  unavailableAction: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
   center: { flex: 1 },
   image: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   tapLeft: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '25%' },
@@ -280,6 +454,16 @@ const styles = StyleSheet.create({
     paddingRight: 52, // keep clear of the trash button
   },
   trashBtn: {
+    position: 'absolute',
+    right: spacing.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportBtn: {
     position: 'absolute',
     right: spacing.md,
     width: 44,

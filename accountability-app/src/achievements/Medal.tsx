@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LOCKED_META, TIER_META, medalMetal, type MedalState } from './catalog';
 import { MedalIcon } from './MedalIcon';
 import { medalArtFor, type MedalTierIndex } from './medalArt';

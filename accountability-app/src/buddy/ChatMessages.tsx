@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Message } from './api';
 import { CachedImage } from '../ui/CachedImage';
 import { colors, font, radius, spacing } from '../ui/theme';

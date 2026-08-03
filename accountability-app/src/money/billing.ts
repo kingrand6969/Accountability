@@ -106,3 +106,17 @@ export function unpaidTotal(bills: Bill[], today: Date): number {
     return sum + due;
   }, 0);
 }
+
+/** Amount that needs immediate attention: overdue bills plus unpaid bills due
+ * today or within the next three days. Later bills and paid bills are excluded. */
+export function billAttentionTotal(bills: Bill[], today: Date): number {
+  return bills.reduce((sum, bill) => {
+    const status = billStatus(bill, today);
+    if (status.paid || (!status.overdue && !status.dueSoon)) return sum;
+    const due =
+      bill.category === 'credit_card' && bill.min_payment != null
+        ? bill.min_payment
+        : bill.amount;
+    return sum + due;
+  }, 0);
+}

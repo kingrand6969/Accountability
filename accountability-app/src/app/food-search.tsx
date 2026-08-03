@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { searchFoods, type FoodHit } from '../diet/openfoodfacts';
 import { scaleNutrient, scaleMacro } from '../diet/compute';
 import { addFoodLog, todayString } from '../diet/api';

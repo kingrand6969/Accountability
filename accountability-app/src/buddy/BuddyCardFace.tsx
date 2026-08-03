@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   CARD_BLUE,
@@ -75,20 +75,20 @@ export function BuddyCardFace({
 
   // ranks show automatically when the member shares location (they're already
   // public on the leaderboards); '—' otherwise.
-  const countryRank = boardRank?.countryRank ? `#${boardRank.countryRank}` : '—';
-  const cityRank = boardRank?.cityRank ? `#${boardRank.cityRank}` : '—';
+  const countryRank = boardRank?.countryRank ? `#${boardRank.countryRank}` : '--';
+  const cityRank = boardRank?.cityRank ? `#${boardRank.cityRank}` : '--';
   const buddiesRank =
-    metrics?.buddiesRank && metrics.buddiesTotal > 1 ? `#${metrics.buddiesRank}` : '—';
+    metrics?.buddiesRank && (metrics.buddiesTotal ?? 0) > 1 ? `#${metrics.buddiesRank}` : '--';
 
   const lastSeen = lastActive ? `Active ${timeAgo(lastActive)}` : null;
 
   const tiles = metrics
     ? [
-        { value: String(Math.round(metrics.consistency)), label: 'Consistency' },
-        { value: String(Math.round(metrics.points)), label: 'Points' },
-        { value: metrics.avgkm.toFixed(2), label: 'Avg km/d' },
-        { value: metrics.distance.toFixed(1), label: 'Distance' },
-        { value: String(Math.round(metrics.chwin)), label: 'Wins' },
+        { value: metrics.consistency == null ? '--' : String(Math.round(metrics.consistency)), label: 'Consistency' },
+        { value: metrics.points == null ? '--' : String(Math.round(metrics.points)), label: 'Points' },
+        { value: metrics.avgkm == null ? '--' : metrics.avgkm.toFixed(2), label: 'Avg km/d' },
+        { value: metrics.distance == null ? '--' : metrics.distance.toFixed(1), label: 'Distance' },
+        { value: metrics.chwin == null ? '--' : String(Math.round(metrics.chwin)), label: 'Wins' },
       ]
     : [];
 
@@ -136,13 +136,13 @@ export function BuddyCardFace({
           {authorLabel(name)}
         </Text>
         <Text style={styles.idSub} numberOfLines={1}>
-          {[area, lastSeen].filter(Boolean).join('  ·  ') || 'Accountability buddy'}
+          {[area, lastSeen].filter(Boolean).join(' - ')}
         </Text>
       </View>
       <RankBadge rank={rankName} size={wide ? 58 : 50} />
       <View style={styles.idStats}>
         <Text style={styles.idStat}>
-          {stats?.cheers ?? 0} {(stats?.cheers ?? 0) === 1 ? 'Cheer' : 'Cheers'}
+          {stats?.cheers ?? 0} Encouragement{(stats?.cheers ?? 0) === 1 ? '' : 's'}
         </Text>
         <Text style={styles.idDot}>·</Text>
         <Text style={styles.idStat}>{stats?.buddies ?? 0} Buddies</Text>

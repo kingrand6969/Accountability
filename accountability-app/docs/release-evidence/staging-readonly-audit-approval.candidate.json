@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "approval": "PENDING",
+  "reviewer": null,
+  "authority": null,
+  "approvedAt": null,
+  "expiresAt": "2026-07-30T23:40:29.486Z",
+  "projectRef": "ksvcjvwawamwyquzsizk",
+  "accountSlug": "kingrand",
+  "scope": "STAGING_READ_ONLY_MIGRATION_AUDIT",
+  "singleUsePolicy": "ONE_PROCESS_FRESH_PREFLIGHT",
+  "windowsTrust": {
+    "systemRoot": "C:\\WINDOWS",
+    "toolSha256": {
+      "icacls": "cb9e55d4c02f4e55100724d2da9a1267f49e196bd39fcdf36cec6ea6314fad2a",
+      "powershell": "7600ffe12da441fe89d035b13801e8e91d064bc544a27b19a5cf49f6ab8b18f5",
+      "whoami": "23240ef9f8b0a9a324110b1c2331de31dc1b0e08f5359cb707e51a939af56cd3"
+    }
+  },
+  "packageDigest": "eb75c5c8e12587679e3ce89690647dfd30cb09339b39b9dd97778c8f8bece8b5",
+  "instructions": "Pending review only. This candidate is deliberately unusable as approval. An authorized reviewer must set APPROVED, reviewer, authority, and approvedAt without changing the staging-only scope, trust bindings, package hashes, digest, or expiry.",
+  "packageSha256": {
+    "audit.mjs": "046cde96c7d441ec34bc099c13e9af63957ea7fffa150a5a720150c0af0bf780",
+    "core.mjs": "a79fbb276e46a61e67d2c1465872202e353935237caaffffa464aff453a46197",
+    "core.test.mjs": "74186c594da89171cb1147144c1c40a4eaaa00dd3f3612c17534eb07c3fcf87f",
+    "frozen-artifacts.json": "24d0e4ef49c17669185fae67e370a087306a1b6678bb85d523ea9b27b84c9af8",
+    "one-process-executor.mjs": "3054460414af1cf1135d8f3794ab33d108b1420ba3e609918fe1a7d6a3910bbf",
+    "bounded-subprocess.mjs": "1a4ed9fa607fe8a663f00ceca2121fe59e32dabb040c7324b5edf117c59f1d03",
+    "collector.test.mjs": "73ac49905b7a5b193ea4854cb5fb7ac65a3668a1a00625e94dbfe2515e4140de",
+    "collect-readonly.mjs": "d55ba39af326c54496a3fad64343f525fa7df5d5e8725bb366843d1a7af92441",
+    "inspect-windows-acl.ps1": "451c5d31a3f9dc1ee4a484acebb953f1f9a54d72d621cd8361e347fe36318d92",
+    "supabase-2.110.0-json-envelope-provenance.json": "8efc47cc60d5330baf79b00749184a0c9cf0347481abadb1bf2cc75d3192f873"
+  }
+}
