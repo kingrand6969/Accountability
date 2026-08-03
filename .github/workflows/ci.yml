@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          sparse-checkout: accountability-app
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -54,6 +56,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          sparse-checkout: accountability-app
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -79,6 +83,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          sparse-checkout: accountability-app
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
