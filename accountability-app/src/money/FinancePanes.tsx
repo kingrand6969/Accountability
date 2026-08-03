@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -349,20 +349,24 @@ export function AccountsPane({
         </View>
       </GlassCard>
 
-      <PayCardSheet
-        card={payFor}
-        onClose={() => setPayFor(null)}
-        onPaid={(left, name) => {
-          setPayFor(null);
-          showToast(left <= 0 ? `${name} is fully paid off! 🎉` : `Payment logged — ${formatAmount(left)} left on ${name}`);
-          load();
-        }}
-      />
-      <AddCardSheet
-        visible={showAddCard}
-        onClose={() => setShowAddCard(false)}
-        onSaved={() => { setShowAddCard(false); load(); }}
-      />
+      {payFor ? (
+        <PayCardSheet
+          key={payFor.id}
+          card={payFor}
+          onClose={() => setPayFor(null)}
+          onPaid={(left, name) => {
+            setPayFor(null);
+            showToast(left <= 0 ? `${name} is fully paid off! 🎉` : `Payment logged — ${formatAmount(left)} left on ${name}`);
+            load();
+          }}
+        />
+      ) : null}
+      {showAddCard ? (
+        <AddCardSheet
+          onClose={() => setShowAddCard(false)}
+          onSaved={() => { setShowAddCard(false); load(); }}
+        />
+      ) : null}
 
       {/* debts & IOUs */}
       <GlassCard blurTarget={blurTarget}>
@@ -454,23 +458,17 @@ function CardSheetShell({ visible, title, onClose, children }: {
 }
 
 function PayCardSheet({ card, onClose, onPaid }: {
-  card: Debt | null; onClose: () => void; onPaid: (left: number, name: string) => void;
+  card: Debt; onClose: () => void; onPaid: (left: number, name: string) => void;
 }) {
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(card.monthly_payment ? String(card.monthly_payment) : '');
   const [saving, setSaving] = useState(false);
   const attemptKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (card) {
-      setAmount(card.monthly_payment ? String(card.monthly_payment) : '');
-      attemptKey.current = null;
-    }
-  }, [card]);
   const a = Number(amount) || 0;
-  const valid = !!card && Number.isFinite(a) && a > 0 && a <= card.amount;
+  const valid = Number.isFinite(a) && a > 0 && a <= card.amount;
   return (
-    <CardSheetShell visible={!!card} title={card ? `Pay ${card.counterparty}` : ''} onClose={onClose}>
+    <CardSheetShell visible title={`Pay ${card.counterparty}`} onClose={onClose}>
       <Text style={styles.sheetSub}>
-        {card ? `${formatAmount(card.amount)} left. Log what you paid — it comes straight off the total.` : ''}
+        {formatAmount(card.amount)} left. Log what you paid — it comes straight off the total.
       </Text>
       <TextInput
         style={styles.sheetInput}
@@ -490,7 +488,6 @@ function PayCardSheet({ card, onClose, onPaid }: {
         style={({ pressed }) => [styles.sheetBtn, (!valid || saving) && { opacity: 0.5 }, pressed && styles.pressed]}
         disabled={!valid || saving}
         onPress={async () => {
-          if (!card) return;
           setSaving(true);
           try {
             attemptKey.current ??= Crypto.randomUUID();
@@ -510,8 +507,8 @@ function PayCardSheet({ card, onClose, onPaid }: {
   );
 }
 
-function AddCardSheet({ visible, onClose, onSaved }: {
-  visible: boolean; onClose: () => void; onSaved: () => void;
+function AddCardSheet({ onClose, onSaved }: {
+  onClose: () => void; onSaved: () => void;
 }) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -519,11 +516,8 @@ function AddCardSheet({ visible, onClose, onSaved }: {
   const [dueDay, setDueDay] = useState('');
   const [limit, setLimit] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (visible) { setName(''); setAmount(''); setMonthly(''); setDueDay(''); setLimit(''); }
-  }, [visible]);
   return (
-    <CardSheetShell visible={visible} title="Add credit card" onClose={onClose}>
+    <CardSheetShell visible title="Add credit card" onClose={onClose}>
       <TextInput style={styles.sheetInput} value={name} onChangeText={setName} placeholder="Card name (e.g. Visa …1234)" placeholderTextColor="rgba(30,27,75,0.35)" />
       <TextInput style={styles.sheetInput} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Total amount owed" placeholderTextColor="rgba(30,27,75,0.35)" />
       <View style={styles.sheetRow}>
