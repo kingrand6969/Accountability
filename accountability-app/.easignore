@@ -39,3 +39,19 @@ docs/
 *.pem
 *.orig.*
 .DS_Store
+
+# Recursive safeguards for no-VCS EAS archives
+**/node_modules
+**/node_modules/**
+**/.git
+**/.git/**
+**/.expo
+**/.expo/**
+**/dist
+**/dist/**
+**/web-build
+**/web-build/**
+**/.tmp-*/**
+**/*.tar
+**/*.tar.gz
+**/*.zip

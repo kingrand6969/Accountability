@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { typeMeta, formatTime } from './format';
 import type { TimelineItem } from './types';
 import { colors, font, radius, spacing } from '../ui/theme';

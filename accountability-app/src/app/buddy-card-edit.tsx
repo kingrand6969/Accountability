@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   getMyBuddyCard,
@@ -35,7 +35,7 @@ export default function BuddyCardEdit() {
   const [myName, setMyName] = useState<string | null>(null);
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myArea, setMyArea] = useState<string | null>(null);
-  const [myBio, setMyBio] = useState<string | null>(null);
+  const [myCover, setMyCover] = useState<string | null>(null);
   const [myMetrics, setMyMetrics] = useState<CardMetrics | null>(null);
   const [myRankName, setMyRankName] = useState<string | null>(null);
   const [myMedals, setMyMedals] = useState<number | null>(null);
@@ -48,7 +48,7 @@ export default function BuddyCardEdit() {
         setMyName(p?.display_name ?? null);
         setMyAvatar(p?.avatar_url ?? null);
         setMyArea(p?.area ?? null);
-        setMyBio(p?.bio ?? null);
+        setMyCover(p?.cover_url ?? null);
       })
       .catch(() => {});
     // live data so the preview shows exactly what visitors will see
@@ -66,10 +66,8 @@ export default function BuddyCardEdit() {
       .catch(() => {});
   }, []);
 
-  // your own words, with a gentle fall-back to your profile so the card is never blank
-  const headline = card.headline?.trim() || (myArea ? `Trains around ${myArea}` : null);
-  const about =
-    card.about?.trim() || myBio || 'They haven’t written anything yet — say hi and find out!';
+  const headline = card.show_headline ? card.headline?.trim() || null : null;
+  const about = card.show_bio ? card.about?.trim() || null : null;
   const previewCard: BuddyCard = {
     ...card,
     rank_name: myRankName ?? card.rank_name,
@@ -83,8 +81,10 @@ export default function BuddyCardEdit() {
       const toSave: BuddyCard = {
         ...card,
         mode: 'custom',
+        hero_url: card.show_hero ? card.hero_url ?? myCover : null,
         rank_name: myRankName ?? card.rank_name,
         medals: myMedals ?? card.medals,
+        medals_list: myMedalList ?? card.medals_list,
       };
       await saveMyBuddyCard(toSave);
       showToast('Buddy card saved');
@@ -101,7 +101,7 @@ export default function BuddyCardEdit() {
       <Text style={styles.label}>Focus line</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. Morning runs · 5k pace · looking for a jog partner"
+        placeholder="e.g. Morning runs - 5k pace - looking for a jog partner"
         placeholderTextColor={colors.textFaint}
         value={card.headline ?? ''}
         onChangeText={(t) => setCard((c) => ({ ...c, headline: t }))}
@@ -117,6 +117,35 @@ export default function BuddyCardEdit() {
         multiline
         maxLength={400}
       />
+      <Text style={styles.sectionTitle}>What non-buddies may see</Text>
+      <Text style={styles.traitHint}>
+        Every item below is off until you choose to share it.
+      </Text>
+      <PrivacyToggle
+        label="Use my cover photo as the card hero"
+        detail={myCover ? 'This makes your public card photo-led.' : 'Add a cover photo in Edit profile first.'}
+        value={Boolean(card.show_hero && myCover)}
+        disabled={!myCover}
+        onChange={(value) =>
+          setCard((current) => ({
+            ...current,
+            show_hero: value,
+            hero_url: value ? myCover : null,
+          }))
+        }
+      />
+      <PrivacyToggle label="Show my focus line" value={card.show_headline === true} onChange={(value) => setCard((c) => ({ ...c, show_headline: value }))} />
+      <PrivacyToggle label="Show my selected accountability traits" value={card.show_traits === true} onChange={(value) => setCard((c) => ({ ...c, show_traits: value }))} />
+      <PrivacyToggle label="Show my area" value={card.show_area === true} onChange={(value) => setCard((c) => ({ ...c, show_area: value }))} />
+      <PrivacyToggle label="Show my About text" value={card.show_bio === true} onChange={(value) => setCard((c) => ({ ...c, show_bio: value }))} />
+      <PrivacyToggle label="Show my activity time" value={card.show_last_active === true} onChange={(value) => setCard((c) => ({ ...c, show_last_active: value }))} />
+      <PrivacyToggle label="Show my momentum rank" value={card.show_rank === true} onChange={(value) => setCard((c) => ({ ...c, show_rank: value }))} />
+      <PrivacyToggle label="Show my earned medals" value={card.show_medals === true} onChange={(value) => setCard((c) => ({ ...c, show_medals: value }))} />
+      <PrivacyToggle label="Show consistency" value={card.show_consistency === true} onChange={(value) => setCard((c) => ({ ...c, show_consistency: value }))} />
+      <PrivacyToggle label="Show points" value={card.show_points === true} onChange={(value) => setCard((c) => ({ ...c, show_points: value }))} />
+      <PrivacyToggle label="Show distance" value={card.show_distance === true} onChange={(value) => setCard((c) => ({ ...c, show_distance: value }))} />
+      <PrivacyToggle label="Show challenge wins" value={card.show_challenge_wins === true} onChange={(value) => setCard((c) => ({ ...c, show_challenge_wins: value }))} />
+      <PrivacyToggle label="Show selected public posts" value={card.show_posts === true} onChange={(value) => setCard((c) => ({ ...c, show_posts: value }))} />
       <Text style={styles.label}>Your accountability style</Text>
       <Text style={styles.traitHint}>Choose up to three traits visitors should know.</Text>
       <View style={styles.traitGrid}>
@@ -152,31 +181,56 @@ export default function BuddyCardEdit() {
         })}
       </View>
       <Text style={styles.hint}>
-        Your card shows your rank, medals and stats automatically. Non-buddies also see any posts
-        you marked “Show on Buddy Card”.
+        Non-buddies only see the items you enable. Posts must also be individually marked
+        &quot;Show on Buddy Card&quot;.
       </Text>
 
-      {/* live preview — EXACTLY what a visitor sees (same component) */}
+      {/* Live preview uses the same component visitors see. */}
       <Text style={styles.sectionTitle}>How visitors see you</Text>
       <View style={styles.card}>
         <PublicBuddyCardFace
           name={myName}
           area={myArea}
           avatar={myAvatar}
-          memberSince="…"
           headline={headline}
           card={previewCard}
           metrics={myMetrics}
           onPressMedals={() => router.push('/achievements' as never)}
         />
-        <View style={styles.aboutBox}>
-          <Text style={styles.aboutTitle}>Profile</Text>
-          <Text style={styles.aboutText}>{about}</Text>
-        </View>
+        {about ? (
+          <View style={styles.aboutBox}>
+            <Text style={styles.aboutTitle}>About</Text>
+            <Text style={styles.aboutText}>{about}</Text>
+          </View>
+        ) : null}
       </View>
 
       <Button title="Save my buddy card" onPress={onSave} loading={saving} style={styles.save} />
     </ScrollView>
+  );
+}
+
+function PrivacyToggle({
+  label,
+  detail,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  detail?: string;
+  value: boolean;
+  disabled?: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={[styles.toggleRow, disabled && styles.toggleDisabled]}>
+      <View style={styles.toggleCopy}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        {detail ? <Text style={styles.toggleDetail}>{detail}</Text> : null}
+      </View>
+      <Switch value={value} onValueChange={onChange} disabled={disabled} accessibilityLabel={label} />
+    </View>
   );
 }
 
@@ -198,6 +252,18 @@ const styles = StyleSheet.create({
   hint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 4 },
   traitHint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
   traitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  toggleRow: {
+    minHeight: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  toggleDisabled: { opacity: 0.5 },
+  toggleCopy: { flex: 1, paddingVertical: 8 },
+  toggleLabel: { color: colors.text, fontFamily: font.semibold, fontSize: 13.5 },
+  toggleDetail: { marginTop: 2, color: colors.textMuted, fontFamily: font.regular, fontSize: 11.5 },
   trait: {
     minHeight: 44,
     borderRadius: radius.pill,

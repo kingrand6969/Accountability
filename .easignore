@@ -2,12 +2,17 @@
 # accountability-app directory, so unrelated workspace content must never be
 # included in its mobile build archive.
 /.git/
+.git/
 /.agents/
 /.claude/
 /.worktrees/
 /docs/
 /kingrand-portfolio/
 /ecpro-rental-services/
+/.eas-group1-archive-inspect/
+/.eas-group1-archive-inspect-verified/
+/accountability-app-candidate-*/
+/accountability-app-eas-*/
 
 # Accountability mobile-app exclusions
 /accountability-app/node_modules/

@@ -1,8 +1,13 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BrandMark } from './BrandMark';
+import {
+  TAB_BAR_MIN_CONTENT_HEIGHT,
+  tabBarContentHeight,
+} from './floatingTabBar';
 import { hapticSelect } from './haptics';
-import { colors, font } from './theme';
+import { colors, semanticColors, spacing, type } from './theme';
 
 // Minimal shape of the props Expo Router's <Tabs tabBar={...}> passes — avoids a
 // direct dependency on @react-navigation/bottom-tabs' (nested) type declarations.
@@ -21,9 +26,28 @@ type TabBarProps = {
   };
 };
 
-/** Labeled, fixed bottom navigation matching the approved mobile feed reference. */
+export const VISIBLE_TAB_LABELS = [
+  'Feed',
+  'Finance',
+  'Journey',
+  'Run',
+  'Messages',
+] as const;
+
+const visibleTabLabels = new Set<string>(VISIBLE_TAB_LABELS);
+const compactTabLabels: Record<(typeof VISIBLE_TAB_LABELS)[number], string> = {
+  Feed: 'Home',
+  Finance: 'Cash',
+  Journey: 'Path',
+  Run: 'Run',
+  Messages: 'Chat',
+};
+
+/** Quiet five-destination bottom navigation matching the approved references. */
 export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const fontScale = PixelRatio.getFontScale();
+  const contentHeight = tabBarContentHeight(fontScale);
 
   // immersive screens (e.g. an active run) hide the bar via tabBarStyle:{display:'none'}
   const focusedKey = state.routes[state.index].key;
@@ -36,14 +60,36 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
     return null;
   }
 
-  // only routes that declare an icon (the hidden Profile route has none)
-  const items = state.routes.filter((r) => descriptors[r.key].options.tabBarIcon != null);
+  const items = state.routes.filter((route) => {
+    const options = descriptors[route.key]?.options;
+    return (
+      options?.tabBarIcon != null &&
+      visibleTabLabels.has(options.title ?? route.name)
+    );
+  });
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 4) }]}>
-      <View style={styles.row}>
+    <View
+      style={[
+        styles.wrap,
+        {
+          minHeight: contentHeight + Math.max(insets.bottom, 4),
+          paddingBottom: Math.max(insets.bottom, 4),
+        },
+      ]}
+    >
+      <View
+        testID="primary-tab-list"
+        accessibilityRole="tablist"
+        style={[styles.row, { height: contentHeight }]}
+      >
           {items.map((route) => {
             const { options } = descriptors[route.key];
             const isFocused = route.key === focusedKey;
+            const accessibleLabel = options.title ?? route.name;
+            const visualLabel =
+              fontScale >= 1.25 && visibleTabLabels.has(accessibleLabel)
+                ? compactTabLabels[accessibleLabel as (typeof VISIBLE_TAB_LABELS)[number]]
+                : accessibleLabel;
             const onPress = () => {
               const event = navigation.emit({
                 type: 'tabPress',
@@ -59,15 +105,37 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
               <Pressable
                 key={route.key}
                 onPress={onPress}
-                accessibilityRole="button"
+                accessibilityRole="tab"
                 accessibilityState={{ selected: isFocused }}
-                accessibilityLabel={options.title ?? route.name}
+                accessibilityLabel={accessibleLabel}
                 style={({ pressed }) => [styles.item, pressed && styles.pressed]}
               >
-                {options.tabBarIcon?.({ focused: isFocused, color: colors.textMuted, size: 24 })}
-                <Text style={[styles.label, isFocused && styles.labelActive]} numberOfLines={1}>
-                  {options.title ?? route.name}
+                {(options.title ?? route.name) === 'Journey' ? (
+                  <BrandMark
+                    size={27}
+                    color={isFocused ? semanticColors.ink.primary : semanticColors.ink.muted}
+                    accessibilityLabel="Journey"
+                  />
+                ) : (
+                  options.tabBarIcon?.({
+                    focused: isFocused,
+                    color: semanticColors.ink.muted,
+                    size: 24,
+                  })
+                )}
+                <Text
+                  testID={`tab-label-${accessibleLabel}`}
+                  style={[styles.label, isFocused && styles.labelActive]}
+                  numberOfLines={2}
+                >
+                  {visualLabel}
                 </Text>
+                {isFocused ? (
+                  <View
+                    testID={`tab-indicator-${options.title ?? route.name}`}
+                    style={styles.indicator}
+                  />
+                ) : null}
               </Pressable>
             );
           })}
@@ -83,13 +151,41 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     minHeight: 68,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: semanticColors.surface.card,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: semanticColors.border.subtle,
   },
-  row: { minHeight: 64, flexDirection: 'row', alignItems: 'stretch' },
-  item: { flex: 1, minHeight: 60, alignItems: 'center', justifyContent: 'center', gap: 3 },
-  pressed: { backgroundColor: colors.primarySoft },
-  label: { color: colors.textMuted, fontFamily: font.medium, fontSize: 10.5 },
-  labelActive: { color: colors.primary, fontFamily: font.semibold },
+  row: {
+    minHeight: TAB_BAR_MIN_CONTENT_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingTop: 6,
+    paddingBottom: 8,
+  },
+  item: {
+    flex: 1,
+    minHeight: spacing.touch,
+    minWidth: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: 2,
+  },
+  pressed: { opacity: 0.72 },
+  label: {
+    ...type.caption,
+    lineHeight: 16,
+    color: semanticColors.ink.muted,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  labelActive: { color: semanticColors.ink.primary },
+  indicator: {
+    position: 'absolute',
+    bottom: 3,
+    width: 18,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.navy,
+  },
 });

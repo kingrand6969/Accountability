@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { addTransaction, todayDate } from '../money/api';
 import { categoriesFor } from '../money/categories';
 import { scanReceipt } from '../scan/api';

@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
 import type { FeedPost, PostAudience, PostComment, PostType } from './types';
+import { File } from 'expo-file-system';
+import * as Crypto from 'expo-crypto';
+import { uploadBytesToR2 } from '../lib/r2';
 
 async function currentUserId(): Promise<string | null> {
   const { data, error } = await supabase.auth.getUser();
@@ -9,7 +12,7 @@ async function currentUserId(): Promise<string | null> {
 }
 
 const POST_SELECT =
-  'id,body,image_url,created_at,user_id,audience,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
+  'id,body,image_url,created_at,user_id,audience,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_encouragements(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
 
 function mapPost(
   row: any,
@@ -27,6 +30,7 @@ function mapPost(
     author_avatar: author?.avatar_url ?? null,
     like_count: row.post_likes?.[0]?.count ?? 0,
     comment_count: row.post_comments?.[0]?.count ?? 0,
+    voice_encouragement_count: row.post_encouragements?.[0]?.count ?? 0,
     liked_by_me: likedSet.has(row.id),
     audience: row.audience ?? 'buddies',
     post_type: row.post_type ?? (row.event ? 'event' : row.image_url ? 'photo' : 'post'),
@@ -337,6 +341,204 @@ export async function setLiked(postId: string, liked: boolean): Promise<void> {
       .eq('user_id', me);
     if (error) throw error;
   }
+}
+
+export type PostEncourager = {
+  id: string;
+  name: string | null;
+  avatar_url: string | null;
+};
+export type EncouragementPreview = {
+  count: number;
+  people: PostEncourager[];
+  voices: number;
+};
+
+/** One batched preview load for a whole feed page; never downloads voice media. */
+export async function listEncouragementPreviews(
+  postIds: string[],
+): Promise<Map<string, EncouragementPreview>> {
+  const result = new Map<string, EncouragementPreview>();
+  if (postIds.length === 0) return result;
+  const [likes, comments, voices] = await Promise.all([
+    supabase.from('post_likes').select('post_id,user_id').in('post_id', postIds),
+    supabase.from('post_comments').select('post_id,user_id').in('post_id', postIds),
+    supabase.from('post_encouragements').select('post_id,user_id').in('post_id', postIds),
+  ]);
+  if (likes.error) throw likes.error;
+  if (comments.error) throw comments.error;
+  if (voices.error) throw voices.error;
+  const supporters = new Map<string, Set<string>>();
+  const voiceCounts = new Map<string, number>();
+  for (const row of [...(likes.data ?? []), ...(comments.data ?? []), ...(voices.data ?? [])] as any[]) {
+    const set = supporters.get(row.post_id) ?? new Set<string>();
+    set.add(row.user_id);
+    supporters.set(row.post_id, set);
+  }
+  for (const row of (voices.data ?? []) as any[]) {
+    voiceCounts.set(row.post_id, (voiceCounts.get(row.post_id) ?? 0) + 1);
+  }
+  const allIds = [...new Set([...supporters.values()].flatMap((set) => [...set]))];
+  const profiles = await getPublicProfiles(allIds);
+  for (const postId of postIds) {
+    const ids = [...(supporters.get(postId) ?? [])];
+    result.set(postId, {
+      count: ids.length,
+      voices: voiceCounts.get(postId) ?? 0,
+      people: ids.slice(0, 3).map((id) => ({
+        id,
+        name: profiles.get(id)?.display_name ?? null,
+        avatar_url: profiles.get(id)?.avatar_url ?? null,
+      })),
+    });
+  }
+  return result;
+}
+
+/** People who encouraged a visible post. Post RLS remains the privacy gate. */
+export async function listEncouragers(postId: string): Promise<PostEncourager[]> {
+  const { data, error } = await supabase
+    .from('post_likes')
+    .select('user_id')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true })
+    .limit(100);
+  if (error) throw error;
+  const ids = [...new Set((data ?? []).map((row: any) => row.user_id as string))];
+  const profiles = await getPublicProfiles(ids);
+  return ids.map((id) => ({
+    id,
+    name: profiles.get(id)?.display_name ?? null,
+    avatar_url: profiles.get(id)?.avatar_url ?? null,
+  }));
+}
+
+export type VoiceEncouragement = {
+  id: string;
+  user_id: string;
+  voice_ref: string;
+  duration_ms: number;
+  created_at: string;
+  name: string | null;
+  avatar_url: string | null;
+};
+
+export async function listVoiceEncouragements(postId: string): Promise<VoiceEncouragement[]> {
+  const { data, error } = await supabase
+    .from('post_encouragements')
+    .select('id,user_id,voice_ref,duration_ms,created_at')
+    .eq('post_id', postId)
+    .not('voice_ref', 'is', null)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  const rows = data ?? [];
+  const profiles = await getPublicProfiles(rows.map((row: any) => row.user_id));
+  return rows.map((row: any) => ({
+    ...row,
+    name: profiles.get(row.user_id)?.display_name ?? null,
+    avatar_url: profiles.get(row.user_id)?.avatar_url ?? null,
+  })) as VoiceEncouragement[];
+}
+
+export async function sendVoiceEncouragement(
+  postId: string,
+  uri: string,
+  durationMs: number,
+): Promise<void> {
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  if (durationMs < 250 || durationMs > 10_000) {
+    throw new Error('Voice encouragement must be between 1 and 10 seconds.');
+  }
+  const file = new File(uri);
+  const bytes = await file.bytes();
+  const operationId = Crypto.randomUUID();
+  const isWebm = uri.toLowerCase().includes('.webm');
+  const voiceRef = await uploadBytesToR2(
+    bytes,
+    'voice',
+    isWebm ? 'audio/webm' : 'audio/mp4',
+    isWebm ? 'webm' : 'm4a',
+    { operationId },
+  );
+  const { error } = await supabase.from('post_encouragements').insert({
+    post_id: postId,
+    user_id: me,
+    voice_ref: voiceRef,
+    duration_ms: Math.min(10_000, Math.round(durationMs)),
+  });
+  if (error) throw error;
+}
+
+type VoiceSafetyTarget = {
+  senderId: string;
+  postOwnerId: string;
+};
+
+function assertOpaqueVoiceId(voiceId: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(voiceId)) {
+    throw new Error('Voice encouragement is invalid.');
+  }
+}
+
+async function voiceSafetyTarget(voiceId: string): Promise<VoiceSafetyTarget> {
+  assertOpaqueVoiceId(voiceId);
+  const { data, error } = await supabase
+    .from('post_encouragements')
+    .select('user_id,post:posts!inner(user_id)')
+    .eq('id', voiceId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Voice encouragement is unavailable.');
+  const post = Array.isArray((data as any).post) ? (data as any).post[0] : (data as any).post;
+  if (!post?.user_id) throw new Error('Voice encouragement is unavailable.');
+  return {
+    senderId: (data as any).user_id as string,
+    postOwnerId: post.user_id as string,
+  };
+}
+
+/** Delete one voice row sent by the current account. RLS is the final gate. */
+export async function deleteMyVoiceEncouragement(voiceId: string): Promise<void> {
+  assertOpaqueVoiceId(voiceId);
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  const { error } = await supabase
+    .from('post_encouragements')
+    .delete()
+    .eq('id', voiceId)
+    .eq('user_id', me);
+  if (error) throw error;
+}
+
+/** The post recipient reports a voice sender through the canonical safety queue. */
+export async function reportVoiceEncouragement(voiceId: string): Promise<void> {
+  assertOpaqueVoiceId(voiceId);
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  const target = await voiceSafetyTarget(voiceId);
+  if (target.senderId === me) throw new Error('You cannot report your own encouragement.');
+  if (target.postOwnerId !== me) throw new Error('Only the recipient can report this encouragement.');
+  const { error } = await supabase.from('buddy_reports').insert({
+    reporter: me,
+    reported: target.senderId,
+    reason: `Reported voice encouragement ${voiceId}`,
+  });
+  if (error) throw error;
+}
+
+/** The post recipient blocks a voice sender through the canonical buddy block table. */
+export async function blockVoiceEncouragementSender(voiceId: string): Promise<void> {
+  assertOpaqueVoiceId(voiceId);
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  const target = await voiceSafetyTarget(voiceId);
+  if (target.senderId === me) throw new Error('You cannot block yourself.');
+  if (target.postOwnerId !== me) throw new Error('Only the recipient can block this sender.');
+  const { error } = await supabase
+    .from('buddy_blocks')
+    .insert({ blocker: me, blocked: target.senderId });
+  if (error && error.code !== '23505') throw error;
 }
 
 export async function listComments(postId: string): Promise<PostComment[]> {

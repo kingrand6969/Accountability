@@ -1,9 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -12,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   getGroup,
   getGroupGatekey,
@@ -26,6 +25,7 @@ import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { PostImage } from '../../feed/PostImage';
+import { PostVideo } from '../../feed/PostVideo';
 import { shareInviteText } from '../../social/invite';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
@@ -41,6 +41,12 @@ export default function GroupDetail() {
   const [group, setGroup] = useState<Group | null>(null);
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(myId);
+  const loadGeneration = useRef(0);
+  const lifecycleGeneration = useRef(0);
+  const viewKey = `${myId ?? 'signed-out'}:${id ?? 'missing'}`;
+  const currentViewKeyRef = useRef(viewKey);
+  const [dataViewKey, setDataViewKey] = useState<string | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,24 +58,87 @@ export default function GroupDetail() {
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
 
+  useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    currentOwnerRef.current = myId;
+    currentViewKeyRef.current = viewKey;
+    loadGeneration.current += 1;
+    likesInFlight.current.clear();
+    queueMicrotask(() => {
+      if (
+        lifecycle !== lifecycleGeneration.current ||
+        currentOwnerRef.current !== myId ||
+        currentViewKeyRef.current !== viewKey
+      )
+        return;
+      setGroup(null);
+      setPosts([]);
+      setDataViewKey(null);
+      setBody('');
+      setKeyInput('');
+      setPosting(false);
+      setJoining(false);
+      setLeaving(false);
+      setRefreshing(false);
+      setLoading(myId !== null);
+    });
+  }, [myId, viewKey]);
+
+  function isCurrentMutation(
+    requestOwner: string,
+    lifecycle: number,
+    requestViewKey: string,
+  ) {
+    return (
+      lifecycle === lifecycleGeneration.current &&
+      requestOwner === currentOwnerRef.current &&
+      requestViewKey === currentViewKeyRef.current
+    );
+  }
+
   const load = useCallback(async () => {
-    if (!id) return;
+    const requestViewKey = `${myId ?? 'signed-out'}:${id ?? 'missing'}`;
+    const generation = ++loadGeneration.current;
+    if (!myId || !id) {
+      setGroup(null);
+      setPosts([]);
+      setDataViewKey(requestViewKey);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const g = await getGroup(id);
-      setGroup(g);
       // Non-members can't see posts (RLS) — don't even ask.
-      setPosts(g?.is_member ? await listFeed(undefined, id) : []);
+      const nextPosts = g?.is_member ? await listFeed(undefined, id) : [];
+      if (generation !== loadGeneration.current || currentOwnerRef.current !== myId) return;
+      setGroup(g);
+      setPosts(nextPosts);
+      setDataViewKey(requestViewKey);
     } catch (e) {
+      if (generation !== loadGeneration.current || currentOwnerRef.current !== myId) return;
+      setGroup(null);
+      setPosts([]);
+      setDataViewKey(requestViewKey);
       Alert.alert('Could not load group', String((e as Error).message ?? e));
     } finally {
+      if (generation !== loadGeneration.current || currentOwnerRef.current !== myId) return;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [id, myId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
+      return () => {
+        loadGeneration.current += 1;
+        lifecycleGeneration.current += 1;
+        likesInFlight.current.clear();
+        setPosting(false);
+        setJoining(false);
+        setLeaving(false);
+      };
     }, [load]),
   );
 
@@ -79,57 +148,83 @@ export default function GroupDetail() {
   }
 
   async function onJoin() {
-    if (!group || joining) return;
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    const target = group;
+    if (!requestOwner || !target || joining) return;
     setJoining(true);
     try {
-      if (group.privacy === 'private') {
-        const ok = await joinGroupWithKey(group.id, keyInput);
+      if (target.privacy === 'private') {
+        const ok = await joinGroupWithKey(target.id, keyInput);
+        if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
         if (!ok) {
           Alert.alert('Wrong gatekey', 'That key didn’t match. Ask the group admin for the right one.');
           return;
         }
       } else {
-        await joinGroup(group.id);
+        await joinGroup(target.id);
       }
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       setKeyInput('');
-      showToast(`Welcome to ${group.name} 🎉`);
-      await load();
+      setJoining(false);
+      showToast(`Welcome to ${target.name} 🎉`);
+      void load();
     } catch (e) {
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       Alert.alert('Could not join group', String((e as Error).message ?? e));
     } finally {
-      setJoining(false);
+      if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
+        setJoining(false);
+      }
     }
   }
 
   async function onInvite() {
-    if (!group) return;
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    const target = group;
+    if (!requestOwner || !target) return;
     let message =
-      `Join my group "${group.name}" on AccountAbility! ` +
+      `Join my group "${target.name}" on AccountAbility! ` +
       `Search "AccountAbility" in your app store.`;
-    if (group.privacy === 'private') {
-      const key = await getGroupGatekey(group.id).catch(() => null);
+    if (target.privacy === 'private') {
+      const key = await getGroupGatekey(target.id).catch(() => null);
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       if (key) message += `\n\nGatekey to get in: ${key}`;
     }
+    if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
     await shareInviteText(message);
   }
 
   function onLeave() {
-    if (!group || leaving) return;
-    Alert.alert('Leave group?', `You'll stop seeing posts from ${group.name}.`, [
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    const target = group;
+    if (!requestOwner || !target || leaving) return;
+    Alert.alert('Leave group?', `You'll stop seeing posts from ${target.name}.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Leave',
         style: 'destructive',
         onPress: async () => {
+          if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
           setLeaving(true);
           try {
-            await leaveGroup(group.id);
+            await leaveGroup(target.id);
+            if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
+            setLeaving(false);
             showToast('Left the group');
-            await load();
+            void load();
           } catch (e) {
+            if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
             Alert.alert('Could not leave group', String((e as Error).message ?? e));
           } finally {
-            setLeaving(false);
+            if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
+              setLeaving(false);
+            }
           }
         },
       },
@@ -139,21 +234,35 @@ export default function GroupDetail() {
   const canPost = body.trim().length > 0 && !posting;
 
   async function onPost() {
-    if (!id || !body.trim()) return;
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    const targetId = id;
+    const text = body.trim();
+    if (!requestOwner || !targetId || !group?.is_member || !text) return;
     setPosting(true);
     try {
-      await createPost(body.trim(), null, id);
+      await createPost(text, null, targetId);
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       setBody('');
-      await load();
+      setPosting(false);
       showToast('Posted to the group');
+      void load();
     } catch (e) {
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       Alert.alert('Could not post', String((e as Error).message ?? e));
     } finally {
-      setPosting(false);
+      if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
+        setPosting(false);
+      }
     }
   }
 
   async function onToggleLike(post: FeedPost) {
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    if (!requestOwner) return;
     if (likesInFlight.current.has(post.id)) return; // one request per post at a time
     likesInFlight.current.add(post.id);
     const liked = !post.liked_by_me;
@@ -167,6 +276,7 @@ export default function GroupDetail() {
     try {
       await setLiked(post.id, liked);
     } catch (e) {
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       setPosts((cur) =>
         cur.map((p) =>
           p.id === post.id
@@ -176,11 +286,21 @@ export default function GroupDetail() {
       );
       Alert.alert('Could not update like', String((e as Error).message ?? e));
     } finally {
-      likesInFlight.current.delete(post.id);
+      if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
+        likesInFlight.current.delete(post.id);
+      }
     }
   }
 
-  if (loading) {
+  function backToGroups() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/groups' as never);
+    }
+  }
+
+  if (loading || dataViewKey !== viewKey) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -190,7 +310,8 @@ export default function GroupDetail() {
   if (!group) {
     return (
       <View style={styles.center}>
-        <Text style={styles.notFound}>Group not found.</Text>
+        <Text style={styles.notFound}>This group was not found or is no longer available.</Text>
+        <Button title="Back to groups" onPress={backToGroups} />
       </View>
     );
   }
@@ -342,11 +463,16 @@ export default function GroupDetail() {
                 </Text>
               </View>
               <Pressable
-                onPress={() =>
-                  showPostMenu(item, myId, (postId) =>
-                    setPosts((cur) => cur.filter((p) => p.id !== postId)),
-                  )
-                }
+                  onPress={() => {
+                    const requestOwner = myId;
+                    const lifecycle = lifecycleGeneration.current;
+                    const requestViewKey = viewKey;
+                    if (!requestOwner) return;
+                    showPostMenu(item, requestOwner, (postId) => {
+                      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
+                      setPosts((cur) => cur.filter((p) => p.id !== postId));
+                    });
+                  }}
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel="Post options"
@@ -372,9 +498,13 @@ export default function GroupDetail() {
                   accessibilityRole="link"
                   accessibilityLabel="Open post"
                 >
-                  <PostImage url={item.image_url} capTall />
+                  {item.post_type === 'video' ? (
+                    <PostVideo url={item.image_url} />
+                  ) : (
+                    <PostImage url={item.image_url} capTall />
+                  )}
                 </Pressable>
-                <SaveToMemories url={item.image_url} />
+                {item.post_type !== 'video' ? <SaveToMemories url={item.image_url} /> : null}
               </View>
             ) : null}
             <View style={styles.actions}>
@@ -382,7 +512,7 @@ export default function GroupDetail() {
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 onPress={() => onToggleLike(item)}
                 hitSlop={8}
-                accessibilityLabel={item.liked_by_me ? 'Remove cheer' : 'Cheer'}
+                accessibilityLabel={item.liked_by_me ? 'Remove encouragement' : 'Encourage'}
               >
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}

@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '../lib/supabase';
+import { resolveMediaUrl } from '../media/privateMedia';
 
 /**
  * Memories: a personal photo/video vault, built to cost as little as possible.
@@ -186,10 +187,11 @@ export async function saveImageToMemories(
 /** Save a picture that's already hosted (bookmark on a feed/group/page post) —
  *  it was compressed when posted, so copy the bytes as-is. */
 export async function saveRemoteImageToMemories(url: string): Promise<void> {
-  const res = await fetch(url);
+  const resolvedUrl = await resolveMediaUrl(url);
+  const res = await fetch(resolvedUrl);
   if (!res.ok) throw new Error('Could not fetch that photo.');
   const buf = await res.arrayBuffer();
-  const isPng = url.split('?')[0].toLowerCase().endsWith('.png');
+  const isPng = resolvedUrl.split('?')[0].toLowerCase().endsWith('.png');
   await uploadBuffer(
     buf,
     isPng ? 'png' : 'jpg',

@@ -9,7 +9,7 @@ jest.mock('../lib/r2', () => ({
 }));
 
 import { executeIdempotentPost } from './api';
-import { isExistingPostImageError, postImagePath } from './uploadPostImage';
+import { isExistingPostImageError, mayUseStorageFallback, postImagePath } from './uploadPostImage';
 
 const operationId = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -50,6 +50,12 @@ describe('idempotent Feed post creation', () => {
 });
 
 describe('deterministic Feed image reuse', () => {
+  test('does not bypass an R2 policy rejection through Supabase fallback', () => {
+    expect(mayUseStorageFallback({ status: 429 })).toBe(false);
+    expect(mayUseStorageFallback({ statusCode: 413 })).toBe(false);
+    expect(mayUseStorageFallback({ status: 503 })).toBe(false);
+    expect(mayUseStorageFallback(new TypeError('Network request failed'))).toBe(false);
+  });
   test('uses the same user and operation path across retries', () => {
     const first = postImagePath('member-1', operationId, 'jpg');
     const retry = postImagePath('member-1', operationId, 'jpg');

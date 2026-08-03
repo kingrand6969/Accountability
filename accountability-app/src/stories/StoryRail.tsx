@@ -13,12 +13,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { CachedImage } from '../ui/CachedImage';
 import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { listStoryGroups, addStory, type StoryGroup } from './api';
 import { authorLabel } from '../feed/format';
@@ -28,26 +29,49 @@ import { colors, font, radius, spacing, contentMax } from '../ui/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type StoryRailHandle = { openPicker: () => void };
-type StoryRailProps = { meName?: string | null; meAvatar?: string | null };
+type StoryRailProps = {
+  meName?: string | null;
+  meAvatar?: string | null;
+  controllerOnly?: boolean;
+};
 
-/** Facebook-style story cards: tall image tiles, "Create story" first. */
+export function storyTileSizeForFontScale(fontScale: number) {
+  if (fontScale >= 1.75) {
+    return { tileWidth: 140, tileHeight: 184, hintWidth: 112 };
+  }
+  if (fontScale >= 1.25) {
+    return { tileWidth: 112, tileHeight: 152, hintWidth: 90 };
+  }
+  return { tileWidth: TILE_W, tileHeight: TILE_H, hintWidth: 72 };
+}
+
+/** Compact, photo-first My Day rail. It supports the feed without becoming the feed. */
 export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function StoryRail(
-  { meName, meAvatar },
+  { meName, meAvatar, controllerOnly = false },
   ref,
 ) {
   const router = useRouter();
+  const { fontScale } = useWindowDimensions();
+  const {
+    tileWidth,
+    tileHeight,
+    hintWidth,
+  } = storyTileSizeForFontScale(fontScale);
+  const tileSize = { width: tileWidth, height: tileHeight };
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [posting, setPosting] = useState(false);
   const [editorUri, setEditorUri] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
 
   useEffect(() => {
+    if (controllerOnly) return;
     AsyncStorage.getItem('story-buddy-hint-dismissed').then((value) => setShowHint(value !== '1'));
-  }, []);
+  }, [controllerOnly]);
 
   const load = useCallback(() => {
+    if (controllerOnly) return;
     listStoryGroups().then(setGroups).catch(() => {});
-  }, []);
+  }, [controllerOnly]);
 
   useFocusEffect(load);
 
@@ -111,6 +135,12 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
     postStory(photo.base64, 'jpg');
   }
 
+  if (controllerOnly) {
+    return editorUri ? (
+      <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
+    ) : null;
+  }
+
   const mine = groups.find((g) => g.isMe);
   const others = groups.filter((g) => !g.isMe);
 
@@ -127,7 +157,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
       ) : null}
 
       {/* create tile — shows your latest story as background once you have one */}
-      <View style={styles.tile}>
+      <View style={[styles.tile, tileSize]}>
         <Pressable
           style={({ pressed }) => [styles.tileMainAction, pressed && styles.pressed]}
           onPress={() => {
@@ -195,6 +225,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
           image={g.stories[g.stories.length - 1].image_url}
           avatar={g.avatar}
           name={authorLabel(g.name)}
+          tileSize={tileSize}
           onPress={() =>
             router.push({ pathname: '/story/[userId]', params: { userId: g.user_id } })
           }
@@ -203,7 +234,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
 
       {/* no buddies' stories yet — turn the empty rail into a useful nudge */}
       {others.length === 0 && showHint ? (
-        <View style={styles.hintTile}>
+        <View style={[styles.hintTile, { width: hintWidth, height: tileHeight }]}>
           <Pressable
             style={({ pressed }) => [styles.hintContent, pressed && styles.pressed]}
             onPress={() => router.push('/buddy')}
@@ -237,16 +268,18 @@ function StoryTile({
   image,
   avatar,
   name,
+  tileSize,
   onPress,
 }: {
   image: string;
   avatar: string | null;
   name: string;
+  tileSize: { width: number; height: number };
   onPress: () => void;
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.tile, tileSize, pressed && styles.pressed]}
       onPress={onPress}
       accessibilityLabel={`View ${name}`}
       accessibilityRole="button"
@@ -273,8 +306,8 @@ function StoryTile({
   );
 }
 
-const TILE_W = 104;
-const TILE_H = 164;
+const TILE_W = 92;
+const TILE_H = 132;
 
 const styles = StyleSheet.create({
   rail: {
@@ -330,9 +363,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 8,
     bottom: 8,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.primary,
     borderWidth: 2.5,
     borderColor: '#fff',
@@ -363,7 +396,7 @@ const styles = StyleSheet.create({
   createLabel: {
     position: 'absolute',
     left: 10,
-    right: 52,
+    right: 44,
     bottom: 10,
     color: '#fff',
     fontFamily: font.bold,
@@ -372,7 +405,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   hintTile: {
-    width: 76,
+    width: 72,
     height: TILE_H,
     borderRadius: radius.lg,
     borderWidth: 1,

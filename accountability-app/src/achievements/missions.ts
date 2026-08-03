@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import type { Ionicons } from '@expo/vector-icons';
+import type Ionicons from '@expo/vector-icons/Ionicons';
 import type { Metrics } from './catalog';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -68,14 +68,14 @@ export const MISSIONS: MissionDef[] = [
   },
   {
     id: 'cheerleader',
-    title: 'Cheerleader',
-    desc: 'Cheer on 10 posts from your feed',
+    title: 'Encourager',
+    desc: 'Encourage 10 posts from your feed',
     icon: 'heart',
     goal: 10,
     points: 30,
     source: 'metric',
     metric: 'likesGiven',
-    unit: 'cheers',
+    unit: 'encouragements',
   },
   {
     id: 'all-set',

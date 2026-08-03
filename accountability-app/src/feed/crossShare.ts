@@ -11,7 +11,11 @@ import * as Sharing from 'expo-sharing';
  *
  * No-op on web (no share sheet).
  */
-export function promptCrossShare(message: string, imageUri: string | null): void {
+export function promptCrossShare(
+  message: string,
+  mediaUri: string | null,
+  mediaMimeType = 'image/jpeg',
+): void {
   if (Platform.OS === 'web') return;
   Alert.alert(
     'Posted 🎉',
@@ -22,11 +26,9 @@ export function promptCrossShare(message: string, imageUri: string | null): void
         text: 'Share…',
         onPress: async () => {
           try {
-            if (imageUri && (await Sharing.isAvailableAsync())) {
-              // Sharing the image opens the sheet with FB/IG as targets;
-              // Instagram accepts images (not plain text).
-              await Sharing.shareAsync(imageUri, {
-                mimeType: 'image/jpeg',
+            if (mediaUri && (await Sharing.isAvailableAsync())) {
+              await Sharing.shareAsync(mediaUri, {
+                mimeType: mediaMimeType,
                 dialogTitle: 'Share your post',
               });
               return;

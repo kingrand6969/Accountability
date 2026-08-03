@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { GlassCard } from '../ui/Glass';
 import { SwipeDeck } from './SwipeDeck';
 import { metricMeta, type ChallengeCard } from '../compete/api';

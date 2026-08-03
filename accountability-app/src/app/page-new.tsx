@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -10,12 +10,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { createPage, PAGE_CATEGORIES } from '../pages/api';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 import { PrivacyToggle } from '../ui/PrivacyToggle';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { useAuth } from '../auth/AuthProvider';
 
 const NAME_MIN = 3;
 const NAME_MAX = 80;
@@ -23,6 +24,10 @@ const HANDLE_RE = /^[a-z0-9_]{3,30}$/;
 
 export default function PageNew() {
   const router = useRouter();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(ownerId);
+  const createGeneration = useRef(0);
   const [name, setName] = useState('');
   const [handle, setHandle] = useState('');
   const [handleTouched, setHandleTouched] = useState(false);
@@ -30,6 +35,35 @@ export default function PageNew() {
   const [bio, setBio] = useState('');
   const [privacy, setPrivacy] = useState<'public' | 'private'>('public');
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    currentOwnerRef.current = ownerId;
+    const generation = ++createGeneration.current;
+    queueMicrotask(() => {
+      if (
+        generation !== createGeneration.current ||
+        currentOwnerRef.current !== ownerId
+      )
+        return;
+      setName('');
+      setHandle('');
+      setHandleTouched(false);
+      setCategory('gym');
+      setBio('');
+      setPrivacy('public');
+      setCreating(false);
+    });
+  }, [ownerId]);
+
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        createGeneration.current += 1;
+        setCreating(false);
+      },
+      [],
+    ),
+  );
 
   const trimmedName = name.trim();
   const nameError =
@@ -55,6 +89,9 @@ export default function PageNew() {
 
   async function onCreate() {
     if (!canCreate) return;
+    const requestOwner = ownerId;
+    const generation = createGeneration.current;
+    if (!requestOwner) return;
     setCreating(true);
     try {
       const newId = await createPage({
@@ -64,12 +101,26 @@ export default function PageNew() {
         bio: bio.trim(),
         privacy,
       });
+      if (
+        requestOwner !== currentOwnerRef.current ||
+        generation !== createGeneration.current
+      )
+        return;
       showToast('Page created 🎉');
       router.replace(`/page/${newId}` as never);
     } catch (e) {
+      if (
+        requestOwner !== currentOwnerRef.current ||
+        generation !== createGeneration.current
+      )
+        return;
       Alert.alert('Could not create page', String((e as Error).message ?? e));
     } finally {
-      setCreating(false);
+      if (
+        requestOwner === currentOwnerRef.current &&
+        generation === createGeneration.current
+      )
+        setCreating(false);
     }
   }
 

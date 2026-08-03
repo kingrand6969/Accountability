@@ -1,21 +1,22 @@
 module.exports = ({ config }) => {
   const isStaging = process.env.APP_VARIANT === 'staging';
-
-  if (!isStaging) {
-    return config;
-  }
+  const appVariant = isStaging ? 'preview' : 'production';
 
   return {
     ...config,
-    name: 'AccountAbility Staging',
-    scheme: 'accountabilityapp-staging',
+    name: isStaging ? 'AccountAbility Staging' : config.name,
+    scheme: isStaging ? 'accountabilityapp-staging' : config.scheme,
+    extra: {
+      ...config.extra,
+      appVariant,
+    },
     ios: {
       ...config.ios,
-      bundleIdentifier: 'com.awldesk.accountability.staging',
+      bundleIdentifier: isStaging ? 'com.awldesk.accountability.staging' : config.ios?.bundleIdentifier,
     },
     android: {
       ...config.android,
-      package: 'com.awldesk.accountability.staging',
+      package: isStaging ? 'com.awldesk.accountability.staging' : config.android?.package,
     },
   };
 };

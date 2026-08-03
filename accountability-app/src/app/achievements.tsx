@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,8 +13,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { GlassBackdrop } from '../ui/Glass';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { contentMaxWidth } from '../ui/responsive';
 import { hapticSuccess } from '../ui/haptics';
 import { showToast } from '../ui/Toast';
@@ -29,6 +28,7 @@ import { getMetrics, getMissionProgress, buildMissionStates, flexRank } from '..
 import { listChallenges, type ChallengeCard } from '../compete/api';
 import {
   MEDALS,
+  RANKS,
   TIER_META,
   flexPoints,
   medalMetal,
@@ -45,7 +45,6 @@ export default function Achievements() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
-  const bgRef = useRef<View>(null);
   const [states, setStates] = useState<MedalState[] | null>(null);
   const [selected, setSelected] = useState<MedalState | null>(null);
   const [unlock, setUnlock] = useState<MedalState | null>(null);
@@ -119,6 +118,12 @@ export default function Achievements() {
   const points = (states ? flexPoints(states) : 0) + (missions ? missionPoints(missions) : 0);
   const earned = states ? states.filter((s) => s.unlocked).length : 0;
   const currentRank = rankFor(points);
+  const level = Math.max(1, RANKS.findIndex((item) => item.name === currentRank.name) + 1);
+  const consistency = states?.find((state) => state.def.id === 'devotion')?.value ?? 0;
+  const featured = states
+    ?.slice()
+    .sort((a, b) => (b.unlocked ? b.tierIndex + 1 : 0) - (a.unlocked ? a.tierIndex + 1 : 0))
+    .slice(0, 3) ?? [];
   const medalCellWidth = Math.max(
     142,
     Math.min(176, (colMax - spacing.lg * 2 - spacing.md) / 2),
@@ -130,7 +135,7 @@ export default function Achievements() {
     try {
       await flexRank(rankFor(points).name);
       hapticSuccess();
-      showToast('Flexed to your buddies 💪');
+      showToast('Shared with your buddies');
       load();
     } catch (e) {
       Alert.alert('Could not post your flex', String((e as Error).message ?? e));
@@ -141,12 +146,46 @@ export default function Achievements() {
 
   return (
     <View style={styles.screen}>
-      <GlassBackdrop ref={bgRef} columnWidth={colMax} />
       <ScrollView contentContainerStyle={[styles.scroll, { maxWidth: colMax }]}>
+        <View style={styles.editorialHeader}>
+          <Text style={styles.eyebrow}>YOUR TROPHY CASE</Text>
+          <Text style={styles.pageTitle}>Momentum Builder</Text>
+          <Text style={styles.pageSubtitle}>
+            A record of the days you kept your promise - never a shortcut.
+          </Text>
+        </View>
+
+        <View style={styles.rankPanel}>
+          <View style={styles.rankTop}>
+            <View style={styles.levelSeal}>
+              <Text style={styles.levelValue}>{level}</Text>
+            </View>
+            <View style={styles.rankCopy}>
+              <Text style={styles.rankName}>{currentRank.name}</Text>
+              <Text style={styles.rankPoints}>{points.toLocaleString()} XP</Text>
+            </View>
+            <Pressable
+              onPress={() => router.push('/activity' as never)}
+              style={({ pressed }) => [styles.pathLink, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Open your Journey path"
+            >
+              <Text style={styles.pathLinkText}>View path</Text>
+            </Pressable>
+          </View>
+          <View style={styles.xpTrack}>
+            <View style={[styles.xpFill, { width: `${Math.max(3, Math.round(currentRank.progress * 100))}%` }]} />
+          </View>
+          <Text style={styles.xpHint}>
+            {currentRank.next
+              ? `${Math.max(0, currentRank.next.at - points).toLocaleString()} XP to ${currentRank.next.name}`
+              : 'Highest momentum rank reached'}
+          </Text>
+        </View>
         {/* rank ladder — swipe to preview every rank up to Mythical */}
         <RankCarousel points={points} ready={states !== null && missions !== null} />
         <Text style={styles.caption}>
-          {earned} of {MEDALS.length} medals earned · swipe or tap ‹ › to preview ranks
+          {earned} of {MEDALS.length} medals earned - swipe or tap to preview ranks
         </Text>
 
         {/* missions — social & sharing actions (distinct from the fitness medals) */}
@@ -167,6 +206,84 @@ export default function Achievements() {
           </View>
         </View>
 
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionLabel}>FEATURED MEDALS</Text>
+          <Text style={styles.seeAll}>{earned} earned</Text>
+        </View>
+        <View style={styles.featuredRow}>
+          {featured.map((state) => (
+            <Pressable
+              key={state.def.id}
+              onPress={() => setSelected(state)}
+              style={({ pressed }) => [styles.featuredMedal, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`${state.def.title}, ${state.tierName ?? 'locked'}`}
+            >
+              <Medal state={state} size={72} />
+              <Text style={styles.featuredMetal}>
+                {state.unlocked ? TIER_META[medalMetal(state.def, state.tierIndex)].name : 'Locked'}
+              </Text>
+              <Text style={styles.featuredName} numberOfLines={1}>{state.def.title}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.consistencyCard}>
+          <View style={styles.consistencyHeader}>
+            <View>
+              <Text style={styles.sectionLabel}>CONSISTENCY</Text>
+              <Text style={styles.consistencyValue}>{Math.floor(consistency)}</Text>
+            </View>
+            <View style={styles.consistencyCopy}>
+              <Text style={styles.consistencyTitle}>of 100 consistent days</Text>
+              <Text style={styles.consistencyHint}>
+                {consistency >= 100
+                  ? 'Milestone reached - keep building.'
+                  : 'Your next lasting milestone is 100 days.'}
+              </Text>
+            </View>
+            <Ionicons
+              name="medal-outline"
+              size={42}
+              color={consistency >= 100 ? '#C08214' : '#9AA6B4'}
+            />
+          </View>
+          <View style={styles.longTrack}>
+            <View style={[styles.longFill, { width: `${Math.min(100, Math.round(consistency))}%` }]} />
+          </View>
+        </View>
+
+        <Text style={[styles.sectionLabel, styles.sectionTop]}>PRESTIGE PATH</Text>
+        <Text style={styles.sectionHint}>Built for years of showing up, not a month of activity.</Text>
+        <View style={styles.prestigePath}>
+          {[
+            { label: '1 Year', detail: '365 days', at: 365 },
+            { label: '500 Days', detail: 'Steadfast', at: 500 },
+            { label: '1,000 Days', detail: 'Legendary', at: 1000 },
+            { label: 'Legacy', detail: '5+ years', at: 1825 },
+          ].map((milestone, index) => {
+            const reached = consistency >= milestone.at;
+            return (
+              <View key={milestone.label} style={styles.prestigeItem}>
+                <View style={[styles.prestigeMedallion, reached && styles.prestigeMedallionReached]}>
+                  <Ionicons
+                    name={reached ? 'checkmark' : 'lock-closed'}
+                    size={20}
+                    color={reached ? '#fff' : '#7C8796'}
+                  />
+                </View>
+                <View style={styles.prestigeCopy}>
+                  <Text style={styles.prestigeLabel}>{milestone.label}</Text>
+                  <Text style={styles.prestigeDetail}>
+                    {milestone.detail} - {reached ? 'Earned' : 'Not reached'}
+                  </Text>
+                </View>
+                {index < 3 ? <View style={styles.prestigeConnector} /> : null}
+              </View>
+            );
+          })}
+        </View>
+
         <Text style={[styles.sectionLabel, styles.sectionTop]}>MISSIONS</Text>
         <Text style={styles.sectionHint}>Actions & social wins that earn Flex Points</Text>
         <MissionsList states={missions} onFlex={onFlex} flexing={flexing} />
@@ -174,8 +291,13 @@ export default function Achievements() {
         {/* live challenges — swipe through the competitions you can join */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionLabel}>CHALLENGES</Text>
-          <Pressable onPress={() => router.push('/compete' as never)} hitSlop={8}>
-            <Text style={styles.seeAll}>See all ›</Text>
+          <Pressable
+            onPress={() => router.push('/compete' as never)}
+            style={({ pressed }) => [styles.seeAllButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="See all challenges"
+          >
+            <Text style={styles.seeAll}>See all</Text>
           </Pressable>
         </View>
         <ChallengesCarousel
@@ -285,14 +407,14 @@ export default function Achievements() {
                 <Text style={[styles.cellTier, s.unlocked && { color: ACCENT }]} numberOfLines={1}>
                   {s.tierName ?? 'Locked'}
                   {prestigeState(s.def, s.value).rings > 0
-                    ? ` · ${'◉'.repeat(prestigeState(s.def, s.value).rings)}`
+                    ? ` - Prestige ${prestigeState(s.def, s.value).rings}`
                     : ''}
                 </Text>
                 <View style={styles.miniTrack}>
                   <View style={[styles.miniFill, { width: `${Math.round(s.progress * 100)}%` }]} />
                 </View>
                 <Text style={styles.cellNext} numberOfLines={1}>
-                  {s.next ? `${fmt(s.value)}/${s.next.at} ${s.def.unit}` : 'Maxed out ✓'}
+                  {s.next ? `${fmt(s.value)}/${s.next.at} ${s.def.unit}` : 'Maxed out'}
                 </Text>
               </Pressable>
             ))}
@@ -307,7 +429,7 @@ export default function Achievements() {
         onShare={(s) => {
           setSelected(null);
           router.push(
-            `/compose?text=${encodeURIComponent(`Just earned the ${s.tierName} ${s.def.title} medal 🏅`)}` as never,
+            `/compose?text=${encodeURIComponent(`Just earned the ${s.tierName} ${s.def.title} medal`)}` as never,
           );
         }}
       />
@@ -320,7 +442,7 @@ export default function Achievements() {
         onShare={(s) => {
           setUnlock(null);
           router.push(
-            `/compose?text=${encodeURIComponent(`Just earned the ${s.tierName} ${s.def.title} medal 🏅`)}` as never,
+            `/compose?text=${encodeURIComponent(`Just earned the ${s.tierName} ${s.def.title} medal`)}` as never,
           );
         }}
       />
@@ -366,7 +488,7 @@ function MedalSheet({
                       </Text>
                       <Text style={styles.ladderAt}>
                         {t.at} {state.def.unit}
-                        {done ? '  ✓' : ''}
+                        {done ? '  Earned' : ''}
                       </Text>
                     </View>
                   );
@@ -407,9 +529,45 @@ function fmt(n: number): string {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: 'transparent' },
+  screen: { flex: 1, backgroundColor: '#F7F4EC' },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   pressed: { opacity: 0.75 },
+  editorialHeader: { paddingTop: 4, paddingBottom: 2 },
+  eyebrow: { color: '#155EEF', fontFamily: font.bold, fontSize: 10.5, letterSpacing: 1.5 },
+  pageTitle: { marginTop: 5, color: '#081A3A', fontFamily: font.bold, fontSize: 29, letterSpacing: -0.7 },
+  pageSubtitle: { marginTop: 4, color: '#647084', fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
+  rankPanel: { borderWidth: 1, borderColor: '#DED9CC', borderRadius: 18, backgroundColor: '#FFFCF6', padding: 15 },
+  rankTop: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  levelSeal: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#081A3A', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#A9B4C8' },
+  levelValue: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
+  rankCopy: { flex: 1 },
+  rankName: { color: '#081A3A', fontFamily: font.bold, fontSize: 17 },
+  rankPoints: { marginTop: 2, color: '#647084', fontFamily: font.medium, fontSize: 11.5 },
+  pathLink: { minHeight: 44, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  pathLinkText: { color: '#155EEF', fontFamily: font.bold, fontSize: 12 },
+  xpTrack: { marginTop: 13, height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: '#DDE4EF' },
+  xpFill: { height: '100%', borderRadius: 3, backgroundColor: '#155EEF' },
+  xpHint: { marginTop: 6, color: '#647084', fontFamily: font.medium, fontSize: 10.5, textAlign: 'right' },
+  featuredRow: { flexDirection: 'row', gap: 8 },
+  featuredMedal: { flex: 1, minHeight: 142, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#DED9CC', borderRadius: 16, backgroundColor: '#FFFCF6', padding: 8 },
+  featuredMetal: { marginTop: 2, color: '#081A3A', fontFamily: font.bold, fontSize: 10.5, textTransform: 'uppercase' },
+  featuredName: { marginTop: 2, color: '#647084', fontFamily: font.medium, fontSize: 9.5, maxWidth: '100%' },
+  consistencyCard: { borderWidth: 1, borderColor: '#DED9CC', borderRadius: 18, backgroundColor: '#FFFCF6', padding: 15 },
+  consistencyHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  consistencyValue: { marginTop: 3, color: '#081A3A', fontFamily: font.bold, fontSize: 32 },
+  consistencyCopy: { flex: 1 },
+  consistencyTitle: { color: '#081A3A', fontFamily: font.semibold, fontSize: 13 },
+  consistencyHint: { marginTop: 3, color: '#647084', fontFamily: font.regular, fontSize: 10.5, lineHeight: 15 },
+  longTrack: { marginTop: 12, height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: '#DDE4EF' },
+  longFill: { height: '100%', borderRadius: 3, backgroundColor: '#155EEF' },
+  prestigePath: { borderWidth: 1, borderColor: '#DED9CC', borderRadius: 18, backgroundColor: '#FFFCF6', padding: 14, gap: 4 },
+  prestigeItem: { minHeight: 62, flexDirection: 'row', alignItems: 'center', position: 'relative' },
+  prestigeMedallion: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#BCC3CD', backgroundColor: '#E8E9EA', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  prestigeMedallionReached: { borderColor: '#C08214', backgroundColor: '#C08214' },
+  prestigeCopy: { marginLeft: 12, flex: 1 },
+  prestigeLabel: { color: '#081A3A', fontFamily: font.bold, fontSize: 13.5 },
+  prestigeDetail: { marginTop: 2, color: '#647084', fontFamily: font.regular, fontSize: 10.5 },
+  prestigeConnector: { position: 'absolute', left: 20, top: 50, width: 2, height: 20, backgroundColor: '#D3D6DA' },
   caption: {
     fontFamily: font.medium,
     fontSize: 12,
@@ -447,6 +605,7 @@ const styles = StyleSheet.create({
   sectionHint: { fontFamily: font.regular, fontSize: 12, color: INK_SOFT, marginTop: 2, marginBottom: 8 },
   sectionTop: { marginTop: spacing.md },
   seeAll: { fontFamily: font.bold, fontSize: 13, color: ACCENT },
+  seeAllButton: { minWidth: 72, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, justifyContent: 'center' },
   cell: {
     minHeight: 252,

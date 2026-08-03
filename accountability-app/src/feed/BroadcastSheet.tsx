@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -10,7 +11,9 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { captureRef } from 'react-native-view-shot';
+import * as Crypto from 'expo-crypto';
 import { Avatar } from './Avatar';
 import type { FeedPost } from './types';
 import { listBuddies, sendMessage, type Buddy } from '../buddy/api';
@@ -21,13 +24,16 @@ import { listGroups, type Group } from '../groups/api';
 import { createPost } from './api';
 import { addStory } from '../stories/api';
 import { encode } from 'base64-arraybuffer';
-import { createPublicPostShare, publicShareMessage } from './publicShare';
+import { createPublicPostShare } from './publicShare';
+import { publicShareContent } from './publicShareFormat';
+import { resolveMediaUrl } from '../media/privateMedia';
+import { uploadToR2 } from '../lib/r2';
+import { ExternalShareCard } from './ExternalShareCard';
 
 /** What a broadcast message/share says — the post body plus provenance. */
 function broadcastText(post: FeedPost): string {
   const body = post.body?.trim() || 'Check out my progress!';
-  const img = post.image_url ? `\n${post.image_url}` : '';
-  return `${body}${img}\n\n— shared from AccountAbility`;
+  return `${body}\n\n— shared privately from AccountAbility`;
 }
 
 /**
@@ -43,13 +49,17 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
   const [addingToDay, setAddingToDay] = useState(false);
   const [addedToDay, setAddedToDay] = useState(false);
   const [sharingExternal, setSharingExternal] = useState(false);
+  const publicCardRef = useRef<View>(null);
 
   useEffect(() => {
     if (!post) return;
-    setSent(new Set());
-    setSharedGroups(new Set());
-    setAddedToDay(false);
-    Promise.all([listBuddies(), listGroups()])
+    Promise.resolve()
+      .then(() => {
+        setSent(new Set());
+        setSharedGroups(new Set());
+        setAddedToDay(false);
+        return Promise.all([listBuddies(), listGroups()]);
+      })
       .then(([buddyRows, groupRows]) => {
         setBuddies(buddyRows);
         setGroups(groupRows.filter((group) => group.is_member));
@@ -88,8 +98,20 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
           onPress: async () => {
             setSharingExternal(true);
             try {
-              const url = await createPublicPostShare(post.id);
-              await Share.share({ message: publicShareMessage(title, url) });
+              if (Platform.OS === 'web' || !publicCardRef.current) {
+                throw new Error('Open AccountAbility on your phone to share this visual card.');
+              }
+              const base64 = await captureRef(publicCardRef, {
+                format: 'png',
+                quality: 0.92,
+                result: 'base64',
+              });
+              const previewRef = await uploadToR2(base64, 'share', 'png', {
+                operationId: Crypto.randomUUID(),
+              });
+              const url = await createPublicPostShare(post.id, previewRef);
+              const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+              await Share.share(publicShareContent(title, url, platform));
             } catch (error) {
               Alert.alert('Could not share', String((error as Error).message || 'Please try again.'));
             } finally {
@@ -102,13 +124,14 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
   }
 
   async function onAddToMyDay() {
-    if (!post?.image_url || addingToDay || addedToDay) return;
+    if (!post?.image_url || post.post_type === 'video' || addingToDay || addedToDay) return;
     setAddingToDay(true);
     try {
-      const response = await fetch(post.image_url);
+      const resolvedUrl = await resolveMediaUrl(post.image_url);
+      const response = await fetch(resolvedUrl);
       if (!response.ok) throw new Error('Could not read that image.');
       const bytes = await response.arrayBuffer();
-      const ext = post.image_url.split('?')[0].toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+      const ext = resolvedUrl.split('?')[0].toLowerCase().endsWith('.png') ? 'png' : 'jpg';
       await addStory(encode(bytes), ext, post.body);
       setAddedToDay(true);
       hapticTap();
@@ -128,6 +151,10 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
         `${post.body?.trim() || 'A win worth sharing'}\n\nShared from ${post.author_name ?? 'AccountAbility'}`,
         post.image_url,
         group.id,
+        null,
+        null,
+        false,
+        { postType: post.post_type },
       );
       setSharedGroups((current) => new Set(current).add(group.id));
       hapticTap();
@@ -143,6 +170,13 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
     <Modal visible={!!post} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.captureOnly} pointerEvents="none">
+            <ExternalShareCard
+              ref={publicCardRef}
+              title={post?.body ?? 'I showed up today.'}
+              author={post?.author_name ?? null}
+            />
+          </View>
           <View style={styles.grabber} />
           <View style={styles.titleRow}>
             <Ionicons name="megaphone" size={18} color={colors.primary} />
@@ -196,15 +230,24 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
           <View style={styles.internalRow}>
             <Pressable
               onPress={onAddToMyDay}
-              disabled={!post?.image_url || addingToDay || addedToDay}
+              disabled={!post?.image_url || post?.post_type === 'video' || addingToDay || addedToDay}
               style={({ pressed }) => [
                 styles.internalBtn,
-                !post?.image_url && styles.disabled,
+                (!post?.image_url || post?.post_type === 'video') && styles.disabled,
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel={post?.image_url ? 'Add to My Day' : 'My Day requires a photo'}
-              accessibilityState={{ disabled: !post?.image_url || addingToDay || addedToDay, busy: addingToDay }}
+              accessibilityLabel={
+                post?.post_type === 'video'
+                  ? 'My Day currently supports photos'
+                  : post?.image_url
+                    ? 'Add to My Day'
+                    : 'My Day requires a photo'
+              }
+              accessibilityState={{
+                disabled: !post?.image_url || post?.post_type === 'video' || addingToDay || addedToDay,
+                busy: addingToDay,
+              }}
             >
               {addingToDay ? (
                 <ActivityIndicator size="small" color={colors.primary} />
@@ -265,6 +308,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
 const styles = StyleSheet.create({
   pressed: { opacity: 0.75 },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
+  captureOnly: { position: 'absolute', left: -5000, top: 0 },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.xl,

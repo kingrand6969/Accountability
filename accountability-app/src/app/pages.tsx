@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,11 +11,12 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { listPages, followPage, PAGE_CATEGORIES, type Page } from '../pages/api';
 import { showToast } from '../ui/Toast';
 import { EmptyState } from '../ui/EmptyState';
 import { colors, font, radius, spacing, shadow } from '../ui/theme';
+import { useAuth } from '../auth/AuthProvider';
 
 type Row = { kind: 'header'; key: string; title: string } | { kind: 'page'; key: string; page: Page };
 
@@ -25,26 +26,70 @@ function categoryLabel(value: string): string | null {
 
 export default function Pages() {
   const router = useRouter();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(ownerId);
+  const loadGeneration = useRef(0);
+  const lifecycleGeneration = useRef(0);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
   const [pages, setPages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // pages with a follow request in flight — blocks double-taps
   const followsInFlight = useRef<Set<string>>(new Set());
 
+  useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    currentOwnerRef.current = ownerId;
+    loadGeneration.current += 1;
+    followsInFlight.current.clear();
+    queueMicrotask(() => {
+      if (
+        lifecycle !== lifecycleGeneration.current ||
+        currentOwnerRef.current !== ownerId
+      )
+        return;
+      setPages([]);
+      setDataOwnerId(null);
+      setLoading(ownerId !== null);
+      setRefreshing(false);
+    });
+  }, [ownerId]);
+
   const load = useCallback(async () => {
-    try {
-      setPages(await listPages());
-    } catch (e) {
-      Alert.alert('Could not load pages', String((e as Error).message ?? e));
-    } finally {
+    const requestOwner = ownerId;
+    const generation = ++loadGeneration.current;
+    if (!requestOwner) {
       setLoading(false);
       setRefreshing(false);
+      return;
     }
-  }, []);
+    try {
+      const next = await listPages();
+      if (generation !== loadGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      setPages(next);
+      setDataOwnerId(requestOwner);
+    } catch (e) {
+      if (generation !== loadGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      setPages([]);
+      setDataOwnerId(requestOwner);
+      Alert.alert('Could not load pages', String((e as Error).message ?? e));
+    } finally {
+      if (generation === loadGeneration.current && requestOwner === currentOwnerRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [ownerId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
+      return () => {
+        loadGeneration.current += 1;
+        lifecycleGeneration.current += 1;
+        followsInFlight.current.clear();
+      };
     }, [load]),
   );
 
@@ -54,16 +99,26 @@ export default function Pages() {
   }
 
   async function onFollow(page: Page) {
+    const requestOwner = ownerId;
+    const lifecycle = lifecycleGeneration.current;
+    if (!requestOwner) return;
     if (followsInFlight.current.has(page.id)) return;
     followsInFlight.current.add(page.id);
     try {
       await followPage(page.id);
+      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current)
+        return;
       showToast(`Following ${page.name}`);
+      followsInFlight.current.delete(page.id);
       await load();
     } catch (e) {
+      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current)
+        return;
       Alert.alert('Could not follow page', String((e as Error).message ?? e));
     } finally {
-      followsInFlight.current.delete(page.id);
+      if (lifecycle === lifecycleGeneration.current && requestOwner === currentOwnerRef.current) {
+        followsInFlight.current.delete(page.id);
+      }
     }
   }
 
@@ -71,9 +126,10 @@ export default function Pages() {
     router.push(`/page/${page.id}` as never);
   }
 
-  const following = pages.filter((p) => p.is_following);
-  const mine = pages.filter((p) => p.is_owner && !p.is_following);
-  const discover = pages.filter((p) => !p.is_following && !p.is_owner);
+  const visiblePages = dataOwnerId === ownerId ? pages : [];
+  const following = visiblePages.filter((p) => p.is_following);
+  const mine = visiblePages.filter((p) => p.is_owner && !p.is_following);
+  const discover = visiblePages.filter((p) => !p.is_following && !p.is_owner);
   const rows: Row[] = [
     ...(following.length > 0
       ? [{ kind: 'header', key: 'h-following', title: 'Following' } as Row, ...following.map(
@@ -92,7 +148,7 @@ export default function Pages() {
       : []),
   ];
 
-  if (loading) {
+  if (loading || (ownerId !== null && dataOwnerId !== ownerId)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />

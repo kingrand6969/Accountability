@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -9,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Avatar } from '../../feed/Avatar';
 import { timeAgo } from '../../feed/format';
 import {
@@ -20,6 +21,8 @@ import {
 } from '../../notify/api';
 import { EmptyState } from '../../ui/EmptyState';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
+import { useAuth } from '../../auth/AuthProvider';
+import { getPost } from '../../feed/api';
 
 const TYPE_ICON: Record<AppNotification['type'], { icon: string; tint: string }> = {
   like: { icon: 'flame', tint: colors.cheer },
@@ -31,32 +34,100 @@ const TYPE_ICON: Record<AppNotification['type'], { icon: string; tint: string }>
 
 export default function Notifications() {
   const router = useRouter();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(ownerId);
+  const loadGeneration = useRef(0);
+  const lifecycleGeneration = useRef(0);
+  const opensInFlight = useRef<Set<string>>(new Set());
   const [items, setItems] = useState<AppNotification[] | null>(null);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => {
-    listNotifications()
-      .then((list) => {
-        setItems(list);
-        // opening the tab clears the badge — same behavior as FB/IG
-        markAllRead().catch(() => {});
-      })
-      .catch(() => setItems([]));
-  }, []);
+  useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    currentOwnerRef.current = ownerId;
+    loadGeneration.current += 1;
+    opensInFlight.current.clear();
+    queueMicrotask(() => {
+      if (
+        lifecycle !== lifecycleGeneration.current ||
+        currentOwnerRef.current !== ownerId
+      )
+        return;
+      setItems(null);
+      setDataOwnerId(null);
+      setRefreshing(false);
+    });
+  }, [ownerId]);
 
-  useFocusEffect(load);
+  const load = useCallback(async () => {
+    const requestOwner = ownerId;
+    const generation = ++loadGeneration.current;
+    if (!requestOwner) {
+      setItems([]);
+      setRefreshing(false);
+      return;
+    }
+    try {
+      const list = await listNotifications();
+      if (generation !== loadGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      setItems(list);
+      setDataOwnerId(requestOwner);
+      void markAllRead(requestOwner).catch(() => {});
+    } catch {
+      if (generation !== loadGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      setItems([]);
+      setDataOwnerId(requestOwner);
+    } finally {
+      if (generation === loadGeneration.current && requestOwner === currentOwnerRef.current) {
+        setRefreshing(false);
+      }
+    }
+  }, [ownerId]);
 
-  function open(n: AppNotification) {
-    if (n.post_id) {
-      router.push({ pathname: '/post/[id]', params: { id: n.post_id } });
-    } else {
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      return () => {
+        loadGeneration.current += 1;
+        lifecycleGeneration.current += 1;
+        opensInFlight.current.clear();
+        setRefreshing(false);
+      };
+    }, [load]),
+  );
+
+  async function open(n: AppNotification) {
+    const requestOwner = ownerId;
+    const lifecycle = lifecycleGeneration.current;
+    if (!requestOwner || opensInFlight.current.has(n.id)) return;
+    if (!n.post_id) {
       router.push('/buddy' as never);
+      return;
+    }
+    opensInFlight.current.add(n.id);
+    try {
+      const target = await getPost(n.post_id);
+      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      if (!target) {
+        Alert.alert('Unavailable', 'This notification target is no longer available.');
+        return;
+      }
+      router.push({ pathname: '/post/[id]', params: { id: n.post_id } });
+    } catch {
+      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      Alert.alert('Unavailable', 'This notification target is no longer available.');
+    } finally {
+      if (lifecycle === lifecycleGeneration.current && requestOwner === currentOwnerRef.current) {
+        opensInFlight.current.delete(n.id);
+      }
     }
   }
 
   return (
     <View style={styles.screen}>
-      {items === null ? (
+      {items === null || (ownerId !== null && dataOwnerId !== ownerId) ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
       ) : (
         <FlatList
@@ -68,10 +139,7 @@ export default function Notifications() {
               refreshing={refreshing}
               onRefresh={() => {
                 setRefreshing(true);
-                listNotifications()
-                  .then(setItems)
-                  .catch(() => {})
-                  .finally(() => setRefreshing(false));
+                void load();
               }}
             />
           }
@@ -79,7 +147,7 @@ export default function Notifications() {
             <EmptyState
               icon="notifications-outline"
               title="No notifications yet"
-              subtitle="Cheers, comments, tags and buddy requests land here the moment they happen."
+              subtitle="Encouragement, comments, tags and buddy requests land here the moment they happen."
             />
           }
           renderItem={({ item }) => {

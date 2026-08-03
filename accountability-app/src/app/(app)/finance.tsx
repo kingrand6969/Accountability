@@ -12,8 +12,10 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
 import { useIsPro } from '../../pro/ProProvider';
 import { listMonth, deleteTransaction, getIncomeTrend, type IncomeMonth } from '../../money/api';
 import { IncomeTrend } from '../../money/IncomeTrend';
@@ -35,10 +37,16 @@ import {
   dueLabel,
   sortBills,
   unpaidTotal,
+  billAttentionTotal,
   type Bill,
 } from '../../money/billing';
 import { listBills, markBillPaid, unmarkBillPaid } from '../../money/billsApi';
 import { AccountsPane, SavingsPane } from '../../money/FinancePanes';
+import { listSavings, type SavingsGoal } from '../../money/accountsApi';
+import {
+  buildFriendlyFinanceSummary,
+  FriendlyFinanceHeader,
+} from '../../money/FinanceFriendly';
 import { BusinessPane } from '../../business/BusinessPane';
 import { EmptyState } from '../../ui/EmptyState';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
@@ -47,6 +55,7 @@ import { DonutChart } from '../../ui/DonutChart';
 import { confirmDestructive } from '../../ui/confirm';
 import { showToast } from '../../ui/Toast';
 import { colors, font, radius, spacing } from '../../ui/theme';
+import { tabBarContentHeight } from '../../ui/floatingTabBar';
 
 const INK = '#1e1b4b';
 const INK_SOFT = 'rgba(30,27,75,0.72)';
@@ -54,6 +63,8 @@ const ACCENT = '#2563eb';
 const GOOD = '#047857';
 const OVER = '#b45309'; // over-pace is amber — red stays reserved for overdue bills
 const COL_MAX = 600;
+const FINANCE_MODE_KEY = 'accountability:finance-mode:v1';
+type FinanceMode = 'friendly' | 'accounting';
 
 type Row =
   | { type: 'day'; key: string; label: string; net: number }
@@ -68,18 +79,22 @@ export default function Finance() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isPro } = useIsPro();
-  const { width: winW } = useWindowDimensions();
+  const { width: winW, fontScale } = useWindowDimensions();
   const colMax = contentMaxWidth(winW);
   const bgRef = useRef<View>(null);
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [lastTxns, setLastTxns] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const [savings, setSavings] = useState<SavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [allCats, setAllCats] = useState(false);
   const [trend, setTrend] = useState<IncomeMonth[]>([]);
   const [ccChooser, setCcChooser] = useState<Bill | null>(null);
+  const [financeMode, setFinanceMode] = useState<FinanceMode>('friendly');
   const paysInFlight = useRef<Set<string>>(new Set());
+  const billAttemptKeys = useRef<Map<string, string>>(new Map());
+  const loadGeneration = useRef(0);
   // month backtracker (Pro): first-of-month; defaults to this month
   const [selMonth, setSelMonth] = useState(() => {
     const n = new Date();
@@ -87,9 +102,27 @@ export default function Finance() {
   });
   // 4-pane swipe: 0 = Banks & wallets, 1 = Overview (default), 2 = Savings, 3 = Business
   const [page, setPage] = useState(1);
+  const [paneTabsHeight, setPaneTabsHeight] = useState(44);
   const pagerRef = useRef<ScrollView>(null);
   const pagerReady = useRef(false);
   const monthScrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    let live = true;
+    AsyncStorage.getItem(FINANCE_MODE_KEY)
+      .then((value) => {
+        if (live && (value === 'friendly' || value === 'accounting')) setFinanceMode(value);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  function changeFinanceMode(mode: FinanceMode) {
+    setFinanceMode(mode);
+    AsyncStorage.setItem(FINANCE_MODE_KEY, mode).catch(() => {});
+  }
 
   function goToPage(i: number) {
     pagerRef.current?.scrollTo({ x: i * winW, animated: true });
@@ -97,27 +130,39 @@ export default function Finance() {
   }
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    const isCurrent = () => loadGeneration.current === generation;
     try {
       const prev = new Date(selMonth.getFullYear(), selMonth.getMonth() - 1, 15);
-      const [cur, last, bs] = await Promise.all([
+      const [cur, last, bs, savingGoals] = await Promise.all([
         listMonth(selMonth),
         listMonth(prev),
         listBills(),
+        listSavings().catch(() => []),
       ]);
+      if (!isCurrent()) return;
       setTxns(cur);
       setLastTxns(last);
       setBills(bs);
+      setSavings(savingGoals);
       // Pro-only 12-month income chart — never fetched for free members
       if (isPro) {
         getIncomeTrend(12)
-          .then(setTrend)
-          .catch(() => setTrend([]));
+          .then((value) => {
+            if (isCurrent()) setTrend(value);
+          })
+          .catch(() => {
+            if (isCurrent()) setTrend([]);
+          });
       } else {
+        if (!isCurrent()) return;
         setTrend([]);
       }
     } catch (e) {
+      if (!isCurrent()) return;
       Alert.alert('Could not load', String((e as Error).message ?? e));
     } finally {
+      if (!isCurrent()) return;
       setLoading(false);
       setRefreshing(false);
     }
@@ -155,7 +200,10 @@ export default function Finance() {
     paysInFlight.current.add(bill.id);
     setCcChooser(null);
     try {
-      await markBillPaid(bill, amount);
+      const key = billAttemptKeys.current.get(bill.id) ?? Crypto.randomUUID();
+      billAttemptKeys.current.set(bill.id, key);
+      await markBillPaid(bill, amount, key);
+      billAttemptKeys.current.delete(bill.id);
       showToast(`${bill.name} marked paid ✓`);
       await load();
     } catch (e) {
@@ -287,6 +335,8 @@ export default function Finance() {
 
   const sortedBills = sortBills(bills, today);
   const stillToPay = unpaidTotal(bills, today);
+  const needsAttention = billAttentionTotal(bills, today);
+  const totalSaved = savings.reduce((sum, goal) => sum + goal.saved, 0);
   const monthLabel = selMonth
     .toLocaleDateString(undefined, {
       month: 'long',
@@ -294,11 +344,15 @@ export default function Finance() {
     })
     .toUpperCase();
   const fabRight = Math.max(spacing.xl, (winW - colMax) / 2 + spacing.xl);
+  const fabBottom = tabBarContentHeight(fontScale) + insets.bottom + spacing.sm;
   const underPace = insight.direction !== 'up';
 
-  const panesTop = insets.top + 44; // room for the floating pane tabs
+  const largeText = fontScale >= 1.75;
+  const financeBottomClearance = fabBottom + (largeText ? 112 : 88);
+  const compactTabLabels = fontScale >= 1.25;
+  const panesTop = insets.top + spacing.xs + paneTabsHeight + spacing.xs;
 
-  const header = (
+  const accountingHeader = (
     <View style={[styles.headerWrap, { maxWidth: colMax, paddingTop: panesTop }]}>
       {/* month backtracker (Pro) — arrows step; strip scrolls to follow */}
       <View style={styles.monthNav}>
@@ -363,9 +417,28 @@ export default function Finance() {
       {/* HERO — balance, in/out, pacing insight */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
-          <View style={styles.heroTopRow}>
+          <View style={[styles.heroTopRow, largeText && styles.heroTopRowLargeText]}>
             <Text style={styles.kicker}>YOUR MONEY</Text>
-            <Text style={styles.monthTag}>{monthLabel}</Text>
+            <View style={[styles.heroTopActions, largeText && styles.heroTopActionsLargeText]}>
+              <Pressable
+                onPress={() =>
+                  changeFinanceMode(financeMode === 'friendly' ? 'accounting' : 'friendly')
+                }
+                style={({ pressed }) => [styles.modeButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`Switch to ${financeMode === 'friendly' ? 'Accounting' : 'Friendly'} mode`}
+              >
+                <Ionicons
+                  name={financeMode === 'friendly' ? 'happy-outline' : 'calculator-outline'}
+                  size={13}
+                  color={INK}
+                />
+                <Text style={styles.modeButtonText}>
+                  {financeMode === 'friendly' ? 'Friendly' : 'Accounting'}
+                </Text>
+              </Pressable>
+              <Text style={styles.monthTag}>{monthLabel}</Text>
+            </View>
           </View>
           <View style={styles.heroMainRow}>
             <View style={styles.heroBalanceBlock}>
@@ -440,7 +513,7 @@ export default function Finance() {
       {/* WHERE IT GOES — category donut + legend with change arrows */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
-          <View style={styles.heroTopRow}>
+          <View style={[styles.heroTopRow, largeText && styles.heroTopRowLargeText]}>
             <Text style={styles.kicker}>WHERE IT GOES</Text>
             <Text style={styles.monthTag}>vs last month</Text>
           </View>
@@ -521,7 +594,7 @@ export default function Finance() {
       {/* INCOME TREND — 12 months at a glance (Pro) */}
       <GlassCard blurTarget={bgRef}>
         <View style={styles.cardPad}>
-          <View style={styles.heroTopRow}>
+          <View style={[styles.heroTopRow, largeText && styles.heroTopRowLargeText]}>
             <Text style={styles.kicker}>INCOME TREND</Text>
             <Text style={styles.monthTag}>last 12 months</Text>
           </View>
@@ -627,15 +700,67 @@ export default function Finance() {
     </View>
   );
 
+  const friendlySummary = buildFriendlyFinanceSummary({
+    available: balance,
+    spent: expense,
+    saved: totalSaved,
+    needsAttention,
+  });
+  const friendlyInsight =
+    smartInsights[0]?.text ??
+    (txns.length === 0 ? 'Add your first transaction and your monthly picture will appear here.' : null);
+  const friendlyHeader = (
+    <View style={[styles.friendlyHeaderWrap, { maxWidth: colMax, paddingTop: panesTop }]}>
+      <FriendlyFinanceHeader
+        summary={friendlySummary}
+        monthLabel={monthLabel}
+        insight={friendlyInsight}
+        onSwitchMode={() => changeFinanceMode('accounting')}
+        actions={[
+          {
+            label: 'Add money activity',
+            detail: 'Record income or spending',
+            icon: 'add-circle-outline',
+            onPress: () => router.push('/money-add'),
+          },
+          {
+            label: 'Review bills',
+            detail:
+              needsAttention > 0
+                ? `${formatAmount(needsAttention)} overdue or due within 3 days`
+                : 'Nothing overdue or due in the next 3 days',
+            icon: 'calendar-outline',
+            onPress: () => changeFinanceMode('accounting'),
+          },
+          {
+            label: 'Grow a savings goal',
+            detail:
+              savings.length > 0
+                ? `${savings.length} active goal${savings.length === 1 ? '' : 's'}`
+                : 'Start with any amount',
+            icon: 'leaf-outline',
+            onPress: () => goToPage(2),
+          },
+          {
+            label: 'See accounts and debts',
+            detail: 'Banks, wallets, cards and IOUs',
+            icon: 'wallet-outline',
+            onPress: () => goToPage(0),
+          },
+        ]}
+      />
+    </View>
+  );
+
   const overview = (
       <FlatList
         data={txRows}
         keyExtractor={(r) => r.key}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: financeBottomClearance }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={INK} />
         }
-        ListHeaderComponent={header}
+        ListHeaderComponent={financeMode === 'friendly' ? friendlyHeader : accountingHeader}
         ListEmptyComponent={
           <View style={[styles.sheetBody, styles.col, { maxWidth: colMax }]}>
             <EmptyState
@@ -716,8 +841,8 @@ export default function Finance() {
   );
 
   return (
-    <View style={styles.screen}>
-      <GlassBackdrop ref={bgRef} columnWidth={colMax} />
+    <View style={[styles.screen, financeMode === 'friendly' && styles.screenFriendly]}>
+      {financeMode === 'accounting' ? <GlassBackdrop ref={bgRef} columnWidth={colMax} /> : null}
 
       {/* swipe: ← Banks & wallets | Overview | Savings | Business → */}
       <ScrollView
@@ -745,9 +870,22 @@ export default function Finance() {
       </ScrollView>
 
       {/* floating pane tabs */}
-      <View style={[styles.paneTabs, { top: insets.top + spacing.xs }]}>
-        {['Accounts', 'Overview', 'Savings', 'Business'].map((label, i) => (
-          <Pressable
+      <View
+        onLayout={(event) => setPaneTabsHeight(event.nativeEvent.layout.height)}
+        style={[styles.paneTabs, { top: insets.top + spacing.xs }]}
+      >
+        {(financeMode === 'friendly'
+          ? ['Accounts', 'Today', 'Goals', 'Work']
+          : ['Accounts', 'Overview', 'Savings', 'Business']
+        ).map((label, i) => {
+          const visualLabel =
+            compactTabLabels && label === 'Accounts' ? 'Banks'
+              : compactTabLabels && label === 'Overview' ? 'Summary'
+                : compactTabLabels && label === 'Savings' ? 'Save'
+                  : compactTabLabels && label === 'Business' ? 'Work'
+                    : label;
+          return (
+            <Pressable
             key={label}
             onPress={() => goToPage(i)}
             hitSlop={6}
@@ -760,16 +898,24 @@ export default function Finance() {
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.paneTabText, page === i && styles.paneTabTextActive]}>
-              {label}
+            <Text
+              numberOfLines={2}
+              style={[styles.paneTabText, page === i && styles.paneTabTextActive]}
+            >
+              {visualLabel}
             </Text>
           </Pressable>
-        ))}
+          );
+        })}
       </View>
 
       {page === 1 ? (
         <Pressable
-          style={({ pressed }) => [styles.fab, { right: fabRight }, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.fab,
+            { right: fabRight, bottom: fabBottom },
+            pressed && styles.pressed,
+          ]}
           onPress={() => router.push('/money-add')}
           accessibilityLabel="Add a transaction"
         >
@@ -886,6 +1032,7 @@ function BillRow({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#E4DCF7' },
+  screenFriendly: { backgroundColor: colors.cream },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -901,12 +1048,17 @@ const styles = StyleSheet.create({
     maxWidth: COL_MAX,
     alignSelf: 'center',
   },
+  friendlyHeaderWrap: {
+    width: '100%',
+    alignSelf: 'center',
+    backgroundColor: colors.cream,
+  },
   cardPad: { padding: spacing.lg },
   monthNav: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   monthArrow: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.6)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.7)',
@@ -926,7 +1078,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 15,
-    minHeight: 34,
+    minHeight: 44,
   },
   monthPillActive: { backgroundColor: '#fff', borderColor: ACCENT },
   monthPillText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 12.5, letterSpacing: 0.3 },
@@ -938,6 +1090,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  heroTopRowLargeText: { flexDirection: 'column', alignItems: 'stretch' },
+  heroTopActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  heroTopActionsLargeText: {
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+  },
+  modeButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.64)',
+    borderWidth: 1,
+    borderColor: 'rgba(30,27,75,0.10)',
+  },
+  modeButtonText: { color: INK, fontFamily: font.bold, fontSize: 11 },
   heroMainRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -998,7 +1169,14 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     overflow: 'hidden',
   },
-  legendMore: { color: ACCENT, fontFamily: font.bold, fontSize: 12.5, paddingVertical: 4 },
+  legendMore: {
+    minHeight: 44,
+    textAlignVertical: 'center',
+    color: ACCENT,
+    fontFamily: font.bold,
+    fontSize: 12.5,
+    paddingVertical: 12,
+  },
   legendEmpty: { color: INK_SOFT, fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
   insightHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   insightList: { gap: spacing.sm, marginTop: spacing.md },
@@ -1057,7 +1235,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dueBadgeText: { fontFamily: font.bold, fontSize: 12 },
-  payBtn: { minWidth: 32, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  payBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   addBillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1092,7 +1270,8 @@ const styles = StyleSheet.create({
   sheetFooterWrap: { flexGrow: 1, width: '100%', maxWidth: COL_MAX, alignSelf: 'center' },
   paneTabs: {
     position: 'absolute',
-    alignSelf: 'center',
+    left: spacing.md,
+    right: spacing.md,
     flexDirection: 'row',
     gap: 4,
     backgroundColor: 'rgba(255,255,255,0.55)',
@@ -1102,14 +1281,20 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   paneTab: {
-    paddingHorizontal: 14,
-    minHeight: 30,
+    flex: 1,
+    paddingHorizontal: 4,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
   },
   paneTabActive: { backgroundColor: '#fff' },
-  paneTabText: { color: INK_SOFT, fontFamily: font.semibold, fontSize: 12.5 },
+  paneTabText: {
+    color: INK_SOFT,
+    fontFamily: font.semibold,
+    fontSize: 12.5,
+    textAlign: 'center',
+  },
   paneTabTextActive: { color: INK, fontFamily: font.bold },
   sheetHandle: {
     alignSelf: 'center',
@@ -1188,7 +1373,6 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.75 },
   fab: {
     position: 'absolute',
-    bottom: 104,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

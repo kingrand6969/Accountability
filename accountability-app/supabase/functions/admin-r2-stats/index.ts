@@ -95,7 +95,6 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       bucket,
-      public_base: Deno.env.get('R2_PUBLIC_BASE') ?? null,
       objects: all.length,
       bytes,
       folders: [...folders.entries()]

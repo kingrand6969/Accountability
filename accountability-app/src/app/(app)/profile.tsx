@@ -1,693 +1,264 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth/AuthProvider';
-import { useIsPro } from '../../pro/ProProvider';
-import {
-  isStreakReminderOn,
-  enableStreakReminder,
-  disableStreakReminder,
-} from '../../notifications/streakReminder';
-import { getMyProfile, updateMyProfile, touchLastActive, deleteMyAccount } from '../../profiles/api';
-import { validateBirthday } from '../../profiles/validation';
-import { uploadAvatar, uploadCover } from '../../profiles/avatar';
-import { prepareUpload } from '../../media/prepareUpload';
+import { getMyProfile } from '../../profiles/api';
+import type { Profile as ProfileRecord } from '../../profiles/types';
+import { getMetrics, getRank } from '../../achievements/api';
+import type { Metrics } from '../../achievements/catalog';
 import { CachedImage } from '../../ui/CachedImage';
-import { ChipSelector } from '../../profiles/ChipSelector';
-import { Button } from '../../ui/Button';
-import { showToast } from '../../ui/Toast';
-import { colors, font, radius, shadow, spacing } from '../../ui/theme';
-import type {
-  Gender,
-  RelationshipStatus,
-  SexualOrientation,
-} from '../../profiles/types';
+import { useResolvedMediaUrl } from '../../media/useResolvedMediaUrl';
+import { font, shadow } from '../../ui/theme';
 
-const RELATIONSHIP_OPTIONS: { value: RelationshipStatus; label: string }[] = [
-  { value: 'single', label: 'Single' },
-  { value: 'in_relationship', label: 'In a relationship' },
-  { value: 'married', label: 'Married' },
-  { value: 'divorced', label: 'Divorced' },
-  { value: 'separated', label: 'Separated' },
-  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+const PAPER = '#F7F4EC';
+const INK = '#081A3A';
+const MUTED = '#647084';
+const BLUE = '#155EEF';
+const MOUNTAIN = require('../../../assets/images/auth-mountain-hero.png');
+
+type RankSummary = Awaited<ReturnType<typeof getRank>>;
+
+const tiles = [
+  { label: 'Trophy Case', caption: 'Medals & prestige', icon: 'trophy-outline' as const, route: '/achievements' },
+  { label: 'Journey', caption: 'See your path', icon: 'trail-sign-outline' as const, route: '/activity' },
+  { label: 'Memories', caption: 'Proof you kept', icon: 'images-outline' as const, route: '/memories' },
+  { label: 'Buddy Card', caption: 'Your public intro', icon: 'people-outline' as const, route: '/buddy-card-edit' },
 ];
 
-const GENDER_OPTIONS: { value: Gender; label: string }[] = [
-  { value: 'male', label: 'Male' },
-  { value: 'female', label: 'Female' },
-];
-
-const ORIENTATION_OPTIONS: { value: SexualOrientation; label: string }[] = [
-  { value: 'male', label: 'Male' },
-  { value: 'female', label: 'Female' },
-  { value: 'gay', label: 'Gay' },
-  { value: 'lesbian', label: 'Lesbian' },
-  { value: 'bisexual', label: 'Bisexual' },
-  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
-];
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionCard}>{children}</View>
-    </View>
-  );
-}
-
-export default function Profile() {
-  const { session } = useAuth();
-  const { isPro } = useIsPro();
+export default function ProfileOverview() {
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // cover runs under the status bar
-
+  const insets = useSafeAreaInsets();
+  const { session } = useAuth();
+  const [profile, setProfile] = useState<ProfileRecord | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [rank, setRank] = useState<RankSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [joinedAt, setJoinedAt] = useState<string | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [coverUrl, setCoverUrl] = useState<string | null>(null);
-  const [uploadingCover, setUploadingCover] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const resolvedAvatar = useResolvedMediaUrl(profile?.avatar_url ?? null);
+  const resolvedCover = useResolvedMediaUrl(profile?.cover_url ?? null);
 
-  const [displayName, setDisplayName] = useState('');
-  const [area, setArea] = useState('');
-  const [bio, setBio] = useState('');
-  const [gender, setGender] = useState<Gender | null>(null);
-  const [genderPrivate, setGenderPrivate] = useState(true);
-  const [orientation, setOrientation] = useState<SexualOrientation | null>(null);
-  const [orientationPrivate, setOrientationPrivate] = useState(true);
-  const [birthday, setBirthday] = useState('');
-  const [birthdayPrivate, setBirthdayPrivate] = useState(true);
-  const [relationship, setRelationship] = useState<RelationshipStatus | null>(null);
-  const [showLastActive, setShowLastActive] = useState(true);
-  const [remindOn, setRemindOn] = useState(false);
-
-  useEffect(() => {
-    isStreakReminderOn().then(setRemindOn).catch(() => {});
-  }, []);
-
-  async function onToggleReminder(value: boolean) {
-    setRemindOn(value);
-    try {
-      if (value) {
-        const ok = await enableStreakReminder();
-        if (!ok) {
-          setRemindOn(false);
-          Alert.alert('Notifications off', 'Enable notifications to get reminders.');
-        }
-      } else {
-        await disableStreakReminder();
-      }
-    } catch (e) {
-      setRemindOn(!value);
-      Alert.alert('Could not update reminder', String((e as Error).message ?? e));
-    }
-  }
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        await touchLastActive();
-        const p = await getMyProfile();
-        if (!active || !p) return;
-        setAvatarUrl(p.avatar_url);
-        setCoverUrl(p.cover_url);
-        setDisplayName(p.display_name ?? '');
-        setArea(p.area ?? '');
-        setBio(p.bio ?? '');
-        setGender(p.gender);
-        setGenderPrivate(p.gender_private);
-        setOrientation(p.sexual_orientation);
-        setOrientationPrivate(p.sexual_orientation_private);
-        setBirthday(p.birthday ?? '');
-        setBirthdayPrivate(p.birthday_private);
-        setRelationship(p.relationship_status);
-        setShowLastActive(p.show_last_active);
-        setJoinedAt(p.created_at);
-      } catch (e) {
-        Alert.alert('Could not load profile', String((e as Error).message ?? e));
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  async function onSave() {
-    const birthdayError = validateBirthday(birthday);
-    if (birthdayError) {
-      Alert.alert('Check your birthday', birthdayError);
-      return;
-    }
-    setSaving(true);
-    try {
-      await updateMyProfile({
-        display_name: displayName.trim() || null,
-        area: area.trim() || null,
-        bio: bio.trim() || null,
-        gender,
-        gender_private: genderPrivate,
-        sexual_orientation: orientation,
-        sexual_orientation_private: orientationPrivate,
-        birthday: birthday.trim() || null,
-        birthday_private: birthdayPrivate,
-        relationship_status: relationship,
-        show_last_active: showLastActive,
-      });
-      showToast('Profile saved');
-    } catch (e) {
-      Alert.alert('Could not save', String((e as Error).message ?? e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function pickImage(aspect: [number, number]) {
-    // On web the file dialog MUST open synchronously from the click — an
-    // `await` for permission first breaks the user-gesture and the picker
-    // silently never opens. Web needs no permission, so skip it there.
-    if (Platform.OS !== 'web') {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Permission needed', 'Allow photo access to set a photo.');
-        return null;
-      }
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: Platform.OS !== 'web', // web has no crop UI
-      aspect,
-      quality: 1, // keep the crop sharp — prepareUpload does the resize/compress
-    });
-    if (result.canceled) return null;
-    return { uri: result.assets[0].uri };
-  }
-
-  async function onPickAvatar() {
-    const img = await pickImage([1, 1]);
-    if (!img) return;
-    setUploading(true);
-    try {
-      // avatars never render above ~200 px — 512 is a generous 2x cap
-      const base64 = await prepareUpload(img.uri, 512);
-      const url = await uploadAvatar(base64, 'jpg');
-      await updateMyProfile({ avatar_url: url });
-      setAvatarUrl(url);
-      showToast('Photo updated');
-    } catch (e) {
-      Alert.alert('Upload failed', String((e as Error).message ?? e));
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function onPickCover() {
-    const img = await pickImage([3, 1]);
-    if (!img) return;
-    setUploadingCover(true);
-    try {
-      // cover banners are shown ~screen-wide — 1280 is plenty
-      const base64 = await prepareUpload(img.uri, 1280);
-      const url = await uploadCover(base64, 'jpg');
-      await updateMyProfile({ cover_url: url });
-      setCoverUrl(url);
-      showToast('Cover updated');
-    } catch (e) {
-      Alert.alert('Upload failed', String((e as Error).message ?? e));
-    } finally {
-      setUploadingCover(false);
-    }
-  }
-
-  async function onSignOut() {
-    Alert.alert('Sign out?', 'You can sign back in any time.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: async () => {
-          const { error } = await supabase.auth.signOut();
-          if (error) Alert.alert('Could not sign out', error.message);
-        },
-      },
-    ]);
-  }
-
-  function onDeleteAccount() {
-    // two-step confirm — this is permanent and irreversible
-    Alert.alert(
-      'Delete your account?',
-      'This permanently erases your profile, posts, activity, money, buddies and everything else. Your chats stay with your buddies as “Deleted Account.” This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () =>
-            Alert.alert('Are you absolutely sure?', 'There is no way to recover this account.', [
-              { text: 'Keep my account', style: 'cancel' },
-              {
-                text: 'Delete forever',
-                style: 'destructive',
-                onPress: async () => {
-                  setDeleting(true);
-                  try {
-                    await deleteMyAccount();
-                    // signOut inside deleteMyAccount flips the auth guard → sign-in
-                  } catch (e) {
-                    setDeleting(false);
-                    Alert.alert('Could not delete account', String((e as Error).message ?? e));
-                  }
-                },
-              },
-            ]),
-        },
-      ],
-    );
-  }
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      setLoading(true);
+      Promise.all([getMyProfile(), getMetrics(), getRank()])
+        .then(([p, m, r]) => {
+          if (!active) return;
+          setProfile(p);
+          setMetrics(m);
+          setRank(r);
+        })
+        .catch(() => {})
+        .finally(() => active && setLoading(false));
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator color={BLUE} size="large" />
+        <Text style={styles.loadingText}>Opening your story...</Text>
       </View>
     );
   }
 
+  const displayName = profile?.display_name?.trim() || session?.user.email?.split('@')[0] || 'AccountAbility member';
+  const initial = displayName.charAt(0).toUpperCase();
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* cover photo (brand gradient until one is set) — full-bleed, no header */}
-      <View style={[styles.coverWrap, { height: 222 + insets.top }]}>
-        {coverUrl ? (
-          <CachedImage uri={coverUrl} style={styles.cover} contentFit="cover" />
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={[styles.hero, { paddingTop: insets.top + 12 }]}>
+        {resolvedCover ? (
+          <CachedImage uri={resolvedCover} style={StyleSheet.absoluteFill} contentFit="cover" />
         ) : (
-          <LinearGradient
-            colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.cover}
-          />
+          <Image source={MOUNTAIN} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
-        <Pressable
-          onPress={onPickCover}
-          disabled={uploadingCover}
-          style={({ pressed }) => [styles.coverBtn, pressed && styles.pressed]}
-          accessibilityLabel="Change cover photo"
-        >
-          {uploadingCover ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <>
-              <Ionicons name="camera" size={14} color="#fff" />
-              <Text style={styles.coverBtnText}>{coverUrl ? 'Edit cover' : 'Add cover'}</Text>
-            </>
-          )}
-        </Pressable>
+        <LinearGradient
+          colors={['rgba(8,26,58,0.08)', 'rgba(8,26,58,0.52)']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.heroTop}>
+          <View style={styles.heroBrand}>
+            <View style={styles.brandDot} />
+            <Text style={styles.heroBrandText}>YOUR PROFILE</Text>
+          </View>
+          <Pressable
+            onPress={() => router.push('/menu' as never)}
+            style={({ pressed }) => [styles.heroButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile settings"
+          >
+            <Ionicons name="settings-outline" size={22} color="#fff" />
+          </Pressable>
+        </View>
       </View>
 
-      {/* identity header */}
-      <View style={styles.avatarBlock}>
-        <Pressable
-          onPress={onPickAvatar}
-          disabled={uploading}
-          style={styles.avatarRing}
-          accessibilityLabel="Change profile photo"
-        >
-          {avatarUrl ? (
-            <CachedImage uri={avatarUrl} style={styles.avatar} />
+      <View style={styles.identity}>
+        <View style={styles.avatarRing}>
+          {resolvedAvatar ? (
+            <CachedImage uri={resolvedAvatar} style={styles.avatar} contentFit="cover" />
           ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Text style={styles.avatarInitial}>
-                {(displayName || session?.user.email || '?').charAt(0).toUpperCase()}
-              </Text>
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              <Text style={styles.avatarInitial}>{initial}</Text>
             </View>
           )}
-          {uploading ? (
-            <View style={styles.avatarOverlay}>
-              <ActivityIndicator color="#fff" />
-            </View>
-          ) : (
-            <View style={styles.avatarEdit}>
-              <Ionicons name="camera" size={13} color="#fff" />
-            </View>
-          )}
-        </Pressable>
-        <Text style={styles.email}>{displayName || session?.user.email || 'Signed in'}</Text>
-        {joinedAt ? (
-          <Text style={styles.meta}>
-            Joined {new Date(joinedAt).toLocaleDateString()}
-          </Text>
+        </View>
+        <Text style={styles.name}>{displayName}</Text>
+        {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : <Text style={styles.bio}>Discipline is my compass.</Text>}
+        {profile?.area ? (
+          <View style={styles.location}>
+            <Ionicons name="location-outline" size={14} color={MUTED} />
+            <Text style={styles.locationText}>{profile.area}</Text>
+          </View>
         ) : null}
+        <Pressable
+          onPress={() => router.push('/edit-profile' as never)}
+          style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Edit profile"
+        >
+          <Ionicons name="pencil-outline" size={16} color="#fff" />
+          <Text style={styles.editButtonText}>Edit profile</Text>
+        </Pressable>
       </View>
 
-      {/* quick links */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.linkRow,
-          isPro ? styles.proRowActive : styles.proRow,
-          pressed && styles.pressed,
-        ]}
-        onPress={() => router.push('/paywall')}
-      >
-        <View style={styles.linkLeft}>
-          <Ionicons name="star" size={17} color={isPro ? colors.pro : '#fff'} />
-          <Text style={[styles.linkText, { color: isPro ? colors.pro : '#fff' }]}>
-            {isPro ? 'AccountAbility Pro' : 'Upgrade to Pro'}
-          </Text>
-        </View>
-        <Ionicons
-          name="chevron-forward"
-          size={18}
-          color={isPro ? colors.pro : '#fff'}
-        />
-      </Pressable>
+      <View style={styles.stats}>
+        <Stat value={metrics?.streak ?? 0} label="Day streak" />
+        <View style={styles.statDivider} />
+        <Stat value={rank?.name ?? 'Rookie'} label="Momentum rank" />
+        <View style={styles.statDivider} />
+        <Stat value={metrics?.buddies ?? 0} label="Buddies" />
+      </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.linkRow, styles.buddyRow, pressed && styles.pressed]}
-        onPress={() => router.push('/buddy')}
-      >
-        <View style={styles.linkLeft}>
-          <Ionicons name="people-outline" size={18} color={colors.text} />
-          <Text style={[styles.linkText, { color: colors.text }]}>
-            Accountability Buddies
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-      </Pressable>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Your story</Text>
+        <Text style={styles.sectionNote}>The places your consistency lives.</Text>
+      </View>
+      <View style={styles.tileGrid}>
+        {tiles.map((tile) => (
+          <Pressable
+            key={tile.label}
+            onPress={() => router.push(tile.route as never)}
+            style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`${tile.label}, ${tile.caption}`}
+          >
+            <View style={styles.tileIcon}>
+              <Ionicons name={tile.icon} size={22} color={BLUE} />
+            </View>
+            <View style={styles.tileCopy}>
+              <Text style={styles.tileTitle}>{tile.label}</Text>
+              <Text style={styles.tileCaption}>{tile.caption}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color="#A4ACB9" />
+          </Pressable>
+        ))}
+      </View>
 
-      <Section title="About you">
-        <Text style={styles.label}>Display name</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Your name"
-          placeholderTextColor={colors.textFaint}
-          value={displayName}
-          onChangeText={setDisplayName}
-        />
-        <Text style={styles.label}>Area</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="City or region (no exact address)"
-          placeholderTextColor={colors.textFaint}
-          value={area}
-          onChangeText={setArea}
-        />
-        <Text style={styles.label}>Bio</Text>
-        <TextInput
-          style={[styles.input, styles.multiline]}
-          placeholder="A short intro"
-          placeholderTextColor={colors.textFaint}
-          value={bio}
-          onChangeText={setBio}
-          multiline
-        />
-      </Section>
-
-      <Section title="Private details">
-        <Text style={styles.sectionNote}>
-          Optional and private by default — you choose what to show.
-        </Text>
-        <Text style={styles.label}>Gender</Text>
-        <ChipSelector options={GENDER_OPTIONS} value={gender} onChange={setGender} />
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Hide my gender</Text>
-          <Switch value={genderPrivate} onValueChange={setGenderPrivate} />
-        </View>
-
-        <Text style={styles.label}>Sexual orientation</Text>
-        <ChipSelector
-          options={ORIENTATION_OPTIONS}
-          value={orientation}
-          onChange={setOrientation}
-        />
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Hide my sexual orientation</Text>
-          <Switch value={orientationPrivate} onValueChange={setOrientationPrivate} />
-        </View>
-
-        <Text style={styles.label}>Birthday</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.textFaint}
-          autoCapitalize="none"
-          value={birthday}
-          onChangeText={setBirthday}
-        />
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Keep birthday private</Text>
-          <Switch value={birthdayPrivate} onValueChange={setBirthdayPrivate} />
-        </View>
-
-        <Text style={styles.label}>Relationship status</Text>
-        <ChipSelector
-          options={RELATIONSHIP_OPTIONS}
-          value={relationship}
-          onChange={setRelationship}
-        />
-      </Section>
-
-      <Section title="Preferences">
-        <View style={styles.switchRow}>
-          <View style={styles.switchLeft}>
-            <Ionicons name="time-outline" size={17} color={colors.textMuted} />
-            <Text style={styles.switchLabel}>Show my last-active time</Text>
-          </View>
-          <Switch value={showLastActive} onValueChange={setShowLastActive} />
-        </View>
-        <View style={styles.switchRow}>
-          <View style={styles.switchLeft}>
-            <Ionicons name="flame" size={17} color={colors.accent} />
-            <Text style={styles.switchLabel}>Daily streak reminder</Text>
-          </View>
-          <Switch value={remindOn} onValueChange={onToggleReminder} />
-        </View>
-      </Section>
-
-      <Button title="Save profile" onPress={onSave} loading={saving} style={styles.save} />
-
-      <Pressable
-        style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
-        onPress={onSignOut}
-      >
-        <Text style={styles.signOutText}>Sign out</Text>
-      </Pressable>
-
-      <Pressable
-        style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
-        onPress={onDeleteAccount}
-        disabled={deleting}
-        accessibilityLabel="Delete account"
-      >
-        {deleting ? (
-          <ActivityIndicator size="small" color={colors.danger} />
-        ) : (
-          <>
-            <Ionicons name="trash-outline" size={16} color={colors.danger} />
-            <Text style={styles.deleteText}>Delete account</Text>
-          </>
-        )}
-      </Pressable>
-      <Text style={styles.deleteHint}>
-        Permanently erases everything about you. Your buddies keep their copy of your chats, where
-        you&apos;ll show as “Deleted Account.” This can&apos;t be undone.
-      </Text>
+      <View style={styles.settingsCard}>
+        <SettingsRow icon="shield-checkmark-outline" label="Account & privacy" route="/menu" />
+        <SettingsRow icon="notifications-outline" label="Notifications" route="/notifications" />
+        <SettingsRow icon="help-circle-outline" label="Help & support" route="/menu" last />
+      </View>
+      <Text style={styles.footer}>Your private details stay in Edit profile and are never shown here.</Text>
     </ScrollView>
   );
 }
 
+function Stat({ value, label }: { value: string | number; label: string }) {
+  return (
+    <View style={styles.stat}>
+      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function SettingsRow({
+  icon,
+  label,
+  route,
+  last,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  route: string;
+  last?: boolean;
+}) {
+  const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => router.push(route as never)}
+      style={({ pressed }) => [styles.settingsRow, !last && styles.settingsBorder, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={20} color={INK} />
+      <Text style={styles.settingsText}>{label}</Text>
+      <Ionicons name="chevron-forward" size={18} color="#A4ACB9" />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  container: {
-    padding: spacing.lg,
-    paddingTop: 0,
-    gap: spacing.sm,
-    paddingBottom: 110, // clear the floating glass tab bar
-    backgroundColor: colors.background,
-  },
-  pressed: { opacity: 0.8 },
-  coverWrap: {
-    marginHorizontal: -spacing.lg, // full-bleed banner
-    height: 222, // 148 + 50%
-  },
-  cover: { width: '100%', height: '100%' },
-  coverBtn: {
-    position: 'absolute',
-    right: spacing.md,
-    bottom: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    borderRadius: radius.pill,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    minHeight: 32,
-  },
-  coverBtnText: { color: '#fff', fontFamily: font.semibold, fontSize: 12 },
-  // avatar sits almost fully on the cover — its bottom edge (camera badge)
-  // lines up with the cover's bottom edge
-  avatarBlock: { alignItems: 'center', gap: 4, marginTop: -96, marginBottom: spacing.xs },
-  avatarRing: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    borderWidth: 4,
-    borderColor: colors.card,
-    backgroundColor: colors.card,
-  },
-  avatar: { width: 96, height: 96, borderRadius: 48 },
-  avatarPlaceholder: {
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: { color: '#fff', fontSize: 40, fontFamily: font.bold },
-  avatarOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  avatarEdit: {
-    position: 'absolute',
-    right: 2,
-    bottom: 2,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  email: { fontSize: 18, fontFamily: font.bold, color: colors.text, marginTop: 4 },
-  meta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13 },
-  linkRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.lg,
-    minHeight: 50,
-  },
-  linkLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  linkText: { fontSize: 15, fontFamily: font.bold },
-  proRow: { backgroundColor: colors.pro },
-  proRowActive: {
-    backgroundColor: colors.proSoft,
-    borderWidth: 1,
-    borderColor: colors.pro,
-  },
-  buddyRow: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadow.card,
-  },
-  section: { marginTop: spacing.md, gap: 6 },
-  sectionTitle: {
-    fontSize: 13,
-    fontFamily: font.bold,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginLeft: 4,
-  },
-  sectionCard: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: 6,
-    ...shadow.card,
-  },
-  sectionNote: {
-    color: colors.textMuted,
-    fontFamily: font.regular,
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  label: {
-    fontSize: 13.5,
-    fontFamily: font.semibold,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    fontSize: 16,
-    fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
-  },
-  multiline: { minHeight: 80, textAlignVertical: 'top' },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-    minHeight: 36,
-  },
-  switchLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
-  switchLabel: { fontSize: 15, fontFamily: font.medium, color: colors.text },
-  save: { marginTop: spacing.xl },
-  signOutButton: {
-    borderRadius: radius.sm,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    minHeight: 44,
-  },
-  signOutText: { color: colors.danger, fontSize: 15, fontFamily: font.semibold },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 44,
-    marginTop: spacing.sm,
-  },
-  deleteText: { color: colors.danger, fontSize: 14.5, fontFamily: font.bold },
-  deleteHint: {
-    fontFamily: font.regular,
-    fontSize: 12,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 17,
-    marginTop: 2,
-    paddingHorizontal: spacing.lg,
-  },
+  screen: { flex: 1, backgroundColor: PAPER },
+  content: { paddingBottom: 120 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: PAPER },
+  loadingText: { color: MUTED, fontFamily: font.medium, fontSize: 14 },
+  pressed: { opacity: 0.72 },
+  hero: { height: 184, paddingHorizontal: 18, overflow: 'hidden' },
+  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroBrand: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  brandDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
+  heroBrandText: { color: '#fff', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },
+  heroButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,26,58,0.28)' },
+  identity: { alignItems: 'center', paddingHorizontal: 24, marginTop: -52 },
+  avatarRing: { width: 108, height: 108, borderRadius: 54, padding: 4, backgroundColor: PAPER, ...shadow.card },
+  avatar: { width: 100, height: 100, borderRadius: 50 },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8E4DA' },
+  avatarInitial: { color: INK, fontFamily: font.extrabold, fontSize: 36 },
+  name: { marginTop: 10, color: INK, fontFamily: font.bold, fontSize: 27, letterSpacing: -0.5 },
+  bio: { marginTop: 5, color: MUTED, fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  location: { marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  locationText: { color: MUTED, fontFamily: font.medium, fontSize: 12.5 },
+  editButton: { marginTop: 16, minHeight: 48, minWidth: 174, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE },
+  editButtonText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  stats: { marginHorizontal: 18, marginTop: 22, minHeight: 82, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 18, backgroundColor: '#FFFCF6', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, ...shadow.card },
+  stat: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  statValue: { color: INK, fontFamily: font.bold, fontSize: 18 },
+  statLabel: { marginTop: 4, color: MUTED, fontFamily: font.medium, fontSize: 10.5, textAlign: 'center' },
+  statDivider: { height: 38, width: 1, backgroundColor: '#E1DDD2' },
+  sectionHeader: { paddingHorizontal: 20, marginTop: 28, marginBottom: 12 },
+  sectionTitle: { color: INK, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.4 },
+  sectionNote: { marginTop: 3, color: MUTED, fontFamily: font.regular, fontSize: 13 },
+  tileGrid: { paddingHorizontal: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  tile: { width: '48.5%', minHeight: 94, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 16, backgroundColor: '#FFFCF6', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, ...shadow.card },
+  tileIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#EEF4FF', alignItems: 'center', justifyContent: 'center' },
+  tileCopy: { flex: 1 },
+  tileTitle: { color: INK, fontFamily: font.bold, fontSize: 13.5 },
+  tileCaption: { marginTop: 3, color: MUTED, fontFamily: font.regular, fontSize: 10.5, lineHeight: 14 },
+  settingsCard: { marginHorizontal: 18, marginTop: 24, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 18, backgroundColor: '#FFFCF6', overflow: 'hidden' },
+  settingsRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  settingsBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DDD8CC' },
+  settingsText: { flex: 1, color: INK, fontFamily: font.semibold, fontSize: 14 },
+  footer: { marginHorizontal: 28, marginTop: 14, color: MUTED, fontFamily: font.regular, fontSize: 11.5, lineHeight: 17, textAlign: 'center' },
 });

@@ -1,19 +1,58 @@
-// ── Monetization launch switches ─────────────────────────────────────────────
-// Both are OFF for the free v1 (Google Play first). The whole app is already
-// built for paid Pro + in-feed ads — these two flags just hide the money
-// surfaces until the billing/ads SDKs are wired against real store products.
-//
-// v1.1 "turn on Pro" checklist:
-//   1. Create the subscription products in Google Play Console (App Store later).
-//   2. Wire RevenueCat (react-native-purchases) so entitlements set `is_pro`.
-//   3. Set CHECKOUT_ENABLED = true. (The paywall UI is already built.)
-//
-// v1.x "turn on ads" (optional — only worth it at real daily-user scale):
-//   4. Create AdMob units, wire react-native-google-mobile-ads (+ iOS ATT prompt
-//      and privacy-label update), then set ADS_ENABLED = true.
-//
-// Until CHECKOUT_ENABLED flips, grant Pro to yourself / early users via
-// admin_grant_pro (migration 0060) for comps and trials.
+import Constants from 'expo-constants';
 
-export const CHECKOUT_ENABLED = false;
-export const ADS_ENABLED = false;
+export const PRO_PRICING = {
+  monthly: { productId: 'accountability_pro_monthly', displayPrice: '$5.99', period: 'month' },
+  yearly: { productId: 'accountability_pro_yearly', displayPrice: '$39.99', period: 'year' },
+} as const;
+
+export type MonetizationEnvironment = 'preview' | 'production' | 'development';
+
+export type MonetizationConfig = {
+  environment: MonetizationEnvironment;
+  billing: {
+    configured: boolean;
+    publicApiKey: string | null;
+    entitlementId: string;
+    monthlyProductId: string;
+    yearlyProductId: string;
+  };
+  ads: { configured: boolean; feedUnitId: string | null };
+};
+
+type PublicEnvironment = Record<string, string | undefined>;
+
+function clean(value: string | undefined): string | null {
+  const result = value?.trim();
+  return result ? result : null;
+}
+
+export function buildMonetizationConfig(env: PublicEnvironment): MonetizationConfig {
+  const environment =
+    env.EXPO_PUBLIC_APP_VARIANT === 'production'
+      ? 'production'
+      : env.EXPO_PUBLIC_APP_VARIANT === 'preview'
+        ? 'preview'
+        : 'development';
+  const publicApiKey = clean(env.EXPO_PUBLIC_REVENUECAT_API_KEY);
+  const feedUnitId = clean(env.EXPO_PUBLIC_ADMOB_FEED_UNIT_ID);
+
+  return {
+    environment,
+    billing: {
+      configured: !!publicApiKey,
+      publicApiKey,
+      entitlementId: clean(env.EXPO_PUBLIC_PRO_ENTITLEMENT_ID) ?? 'pro',
+      monthlyProductId:
+        clean(env.EXPO_PUBLIC_PRO_MONTHLY_PRODUCT_ID) ?? PRO_PRICING.monthly.productId,
+      yearlyProductId:
+        clean(env.EXPO_PUBLIC_PRO_YEARLY_PRODUCT_ID) ?? PRO_PRICING.yearly.productId,
+    },
+    ads: { configured: !!feedUnitId, feedUnitId },
+  };
+}
+
+const runtimeVariant = Constants.expoConfig?.extra?.appVariant;
+export const MONETIZATION = buildMonetizationConfig({
+  ...process.env,
+  EXPO_PUBLIC_APP_VARIANT: process.env.EXPO_PUBLIC_APP_VARIANT ?? runtimeVariant,
+});

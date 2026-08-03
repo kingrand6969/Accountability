@@ -1,6 +1,13 @@
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabase';
 import { uploadToR2 } from '../lib/r2';
+import {
+  classifyUploadFailure,
+  estimateBase64Bytes,
+  mayUseStorageFallback,
+} from '../media/uploadPolicy';
+import { recordUploadEvent } from '../media/uploadTelemetry';
+export { mayUseStorageFallback } from '../media/uploadPolicy';
 
 /** Uploads a base64 image for a feed post. Prefers zero-egress Cloudflare R2;
  *  falls back to Supabase Storage if R2 is unavailable, so posting never breaks. */
@@ -9,14 +16,32 @@ export async function uploadPostImage(
   ext: string,
   operationId?: string,
 ): Promise<string> {
-  if (operationId) {
-    return uploadToSupabase(base64, ext, operationId);
-  }
+  const bytes = estimateBase64Bytes(base64);
   try {
-    return await uploadToR2(base64, 'post', ext);
+    const url = await uploadToR2(base64, 'post', ext, { operationId });
+    void recordUploadEvent({ provider: 'r2', kind: 'post', outcome: 'success', bytes });
+    return url;
   } catch (e) {
+    if (!mayUseStorageFallback(e)) {
+      void recordUploadEvent({
+        provider: 'r2',
+        kind: 'post',
+        outcome: 'rejected',
+        bytes,
+        failureClass: classifyUploadFailure(e),
+      });
+      throw e;
+    }
     console.warn('[uploadPostImage] R2 unavailable, using Supabase Storage:', e);
-    return uploadToSupabase(base64, ext);
+    const url = await uploadToSupabase(base64, ext, operationId);
+    void recordUploadEvent({
+      provider: 'supabase',
+      kind: 'post',
+      outcome: 'fallback',
+      bytes,
+      failureClass: classifyUploadFailure(e),
+    });
+    return url;
   }
 }
 

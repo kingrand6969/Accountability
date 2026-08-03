@@ -1,14 +1,15 @@
 import { supabase } from '../lib/supabase';
-import { addTransaction, todayDate } from './api';
-import { monthKey, type Bill, type BillCategory } from './billing';
+import * as Crypto from 'expo-crypto';
+import { type Bill, type BillCategory } from './billing';
+import { finiteNumber, positiveFiniteNumber } from './numeric';
 
 const SELECT = 'id,name,category,amount,min_payment,due_day,last_paid_month,created_at';
 
 function mapBill(row: any): Bill {
   return {
     ...row,
-    amount: Number(row.amount),
-    min_payment: row.min_payment == null ? null : Number(row.min_payment),
+    amount: finiteNumber(row.amount, 'bill amount'),
+    min_payment: row.min_payment == null ? null : finiteNumber(row.min_payment, 'bill minimum payment'),
   } as Bill;
 }
 
@@ -52,21 +53,18 @@ export async function deleteBill(id: string): Promise<void> {
  * Transactions + "Where it goes". For credit cards the caller passes which
  * amount was paid (minimum or statement); other bills default to their amount.
  */
-export async function markBillPaid(bill: Bill, paidAmount = bill.amount): Promise<void> {
-  const { error } = await supabase
-    .from('bills')
-    .update({ last_paid_month: monthKey(new Date()) })
-    .eq('id', bill.id);
+export async function markBillPaid(
+  bill: Bill,
+  paidAmount = bill.amount,
+  idempotencyKey = Crypto.randomUUID(),
+): Promise<void> {
+  const amount = positiveFiniteNumber(paidAmount, 'Payment amount');
+  const { error } = await supabase.rpc('mark_bill_paid_atomic', {
+    p_bill_id: bill.id,
+    p_amount: amount,
+    p_idempotency_key: idempotencyKey,
+  });
   if (error) throw error;
-  if (paidAmount > 0) {
-    await addTransaction({
-      kind: 'expense',
-      amount: paidAmount,
-      category: 'bills',
-      note: bill.name,
-      tx_date: todayDate(),
-    });
-  }
 }
 
 /** Undo an accidental "paid" tap — clears the flag (the logged transaction, if

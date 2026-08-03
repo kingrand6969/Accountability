@@ -3,17 +3,23 @@
  * Screens should import from here instead of hardcoding hex values.
  */
 
+import { font, typography } from './typography';
+
+export { font } from './typography';
+
 export const colors = {
   // brand — logo blue, one language everywhere
-  primary: '#2563eb',
+  primary: '#155EEF',
   primaryDark: '#1d4ed8',
   primarySoft: '#eff6ff',
+  navy: '#081A3A',
+  cream: '#F7F4EC',
   success: '#16a34a',
   successSoft: '#f0fdf4',
   danger: '#dc2626',
   dangerSoft: '#fef2f2',
   accent: '#fbbf24', // amber flame
-  cheer: '#ea580c', // flame orange — the "Cheer" reaction (our like)
+  cheer: '#ea580c', // flame orange — the Encourage reaction
   pro: '#7c3aed',
   proSoft: '#f5f3ff',
 
@@ -42,6 +48,9 @@ export const spacing = {
   lg: 16,
   xl: 20,
   xxl: 24,
+  section: 32,
+  screen: 16,
+  touch: 44,
 } as const;
 
 export const radius = {
@@ -50,16 +59,49 @@ export const radius = {
   lg: 18,
   xl: 24,
   pill: 999,
+  card: 18,
+  sheet: 24,
 } as const;
 
-/** Inter-based type scale. Fonts are loaded globally in the root layout. */
-export const font = {
-  regular: 'Inter_400Regular',
-  medium: 'Inter_500Medium',
-  semibold: 'Inter_600SemiBold',
-  bold: 'Inter_700Bold',
-  extrabold: 'Inter_800ExtraBold',
-  display: 'Anton_400Regular', // big numbers / hero stats only
+/**
+ * Semantic roles for new foundation primitives. Existing flat color names
+ * remain stable so current feature screens keep their established behavior.
+ */
+export const semanticColors = {
+  surface: {
+    canvas: colors.cream,
+    card: colors.card,
+    raised: colors.background,
+    muted: colors.surfaceAlt,
+    inverse: colors.navy,
+  },
+  ink: {
+    primary: colors.navy,
+    secondary: colors.textSecondary,
+    muted: colors.textMuted,
+    inverse: colors.onPrimary,
+    action: colors.primary,
+  },
+  border: {
+    subtle: colors.border,
+    strong: colors.inkFaint,
+    action: colors.primary,
+    danger: colors.danger,
+  },
+  status: {
+    success: colors.success,
+    successSoft: colors.successSoft,
+    danger: colors.danger,
+    dangerSoft: colors.dangerSoft,
+    attention: colors.accent,
+  },
+} as const;
+
+export const category = {
+  body: semanticColors.status.success,
+  money: colors.primary,
+  focus: colors.pro,
+  people: colors.cheer,
 } as const;
 
 export const type = {
@@ -68,6 +110,34 @@ export const type = {
   body: { fontFamily: font.regular, fontSize: 15, color: colors.text },
   label: { fontFamily: font.semibold, fontSize: 14, color: colors.textSecondary },
   caption: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted },
+  editorialTitle: {
+    ...typography.editorialTitle,
+    color: semanticColors.ink.primary,
+  },
+  editorialHeading: {
+    ...typography.editorialHeading,
+    color: semanticColors.ink.primary,
+  },
+  interfaceTitle: {
+    ...typography.interfaceTitle,
+    color: semanticColors.ink.primary,
+  },
+  interfaceHeading: {
+    ...typography.interfaceHeading,
+    color: semanticColors.ink.primary,
+  },
+  annotation: {
+    ...typography.annotation,
+    color: colors.primary,
+  },
+  metric: {
+    ...typography.metric,
+    color: semanticColors.ink.primary,
+  },
+  heroMetric: {
+    ...typography.heroMetric,
+    color: semanticColors.ink.primary,
+  },
 } as const;
 
 /** Cap content width on tablets/wide screens — apply to scroll containers. */
@@ -84,5 +154,41 @@ export const shadow = {
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
+  },
+} as const;
+
+export const elevation = {
+  none: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  card: shadow.card,
+  floating: {
+    shadowColor: colors.navy,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+} as const;
+
+export const icon = {
+  size: {
+    sm: 18,
+    md: 24,
+    lg: 28,
+  },
+  touchTarget: spacing.touch,
+  strokeWidth: 2,
+} as const;
+
+export const motion = {
+  duration: {
+    fast: 120,
+    standard: 220,
+    deliberate: 360,
+  },
+  reduced: {
+    duration: 0,
   },
 } as const;

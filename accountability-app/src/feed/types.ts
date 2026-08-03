@@ -2,6 +2,7 @@ export type PostAudience = 'buddies' | 'public' | 'group';
 export type PostType =
   | 'post'
   | 'photo'
+  | 'video'
   | 'run'
   | 'workout'
   | 'milestone'
@@ -19,6 +20,7 @@ export type FeedPost = {
   author_avatar: string | null;
   like_count: number;
   comment_count: number;
+  voice_encouragement_count?: number;
   liked_by_me: boolean;
   audience: PostAudience;
   post_type: PostType;

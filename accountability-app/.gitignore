@@ -31,7 +31,18 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
+!.env.example
 .env*.local
+
+# local tooling, audit evidence, and generated previews
+/.gstack/
+/.superpowers/
+/.tmp*/
+/supabase/.temp/
+/dist-*/
+/*-deploy.tar.gz
 
 # typescript
 *.tsbuildinfo

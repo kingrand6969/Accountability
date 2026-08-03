@@ -10,7 +10,7 @@
     "ios": {
       "bundleIdentifier": "com.awldesk.accountability",
       "supportsTablet": true,
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "AccountAbility uses the front camera for a private on-device beauty preview.",
         "UIBackgroundModes": [
@@ -27,9 +27,6 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "blockedPermissions": [
-        "android.permission.RECORD_AUDIO"
-      ],
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -67,12 +64,21 @@
       ],
       "expo-notifications",
       "expo-sharing",
+      "expo-video",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "AccountAbility uses your microphone only when you choose to record a voice encouragement.",
+          "recordAudioAndroid": true,
+          "enableBackgroundRecording": false
+        }
+      ],
       [
         "expo-image-picker",
         {
           "cameraPermission": "AccountAbility uses your camera for selfies, run cards, stories and profile photos.",
           "microphonePermission": false,
-          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories."
+          "photosPermission": "AccountAbility needs photo and video access when you choose media for a post, run card or Memory."
         }
       ],
       [
@@ -103,7 +109,9 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/f91c0791-4a6e-4080-88fd-5cc9a4e720bf"
+      "url": "https://u.expo.dev/f91c0791-4a6e-4080-88fd-5cc9a4e720bf",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     }
   }
 }

@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Avatar } from '../feed/Avatar';
 import { font, radius, spacing } from '../ui/theme';
 import { formatScore, type Metric } from './api';

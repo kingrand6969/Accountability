@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { saveRemoteImageToMemories } from './api';
 import { showToast } from '../ui/Toast';
 import { colors, font } from '../ui/theme';

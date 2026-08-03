@@ -54,14 +54,14 @@ export async function unreadCount(): Promise<number> {
   return count ?? 0;
 }
 
-export async function markAllRead(): Promise<void> {
-  const uid = await me();
-  if (!uid) return;
-  await supabase
+export async function markAllRead(expectedOwnerId: string): Promise<void> {
+  if (!expectedOwnerId) return;
+  const { error } = await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
-    .eq('user_id', uid)
+    .eq('user_id', expectedOwnerId)
     .is('read_at', null);
+  if (error) throw error;
 }
 
 /** Human line for a notification row. */
@@ -69,7 +69,7 @@ export function notificationLine(n: AppNotification): string {
   const who = n.actor_name ?? 'Someone';
   switch (n.type) {
     case 'like':
-      return `${who} cheered your post`;
+      return `${who} encouraged your post`;
     case 'comment':
       return `${who} commented on your post`;
     case 'tag':

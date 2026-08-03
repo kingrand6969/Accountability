@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -9,12 +9,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { createGroup } from '../groups/api';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 import { PrivacyToggle } from '../ui/PrivacyToggle';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { useAuth } from '../auth/AuthProvider';
 
 const NAME_MIN = 3;
 const NAME_MAX = 80;
@@ -22,11 +23,42 @@ const KEY_MIN = 4;
 
 export default function GroupNew() {
   const router = useRouter();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(ownerId);
+  const createGeneration = useRef(0);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [privacy, setPrivacy] = useState<'public' | 'private'>('public');
   const [gatekey, setGatekey] = useState('');
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    currentOwnerRef.current = ownerId;
+    const generation = ++createGeneration.current;
+    queueMicrotask(() => {
+      if (
+        generation !== createGeneration.current ||
+        currentOwnerRef.current !== ownerId
+      )
+        return;
+      setName('');
+      setDescription('');
+      setPrivacy('public');
+      setGatekey('');
+      setCreating(false);
+    });
+  }, [ownerId]);
+
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        createGeneration.current += 1;
+        setCreating(false);
+      },
+      [],
+    ),
+  );
 
   const trimmed = name.trim();
   const nameError =
@@ -50,18 +82,35 @@ export default function GroupNew() {
 
   async function onCreate() {
     if (!canCreate) return;
+    const requestOwner = ownerId;
+    const generation = createGeneration.current;
+    if (!requestOwner) return;
     setCreating(true);
     try {
       const newId = await createGroup(trimmed, description.trim(), {
         privacy,
         gatekey: privacy === 'private' ? keyTrimmed : undefined,
       });
+      if (
+        requestOwner !== currentOwnerRef.current ||
+        generation !== createGeneration.current
+      )
+        return;
       showToast('Group created 🎉');
       router.replace(`/group/${newId}` as never);
     } catch (e) {
+      if (
+        requestOwner !== currentOwnerRef.current ||
+        generation !== createGeneration.current
+      )
+        return;
       Alert.alert('Could not create group', String((e as Error).message ?? e));
     } finally {
-      setCreating(false);
+      if (
+        requestOwner === currentOwnerRef.current &&
+        generation === createGeneration.current
+      )
+        setCreating(false);
     }
   }
 

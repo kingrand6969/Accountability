@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   getBuddyCard,
   getBuddyStats,
@@ -48,18 +48,31 @@ export default function BuddyCardScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
-      Promise.all([getBuddyCard(id), getBuddyStats(id), listBuddies()])
-        .then(([v, s, buddies]) => {
+      Promise.all([getBuddyCard(id), listBuddies()])
+        .then(([v, buddies]) => {
           setView(v);
-          setStats(s);
           const buddy = buddies.some((b) => b.id === id);
           setIsBuddy(buddy);
-          getCardMetrics(id).then(setMetrics).catch(() => {});
-          // live board standing (shown automatically when they share location)
-          getBoardRank(id).then(setBoardRank).catch(() => {});
-          // Buddies get a fuller, Facebook-style view (their recent posts);
-          // non-buddies always see the posts the owner marked "Show on Buddy Card".
-          listCardPosts(id, buddy).then(setPosts).catch(() => setPosts([]));
+          if (buddy) {
+            getBuddyStats(id).then(setStats).catch(() => {});
+          }
+          const publicMetricsAllowed = Boolean(
+            v?.card.show_consistency ||
+            v?.card.show_points ||
+            v?.card.show_distance ||
+            v?.card.show_challenge_wins,
+          );
+          if (buddy || publicMetricsAllowed) {
+            getCardMetrics(id).then(setMetrics).catch(() => {});
+          }
+          if (buddy || v?.card.show_city_rank || v?.card.show_country_rank) {
+            getBoardRank(id).then(setBoardRank).catch(() => {});
+          }
+          if (buddy || v?.card.show_posts) {
+            listCardPosts(id, buddy).then(setPosts).catch(() => setPosts([]));
+          } else {
+            setPosts([]);
+          }
         })
         .catch(() => {})
         .finally(() => setLoading(false));
@@ -93,7 +106,7 @@ export default function BuddyCardScreen() {
     if (!id || !view) return;
     Alert.alert(
       `Block ${authorLabel(view.name)}?`,
-      'They won’t be able to message you and you won’t see each other. You can undo this later.',
+      "They won't be able to message you and you won't see each other. You can undo this later.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -117,7 +130,7 @@ export default function BuddyCardScreen() {
     if (!id || !view) return;
     Alert.alert(
       `Report ${authorLabel(view.name)}?`,
-      'We’ll review this profile. Reporting also blocks them so they can’t reach you.',
+      "We'll review this profile. Reporting also blocks them so they can't reach you.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -127,7 +140,7 @@ export default function BuddyCardScreen() {
             try {
               await reportUser(id, 'Reported from profile');
               await blockUser(id).catch(() => {});
-              showToast('Reported — thank you');
+              showToast('Reported - thank you');
               router.back();
             } catch (e) {
               Alert.alert('Could not report', String((e as Error).message ?? e));
@@ -154,6 +167,7 @@ export default function BuddyCardScreen() {
   }
 
   const { headline, about } = cardText(view);
+  const visibleAbout = isBuddy ? view.bio : about;
   const memberSince = new Date(view.created_at).toLocaleDateString(undefined, {
     month: 'short',
     year: 'numeric',
@@ -217,25 +231,22 @@ export default function BuddyCardScreen() {
         </View>
       ) : null}
 
-      {/* profile info below */}
-      <View style={styles.aboutCard}>
-        <Text style={styles.aboutTitle}>Profile</Text>
-        <Text style={styles.aboutText}>
-          {about || 'They haven’t written anything yet — say hi and find out!'}
-        </Text>
-      </View>
+      {visibleAbout ? (
+        <View style={styles.aboutCard}>
+          <Text style={styles.aboutTitle}>About</Text>
+          <Text style={styles.aboutText}>{visibleAbout}</Text>
+        </View>
+      ) : null}
 
-      {/* posts — buddies get a fuller feed, non-buddies only the public ones */}
-      {
+      {/* Buddies see recent posts; non-buddies only see owner-selected public posts. */}
+      {isBuddy || view.card.show_posts ? (
         <View style={styles.aboutCard}>
           <Text style={styles.aboutTitle}>{isBuddy ? 'Recent posts' : 'Shared publicly'}</Text>
           {posts === null ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
           ) : posts.length === 0 ? (
             <Text style={styles.aboutText}>
-              {isBuddy
-                ? 'No posts yet.'
-                : 'Nothing shared with non-buddies yet — connect to see more.'}
+              {isBuddy ? 'No posts yet.' : 'No public Buddy Card posts selected.'}
             </Text>
           ) : (
             <View style={{ gap: 4 }}>
@@ -250,7 +261,7 @@ export default function BuddyCardScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Open post"
                 >
-                  {p.image_url ? (
+                  {p.image_url && p.post_type !== 'video' ? (
                     <Image
                       source={{ uri: p.image_url }}
                       style={isBuddy ? styles.postThumb : styles.publicPostImage}
@@ -262,7 +273,11 @@ export default function BuddyCardScreen() {
                         styles.postThumbFallback,
                       ]}
                     >
-                      <Ionicons name="chatbox-ellipses-outline" size={20} color={colors.textFaint} />
+                      <Ionicons
+                        name={p.post_type === 'video' ? 'videocam-outline' : 'chatbox-ellipses-outline'}
+                        size={20}
+                        color={colors.textFaint}
+                      />
                     </View>
                   )}
                   <View style={isBuddy ? { flex: 1 } : styles.publicPostCopy}>
@@ -282,10 +297,10 @@ export default function BuddyCardScreen() {
             </View>
           )}
           {!isBuddy && posts && posts.length > 0 ? (
-            <Text style={styles.postNote}>They chose to share these — connect to see it all.</Text>
+            <Text style={styles.postNote}>These posts were selected for the public Buddy Card.</Text>
           ) : null}
         </View>
-      }
+      ) : null}
 
       {isBuddy ? (
         <>
@@ -303,7 +318,7 @@ export default function BuddyCardScreen() {
       ) : (
         <>
           <Button
-            title={sent ? 'Request sent ✓' : `Connect with ${authorLabel(view.name)}`}
+            title={sent ? 'Request sent' : `Connect with ${authorLabel(view.name)}`}
             onPress={onConnect}
             loading={sending}
             disabled={sent}

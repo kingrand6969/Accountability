@@ -6,6 +6,7 @@ import {
   monthKey,
   sortBills,
   unpaidTotal,
+  billAttentionTotal,
   type Bill,
 } from './billing';
 
@@ -19,6 +20,42 @@ const bill = (over: Partial<Bill>): Bill => ({
   last_paid_month: null,
   created_at: '2026-01-01',
   ...over,
+});
+
+describe('billAttentionTotal', () => {
+  const today = new Date(2026, 6, 10);
+
+  it('includes overdue and bills due within three days only', () => {
+    expect(
+      billAttentionTotal(
+        [
+          bill({ id: 'overdue', due_day: 8, amount: 40 }),
+          bill({ id: 'today', due_day: 10, amount: 50 }),
+          bill({ id: 'soon', due_day: 13, amount: 60 }),
+          bill({ id: 'later', due_day: 20, amount: 70 }),
+        ],
+        today,
+      ),
+    ).toBe(150);
+  });
+
+  it('excludes paid bills and uses a credit card minimum payment', () => {
+    expect(
+      billAttentionTotal(
+        [
+          bill({ id: 'paid', due_day: 10, amount: 80, last_paid_month: '2026-07' }),
+          bill({
+            id: 'card',
+            due_day: 11,
+            category: 'credit_card',
+            amount: 1000,
+            min_payment: 45,
+          }),
+        ],
+        today,
+      ),
+    ).toBe(45);
+  });
 });
 
 describe('monthKey', () => {

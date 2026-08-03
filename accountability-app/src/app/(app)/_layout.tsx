@@ -1,7 +1,8 @@
 import { type ComponentProps, useEffect, useState } from 'react';
 import { type ColorValue, Image, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Redirect, Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Redirect, Tabs, usePathname } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardedKey } from '../onboarding';
@@ -11,22 +12,33 @@ import { GlassTabBar } from '../../ui/GlassTabBar';
 import { useUnreadMessages } from '../../buddy/useUnreadMessages';
 import { getMyProfile, touchLastActive } from '../../profiles/api';
 import { colors } from '../../ui/theme';
+import { statusBarStyleForPath } from '../../navigation/routeAccessContract';
+import { notificationHeaderOptions } from '../../navigation/SafeBackButton';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Floating-island tab bar: icon-only, the active icon sits in a dark
- *  squircle — you always see which page you're on. */
+/** Quiet tab icon: selected destinations use the approved deep-navy ink. */
 function tabIcon(active: IoniconName, inactive: IoniconName) {
-  return ({ color, size, focused }: { color: ColorValue; size: number; focused: boolean }) => (
-    <Ionicons
-      name={focused ? active : inactive}
-      size={size}
-      color={focused ? colors.primary : color}
-    />
-  );
+  return function TabIcon({
+    color,
+    size,
+    focused,
+  }: {
+    color: ColorValue;
+    size: number;
+    focused: boolean;
+  }) {
+    return (
+      <Ionicons
+        name={focused ? active : inactive}
+        size={size}
+        color={focused ? colors.navy : color}
+      />
+    );
+  };
 }
 
-/** Bell icon with a live unread dot — lights up the instant something lands. */
+/** Messages icon with a live unread dot — lights up when something lands. */
 function MessagesTabIcon({
   color,
   size,
@@ -43,7 +55,7 @@ function MessagesTabIcon({
       <Ionicons
         name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
         size={size}
-        color={focused ? colors.primary : color}
+        color={focused ? colors.navy : color}
       />
       {unread > 0 && !focused ? <View style={styles.unreadDot} /> : null}
     </View>
@@ -67,6 +79,7 @@ const styles = StyleSheet.create({
 
 export default function AppLayout() {
   const { session } = useAuth();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
   const userId = session?.user.id ?? null;
@@ -76,6 +89,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (!userId) return; // route guard in the root layout handles signed-out
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the previous account before async hydration
     setOnboarded(null);
     (async () => {
       // 1) fast path — this device already finished onboarding
@@ -117,8 +131,10 @@ export default function AppLayout() {
   if (!onboarded) return <Redirect href="/onboarding" />;
 
   return (
-    <Tabs
-      // custom glassmorphic bar — guarantees even icon distribution + frosted glass
+    <>
+      <StatusBar style={statusBarStyleForPath(pathname)} />
+      <Tabs
+      // custom quiet bar — guarantees the approved five destinations and spacing
       tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
         headerShown: true,
@@ -146,7 +162,7 @@ export default function AppLayout() {
           headerTitle: () => (
             <Image
               source={require('../../../assets/images/wordmark.png')}
-              style={{ width: 132, height: 21 }}
+              style={{ width: 124, height: 30 }}
               resizeMode="contain"
               accessibilityLabel="AccountAbility"
             />
@@ -166,8 +182,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="activity"
         options={{
-          title: 'Exercise',
-          tabBarIcon: tabIcon('barbell', 'barbell-outline'),
+          title: 'Journey',
+          tabBarIcon: tabIcon('map', 'map-outline'),
           headerShown: false, // glass hero runs edge-to-edge
         }}
       />
@@ -193,6 +209,7 @@ export default function AppLayout() {
       <Tabs.Screen
         name="notifications"
         options={{
+          ...notificationHeaderOptions(),
           href: null,
           tabBarItemStyle: { display: 'none' },
           headerShown: true,
@@ -220,6 +237,7 @@ export default function AppLayout() {
           headerShown: false, // cover photo runs edge-to-edge, FB-style
         }}
       />
-    </Tabs>
+      </Tabs>
+    </>
   );
 }

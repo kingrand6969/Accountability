@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
+    "@expo-google-fonts/caveat": "^0.4.2",
     "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
     "@expo/ui": "~56.0.23",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -14,6 +16,7 @@
     "@supabase/supabase-js": "^2.108.2",
     "base64-arraybuffer": "^1.0.2",
     "expo": "~56.0.17",
+    "expo-audio": "~56.0.13",
     "expo-blur": "~56.0.4",
     "expo-constants": "~56.0.18",
     "expo-crypto": "~56.0.4",
@@ -39,6 +42,7 @@
     "expo-system-ui": "~56.0.5",
     "expo-task-manager": "~56.0.23",
     "expo-updates": "~56.0.23",
+    "expo-video": "~56.1.4",
     "expo-web-browser": "~56.0.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -68,7 +72,7 @@
     "eslint-config-expo": "~56.0.4",
     "jest": "^29.7.0",
     "jest-expo": "^56.0.5",
-    "sharp": "^0.35.3",
+    "sharp": "0.35.3",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -78,7 +82,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "jest"
+    "test": "jest",
+    "test:update-budget": "node --test scripts/check-update-budget.test.mjs",
+    "release:budget": "expo export --platform android --output-dir dist && node scripts/check-update-budget.mjs dist"
   },
   "private": true
 }

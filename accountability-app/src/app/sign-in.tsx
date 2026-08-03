@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Link, router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { supabase } from '../lib/supabase';
 import { validateEmail, validatePassword } from '../auth/validation';
 import { authErrorMessage, isUnconfirmed } from '../auth/errors';
@@ -9,6 +9,10 @@ import { AuthShell } from '../ui/AuthShell';
 import { AuthField } from '../ui/AuthField';
 import { Button } from '../ui/Button';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { WELCOME_ACTIONS, welcomeErrorState } from '../entry/welcomeContract';
+
+const CREATE_ACCOUNT_ROUTE = WELCOME_ACTIONS[1].route;
+const FORGOT_PASSWORD_ROUTE = WELCOME_ACTIONS[2].route;
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -18,6 +22,7 @@ export default function SignIn() {
   const [passwordError, setPasswordError] = useState('');
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
+  const formErrorState = welcomeErrorState(formError, '');
 
   async function onSignIn() {
     const nextEmailError = validateEmail(email) ?? '';
@@ -40,14 +45,23 @@ export default function SignIn() {
   }
 
   return (
-    <AuthShell glass>
+    <AuthShell
+      presentation="welcome"
+      footer={
+        <View style={styles.privacy}>
+          <Ionicons name="shield-checkmark-outline" size={21} color="#FFFFFF" />
+          <Text style={styles.privacyText}>
+            Your progress is private.{'\n'}We&apos;ll never share your data.
+          </Text>
+        </View>
+      }
+    >
       <View style={styles.heading}>
         <Text style={styles.title}>Welcome Back!</Text>
-        <Text style={styles.sub}>Pick up where you left off.</Text>
       </View>
 
-      {formError ? (
-        <View style={styles.errorBanner} accessibilityLiveRegion="assertive">
+      {formErrorState.visible ? (
+        <View style={styles.errorBanner} accessibilityLiveRegion={formErrorState.liveRegion}>
           <Ionicons name="alert-circle-outline" size={19} color="#b91c1c" />
           <Text style={styles.errorBannerText}>{formError}</Text>
         </View>
@@ -91,7 +105,7 @@ export default function SignIn() {
       />
 
       <Pressable
-        onPress={() => router.push('/forgot-password')}
+        onPress={() => router.push(FORGOT_PASSWORD_ROUTE)}
         accessibilityRole="link"
         style={({ pressed }) => [styles.forgot, pressed && styles.pressed]}
       >
@@ -100,29 +114,23 @@ export default function SignIn() {
 
       <Button title="Log in" onPress={onSignIn} loading={busy} style={styles.button} />
 
-      <View style={styles.privacy}>
-        <Ionicons name="shield-checkmark-outline" size={17} color="#1e40af" />
-        <Text style={styles.privacyText}>
-          Your progress and accountability activity stay private.
-        </Text>
-      </View>
-
-      <Link href="/sign-up" style={styles.link}>
-        New to AccountAbility? <Text style={styles.linkStrong}>Create an account</Text>
-      </Link>
+      <Button
+        title="Create an account"
+        onPress={() => router.push(CREATE_ACCOUNT_ROUTE)}
+        variant="outline"
+      />
     </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  heading: { gap: 5, marginBottom: spacing.xs },
+  heading: { alignItems: 'center', marginBottom: spacing.xs },
   title: {
-    color: colors.text,
-    fontFamily: font.extrabold,
-    fontSize: 28,
-    letterSpacing: -0.35,
+    color: colors.navy,
+    fontFamily: font.serif,
+    fontSize: 27,
+    lineHeight: 34,
   },
-  sub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 14.5 },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -152,24 +160,14 @@ const styles = StyleSheet.create({
   privacy: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    padding: 11,
-    borderRadius: radius.md,
-    backgroundColor: 'rgba(219,234,254,0.7)',
+    paddingHorizontal: spacing.lg,
   },
   privacyText: {
-    flex: 1,
-    color: '#1e3a8a',
+    color: '#FFFFFF',
     fontFamily: font.medium,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11.5,
+    lineHeight: 15,
   },
-  link: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    fontFamily: font.regular,
-    fontSize: 13.5,
-    marginTop: spacing.xs,
-  },
-  linkStrong: { color: colors.primary, fontFamily: font.semibold },
 });

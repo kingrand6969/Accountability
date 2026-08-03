@@ -1,22 +1,48 @@
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabase';
 import { uploadToR2, type R2Kind } from '../lib/r2';
+import {
+  classifyUploadFailure,
+  estimateBase64Bytes,
+  mayUseStorageFallback,
+} from '../media/uploadPolicy';
+import { recordUploadEvent } from '../media/uploadTelemetry';
 
 /**
  * Uploads a base64 profile image and returns a cache-busted public URL.
- * Prefers zero-egress Cloudflare R2; falls back to Supabase Storage if R2 is
- * unavailable, so changing a photo never breaks.
+ * Prefers zero-egress Cloudflare R2; fails closed if private R2 is unavailable, so profile media never becomes public.
  */
 async function uploadProfileImage(
   base64: string,
   ext: string,
   name: 'avatar' | 'cover',
 ): Promise<string> {
+  const bytes = estimateBase64Bytes(base64);
   try {
-    return await uploadToR2(base64, name as R2Kind, ext);
+    const url = await uploadToR2(base64, name as R2Kind, ext);
+    void recordUploadEvent({ provider: 'r2', kind: name, outcome: 'success', bytes });
+    return url;
   } catch (e) {
+    if (!mayUseStorageFallback(e)) {
+      void recordUploadEvent({
+        provider: 'r2',
+        kind: name,
+        outcome: 'rejected',
+        bytes,
+        failureClass: classifyUploadFailure(e),
+      });
+      throw e;
+    }
     console.warn('[uploadProfileImage] R2 unavailable, using Supabase Storage:', e);
-    return uploadToSupabase(base64, ext, name);
+    const url = await uploadToSupabase(base64, ext, name);
+    void recordUploadEvent({
+      provider: 'supabase',
+      kind: name,
+      outcome: 'fallback',
+      bytes,
+      failureClass: classifyUploadFailure(e),
+    });
+    return url;
   }
 }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Link, router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { supabase } from '../lib/supabase';
 import { validateEmail, validatePassword } from '../auth/validation';
 import { validateBirthday, ageFromBirthday } from '../profiles/validation';
@@ -68,7 +68,7 @@ export default function SignUp() {
   }
 
   return (
-    <AuthShell glass>
+    <AuthShell>
       <View style={styles.heading}>
         <Text style={styles.title}>Create your account</Text>
         <Text style={styles.sub}>Build your first streak with people who keep you honest.</Text>

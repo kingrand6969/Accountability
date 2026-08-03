@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -23,31 +24,48 @@ const ProContext = createContext<ProContextValue>({
 
 export function ProProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
-  const [isPro, setIsPro] = useState(false);
-  const [loading, setLoading] = useState(true);
   const userId = session?.user.id ?? null;
+  const [status, setStatus] = useState<{
+    userId: string | null;
+    isPro: boolean;
+    loading: boolean;
+  }>({ userId: null, isPro: false, loading: true });
+  const refreshGeneration = useRef(0);
+
+  // A status belonging to a previous account is never exposed during a switch.
+  const isPro = status.userId === userId ? status.isPro : false;
+  const loading = status.userId === userId ? status.loading : true;
 
   const refresh = useCallback(async () => {
-    if (!userId) {
-      setIsPro(false);
-      setLoading(false);
+    const generation = ++refreshGeneration.current;
+    const requestUserId = userId;
+    if (!requestUserId) {
+      await Promise.resolve();
+      if (refreshGeneration.current === generation) {
+        setStatus({ userId: null, isPro: false, loading: false });
+      }
       return;
     }
+
     try {
-      setIsPro(await fetchProStatus());
+      const next = await fetchProStatus();
+      if (refreshGeneration.current === generation) {
+        setStatus({ userId: requestUserId, isPro: next, loading: false });
+      }
     } catch {
-      // Keep the previous value on transient errors (same user only).
-    } finally {
-      setLoading(false);
+      if (refreshGeneration.current === generation) {
+        setStatus((current) =>
+          current.userId === requestUserId
+            ? { ...current, loading: false }
+            : { userId: requestUserId, isPro: false, loading: false },
+        );
+      }
     }
   }, [userId]);
 
   useEffect(() => {
-    // New user (or sign-out) — never carry Pro status across accounts.
-    setIsPro(false);
-    setLoading(true);
-    refresh();
-  }, [userId, refresh]);
+    void Promise.resolve().then(refresh);
+  }, [refresh]);
 
   return (
     <ProContext.Provider value={{ isPro, loading, refresh }}>

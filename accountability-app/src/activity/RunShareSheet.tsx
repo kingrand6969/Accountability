@@ -23,7 +23,7 @@ import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { File } from 'expo-file-system';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { RunCard } from './RunCard';
 import { formatDurationLong, formatKm, formatPace, trimRouteEnds, type Pt } from './geo';
 import type { ActivityType } from './api';

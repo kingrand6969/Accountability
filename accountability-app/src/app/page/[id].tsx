@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getPage, followPage, unfollowPage, PAGE_CATEGORIES, type Page } from '../../pages/api';
 import { listFeed, createPost, setLiked } from '../../feed/api';
@@ -20,6 +20,7 @@ import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { PostImage } from '../../feed/PostImage';
+import { PostVideo } from '../../feed/PostVideo';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, taggedLabel } from '../../feed/format';
 import type { FeedPost } from '../../feed/types';
@@ -39,6 +40,12 @@ export default function PageDetail() {
   const [page, setPage] = useState<Page | null>(null);
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(myId);
+  const loadGeneration = useRef(0);
+  const lifecycleGeneration = useRef(0);
+  const viewKey = `${myId ?? 'signed-out'}:${id ?? 'missing'}`;
+  const currentViewKeyRef = useRef(viewKey);
+  const [dataViewKey, setDataViewKey] = useState<string | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,23 +55,82 @@ export default function PageDetail() {
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
 
+  useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    currentOwnerRef.current = myId;
+    currentViewKeyRef.current = viewKey;
+    loadGeneration.current += 1;
+    likesInFlight.current.clear();
+    queueMicrotask(() => {
+      if (
+        lifecycle !== lifecycleGeneration.current ||
+        currentOwnerRef.current !== myId ||
+        currentViewKeyRef.current !== viewKey
+      )
+        return;
+      setPage(null);
+      setPosts([]);
+      setDataViewKey(null);
+      setBody('');
+      setPosting(false);
+      setFollowBusy(false);
+      setRefreshing(false);
+      setLoading(myId !== null);
+    });
+  }, [myId, viewKey]);
+
+  function isCurrentMutation(
+    requestOwner: string,
+    lifecycle: number,
+    requestViewKey: string,
+  ) {
+    return (
+      lifecycle === lifecycleGeneration.current &&
+      requestOwner === currentOwnerRef.current &&
+      requestViewKey === currentViewKeyRef.current
+    );
+  }
+
   const load = useCallback(async () => {
-    if (!id) return;
+    const requestViewKey = `${myId ?? 'signed-out'}:${id ?? 'missing'}`;
+    const generation = ++loadGeneration.current;
+    if (!myId || !id) {
+      setPage(null);
+      setPosts([]);
+      setDataViewKey(requestViewKey);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const [p, feed] = await Promise.all([getPage(id), listFeed(undefined, undefined, id)]);
+      if (generation !== loadGeneration.current || currentOwnerRef.current !== myId) return;
       setPage(p);
       setPosts(feed);
+      setDataViewKey(requestViewKey);
     } catch (e) {
+      if (generation !== loadGeneration.current || currentOwnerRef.current !== myId) return;
+      setPage(null);
+      setPosts([]);
+      setDataViewKey(requestViewKey);
       Alert.alert('Could not load page', String((e as Error).message ?? e));
     } finally {
+      if (generation !== loadGeneration.current || currentOwnerRef.current !== myId) return;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [id, myId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
+      return () => {
+        loadGeneration.current += 1;
+        lifecycleGeneration.current += 1;
+        likesInFlight.current.clear();
+        setPosting(false);
+        setFollowBusy(false);
+      };
     }, [load]),
   );
 
@@ -74,9 +140,13 @@ export default function PageDetail() {
   }
 
   async function onToggleFollow() {
-    if (!page || followBusy) return;
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    const target = page;
+    if (!requestOwner || !target || target.is_owner || followBusy) return;
     setFollowBusy(true);
-    const next = !page.is_following;
+    const next = !target.is_following;
     // optimistic — flip the button and follower count immediately
     setPage((cur) =>
       cur
@@ -89,13 +159,14 @@ export default function PageDetail() {
     );
     try {
       if (next) {
-        await followPage(page.id);
-        showToast(`Following ${page.name}`);
+        await followPage(target.id);
       } else {
-        await unfollowPage(page.id);
-        showToast(`Unfollowed ${page.name}`);
+        await unfollowPage(target.id);
       }
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
+      showToast(next ? `Following ${target.name}` : `Unfollowed ${target.name}`);
     } catch (e) {
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       setPage((cur) =>
         cur
           ? {
@@ -107,28 +178,44 @@ export default function PageDetail() {
       );
       Alert.alert('Could not update follow', String((e as Error).message ?? e));
     } finally {
-      setFollowBusy(false);
+      if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
+        setFollowBusy(false);
+      }
     }
   }
 
   const canPost = body.trim().length > 0 && !posting;
 
   async function onPost() {
-    if (!id || !body.trim()) return;
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    const targetId = id;
+    const text = body.trim();
+    if (!requestOwner || !targetId || !page?.is_owner || !text) return;
     setPosting(true);
     try {
-      await createPost(body.trim(), null, null, id);
+      await createPost(text, null, null, targetId);
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       setBody('');
-      await load();
+      setPosting(false);
       showToast('Posted to your page');
+      void load();
     } catch (e) {
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       Alert.alert('Could not post', String((e as Error).message ?? e));
     } finally {
-      setPosting(false);
+      if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
+        setPosting(false);
+      }
     }
   }
 
   async function onToggleLike(post: FeedPost) {
+    const requestOwner = myId;
+    const lifecycle = lifecycleGeneration.current;
+    const requestViewKey = viewKey;
+    if (!requestOwner) return;
     if (likesInFlight.current.has(post.id)) return; // one request per post at a time
     likesInFlight.current.add(post.id);
     const liked = !post.liked_by_me;
@@ -142,6 +229,7 @@ export default function PageDetail() {
     try {
       await setLiked(post.id, liked);
     } catch (e) {
+      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
       setPosts((cur) =>
         cur.map((p) =>
           p.id === post.id
@@ -151,11 +239,21 @@ export default function PageDetail() {
       );
       Alert.alert('Could not update like', String((e as Error).message ?? e));
     } finally {
-      likesInFlight.current.delete(post.id);
+      if (isCurrentMutation(requestOwner, lifecycle, requestViewKey)) {
+        likesInFlight.current.delete(post.id);
+      }
     }
   }
 
-  if (loading) {
+  function backToPages() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/pages' as never);
+    }
+  }
+
+  if (loading || dataViewKey !== viewKey) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -165,7 +263,8 @@ export default function PageDetail() {
   if (!page) {
     return (
       <View style={styles.center}>
-        <Text style={styles.notFound}>Page not found.</Text>
+        <Text style={styles.notFound}>This page was not found or is no longer available.</Text>
+        <Button title="Back to pages" onPress={backToPages} />
       </View>
     );
   }
@@ -302,11 +401,16 @@ export default function PageDetail() {
                 </Text>
               </View>
               <Pressable
-                onPress={() =>
-                  showPostMenu(item, myId, (postId) =>
-                    setPosts((cur) => cur.filter((p) => p.id !== postId)),
-                  )
-                }
+                  onPress={() => {
+                    const requestOwner = myId;
+                    const lifecycle = lifecycleGeneration.current;
+                    const requestViewKey = viewKey;
+                    if (!requestOwner) return;
+                    showPostMenu(item, requestOwner, (postId) => {
+                      if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;
+                      setPosts((cur) => cur.filter((p) => p.id !== postId));
+                    });
+                  }}
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel="Post options"
@@ -332,9 +436,13 @@ export default function PageDetail() {
                   accessibilityRole="link"
                   accessibilityLabel="Open post"
                 >
-                  <PostImage url={item.image_url} capTall />
+                  {item.post_type === 'video' ? (
+                    <PostVideo url={item.image_url} />
+                  ) : (
+                    <PostImage url={item.image_url} capTall />
+                  )}
                 </Pressable>
-                <SaveToMemories url={item.image_url} />
+                {item.post_type !== 'video' ? <SaveToMemories url={item.image_url} /> : null}
               </View>
             ) : null}
             <View style={styles.actions}>
@@ -342,7 +450,7 @@ export default function PageDetail() {
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 onPress={() => onToggleLike(item)}
                 hitSlop={8}
-                accessibilityLabel={item.liked_by_me ? 'Remove cheer' : 'Cheer'}
+                accessibilityLabel={item.liked_by_me ? 'Remove encouragement' : 'Encourage'}
               >
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}

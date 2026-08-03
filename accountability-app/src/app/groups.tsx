@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,36 +10,81 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { listGroups, joinGroup, type Group } from '../groups/api';
 import { showToast } from '../ui/Toast';
 import { EmptyState } from '../ui/EmptyState';
+import { useAuth } from '../auth/AuthProvider';
 import { colors, font, radius, spacing, shadow } from '../ui/theme';
 
 type Row = { kind: 'header'; key: string; title: string } | { kind: 'group'; key: string; group: Group };
 
 export default function Groups() {
   const router = useRouter();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(ownerId);
+  const loadGeneration = useRef(0);
+  const lifecycleGeneration = useRef(0);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // groups with a join request in flight — blocks double-taps
   const joinsInFlight = useRef<Set<string>>(new Set());
 
+  useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    currentOwnerRef.current = ownerId;
+    loadGeneration.current += 1;
+    joinsInFlight.current.clear();
+    queueMicrotask(() => {
+      if (
+        lifecycle !== lifecycleGeneration.current ||
+        currentOwnerRef.current !== ownerId
+      )
+        return;
+      setGroups([]);
+      setDataOwnerId(null);
+      setLoading(ownerId !== null);
+      setRefreshing(false);
+    });
+  }, [ownerId]);
+
   const load = useCallback(async () => {
-    try {
-      setGroups(await listGroups());
-    } catch (e) {
-      Alert.alert('Could not load groups', String((e as Error).message ?? e));
-    } finally {
+    const requestOwner = ownerId;
+    const generation = ++loadGeneration.current;
+    if (!requestOwner) {
       setLoading(false);
       setRefreshing(false);
+      return;
     }
-  }, []);
+    try {
+      const next = await listGroups();
+      if (generation !== loadGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      setGroups(next);
+      setDataOwnerId(requestOwner);
+    } catch (e) {
+      if (generation !== loadGeneration.current || requestOwner !== currentOwnerRef.current) return;
+      setGroups([]);
+      setDataOwnerId(requestOwner);
+      Alert.alert('Could not load groups', String((e as Error).message ?? e));
+    } finally {
+      if (generation === loadGeneration.current && requestOwner === currentOwnerRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [ownerId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
+      return () => {
+        loadGeneration.current += 1;
+        lifecycleGeneration.current += 1;
+        joinsInFlight.current.clear();
+      };
     }, [load]),
   );
 
@@ -49,6 +94,9 @@ export default function Groups() {
   }
 
   async function onJoin(group: Group) {
+    const requestOwner = ownerId;
+    const lifecycle = lifecycleGeneration.current;
+    if (!requestOwner) return;
     if (group.privacy === 'private') {
       // private joins need the gatekey — the prompt lives on the group page
       router.push(`/group/${group.id}` as never);
@@ -58,12 +106,19 @@ export default function Groups() {
     joinsInFlight.current.add(group.id);
     try {
       await joinGroup(group.id);
+      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current)
+        return;
       showToast(`Joined ${group.name} 🎉`);
+      joinsInFlight.current.delete(group.id);
       await load();
     } catch (e) {
+      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current)
+        return;
       Alert.alert('Could not join group', String((e as Error).message ?? e));
     } finally {
-      joinsInFlight.current.delete(group.id);
+      if (lifecycle === lifecycleGeneration.current && requestOwner === currentOwnerRef.current) {
+        joinsInFlight.current.delete(group.id);
+      }
     }
   }
 
@@ -72,8 +127,9 @@ export default function Groups() {
     router.push(`/group/${group.id}` as never);
   }
 
-  const mine = groups.filter((g) => g.is_member);
-  const discover = groups.filter((g) => !g.is_member);
+  const visibleGroups = dataOwnerId === ownerId ? groups : [];
+  const mine = visibleGroups.filter((g) => g.is_member);
+  const discover = visibleGroups.filter((g) => !g.is_member);
   const rows: Row[] = [
     ...(mine.length > 0
       ? [{ kind: 'header', key: 'h-mine', title: 'My groups' } as Row, ...mine.map(
@@ -87,7 +143,7 @@ export default function Groups() {
       : []),
   ];
 
-  if (loading) {
+  if (loading || (ownerId !== null && dataOwnerId !== ownerId)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />

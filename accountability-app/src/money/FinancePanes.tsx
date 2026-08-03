@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -13,7 +14,8 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import * as Crypto from 'expo-crypto';
 import {
   accountKindMeta,
   addCard,
@@ -44,6 +46,45 @@ const INK_SOFT = 'rgba(30,27,75,0.72)';
 const ACCENT = '#2563eb';
 const GOOD = '#047857';
 
+function PaneStatus({
+  width,
+  topInset,
+  title,
+  message,
+  retry,
+}: {
+  width: number;
+  topInset: number;
+  title: string;
+  message?: string;
+  retry?: () => void;
+}) {
+  return (
+    <View style={[styles.paneStatus, { width, paddingTop: topInset }]}>
+      {retry ? (
+        <>
+          <Ionicons name="cloud-offline-outline" size={28} color={INK_SOFT} />
+          <Text style={styles.statusTitle}>{title}</Text>
+          <Text style={styles.statusMessage}>{message}</Text>
+          <Pressable
+            onPress={retry}
+            accessibilityRole="button"
+            accessibilityLabel={`Retry ${title.toLowerCase()}`}
+            style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+          >
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <ActivityIndicator size="small" color={ACCENT} />
+          <Text style={styles.statusTitle}>{title}</Text>
+        </>
+      )}
+    </View>
+  );
+}
+
 /** Banks & wallets — the pane to the left of the Finance overview. */
 export function AccountsPane({
   width,
@@ -57,16 +98,22 @@ export function AccountsPane({
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => {
-    Promise.all([listAccounts(), listDebts()])
-      .then(([a, d]) => {
-        setAccounts(a);
-        setDebts(d);
-      })
-      .catch((e) => Alert.alert('Could not load accounts', String((e as Error).message ?? e)))
-      .finally(() => setRefreshing(false));
+  const load = useCallback(async () => {
+    try {
+      const [a, d] = await Promise.all([listAccounts(), listDebts()]);
+      setAccounts(a);
+      setDebts(d);
+      setError(null);
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useFocusEffect(
@@ -98,6 +145,24 @@ export function AccountsPane({
   const owedTotal = owedOpen.reduce((a, d) => a + d.amount, 0);
   const netWorth = total + owedTotal - oweTotal;
 
+  if (loading) {
+    return <PaneStatus width={width} topInset={topInset} title="Loading accounts…" />;
+  }
+  if (error && accounts.length === 0 && debts.length === 0) {
+    return (
+      <PaneStatus
+        width={width}
+        topInset={topInset}
+        title="Accounts unavailable"
+        message="We could not load your private account records. Nothing was changed."
+        retry={() => {
+          setLoading(true);
+          load();
+        }}
+      />
+    );
+  }
+
   return (
     <ScrollView
       style={{ width }}
@@ -113,6 +178,16 @@ export function AccountsPane({
         />
       }
     >
+      {error ? (
+        <View style={styles.inlineError}>
+          <Text style={styles.inlineErrorText}>
+            Could not refresh. Your last loaded records are still shown.
+          </Text>
+          <Pressable onPress={load} style={styles.inlineRetry} accessibilityRole="button">
+            <Text style={styles.inlineRetryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {/* NET WORTH hero */}
       <GlassCard blurTarget={blurTarget}>
         <View style={styles.cardPad}>
@@ -367,7 +442,7 @@ function CardSheetShell({ visible, title, onClose, children }: {
         <View style={styles.sheet}>
           <View style={styles.sheetHead}>
             <Text style={styles.sheetTitle}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close">
+            <Pressable onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close">
               <Ionicons name="close" size={22} color={INK_SOFT} />
             </Pressable>
           </View>
@@ -383,10 +458,15 @@ function PayCardSheet({ card, onClose, onPaid }: {
 }) {
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const attemptKey = useRef<string | null>(null);
   useEffect(() => {
-    if (card) setAmount(card.monthly_payment ? String(card.monthly_payment) : '');
+    if (card) {
+      setAmount(card.monthly_payment ? String(card.monthly_payment) : '');
+      attemptKey.current = null;
+    }
   }, [card]);
   const a = Number(amount) || 0;
+  const valid = !!card && Number.isFinite(a) && a > 0 && a <= card.amount;
   return (
     <CardSheetShell visible={!!card} title={card ? `Pay ${card.counterparty}` : ''} onClose={onClose}>
       <Text style={styles.sheetSub}>
@@ -401,17 +481,24 @@ function PayCardSheet({ card, onClose, onPaid }: {
         placeholderTextColor="rgba(30,27,75,0.35)"
         autoFocus
       />
+      {card && a > card.amount ? (
+        <Text style={styles.amountError}>
+          Payment cannot be more than the current balance of {formatAmount(card.amount)}.
+        </Text>
+      ) : null}
       <Pressable
-        style={({ pressed }) => [styles.sheetBtn, (a <= 0 || saving) && { opacity: 0.5 }, pressed && styles.pressed]}
-        disabled={a <= 0 || saving}
+        style={({ pressed }) => [styles.sheetBtn, (!valid || saving) && { opacity: 0.5 }, pressed && styles.pressed]}
+        disabled={!valid || saving}
         onPress={async () => {
           if (!card) return;
           setSaving(true);
           try {
-            const left = await payCard(card, a);
+            attemptKey.current ??= Crypto.randomUUID();
+            const left = await payCard(card, a, attemptKey.current);
+            attemptKey.current = null;
             onPaid(left, card.counterparty);
-          } catch {
-            showToast('Could not log the payment.');
+          } catch (error) {
+            Alert.alert('Could not log payment', String((error as Error).message ?? error));
           } finally {
             setSaving(false);
           }
@@ -522,16 +609,22 @@ export function SavingsPane({
   const { isPro } = useIsPro();
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [shared, setShared] = useState<SharedGoal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => {
-    listSharedGoals()
-      .then(setShared)
-      .catch(() => {});
-    listSavings()
-      .then(setGoals)
-      .catch((e) => Alert.alert('Could not load savings', String((e as Error).message ?? e)))
-      .finally(() => setRefreshing(false));
+  const load = useCallback(async () => {
+    try {
+      const [personal, sharedGoals] = await Promise.all([listSavings(), listSharedGoals()]);
+      setGoals(personal);
+      setShared(sharedGoals);
+      setError(null);
+    } catch (e) {
+      setError(String((e as Error).message ?? e));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useFocusEffect(
@@ -542,6 +635,24 @@ export function SavingsPane({
 
   const colMax = contentMaxWidth(width);
   const total = goals.reduce((a, g) => a + g.saved, 0);
+
+  if (loading) {
+    return <PaneStatus width={width} topInset={topInset} title="Loading savings…" />;
+  }
+  if (error && goals.length === 0 && shared.length === 0) {
+    return (
+      <PaneStatus
+        width={width}
+        topInset={topInset}
+        title="Savings unavailable"
+        message="We could not load your private savings records. Nothing was changed."
+        retry={() => {
+          setLoading(true);
+          load();
+        }}
+      />
+    );
+  }
 
   return (
     <ScrollView
@@ -558,6 +669,16 @@ export function SavingsPane({
         />
       }
     >
+      {error ? (
+        <View style={styles.inlineError}>
+          <Text style={styles.inlineErrorText}>
+            Could not refresh. Your last loaded goals are still shown.
+          </Text>
+          <Pressable onPress={load} style={styles.inlineRetry} accessibilityRole="button">
+            <Text style={styles.inlineRetryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <GlassCard blurTarget={blurTarget}>
         <View style={styles.cardPad}>
           <View style={styles.headRow}>
@@ -711,6 +832,52 @@ export function SavingsPane({
 }
 
 const styles = StyleSheet.create({
+  paneStatus: {
+    flex: 1,
+    minHeight: 320,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+  },
+  statusTitle: { color: INK, fontFamily: font.bold, fontSize: 16, textAlign: 'center' },
+  statusMessage: {
+    color: INK_SOFT,
+    fontFamily: font.regular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    minHeight: 44,
+    minWidth: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: ACCENT,
+    marginTop: spacing.xs,
+  },
+  retryText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  inlineError: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    backgroundColor: colors.dangerSoft,
+    marginBottom: spacing.md,
+  },
+  inlineErrorText: {
+    flex: 1,
+    color: colors.danger,
+    fontFamily: font.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+  },
+  inlineRetry: { minWidth: 56, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  inlineRetryText: { color: colors.danger, fontFamily: font.bold, fontSize: 13 },
   cardRight: { alignItems: 'flex-end', gap: 4 },
   cardCol: { gap: 6 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -723,6 +890,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 6,
+    minHeight: 44,
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   payBtnTxt: { fontFamily: font.bold, fontSize: 12, color: '#fff' },
   paidChip: {
@@ -746,8 +917,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  closeBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   sheetTitle: { fontFamily: font.extrabold, fontSize: 17, color: INK },
   sheetSub: { fontFamily: font.medium, fontSize: 13, color: INK_SOFT, lineHeight: 18 },
+  amountError: { color: colors.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 17 },
   sheetInput: {
     backgroundColor: '#fff',
     borderRadius: radius.md,
@@ -766,6 +939,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 2,
+    minHeight: 44,
   },
   sheetBtnTxt: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
   pane: {
@@ -804,10 +978,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.7)',
     borderRadius: radius.pill,
-    minHeight: 42,
+    minHeight: 44,
   },
   debtBtnText: { fontFamily: font.bold, fontSize: 13.5 },
-  settleBtn: { minWidth: 30, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  settleBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   empty: {
     color: INK_SOFT,
     fontFamily: font.regular,

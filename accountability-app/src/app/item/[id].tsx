@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { getItem, updateItemChecklist } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
 import { EmptyState } from '../../ui/EmptyState';

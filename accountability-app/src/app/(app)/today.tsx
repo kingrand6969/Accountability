@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { listItemsForDay, deleteItem } from '../../timeline/api';
 import { cancelReminder } from '../../notifications/api';
 import { TimelineCard } from '../../timeline/TimelineCard';
@@ -24,6 +24,7 @@ import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { contentMaxWidth } from '../../ui/responsive';
 import type { TimelineItem } from '../../timeline/types';
 import { font, radius, spacing } from '../../ui/theme';
+import JourneyJournal from '../../journey/JournalScreen';
 
 const INK = '#1e1b4b';
 const INK_SOFT = 'rgba(30,27,75,0.72)';
@@ -52,7 +53,7 @@ function dayLabel(day: Date): string {
   });
 }
 
-export default function Today() {
+function TodayLegacy() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
@@ -368,3 +369,6 @@ const styles = StyleSheet.create({
   fabPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   fabText: { color: '#fff', fontSize: 16, fontFamily: font.bold },
 });
+
+void TodayLegacy;
+export default JourneyJournal;

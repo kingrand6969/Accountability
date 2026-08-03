@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
 import { uploadPostImage } from '../feed/uploadPostImage';
+import { resolveMediaUrls } from '../media/privateMedia';
 
 export type Story = {
   id: string;
@@ -33,7 +34,12 @@ export async function listStoryGroups(): Promise<StoryGroup[]> {
     .order('created_at', { ascending: true })
     .limit(200);
   if (error) throw error;
-  const rows = (data ?? []) as Story[];
+  const rawRows = (data ?? []) as Story[];
+  const urls = await resolveMediaUrls(rawRows.map((story) => story.image_url));
+  const rows = rawRows.map((story) => ({
+    ...story,
+    image_url: urls.get(story.image_url) ?? story.image_url,
+  }));
   const byUser = new Map<string, Story[]>();
   for (const s of rows) {
     const list = byUser.get(s.user_id) ?? [];
