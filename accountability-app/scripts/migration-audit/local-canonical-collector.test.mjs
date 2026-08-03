@@ -11,6 +11,7 @@ import {
   LOCAL_QUERY_PLAN,
   createLocalCanonicalCollector,
   assertNoRelevantStatus,
+  assertRelevantHeadClean,
   localPackageIdentity,
   localPackageManifest,
   verifyPinnedLocalRuntime,
@@ -33,7 +34,40 @@ test('HEAD cleanliness rejects unstaged, staged, and untracked relevant paths', 
 });
 const testPin = { status: 'APPROVED', pinSha256: '8'.repeat(64), package: localPackageIdentity(), container: { id: 'f'.repeat(64) }, psql: { absolutePath: '/canonical/psql' }, database: {}, ledgerVersions: [] };
 const collector = (options = {}) => createLocalCanonicalCollector({
-  approvedPin: testPin, verifyRuntime: () => ({ identity: 'verified' }), protectEvidence: () => {}, ...options,
+  approvedPin: testPin, verifyRuntime: () => ({ identity: 'verified' }), protectEvidence: () => {},
+  runGitStatus: () => '', ...options,
+});
+
+test('collector entry aborts dirty HEAD scope before Docker or runtime calls', async () => {
+  for (const status of [
+    ' M accountability-app/supabase/migrations/0057_r2_sign_limit.sql',
+    'M  accountability-app/supabase/migrations/0096_ai_moderation_quarantine.sql',
+    ' M accountability-app/scripts/migration-audit/core.mjs',
+    '?? accountability-app/supabase/functions/moderate-content/extra.ts',
+  ]) {
+    let dockerCalls = 0;
+    let runtimeCalls = 0;
+    const collect = createLocalCanonicalCollector({
+      approvedPin: testPin,
+      runGitStatus: () => status,
+      runDocker: () => { dockerCalls += 1; return { status: 0, stdout: '', stderr: '' }; },
+      verifyRuntime: () => { runtimeCalls += 1; return {}; },
+      protectEvidence: () => {},
+    });
+    await assert.rejects(() => collect({ outputDir: path.join(evidenceTestRoot, `dirty-${dockerCalls}-${runtimeCalls}`) }), /Relevant HEAD provenance drift/u);
+    assert.equal(dockerCalls, 0);
+    assert.equal(runtimeCalls, 0);
+  }
+});
+
+test('collector cleanliness query scopes out irrelevant repository paths', () => {
+  let observed = [];
+  assert.equal(assertRelevantHeadClean(localPackageManifest().files.map(({ filename }) => filename), (paths) => {
+    observed = paths;
+    return '';
+  }), true);
+  assert.equal(observed.includes('accountability-app/README.md'), false);
+  assert.equal(observed.includes('accountability-app/supabase/functions/moderate-content'), true);
 });
 
 test('trusted runtime verification binds full inspect projection, canonical psql hash, Unix socket database identity, and exact ledger', () => {

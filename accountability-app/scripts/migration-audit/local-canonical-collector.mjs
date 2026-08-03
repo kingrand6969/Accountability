@@ -32,17 +32,21 @@ export function headProvenance() {
   };
 }
 
-export function assertRelevantHeadClean(relativeFiles) {
+function defaultGitStatus(paths) {
+  return execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all', '--', ...paths], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+  });
+}
+
+export function assertRelevantHeadClean(relativeFiles, runGitStatus = defaultGitStatus) {
   const paths = [...new Set([
     ...relativeFiles.map((filename) => `accountability-app/${filename}`),
     'accountability-app/supabase/functions/moderate-content',
     'accountability-app/supabase/functions/admin-actions',
   ])];
-  const output = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all', '--', ...paths], {
-    cwd: REPOSITORY_ROOT,
-    encoding: 'utf8',
-    maxBuffer: 4 * 1024 * 1024,
-  }).trim();
+  const output = runGitStatus(paths);
   assertNoRelevantStatus(output);
   return true;
 }
@@ -402,13 +406,13 @@ export function createLocalCanonicalCollector({
   runDocker = defaultRunDocker, approvedPin,
   verifyRuntime = verifyPinnedLocalRuntime,
   protectEvidence = defaultProtectEvidence,
-  enforceHeadClean = false,
+  runGitStatus = defaultGitStatus,
 } = {}) {
   if (typeof runDocker !== 'function') throw new Error('Local Docker runner is required.');
   if (!approvedPin || approvedPin.status !== 'APPROVED' || !/^[0-9a-f]{64}$/u.test(approvedPin.pinSha256 ?? '')) throw new Error('Validated approved local pin is required.');
   if (normalizedJson(approvedPin.package) !== normalizedJson(localPackageIdentity())) throw new Error('Approved local package hash mismatch.');
   return async function collect({ outputDir }) {
-    if (enforceHeadClean) assertRelevantHeadClean(localPackageManifest().files.map(({ filename }) => filename));
+    assertRelevantHeadClean(localPackageManifest().files.map(({ filename }) => filename), runGitStatus);
     if (normalizedJson(approvedPin.package) !== normalizedJson(localPackageIdentity())) throw new Error('Approved local package changed before collection.');
     const absoluteOutput = assertOutputTarget(outputDir);
     if (sha256(readFileSync(DOCKER_EXECUTABLE)) !== DOCKER_SHA256) throw new Error('Pinned Docker executable hash mismatch.');
