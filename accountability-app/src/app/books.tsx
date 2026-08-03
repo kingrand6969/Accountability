@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,11 +17,10 @@ import {
   INTERESTS,
   getBookPrefs,
   setBookPrefs,
-  getBookFeed,
   type BookPrefs,
-  type BookFeed,
   type Book,
 } from '../books/api';
+import { useBookFeed } from '../books/useBookFeed';
 import type { Cadence } from '../books/rotate';
 import { Button } from '../ui/Button';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
@@ -36,27 +35,15 @@ export default function Books() {
   const router = useRouter();
   const { isPro, loading: proLoading } = useIsPro();
   const [prefs, setPrefs] = useState<BookPrefs | null>(null);
-  const [feed, setFeed] = useState<BookFeed | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { feed, error: feedError, loading } = useBookFeed(prefs, isPro);
 
   useEffect(() => {
     getBookPrefs().then(setPrefs).catch(() => setPrefs({ interests: ['motivation'], cadence: 'daily' }));
   }, []);
 
-  const load = useCallback(async (p: BookPrefs) => {
-    setLoading(true);
-    try {
-      setFeed(await getBookFeed(p));
-    } catch (e) {
-      Alert.alert('Could not load books', String((e as Error).message ?? e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (prefs && isPro) load(prefs);
-  }, [prefs, isPro, load]);
+    if (feedError) Alert.alert('Could not load books', feedError.message);
+  }, [feedError]);
 
   function updatePrefs(next: BookPrefs) {
     setPrefs(next);

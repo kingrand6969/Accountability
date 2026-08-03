@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,7 @@ import { HomeHeader } from '../../home/HomeHeader';
 import { confirmDestructive } from '../../ui/confirm';
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { contentMaxWidth } from '../../ui/responsive';
+import { resolveTodayRouteSeed } from '../../navigation/scheduleRouteState';
 import type { TimelineItem } from '../../timeline/types';
 import { font, radius, spacing } from '../../ui/theme';
 import JourneyJournal from '../../journey/JournalScreen';
@@ -54,24 +55,23 @@ function dayLabel(day: Date): string {
 }
 
 function TodayLegacy() {
+  const params = useLocalSearchParams<{ date?: string }>();
+  const seed = resolveTodayRouteSeed(params.date, new Date());
+
+  return <TodayLegacyDay key={seed.key} initialDay={seed.day} />;
+}
+
+function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ date?: string }>();
-  const [day, setDay] = useState(() => new Date());
+  const [day, setDay] = useState(initialDay);
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState<'list' | 'hours'>('list');
-
-  // Jump to a specific day (e.g. tapped on the Track hub's weekday strip).
-  useEffect(() => {
-    if (typeof params.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
-      setDay(new Date(`${params.date}T12:00:00`));
-    }
-  }, [params.date]);
 
   const load = useCallback(async () => {
     try {
