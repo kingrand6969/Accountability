@@ -28,6 +28,7 @@ import {
 import { runMediaCache } from '../saveRunMedia';
 import {
   getBeautyCameraCapability,
+  reconcileBeautyCameraDeviceLookup,
   type BeautyCameraCapability,
 } from './cameraCapability';
 import {
@@ -91,7 +92,10 @@ export function BeautyCamera({
     },
   );
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
-  const [isDeviceLookupSettled, setIsDeviceLookupSettled] = useState(false);
+  const [deviceLookup, setDeviceLookup] = useState(() => ({
+    permissionStatus,
+    isSettled: permissionStatus === 'authorized' && frontDevice != null,
+  }));
   const [appState, setAppState] = useState<AppStateStatus>(
     AppState.currentState,
   );
@@ -167,19 +171,24 @@ export function BeautyCamera({
     requestCameraAccess();
   }, [requestCameraAccess]);
 
+  const reconciledDeviceLookup = reconcileBeautyCameraDeviceLookup(
+    deviceLookup,
+    permissionStatus,
+    frontDevice != null,
+  );
+  if (reconciledDeviceLookup !== deviceLookup) {
+    setDeviceLookup(reconciledDeviceLookup);
+  }
+
   useEffect(() => {
-    if (permissionStatus !== 'authorized') {
-      setIsDeviceLookupSettled(false);
-      return;
-    }
-    if (frontDevice) {
-      setIsDeviceLookupSettled(true);
-      return;
-    }
-    const timeout = setTimeout(
-      () => setIsDeviceLookupSettled(true),
-      DEVICE_LOOKUP_GRACE_MS,
-    );
+    if (permissionStatus !== 'authorized' || frontDevice) return;
+    const timeout = setTimeout(() => {
+      setDeviceLookup((current) =>
+        current.permissionStatus === permissionStatus
+          ? { ...current, isSettled: true }
+          : current,
+      );
+    }, DEVICE_LOOKUP_GRACE_MS);
     return () => clearTimeout(timeout);
   }, [frontDevice, permissionStatus]);
 
@@ -189,13 +198,13 @@ export function BeautyCamera({
         permissionStatus,
         isRequestingPermission,
         hasFrontCamera: frontDevice != null,
-        isDeviceLookupSettled,
+        isDeviceLookupSettled: deviceLookup.isSettled,
         cameraError,
       }),
     [
       cameraError,
+      deviceLookup.isSettled,
       frontDevice,
-      isDeviceLookupSettled,
       isRequestingPermission,
       permissionStatus,
     ],
