@@ -42,16 +42,10 @@ import {
 } from '../compete/api';
 import { MissionIcon } from '../achievements/MissionIcon';
 import { challengeArtFor } from '../achievements/missionArt';
+import { challengeEnded, daysLeft } from '../achievements/challengeTime';
 
 const metricOpts = METRICS.map((m) => ({ value: m.value, label: m.label, icon: m.icon }));
 const periodOpts = PERIODS.map((p) => ({ value: p.value, label: p.label }));
-
-function daysLeft(ends: string): string {
-  const ms = new Date(ends).getTime() - Date.now();
-  if (ms <= 0) return 'Ended';
-  const d = Math.ceil(ms / 86400000);
-  return d === 1 ? '1 day left' : `${d} days left`;
-}
 
 export default function Compete() {
   const router = useRouter();
@@ -123,10 +117,13 @@ function RankingsTab({ uid }: { uid: string | null }) {
   const [metric, setMetric] = useState<Metric>('consistency');
   const [period, setPeriod] = useState<Period>('week');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof getLeaderboard>>>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [completedRequestKey, setCompletedRequestKey] = useState<string | null>(null);
+  const [failedRequestKey, setFailedRequestKey] = useState<string | null>(null);
   const [flexing, setFlexing] = useState(false);
+  const requestKey = JSON.stringify([scope, metric, period, reloadKey]);
+  const loading = completedRequestKey !== requestKey;
+  const loadError = failedRequestKey === requestKey;
 
   useFocusEffect(
     useCallback(() => {
@@ -137,21 +134,19 @@ function RankingsTab({ uid }: { uid: string | null }) {
   useEffect(() => {
     if (!sharing?.share_location) return;
     let live = true;
-    setLoading(true);
-    setLoadError(false);
     getLeaderboard(scope, metric, period)
       .then((r) => live && setRows(r))
       .catch(() => {
         if (live) {
           setRows([]);
-          setLoadError(true);
+          setFailedRequestKey(requestKey);
         }
       })
-      .finally(() => live && setLoading(false));
+      .finally(() => live && setCompletedRequestKey(requestKey));
     return () => {
       live = false;
     };
-  }, [sharing?.share_location, scope, metric, period, reloadKey]);
+  }, [sharing?.share_location, scope, metric, period, reloadKey, requestKey]);
 
   async function onEnable() {
     setEnabling(true);
@@ -299,6 +294,7 @@ function RankingsTab({ uid }: { uid: string | null }) {
 function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<typeof useRouter> }) {
   const [items, setItems] = useState<ChallengeCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [challengesCheckedAt, setChallengesCheckedAt] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -306,7 +302,10 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
     setLoading(true);
     setLoadError(false);
     listChallenges()
-      .then(setItems)
+      .then((nextItems) => {
+        setChallengesCheckedAt(Date.now());
+        setItems(nextItems);
+      })
       .catch(() => {
         setItems([]);
         setLoadError(true);
@@ -371,7 +370,8 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
       ) : (
         items.map((c) => {
           const meta = metricMeta(c.metric);
-          const ended = new Date(c.ends_at).getTime() <= Date.now();
+          const ended =
+            challengesCheckedAt != null && challengeEnded(c.ends_at, challengesCheckedAt);
           return (
             <GlassCard key={c.id} style={styles.card}>
               <Pressable
@@ -400,7 +400,8 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
                     {c.title}
                   </Text>
                   <Text style={styles.challengeMeta}>
-                    {meta.label} · {c.participants} in · {daysLeft(c.ends_at)}
+                    {meta.label} · {c.participants} in ·{' '}
+                    {daysLeft(c.ends_at, challengesCheckedAt ?? 0)}
                   </Text>
                   {c.target ? (
                     <Text style={styles.challengeGoal}>
@@ -450,27 +451,28 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
   const [metric, setMetric] = useState<Metric>('consistency');
   const [period, setPeriod] = useState<Period>('week');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof getBuddyStandings>>>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [completedRequestKey, setCompletedRequestKey] = useState<string | null>(null);
+  const [failedRequestKey, setFailedRequestKey] = useState<string | null>(null);
+  const requestKey = JSON.stringify([metric, period, reloadKey]);
+  const loading = completedRequestKey !== requestKey;
+  const loadError = failedRequestKey === requestKey;
 
   useEffect(() => {
     let live = true;
-    setLoading(true);
-    setLoadError(false);
     getBuddyStandings(metric, period)
       .then((r) => live && setRows(r))
       .catch(() => {
         if (live) {
           setRows([]);
-          setLoadError(true);
+          setFailedRequestKey(requestKey);
         }
       })
-      .finally(() => live && setLoading(false));
+      .finally(() => live && setCompletedRequestKey(requestKey));
     return () => {
       live = false;
     };
-  }, [metric, period, reloadKey]);
+  }, [metric, period, reloadKey, requestKey]);
 
   const soloOrEmpty = !loading && rows.filter((r) => !r.is_me).length === 0;
 
