@@ -574,7 +574,7 @@ function currentArtifacts() {
 export const REQUIRED_BUNDLE_FILENAMES = Object.freeze([
   'auth-signup-trigger.json', 'catalog.json', 'cron-presence.json',
   'current-state-flags.json', 'deterministic-config.json', 'ledger-presence.json',
-  'operational-counts.json', 'receipt.json', 'server-version.json',
+  'moderation-postconditions.json', 'operational-counts.json', 'receipt.json', 'server-version.json',
 ]);
 export const OPTIONAL_BUNDLE_FILENAMES = Object.freeze(['cron-config.json', 'ledger.json']);
 const ALLOWED_BUNDLE_FILENAMES = new Set([

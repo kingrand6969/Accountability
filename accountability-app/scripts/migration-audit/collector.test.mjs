@@ -252,6 +252,10 @@ test('0096 postcondition identifiers are explicitly frozen before staging collec
   assertCatalogIdentifiersAllowlisted(sql, FROZEN_ARTIFACTS);
 });
 
+test('0096 moderation postconditions have a required evidence filename', () => {
+  assert.ok(REQUIRED_BUNDLE_FILENAMES.includes('moderation-postconditions.json'));
+});
+
 test('pending approval template exactly fingerprints the current executable package', () => {
   const directory = path.dirname(fileURLToPath(import.meta.url));
   const collectorSource = readFileSync(path.join(directory, 'collect-readonly.mjs'), 'utf8');
@@ -1427,7 +1431,7 @@ test('atomic writer permits only the exact receipt and evidence filename contrac
   assert.deepEqual(REQUIRED_BUNDLE_FILENAMES, [
     'auth-signup-trigger.json', 'catalog.json', 'cron-presence.json',
     'current-state-flags.json', 'deterministic-config.json', 'ledger-presence.json',
-    'operational-counts.json', 'receipt.json', 'server-version.json',
+    'moderation-postconditions.json', 'operational-counts.json', 'receipt.json', 'server-version.json',
   ]);
   assert.deepEqual(OPTIONAL_BUNDLE_FILENAMES, ['cron-config.json', 'ledger.json']);
   const parent = mkdtempSync(path.join(os.tmpdir(), 'collector-allowlist-'));
