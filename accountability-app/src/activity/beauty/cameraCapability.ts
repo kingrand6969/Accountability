@@ -21,6 +21,30 @@ export interface BeautyCameraCapability {
   message: string;
 }
 
+export interface BeautyCameraDeviceLookupState {
+  permissionStatus: BeautyCameraPermissionStatus;
+  isSettled: boolean;
+}
+
+export function reconcileBeautyCameraDeviceLookup(
+  current: BeautyCameraDeviceLookupState,
+  permissionStatus: BeautyCameraPermissionStatus,
+  hasFrontCamera: boolean,
+): BeautyCameraDeviceLookupState {
+  if (current.permissionStatus !== permissionStatus) {
+    return {
+      permissionStatus,
+      isSettled: permissionStatus === 'authorized' && hasFrontCamera,
+    };
+  }
+
+  if (hasFrontCamera && !current.isSettled) {
+    return { permissionStatus, isSettled: true };
+  }
+
+  return current;
+}
+
 interface BeautyCameraCapabilityInput {
   permissionStatus: BeautyCameraPermissionStatus;
   isRequestingPermission: boolean;

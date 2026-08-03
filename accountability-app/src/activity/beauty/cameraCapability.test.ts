@@ -1,6 +1,48 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { getBeautyCameraCapability } from './cameraCapability';
+import {
+  getBeautyCameraCapability,
+  reconcileBeautyCameraDeviceLookup,
+} from './cameraCapability';
+
+describe('reconcileBeautyCameraDeviceLookup', () => {
+  it('resets a settled lookup when camera permission changes', () => {
+    expect(
+      reconcileBeautyCameraDeviceLookup(
+        { permissionStatus: 'authorized', isSettled: true },
+        'denied',
+        false,
+      ),
+    ).toEqual({ permissionStatus: 'denied', isSettled: false });
+  });
+
+  it('settles when a front camera appears and keeps that result for the attempt', () => {
+    const settled = reconcileBeautyCameraDeviceLookup(
+      { permissionStatus: 'authorized', isSettled: false },
+      'authorized',
+      true,
+    );
+
+    expect(settled).toEqual({
+      permissionStatus: 'authorized',
+      isSettled: true,
+    });
+    expect(
+      reconcileBeautyCameraDeviceLookup(settled, 'authorized', false),
+    ).toBe(settled);
+  });
+
+  it('keeps unchanged lookup state referentially stable', () => {
+    const current = {
+      permissionStatus: 'authorized' as const,
+      isSettled: false,
+    };
+
+    expect(
+      reconcileBeautyCameraDeviceLookup(current, 'authorized', false),
+    ).toBe(current);
+  });
+});
 
 describe('getBeautyCameraCapability', () => {
   it('keeps the camera inactive while permission is being requested', () => {
