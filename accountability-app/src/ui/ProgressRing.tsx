@@ -26,16 +26,13 @@ export function ProgressRing({
 }) {
   const target = Math.min(1, Math.max(0, progress));
   const anim = useRef(new Animated.Value(0)).current;
-  const [shown, setShown] = useState(animate ? 0 : target);
+  const [animatedShown, setAnimatedShown] = useState(0);
 
   useEffect(() => {
-    if (!animate) {
-      setShown(target);
-      return;
-    }
+    if (!animate) return;
     // SVG props aren't native-driver animatable — drive re-renders via listener.
     // One-shot ~700ms sweep; only runs when the value actually changes.
-    const id = anim.addListener(({ value }) => setShown(value));
+    const id = anim.addListener(({ value }) => setAnimatedShown(value));
     Animated.timing(anim, {
       toValue: target,
       duration: 700,
@@ -45,6 +42,7 @@ export function ProgressRing({
     return () => anim.removeListener(id);
   }, [target, animate, anim]);
 
+  const shown = animate ? animatedShown : target;
   const clamped = Math.min(1, Math.max(0, shown));
   const r = (size - strokeWidth) / 2;
   const c = 2 * Math.PI * r;

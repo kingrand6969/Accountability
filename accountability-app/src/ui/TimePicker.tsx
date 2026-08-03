@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -51,19 +51,19 @@ export function TimePicker({
   onChange: (v: string) => void;
 }) {
   const { hour12, minute, ampm } = parse(value);
-  const [minText, setMinText] = useState(pad(minute));
+  const [minuteDraft, setMinuteDraft] = useState(() => ({
+    value,
+    text: pad(minute),
+  }));
+  const minText =
+    minuteDraft.value === value ? minuteDraft.text : pad(minute);
   const [open, setOpen] = useState<null | 'hour' | 'ampm'>(null);
-
-  // sync the minute box if the time is set from outside (e.g. voice auto-fill)
-  useEffect(() => {
-    if (clampMin(minText) !== minute) setMinText(pad(minute));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minute]);
 
   function onMinChange(s: string) {
     const digits = s.replace(/[^0-9]/g, '').slice(0, 2);
-    setMinText(digits);
-    onChange(compose(hour12, clampMin(digits), ampm));
+    const nextValue = compose(hour12, clampMin(digits), ampm);
+    setMinuteDraft({ value: nextValue, text: digits });
+    onChange(nextValue);
   }
 
   return (
@@ -74,7 +74,9 @@ export function TimePicker({
         style={styles.minInput}
         value={minText}
         onChangeText={onMinChange}
-        onBlur={() => setMinText(pad(clampMin(minText)))}
+        onBlur={() =>
+          setMinuteDraft({ value, text: pad(clampMin(minText)) })
+        }
         keyboardType="number-pad"
         maxLength={2}
         placeholder="00"
@@ -96,7 +98,9 @@ export function TimePicker({
                       label={String(h)}
                       selected={h === hour12}
                       onPress={() => {
-                        onChange(compose(h, clampMin(minText), ampm));
+                        const nextValue = compose(h, clampMin(minText), ampm);
+                        setMinuteDraft({ value: nextValue, text: minText });
+                        onChange(nextValue);
                         setOpen(null);
                       }}
                     />
@@ -107,7 +111,13 @@ export function TimePicker({
                       label={ap}
                       selected={ap === ampm}
                       onPress={() => {
-                        onChange(compose(hour12, clampMin(minText), ap));
+                        const nextValue = compose(
+                          hour12,
+                          clampMin(minText),
+                          ap,
+                        );
+                        setMinuteDraft({ value: nextValue, text: minText });
+                        onChange(nextValue);
                         setOpen(null);
                       }}
                     />
