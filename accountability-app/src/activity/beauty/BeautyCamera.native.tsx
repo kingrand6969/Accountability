@@ -255,10 +255,7 @@ export function BeautyCamera({
           : { width: photo.width, height: photo.height };
       const directory = new Directory(Paths.cache, 'run-share');
       directory.create({ idempotent: true, intermediates: true });
-      const output = new File(
-        directory,
-        `camera-original-${Date.now()}-${randomToken()}.jpg`,
-      );
+      const output = new File(directory, createCaptureFilename());
       await photo.saveToFileAsync(fileUriToPath(output.uri));
       savedOutput = output;
       assertBeautySourceBytes(output.size ?? Number.NaN);
@@ -434,6 +431,10 @@ function randomToken(): string {
     .toString(36)
     .padStart(10, '0')
     .slice(-10);
+}
+
+function createCaptureFilename(): string {
+  return `camera-original-${Date.now()}-${randomToken()}.jpg`;
 }
 
 function throwIfCancelled(signal: AbortSignal, isMounted: boolean): void {
