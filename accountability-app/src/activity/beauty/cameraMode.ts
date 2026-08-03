@@ -182,15 +182,15 @@ export function mapFacesToImage(
   });
 }
 
-export function createSingleFlightCapture<T>(
-  capture: () => Promise<T>,
-): () => Promise<T> {
+export function createSingleFlightCapture<T, TArgs extends unknown[]>(
+  capture: (...args: TArgs) => Promise<T>,
+): (...args: TArgs) => Promise<T> {
   let inFlight: Promise<T> | null = null;
-  return () => {
+  return (...args) => {
     if (inFlight) return inFlight;
     let pending: Promise<T>;
     try {
-      pending = capture();
+      pending = capture(...args);
     } catch (error) {
       return Promise.reject(error);
     }

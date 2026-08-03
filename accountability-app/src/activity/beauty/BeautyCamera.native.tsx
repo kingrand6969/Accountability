@@ -86,11 +86,6 @@ export function BeautyCamera({
   const permissionController = useRef(createPermissionAttemptController());
   const captureLifecycleActive = useRef(false);
   const captureAbort = useRef<AbortController | null>(null);
-  const captureImplementation = useRef<() => Promise<BeautyCaptureSource>>(
-    async () => {
-      throw new Error('The camera is not ready yet.');
-    },
-  );
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [deviceLookup, setDeviceLookup] = useState(() => ({
     permissionStatus,
@@ -130,7 +125,7 @@ export function BeautyCamera({
         onError?.(safeError);
       }
     },
-    [onError],
+    [onError, setCameraError],
   );
 
   const requestCameraAccess = useCallback(() => {
@@ -226,7 +221,7 @@ export function BeautyCamera({
     onCapabilityChange?.(status);
   }, [onCapabilityChange, status]);
 
-  captureImplementation.current = async () => {
+  const capturePhoto = async () => {
     if (!frontDevice || !cameraCapability.canRenderCamera) {
       throw new Error('The front camera is not ready yet.');
     }
@@ -300,13 +295,16 @@ export function BeautyCamera({
   };
 
   const singleFlightCapture = useMemo(
-    () => createSingleFlightCapture(() => captureImplementation.current()),
+    () =>
+      createSingleFlightCapture(
+        (capture: () => Promise<BeautyCaptureSource>) => capture(),
+      ),
     [],
   );
-  const handleCapture = useCallback(() => {
+  const handleCapture = () => {
     if (isCapturing) return;
     setIsCapturing(true);
-    void singleFlightCapture()
+    void singleFlightCapture(capturePhoto)
       .catch((error) => {
         if (!(error instanceof Error && error.name === 'AbortError')) {
           reportError(error, 'The photo could not be captured. Please retry.');
@@ -315,7 +313,7 @@ export function BeautyCamera({
       .finally(() => {
         if (mounted.current) setIsCapturing(false);
       });
-  }, [isCapturing, reportError, singleFlightCapture]);
+  };
 
   const handleRetry = () => {
     setCameraError(null);
