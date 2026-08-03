@@ -68,7 +68,7 @@ export default function Gym() {
   const [results, setResults] = useState<LibraryExercise[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [titling, setTitling] = useState(false);
@@ -76,6 +76,8 @@ export default function Gym() {
 
   const favKey = Array.from(favIds).sort().join(',');
   const favDep = showFavorites ? favKey : '';
+  const queryKey = JSON.stringify([muscle, equipment, search, showFavorites, favDep]);
+  const loading = loadedQueryKey !== queryKey;
 
   useEffect(() => {
     (async () => {
@@ -89,7 +91,6 @@ export default function Gym() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
     const t = setTimeout(async () => {
       try {
         const onlyIds = showFavorites ? Array.from(favIds) : null;
@@ -102,7 +103,7 @@ export default function Gym() {
       } catch (e) {
         if (active) Alert.alert('Could not load exercises', String((e as Error).message ?? e));
       } finally {
-        if (active) setLoading(false);
+        if (active) setLoadedQueryKey(queryKey);
       }
     }, 300);
     return () => {
