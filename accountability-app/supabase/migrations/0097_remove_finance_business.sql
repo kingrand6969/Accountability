@@ -63,7 +63,6 @@ drop function if exists public.biz_dashboard(uuid, date, date);
 drop function if exists public.biz_items_costed(uuid);
 drop function if exists public.biz_item_unit_cost(uuid, int);
 drop function if exists public.income_trend(int);
-drop function if exists public.is_goal_member(uuid, uuid);
 drop function if exists public.mark_bill_paid_atomic(uuid, numeric, uuid);
 drop function if exists public.mirror_money_tx();
 drop function if exists public.pay_card_atomic(uuid, numeric, uuid);
@@ -71,6 +70,7 @@ drop function if exists public.pay_card_atomic(uuid, numeric, uuid);
 drop table if exists public.shared_goal_contributions;
 drop table if exists public.shared_goal_members;
 drop table if exists public.shared_goals;
+drop function if exists public.is_goal_member(uuid, uuid);
 drop function if exists public.shared_goal_creator_join();
 
 drop table if exists public.biz_payment;

@@ -368,6 +368,25 @@ describe('0097 finance and business removal migration', () => {
     expect(accountedCount).toBe(destructiveStatements.length);
   });
 
+  test('drops shared-goal policy-owning tables before their membership helper', () => {
+    const dependencyTableDrops = [
+      'drop table if exists public.shared_goal_contributions',
+      'drop table if exists public.shared_goal_members',
+      'drop table if exists public.shared_goals',
+    ];
+    const helperDrop = 'drop function if exists public.is_goal_member(uuid, uuid)';
+    const helperIndex = normalizedStatements.indexOf(helperDrop);
+
+    expect(helperIndex).toBeGreaterThan(-1);
+    for (const tableDrop of dependencyTableDrops) {
+      const tableIndex = normalizedStatements.indexOf(tableDrop);
+      expect(tableIndex).toBeGreaterThan(-1);
+      expect(tableIndex).toBeLessThan(helperIndex);
+    }
+    expect(normalizedStatements.filter((statement) => /drop policy.*(?:sg_select|sgm_select|sgc_select|sgc_insert)/.test(statement))).toEqual([]);
+    expect(normalizedStatements.slice(0, helperIndex)).toEqual(expect.arrayContaining(dependencyTableDrops));
+  });
+
   test('replaces scan quota with its food-only contract and permissions', () => {
     const body = dollarQuotedBody(functionStatement(statements, 'my_scan_quota'));
 
