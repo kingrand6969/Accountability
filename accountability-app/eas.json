@@ -26,6 +26,18 @@
         "buildType": "apk"
       }
     },
+    "staging": {
+      "environment": "preview",
+      "developmentClient": false,
+      "distribution": "internal",
+      "channel": "staging",
+      "env": {
+        "APP_VARIANT": "staging"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "channel": "production",
       "autoIncrement": true
