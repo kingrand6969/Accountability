@@ -37,7 +37,8 @@ function presentationLiterals(file: string): string[] {
       || ts.isJsxText(node)
     ) {
       const text = node.getText(parsed).replace(/^['"`]|['"`]$/g, '').trim();
-      if (legacyCopy.test(text)) matches.push(`${path.relative(repoRoot, file)}: ${text}`);
+      const relativeFile = path.relative(repoRoot, file).replace(/\\/g, '/');
+      if (legacyCopy.test(text)) matches.push(`${relativeFile}: ${text}`);
     }
     ts.forEachChild(node, visit);
   }
@@ -46,15 +47,23 @@ function presentationLiterals(file: string): string[] {
   return matches;
 }
 
+function isAllowedInternalLiteral(match: string) {
+  const normalized = match.replace(/\\/g, '/');
+  return /post_encouragements|voice_encouragement_count|\.\/encouragement$|src\/buddy\/presentation\.ts: Encouraging$/.test(normalized);
+}
+
 describe('Cheer user-facing copy contract', () => {
+  test('classifies the legacy trait exception on Windows and POSIX paths', () => {
+    expect(isAllowedInternalLiteral('src\\buddy\\presentation.ts: Encouraging')).toBe(true);
+    expect(isAllowedInternalLiteral('src/buddy/presentation.ts: Encouraging')).toBe(true);
+  });
+
   test('all live TypeScript presentation literals use Cheer wording', () => {
     const matches = sourceFiles(path.join(repoRoot, 'src')).flatMap(presentationLiterals);
 
     // Stable persistence identifiers and the existing module path are intentionally unchanged
     // for migration and import compatibility. None of these literals are rendered as copy.
-    const allowedInternalLiterals = matches.filter((match) => (
-      /post_encouragements|voice_encouragement_count|\.\/encouragement$|src\\buddy\\presentation\.ts: Encouraging$/.test(match)
-    ));
+    const allowedInternalLiterals = matches.filter(isAllowedInternalLiteral);
     const userFacingLiterals = matches.filter((match) => !allowedInternalLiterals.includes(match));
 
     expect(userFacingLiterals).toEqual([]);
