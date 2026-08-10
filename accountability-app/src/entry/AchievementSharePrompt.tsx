@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { colors, font, radius, spacing } from '../ui/theme';
@@ -185,10 +185,12 @@ export function AchievementSharePrompt({
     lifecycleRef.current = createAchievementSharePromptLifecycle({ onFeed, onStory, onPrivate, onClose });
   }
   const lifecycle = lifecycleRef.current;
-  lifecycle.updateCallbacks({ onFeed, onStory, onPrivate, onClose });
   const controller = lifecycle.controller;
   const [state, setState] = useState(controller.getState);
 
+  useLayoutEffect(() => {
+    lifecycle.updateCallbacks({ onFeed, onStory, onPrivate, onClose });
+  }, [lifecycle, onFeed, onStory, onPrivate, onClose]);
   useEffect(() => {
     lifecycle.attach();
     const unsubscribe = controller.subscribe(setState);
@@ -216,18 +218,24 @@ export function AchievementSharePrompt({
           <Text style={styles.title}>Share your achievement?</Text>
           <Text style={styles.message}>Choose where it should appear. Nothing posts until you confirm.</Text>
 
-          <DestinationButton
-            label="Share to Feed"
-            selected={selected === 'feed'}
-            disabled={state.working}
-            onPress={() => controller.select('feed')}
-          />
-          <DestinationButton
-            label="Add to My Day"
-            selected={selected === 'story'}
-            disabled={state.working}
-            onPress={() => controller.select('story')}
-          />
+          <View
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Achievement share destination"
+            style={styles.destinationGroup}
+          >
+            <DestinationButton
+              label="Share to Feed"
+              selected={selected === 'feed'}
+              disabled={state.working}
+              onPress={() => controller.select('feed')}
+            />
+            <DestinationButton
+              label="Add to My Day"
+              selected={selected === 'story'}
+              disabled={state.working}
+              onPress={() => controller.select('story')}
+            />
+          </View>
           <Button
             title="Keep private"
             variant="ghost"
@@ -316,6 +324,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
+  destinationGroup: { gap: spacing.md },
   destination: {
     minHeight: 48,
     borderRadius: radius.md,

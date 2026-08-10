@@ -1,4 +1,5 @@
 import { describe, expect, jest, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
 import {
   createAchievementShareController,
   createAchievementSharePromptLifecycle,
@@ -274,5 +275,23 @@ describe('AchievementSharePrompt lifecycle', () => {
 
     expect(cb.onFeed).toHaveBeenCalledTimes(1);
     expect(cb.onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AchievementSharePrompt component wiring', () => {
+  test('publishes callback prop changes only in the commit phase', () => {
+    const source = readFileSync(require.resolve('./AchievementSharePrompt'), 'utf8');
+    expect(source).toMatch(/useLayoutEffect\(\(\) => \{\s*lifecycle\.updateCallbacks/);
+
+    const componentStart = source.indexOf('export function AchievementSharePrompt');
+    const layoutEffectStart = source.indexOf('  useLayoutEffect(() =>', componentStart);
+    const beforeFirstEffect = source.slice(componentStart, layoutEffectStart);
+    expect(beforeFirstEffect).not.toContain('lifecycle.updateCallbacks');
+  });
+
+  test('groups destination choices as an accessible radio group', () => {
+    const source = readFileSync(require.resolve('./AchievementSharePrompt'), 'utf8');
+    expect(source).toContain('accessibilityRole="radiogroup"');
+    expect(source).toContain('accessibilityLabel="Achievement share destination"');
   });
 });
