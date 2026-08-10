@@ -38,7 +38,7 @@ describe('orderStoryGroups', () => {
     expect(ordered).not.toBe(groups);
   });
 
-  it('treats invalid timestamps as zero so they sort oldest deterministically', () => {
+  it('treats invalid timestamps as oldest and sorts them deterministically', () => {
     const groups: StoryGroup[] = [
       { user_id: 'invalid-b', isMe: false, viewed: false, latestCreatedAt: 'not-a-date', label: 'invalid b' },
       { user_id: 'valid', isMe: false, viewed: false, latestCreatedAt: '2026-01-01T00:00:00Z', label: 'valid' },
@@ -49,6 +49,32 @@ describe('orderStoryGroups', () => {
       'valid',
       'invalid-a',
       'invalid-b',
+    ]);
+  });
+
+  it('sorts invalid timestamps after valid dates from before 1970', () => {
+    const groups: StoryGroup[] = [
+      { user_id: 'invalid', isMe: false, viewed: false, latestCreatedAt: 'not-a-date', label: 'invalid' },
+      { user_id: 'historic', isMe: false, viewed: false, latestCreatedAt: '1960-01-01T00:00:00Z', label: 'historic' },
+    ];
+
+    expect(orderStoryGroups(groups).map((group) => group.user_id)).toEqual([
+      'historic',
+      'invalid',
+    ]);
+  });
+
+  it('treats all me groups as one class ordered by recency before user_id', () => {
+    const groups: StoryGroup[] = [
+      { user_id: 'me-old-unseen', isMe: true, viewed: false, latestCreatedAt: '2026-08-09T00:00:00Z', label: 'old unseen me' },
+      { user_id: 'me-new-viewed', isMe: true, viewed: true, latestCreatedAt: '2026-08-10T00:00:00Z', label: 'new viewed me' },
+      { user_id: 'friend', isMe: false, viewed: false, latestCreatedAt: '2026-08-11T00:00:00Z', label: 'friend' },
+    ];
+
+    expect(orderStoryGroups(groups).map((group) => group.user_id)).toEqual([
+      'me-new-viewed',
+      'me-old-unseen',
+      'friend',
     ]);
   });
 });

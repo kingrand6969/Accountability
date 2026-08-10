@@ -5,24 +5,27 @@ export type OrderableStoryGroup = {
   latestCreatedAt: string;
 };
 
-function timestampOrZero(value: string): number {
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
+function classRank(group: OrderableStoryGroup): number {
+  if (group.isMe) return 0;
+  return group.viewed ? 2 : 1;
 }
 
 export function orderStoryGroups<T extends OrderableStoryGroup>(
   groups: readonly T[],
 ): T[] {
   return [...groups].sort((a, b) => {
-    const meOrder = Number(b.isMe) - Number(a.isMe);
-    if (meOrder !== 0) return meOrder;
+    const rankOrder = classRank(a) - classRank(b);
+    if (rankOrder !== 0) return rankOrder;
 
-    const viewedOrder = Number(a.viewed) - Number(b.viewed);
-    if (viewedOrder !== 0) return viewedOrder;
+    const aTimestamp = Date.parse(a.latestCreatedAt);
+    const bTimestamp = Date.parse(b.latestCreatedAt);
+    const aValid = !Number.isNaN(aTimestamp);
+    const bValid = !Number.isNaN(bTimestamp);
 
-    const recencyOrder =
-      timestampOrZero(b.latestCreatedAt) - timestampOrZero(a.latestCreatedAt);
-    if (recencyOrder !== 0) return recencyOrder;
+    if (aValid !== bValid) return aValid ? -1 : 1;
+    if (aValid && bValid && aTimestamp !== bTimestamp) {
+      return aTimestamp > bTimestamp ? -1 : 1;
+    }
 
     return a.user_id.localeCompare(b.user_id);
   });
