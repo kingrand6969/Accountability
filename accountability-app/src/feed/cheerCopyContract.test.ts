@@ -2,7 +2,13 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { describe, expect, test } from '@jest/globals';
-import { presentationTraitName, traitOptionSelected } from '../buddy/presentation';
+import {
+  presentationTraitName,
+  presentationTraits,
+  storageTraitName,
+  storageTraits,
+  traitOptionSelected,
+} from '../buddy/presentation';
 
 const repoRoot = path.resolve(__dirname, '../..');
 const legacyCopy = /\bencourag(?:e|es|ed|ing|ement|ements|er|ers)\b/i;
@@ -49,13 +55,32 @@ function presentationLiterals(file: string): string[] {
 
 function isAllowedInternalLiteral(match: string) {
   const normalized = match.replace(/\\/g, '/');
-  return /post_encouragements|voice_encouragement_count|\.\/encouragement$|src\/buddy\/presentation\.ts: Encouraging$/.test(normalized);
+  const separator = normalized.indexOf(': ');
+  if (separator < 0) return false;
+  const file = normalized.slice(0, separator);
+  const literal = normalized.slice(separator + 2);
+  const allowedByFile: Record<string, string[]> = {
+    'src/buddy/presentation.ts': ['Encouraging'],
+    'src/feed/api.ts': [
+      'post_encouragements',
+      'id,body,image_url,created_at,user_id,audience,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_encouragements(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)',
+    ],
+    'src/journey/encouragement.ts': ['post_encouragements'],
+    'src/journey/JournalScreen.tsx': ['./encouragement'],
+    'src/journey/JourneyEncouragementBar.tsx': ['./encouragement'],
+    'src/journey/MomentumScreen.tsx': ['./encouragement'],
+  };
+  return allowedByFile[file]?.includes(literal) ?? false;
 }
 
 describe('Cheer user-facing copy contract', () => {
   test('classifies the legacy trait exception on Windows and POSIX paths', () => {
     expect(isAllowedInternalLiteral('src\\buddy\\presentation.ts: Encouraging')).toBe(true);
     expect(isAllowedInternalLiteral('src/buddy/presentation.ts: Encouraging')).toBe(true);
+  });
+
+  test('rejects UI copy that merely contains an internal identifier', () => {
+    expect(isAllowedInternalLiteral('src/feed/api.ts: UI encouragement for post_encouragements')).toBe(false);
   });
 
   test('all live TypeScript presentation literals use Cheer wording', () => {
@@ -85,5 +110,24 @@ describe('Cheer user-facing copy contract', () => {
   test('keeps a legacy Cheering trait selected in the editor', () => {
     expect(traitOptionSelected(['Encouraging'], 'Cheering')).toBe(true);
     expect(traitOptionSelected(['Consistent'], 'Cheering')).toBe(false);
+  });
+
+  test('stores the displayed Cheering trait using the canonical legacy value', () => {
+    expect(storageTraitName('Cheering')).toBe('Encouraging');
+    expect(storageTraits(['Cheering', 'Consistent'])).toEqual(['Encouraging', 'Consistent']);
+  });
+
+  test('round-trips legacy stored traits through the editor presentation boundary', () => {
+    const stored = ['Encouraging', 'Consistent'];
+    const displayed = presentationTraits(stored);
+
+    expect(displayed).toEqual(['Cheering', 'Consistent']);
+    expect(storageTraits(displayed)).toEqual(stored);
+  });
+
+  test('buddy card editing applies presentation mapping on load and storage mapping on save', () => {
+    const editor = readFileSync(path.join(repoRoot, 'src/app/buddy-card-edit.tsx'), 'utf8');
+    expect(editor).toContain('traits: presentationTraits(loaded.traits)');
+    expect(editor).toContain('traits: storageTraits(card.traits)');
   });
 });

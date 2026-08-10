@@ -15,7 +15,12 @@ import { supabase } from '../lib/supabase';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
-import { presentationTraitName, traitOptionSelected } from '../buddy/presentation';
+import {
+  presentationTraitName,
+  presentationTraits,
+  storageTraits,
+  traitOptionSelected,
+} from '../buddy/presentation';
 
 const TRAITS = [
   'Cheering',
@@ -43,7 +48,9 @@ export default function BuddyCardEdit() {
   const [myMedalList, setMyMedalList] = useState<{ id: string; tier: number }[] | null>(null);
 
   useEffect(() => {
-    getMyBuddyCard().then(setCard).catch(() => {});
+    getMyBuddyCard()
+      .then((loaded) => setCard({ ...loaded, traits: presentationTraits(loaded.traits) }))
+      .catch(() => {});
     getMyProfile()
       .then((p) => {
         setMyName(p?.display_name ?? null);
@@ -81,6 +88,7 @@ export default function BuddyCardEdit() {
     try {
       const toSave: BuddyCard = {
         ...card,
+        traits: storageTraits(card.traits),
         mode: 'custom',
         hero_url: card.show_hero ? card.hero_url ?? myCover : null,
         rank_name: myRankName ?? card.rank_name,
