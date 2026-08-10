@@ -156,7 +156,7 @@ function pageModelSession(
   states: ReadonlyMap<string, ModelPostState>,
   requestedLimit?: number | null,
 ) {
-  if (session.owner !== viewer || session.expiresAt <= now) return [];
+  if (session.owner !== viewer || session.expiresAt <= now) throw new Error('PFS01');
   return session.items
     .filter(({ id, position }) =>
       position > Math.max(afterPosition ?? 0, 0) && modelPolicyAllows(states.get(id) ?? { visible: false }))
@@ -236,9 +236,11 @@ describe('0101 unified social feed migration', () => {
   });
 
   test('declares the exact bounded invoker-only page RPC contract', () => {
-    expect(functionSource).toMatch(/^create or replace function public\.unified_feed_post_ids\( p_session_id uuid, p_after_position integer, p_limit integer default 20 \) returns table \(session_id uuid, position integer, id uuid, source text, suggested boolean\) language sql stable security invoker set search_path = public as /);
-    expect(functionSource).not.toMatch(/security definer|execute\s+format|language\s+plpgsql/);
+    expect(functionSource).toMatch(/^create or replace function public\.unified_feed_post_ids\( p_session_id uuid, p_after_position integer, p_limit integer default 20 \) returns table \(session_id uuid, position integer, id uuid, source text, suggested boolean\) language plpgsql stable security invoker set search_path = public as /);
+    expect(functionSource).not.toMatch(/security definer|execute\s+format/);
     expect(pageBody).toMatch(/least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/);
+    expect(pageBody).toMatch(/if auth\.uid\(\) is null then raise exception 'authentication required'[\s\S]*errcode = '42501'/);
+    expect(pageBody).toMatch(/if not exists \( select 1 from public\.feed_sessions s where s\.id = p_session_id and s\.user_id = auth\.uid\(\) and s\.expires_at > now\(\) \) then[\s\S]*raise exception 'feed session unavailable' using errcode = 'pfs01'/);
   });
 
   test('creates owner-scoped snapshot tables with RLS and constrained immutable contents', () => {
@@ -361,10 +363,10 @@ describe('0101 unified social feed migration', () => {
       items: modelPage(rows, null, 1000).map((row, index) => ({ ...row, position: index + 1 })),
     });
     const page = (session: ReturnType<typeof create>, viewer: string, now: number,
-      after: number, visible: ReadonlySet<string>) =>
-      session.owner === viewer && session.expiresAt > now
-        ? session.items.filter(({ id, position }) => position > after && visible.has(id)).slice(0, 50)
-        : [];
+      after: number, visible: ReadonlySet<string>) => {
+      if (session.owner !== viewer || session.expiresAt <= now) throw new Error('PFS01');
+      return session.items.filter(({ id, position }) => position > after && visible.has(id)).slice(0, 50);
+    };
     const now = Date.parse('2026-08-11T00:00:00Z');
     const rows: ModelRow[] = [
       { id: 'anchor', source: 'self', createdAt: '2026-08-10', score: 0 },
@@ -376,9 +378,19 @@ describe('0101 unified social feed migration', () => {
     expect(refresh.items).not.toBe(first.items);
     refresh.items[0].source = 'buddy';
     expect(first.items[0].source).toBe('self');
-    expect(page(first, 'viewer-b', now, 0, new Set(['anchor', 'later']))).toEqual([]);
-    expect(page(first, 'viewer-a', first.expiresAt, 0, new Set(['anchor', 'later']))).toEqual([]);
+    expect(() => page(first, 'viewer-b', now, 0, new Set(['anchor', 'later']))).toThrow('PFS01');
+    expect(() => page(first, 'viewer-a', first.expiresAt, 0, new Set(['anchor', 'later']))).toThrow('PFS01');
     expect(page(first, 'viewer-a', now, 1, new Set(['later'])).map(({ id }) => id)).toEqual(['later']);
+  });
+
+  test('signals missing, pruned, expired, and cross-user snapshots identically but keeps valid exhaustion empty', () => {
+    const now = Date.parse('2026-08-11T00:00:00Z');
+    const valid = createModelSession('viewer-a', now, [], 20);
+    expect(pageModelSession(valid, 'viewer-a', now, 0, new Map())).toEqual([]);
+    expect(() => pageModelSession(valid, 'viewer-b', now, 0, new Map())).toThrow('PFS01');
+    expect(() => pageModelSession(valid, 'viewer-a', valid.expiresAt, 0, new Map())).toThrow('PFS01');
+    const missingOrPruned = { ...valid, owner: 'missing' };
+    expect(() => pageModelSession(missingOrPruned, 'viewer-a', now, 0, new Map())).toThrow('PFS01');
   });
 
   test('snapshot model keeps order across deletion, hide and relationship changes', () => {

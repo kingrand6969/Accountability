@@ -224,11 +224,28 @@ create or replace function public.unified_feed_post_ids(
   p_limit integer default 20
 )
 returns table (session_id uuid, position integer, id uuid, source text, suggested boolean)
-language sql
+language plpgsql
 stable
 security invoker
 set search_path = public
 as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1
+      from public.feed_sessions s
+     where s.id = p_session_id
+       and s.user_id = auth.uid()
+       and s.expires_at > now()
+  ) then
+    -- Missing, expired, pruned, and another member's RLS-hidden session all
+    -- deliberately share one signal so the function leaks no ownership state.
+    raise exception 'Feed session unavailable' using errcode = 'PFS01';
+  end if;
+
+  return query
   select i.session_id, i.position, i.post_id, i.source, i.suggested
     from public.feed_session_items i
     join public.feed_sessions s on s.id = i.session_id
@@ -239,7 +256,8 @@ as $$
      and not public.users_blocked(auth.uid(), p.user_id)
      and not exists (select 1 from public.post_hides h where h.post_id=p.id and h.user_id=auth.uid())
    order by i.position
-   limit least(greatest(coalesce(p_limit, 20), 1), 50)
+   limit least(greatest(coalesce(p_limit, 20), 1), 50);
+end
 $$;
 
 revoke all on function public.create_unified_feed_session(integer) from public, anon;

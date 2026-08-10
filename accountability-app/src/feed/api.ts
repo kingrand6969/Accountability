@@ -147,11 +147,7 @@ type FeedSnapshot = {
 let activeFeedSnapshot: FeedSnapshot | null = null;
 let refreshGeneration = 0;
 
-class FeedSnapshotPageError extends Error {
-  constructor(readonly original: unknown) {
-    super('Feed snapshot page could not be loaded.');
-  }
-}
+class FeedSnapshotUnavailableError extends Error {}
 
 async function createFeedSession(): Promise<string> {
   const { data, error } = await supabase.rpc('create_unified_feed_session', {
@@ -168,7 +164,8 @@ async function pageFeedSession(sessionId: string, afterPosition: number): Promis
     p_after_position: afterPosition,
     p_limit: FEED_PAGE_SIZE,
   });
-  if (error) throw new FeedSnapshotPageError(error);
+  if (error?.code === 'PFS01') throw new FeedSnapshotUnavailableError('Feed session unavailable.');
+  if (error) throw error;
   return (data ?? []) as UnifiedFeedRow[];
 }
 
@@ -268,7 +265,7 @@ async function pagePersonalFeed(me: string): Promise<UnifiedFeedPost[]> {
   try {
     page = await loadHydratedSnapshotPage(me, snapshot.sessionId, snapshot.afterPosition, snapshot.seenPostIds);
   } catch (error) {
-    if (!(error instanceof FeedSnapshotPageError)) throw error;
+    if (!(error instanceof FeedSnapshotUnavailableError)) throw error;
     // A server-expired or invalid snapshot gets one fresh-session attempt. The
     // old IDs are filtered so recovery cannot duplicate already rendered rows.
     return refreshPersonalFeed(me, snapshot.seenPostIds);

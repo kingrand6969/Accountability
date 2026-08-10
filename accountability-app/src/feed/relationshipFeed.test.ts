@@ -152,7 +152,7 @@ describe('unified personal feed snapshot', () => {
     mockRpc
       .mockResolvedValueOnce({ data: 'old-session', error: null })
       .mockResolvedValueOnce({ data: [{ session_id: 'old-session', position: 1, id: 'seen', source: 'self', suggested: false }], error: null })
-      .mockResolvedValueOnce({ data: null, error: { message: 'expired' } })
+      .mockResolvedValueOnce({ data: null, error: { code: 'PFS01', message: 'Feed session unavailable' } })
       .mockResolvedValueOnce({ data: 'new-session', error: null })
       .mockResolvedValueOnce({ data: [
         { session_id: 'new-session', position: 1, id: 'seen', source: 'self', suggested: false },
@@ -165,6 +165,31 @@ describe('unified personal feed snapshot', () => {
     expect(mockRpc).toHaveBeenCalledTimes(5);
   });
 
+  test('valid empty exhaustion stays empty without creating a replacement session', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'exhausted-session', error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'exhausted-session', position: 1, id: 'only', source: 'self', suggested: false }], error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+    mockFrom.mockImplementation((table: string) => table === 'posts' ? feedQuery([post('only')]) : likedQuery([]));
+
+    await listFeed();
+    await expect(listFeed('legacy-timestamp')).resolves.toEqual([]);
+    expect(mockRpc.mock.calls.filter(([name]) => name === 'create_unified_feed_session')).toHaveLength(1);
+  });
+
+  test('non-session pagination errors fail closed without creating a replacement session', async () => {
+    const unavailable = { code: '57014', message: 'database timeout' };
+    mockRpc
+      .mockResolvedValueOnce({ data: 'error-session', error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'error-session', position: 1, id: 'only', source: 'self', suggested: false }], error: null })
+      .mockResolvedValueOnce({ data: null, error: unavailable });
+    mockFrom.mockImplementation((table: string) => table === 'posts' ? feedQuery([post('only')]) : likedQuery([]));
+
+    await listFeed();
+    await expect(listFeed('legacy-timestamp')).rejects.toBe(unavailable);
+    expect(mockRpc.mock.calls.filter(([name]) => name === 'create_unified_feed_session')).toHaveLength(1);
+  });
+
   test('replacement session refills past a fully duplicated first page without creating another session', async () => {
     const duplicatePage = Array.from({ length: 20 }, (_, index) => ({
       session_id: 'replacement', position: index + 1, id: `seen-${index + 1}`,
@@ -173,7 +198,7 @@ describe('unified personal feed snapshot', () => {
     mockRpc
       .mockResolvedValueOnce({ data: 'original', error: null })
       .mockResolvedValueOnce({ data: duplicatePage.map((row) => ({ ...row, session_id: 'original' })), error: null })
-      .mockResolvedValueOnce({ data: null, error: { message: 'expired' } })
+      .mockResolvedValueOnce({ data: null, error: { code: 'PFS01', message: 'Feed session unavailable' } })
       .mockResolvedValueOnce({ data: 'replacement', error: null })
       .mockResolvedValueOnce({ data: duplicatePage, error: null })
       .mockResolvedValueOnce({ data: [
