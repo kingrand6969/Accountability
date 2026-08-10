@@ -207,4 +207,36 @@ describe('AchievementSharePrompt lifecycle', () => {
     await submit;
     expect(cb.onClose).not.toHaveBeenCalled();
   });
+
+  test('StrictMode setup cleanup setup replay keeps the same lifecycle usable', async () => {
+    const cb = callbacks();
+    const lifecycle = createAchievementSharePromptLifecycle(cb);
+
+    lifecycle.attach();
+    lifecycle.detach();
+    lifecycle.attach();
+    await Promise.resolve();
+
+    lifecycle.controller.select('feed');
+    await lifecycle.controller.confirm();
+    expect(cb.onFeed).toHaveBeenCalledTimes(1);
+    expect(cb.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('real detach disposes after a microtask and suppresses stale completion', async () => {
+    const pending = deferred();
+    const cb = callbacks();
+    cb.onStory.mockReturnValue(pending.promise);
+    const lifecycle = createAchievementSharePromptLifecycle(cb);
+    lifecycle.attach();
+    lifecycle.controller.select('story');
+    const submit = lifecycle.controller.confirm();
+
+    lifecycle.detach();
+    await Promise.resolve();
+    pending.resolve();
+    await submit;
+
+    expect(cb.onClose).not.toHaveBeenCalled();
+  });
 });

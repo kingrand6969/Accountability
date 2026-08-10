@@ -121,6 +121,8 @@ type PresentationIdentity = {
 export function createAchievementSharePromptLifecycle(initialCallbacks: ShareCallbacks) {
   let latestCallbacks = initialCallbacks;
   let presentation: PresentationIdentity | undefined;
+  let attached = false;
+  let attachmentGeneration = 0;
   const controller = createAchievementShareController({
     onFeed: () => latestCallbacks.onFeed(),
     onStory: () => latestCallbacks.onStory(),
@@ -130,6 +132,17 @@ export function createAchievementSharePromptLifecycle(initialCallbacks: ShareCal
 
   return {
     controller,
+    attach() {
+      attached = true;
+      attachmentGeneration += 1;
+    },
+    detach() {
+      attached = false;
+      const detachedGeneration = ++attachmentGeneration;
+      void Promise.resolve().then(() => {
+        if (!attached && detachedGeneration === attachmentGeneration) controller.dispose();
+      });
+    },
     updateCallbacks(callbacks: ShareCallbacks) {
       latestCallbacks = callbacks;
     },
@@ -174,11 +187,17 @@ export function AchievementSharePrompt({
   const controller = lifecycle.controller;
   const [state, setState] = useState(controller.getState);
 
-  useEffect(() => controller.subscribe(setState), [controller]);
+  useEffect(() => {
+    lifecycle.attach();
+    const unsubscribe = controller.subscribe(setState);
+    return () => {
+      unsubscribe();
+      lifecycle.detach();
+    };
+  }, [controller, lifecycle]);
   useEffect(() => {
     lifecycle.syncPresentation({ visible, payloadKey, resetKey });
   }, [lifecycle, visible, payloadKey, resetKey]);
-  useEffect(() => () => lifecycle.dispose(), [lifecycle]);
 
   const selected = state.decision.destination;
 
