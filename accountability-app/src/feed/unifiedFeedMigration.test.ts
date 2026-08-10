@@ -69,6 +69,35 @@ function executableStatements(sql: string): string[] {
 
 const normalize = (value: string): string => value.toLowerCase().replace(/\s+/g, ' ').trim();
 
+type ModelSource = 'self' | 'buddy' | 'followed_person' | 'joined_group' | 'followed_page' | 'suggested';
+type ModelRow = { id: string; source: ModelSource; createdAt: string; score: number };
+
+function modelPage(rows: ModelRow[], before: { id: string; createdAt: string } | null, limit: number) {
+  const priority: Record<Exclude<ModelSource, 'suggested'>, number> = {
+    self: 0, buddy: 1, followed_person: 2, joined_group: 3, followed_page: 4,
+  };
+  const compareWithinTier = (left: ModelRow, right: ModelRow) =>
+    right.createdAt.localeCompare(left.createdAt)
+      || right.score - left.score
+      || left.id.localeCompare(right.id);
+  const connections = rows.filter((row) => row.source !== 'suggested').sort((left, right) =>
+    priority[left.source as Exclude<ModelSource, 'suggested'>]
+      - priority[right.source as Exclude<ModelSource, 'suggested'>]
+      || compareWithinTier(left, right));
+  const suggestions = rows.filter((row) => row.source === 'suggested').sort(compareWithinTier);
+  const sequence: ModelRow[] = [];
+  connections.forEach((connection, index) => {
+    sequence.push(connection);
+    const suggestion = suggestions[Math.floor(index / 4)];
+    if ((index + 1) % 4 === 0 && suggestion) sequence.push(suggestion);
+  });
+  const cursorOrdinal = before === null
+    ? -1
+    : sequence.findIndex(({ id, createdAt }) => id === before.id && createdAt === before.createdAt);
+  if (before !== null && cursorOrdinal < 0) return [];
+  return sequence.slice(cursorOrdinal + 1, cursorOrdinal + 1 + Math.max(1, Math.min(limit, 50)));
+}
+
 describe('0101 unified social feed migration', () => {
   const statements = executableStatements(readFileSync(MIGRATION_PATH, 'utf8'));
   const normalized = statements.map(normalize);
@@ -108,6 +137,9 @@ describe('0101 unified social feed migration', () => {
     expect(body).toMatch(/public\.group_members gm[\s\S]*gm\.group_id = p\.group_id[\s\S]*gm\.user_id = auth\.uid\(\)[\s\S]*'joined_group'/);
     expect(body).toMatch(/public\.page_follows pf[\s\S]*pf\.page_id = p\.page_id[\s\S]*pf\.user_id = auth\.uid\(\)[\s\S]*'followed_page'/);
     expect(body).toMatch(/case c\.source when 'self' then 0 when 'buddy' then 1 when 'followed_person' then 2 when 'joined_group' then 3 when 'followed_page' then 4 end/);
+    expect(body).toMatch(/when public\.are_buddies\(auth\.uid\(\), p\.user_id\) then 'buddy'/);
+    expect(body).toMatch(/when exists \( select 1 from public\.buddy_stars s[\s\S]*?\) then 'followed_person'/);
+    expect(body).not.toMatch(/when p\.group_id is null and p\.page_id is null[\s\S]{0,120}are_buddies/);
   });
 
   test('preserves RLS/moderation and excludes blocks and hides everywhere', () => {
@@ -127,12 +159,36 @@ describe('0101 unified social feed migration', () => {
     expect(body).toMatch(/not exists \( select 1 from public\.page_follows/);
   });
 
-  test('uses a complete stable keyset cursor and deterministic ordering', () => {
-    expect(body).toMatch(/\(p_before is null and p_before_id is null\) or \(\s*p_before is not null and p_before_id is not null and \(p\.created_at, p\.id\) < \(p_before, p_before_id\)\s*\)/);
+  test('applies an exact cursor after constructing the final ordinal sequence', () => {
+    const eligible = body.slice(body.indexOf('eligible_posts as ('), body.indexOf('raw_connections as ('));
+    expect(eligible).not.toMatch(/p_before|p_before_id/);
+    expect(body).toMatch(/row_number\(\) over \(order by i\.output_position, i\.id asc\) as ordinal/);
+    expect(body).toMatch(/c\.id = p_before_id and c\.created_at = p_before/);
+    expect(body).toMatch(/\(p_before is null and p_before_id is null and s\.ordinal > 0\)/);
+    expect(body).toMatch(/\(\s*p_before is not null and p_before_id is not null and co\.ordinal is not null and s\.ordinal > co\.ordinal\s*\)/);
     expect(body.match(/partition by [cs]\.id order by/g)).toHaveLength(2);
-    expect(body).toMatch(/c\.created_at desc, c\.id desc/);
-    expect(body).toMatch(/s\.created_at desc, s\.id desc/);
-    expect(body).toMatch(/order by i\.output_position, i\.id desc/);
+    expect(body).toMatch(/c\.created_at desc, c\.engagement_score desc, c\.id asc/);
+    expect(body).toMatch(/s\.created_at desc, s\.engagement_score desc, s\.id asc/);
+    expect(body).toMatch(/order by s\.ordinal/);
+  });
+
+  test('paginates the final tier-ranked sequence without skipping a newer later-tier row', () => {
+    const rows: ModelRow[] = [
+      { id: '00000000-0000-0000-0000-000000000001', source: 'self', createdAt: '2020-01-01T00:00:00Z', score: 0 },
+      { id: '00000000-0000-0000-0000-000000000002', source: 'buddy', createdAt: '2026-01-01T00:00:00Z', score: 10 },
+    ];
+    const first = modelPage(rows, null, 1);
+    const second = modelPage(rows, { id: first[0].id, createdAt: first[0].createdAt }, 1);
+    expect(first.map(({ id }) => id)).toEqual(['00000000-0000-0000-0000-000000000001']);
+    expect(second.map(({ id }) => id)).toEqual(['00000000-0000-0000-0000-000000000002']);
+    expect(new Set([...first, ...second].map(({ id }) => id)).size).toBe(2);
+    expect(modelPage(rows, { id: rows[0].id, createdAt: '1999-01-01T00:00:00Z' }, 1)).toEqual([]);
+  });
+
+  test('computes engagement from cheers/likes and comments without multiplying rows', () => {
+    expect(body).toMatch(/select count\(\*\) from public\.post_likes pl where pl\.post_id = p\.id/);
+    expect(body).toMatch(/select count\(\*\) from public\.post_comments pc where pc\.post_id = p\.id/);
+    expect(body).not.toMatch(/join public\.(?:post_likes|post_comments)/);
   });
 
   test('interleaves at most one suggestion after four connections without duplicates or suggestion-only output', () => {
