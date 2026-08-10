@@ -48,6 +48,36 @@ describe('unified personal feed snapshot', () => {
     });
   });
 
+  test('initial refresh refills when hydration drops an inaccessible row from a full ranked batch', async () => {
+    const firstBatch = Array.from({ length: 20 }, (_, index) => ({
+      session_id: 'initial-refill', position: index + 1, id: index === 9 ? 'inaccessible' : `visible-${index + 1}`,
+      source: 'buddy', suggested: false,
+    }));
+    mockRpc
+      .mockResolvedValueOnce({ data: 'initial-refill', error: null })
+      .mockResolvedValueOnce({ data: firstBatch, error: null })
+      .mockResolvedValueOnce({ data: [
+        { session_id: 'initial-refill', position: 21, id: 'visible-21', source: 'followed_page', suggested: false },
+      ], error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'posts') return feedQuery([
+        ...firstBatch.filter((row) => row.id !== 'inaccessible').map((row) => post(row.id)),
+        post('visible-21'),
+      ]);
+      return likedQuery([]);
+    });
+
+    const result = await listFeed();
+    expect(result).toHaveLength(20);
+    expect(result.map((item) => item.id)).toEqual([
+      ...firstBatch.filter((row) => row.id !== 'inaccessible').map((row) => row.id),
+      'visible-21',
+    ]);
+    expect(mockRpc).toHaveBeenLastCalledWith('unified_feed_post_ids', {
+      p_session_id: 'initial-refill', p_after_position: 20, p_limit: 20,
+    });
+  });
+
   test('next page advances by server position instead of timestamp', async () => {
     mockRpc
       .mockResolvedValueOnce({ data: 'session-2', error: null })
@@ -61,6 +91,36 @@ describe('unified personal feed snapshot', () => {
     ]);
     expect(mockRpc).toHaveBeenLastCalledWith('unified_feed_post_ids', {
       p_session_id: 'session-2', p_after_position: 7, p_limit: 20,
+    });
+  });
+
+  test('normal pagination refills after hydration drops ranked rows and advances their positions', async () => {
+    const rankedBatch = Array.from({ length: 20 }, (_, index) => ({
+      session_id: 'normal-refill', position: index + 2, id: index === 4 ? 'missing-normal' : `page-${index + 1}`,
+      source: 'buddy', suggested: false,
+    }));
+    mockRpc
+      .mockResolvedValueOnce({ data: 'normal-refill', error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'normal-refill', position: 1, id: 'first', source: 'self', suggested: false }], error: null })
+      .mockResolvedValueOnce({ data: rankedBatch, error: null })
+      .mockResolvedValueOnce({ data: [
+        { session_id: 'normal-refill', position: 22, id: 'page-21', source: 'suggested', suggested: true },
+      ], error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'posts') return feedQuery([
+        post('first'),
+        ...rankedBatch.filter((row) => row.id !== 'missing-normal').map((row) => post(row.id)),
+        post('page-21'),
+      ]);
+      return likedQuery([]);
+    });
+
+    await listFeed();
+    const result = await listFeed('legacy-timestamp');
+    expect(result).toHaveLength(20);
+    expect(result.at(-1)).toEqual(expect.objectContaining({ id: 'page-21', feed_position: 22 }));
+    expect(mockRpc).toHaveBeenLastCalledWith('unified_feed_post_ids', {
+      p_session_id: 'normal-refill', p_after_position: 21, p_limit: 20,
     });
   });
 

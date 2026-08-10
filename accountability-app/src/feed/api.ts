@@ -147,6 +147,12 @@ type FeedSnapshot = {
 let activeFeedSnapshot: FeedSnapshot | null = null;
 let refreshGeneration = 0;
 
+class FeedSnapshotPageError extends Error {
+  constructor(readonly original: unknown) {
+    super('Feed snapshot page could not be loaded.');
+  }
+}
+
 /** @deprecated Removed with the Feed selector in the next UI task. */
 export type FeedMode = 'buddies' | 'discover';
 
@@ -165,7 +171,7 @@ async function pageFeedSession(sessionId: string, afterPosition: number): Promis
     p_after_position: afterPosition,
     p_limit: FEED_PAGE_SIZE,
   });
-  if (error) throw error;
+  if (error) throw new FeedSnapshotPageError(error);
   return (data ?? []) as UnifiedFeedRow[];
 }
 
@@ -196,35 +202,39 @@ async function hydrateUnifiedRows(me: string, rankedRows: UnifiedFeedRow[]): Pro
   });
 }
 
-function maxPosition(rows: UnifiedFeedRow[]): number {
-  return rows.reduce((max, row) => Math.max(max, row.position), 0);
-}
-
-async function refillReplacementSession(
+async function loadHydratedSnapshotPage(
+  me: string,
   sessionId: string,
+  initialAfterPosition: number,
   seenBeforeRefresh: Set<string>,
-): Promise<{ rows: UnifiedFeedRow[]; afterPosition: number; encounteredIds: Set<string> }> {
-  const rows: UnifiedFeedRow[] = [];
-  const collectedIds = new Set<string>();
+): Promise<{ posts: UnifiedFeedPost[]; afterPosition: number; encounteredIds: Set<string> }> {
+  const posts: UnifiedFeedPost[] = [];
+  const returnedIds = new Set<string>();
   const encounteredIds = new Set<string>();
-  let afterPosition = 0;
+  let afterPosition = initialAfterPosition;
 
   // The server snapshot is capped at FEED_CANDIDATE_LIMIT, so this bound can
-  // exhaust it without an open-ended retry loop.
+  // refill around duplicates or RLS-filtered rows without an open-ended loop.
   for (let page = 0; page < FEED_REPLACEMENT_MAX_PAGES; page += 1) {
     const batch = await pageFeedSession(sessionId, afterPosition);
+    const eligibleRows = batch.filter((row) => (
+      !seenBeforeRefresh.has(row.id) && !encounteredIds.has(row.id)
+    ));
+    const hydrated = await hydrateUnifiedRows(me, eligibleRows);
+    const hydratedById = new Map(hydrated.map((post) => [post.id, post]));
     for (const row of batch) {
       afterPosition = Math.max(afterPosition, row.position);
       encounteredIds.add(row.id);
-      if (!seenBeforeRefresh.has(row.id) && !collectedIds.has(row.id)) {
-        rows.push(row);
-        collectedIds.add(row.id);
-        if (rows.length === FEED_PAGE_SIZE) break;
+      const post = hydratedById.get(row.id);
+      if (!seenBeforeRefresh.has(row.id) && post && !returnedIds.has(row.id)) {
+        posts.push(post);
+        returnedIds.add(row.id);
+        if (posts.length === FEED_PAGE_SIZE) break;
       }
     }
-    if (rows.length === FEED_PAGE_SIZE || batch.length < FEED_PAGE_SIZE) break;
+    if (posts.length === FEED_PAGE_SIZE || batch.length < FEED_PAGE_SIZE) break;
   }
-  return { rows, afterPosition, encounteredIds };
+  return { posts, afterPosition, encounteredIds };
 }
 
 async function refreshPersonalFeed(
@@ -233,26 +243,21 @@ async function refreshPersonalFeed(
 ): Promise<UnifiedFeedPost[]> {
   const generation = ++refreshGeneration;
   const sessionId = await createFeedSession();
-  const replacement = seenBeforeRefresh.size > 0
-    ? await refillReplacementSession(sessionId, seenBeforeRefresh)
-    : null;
-  const rankedRows = replacement?.rows ?? await pageFeedSession(sessionId, 0);
-  const unseenRows = replacement?.rows ?? rankedRows;
-  const posts = await hydrateUnifiedRows(me, unseenRows);
+  const page = await loadHydratedSnapshotPage(me, sessionId, 0, seenBeforeRefresh);
   const confirmedUserId = await currentUserId();
   if (confirmedUserId !== me || generation !== refreshGeneration) return [];
 
   activeFeedSnapshot = {
     ownerId: me,
     sessionId,
-    afterPosition: replacement?.afterPosition ?? maxPosition(rankedRows),
+    afterPosition: page.afterPosition,
     seenPostIds: new Set([
       ...seenBeforeRefresh,
-      ...(replacement?.encounteredIds ?? new Set(rankedRows.map((row) => row.id))),
+      ...page.encounteredIds,
     ]),
     createdAtMs: Date.now(),
   };
-  return posts;
+  return page.posts;
 }
 
 async function pagePersonalFeed(me: string): Promise<UnifiedFeedPost[]> {
@@ -262,20 +267,20 @@ async function pagePersonalFeed(me: string): Promise<UnifiedFeedPost[]> {
     return refreshPersonalFeed(me, snapshot.seenPostIds);
   }
 
-  let rankedRows: UnifiedFeedRow[];
+  let page: Awaited<ReturnType<typeof loadHydratedSnapshotPage>>;
   try {
-    rankedRows = await pageFeedSession(snapshot.sessionId, snapshot.afterPosition);
-  } catch {
+    page = await loadHydratedSnapshotPage(me, snapshot.sessionId, snapshot.afterPosition, snapshot.seenPostIds);
+  } catch (error) {
+    if (!(error instanceof FeedSnapshotPageError)) throw error;
     // A server-expired or invalid snapshot gets one fresh-session attempt. The
     // old IDs are filtered so recovery cannot duplicate already rendered rows.
     return refreshPersonalFeed(me, snapshot.seenPostIds);
   }
-  const posts = await hydrateUnifiedRows(me, rankedRows);
   const confirmedUserId = await currentUserId();
   if (confirmedUserId !== me || activeFeedSnapshot !== snapshot) return [];
-  snapshot.afterPosition = Math.max(snapshot.afterPosition, maxPosition(rankedRows));
-  rankedRows.forEach((row) => snapshot.seenPostIds.add(row.id));
-  return posts;
+  snapshot.afterPosition = page.afterPosition;
+  page.encounteredIds.forEach((id) => snapshot.seenPostIds.add(id));
+  return page.posts;
 }
 
 async function myBuddyIds(me: string | null): Promise<string[]> {
