@@ -111,6 +111,14 @@ export async function reportComment(commentId: string, reason?: string): Promise
 export const FEED_PAGE_SIZE = 20;
 export type FeedMode = 'buddies' | 'discover';
 
+export function relationshipFeedIds(
+  me: string | null,
+  buddyIds: string[],
+  followedIds: string[],
+): string[] {
+  return [...new Set([...(me ? [me] : []), ...buddyIds, ...followedIds])];
+}
+
 async function myBuddyIds(me: string | null): Promise<string[]> {
   if (!me) return [];
   const { data, error } = await supabase
@@ -119,6 +127,16 @@ async function myBuddyIds(me: string | null): Promise<string[]> {
     .or(`user_a.eq.${me},user_b.eq.${me}`);
   if (error) throw error;
   return (data ?? []).map((link: any) => (link.user_a === me ? link.user_b : link.user_a));
+}
+
+export async function myFollowedIds(me: string | null): Promise<string[]> {
+  if (!me) return [];
+  const { data, error } = await supabase
+    .from('buddy_stars')
+    .select('target')
+    .eq('starrer', me);
+  if (error) throw error;
+  return (data ?? []).map((star: any) => star.target as string);
 }
 
 /**
@@ -133,7 +151,11 @@ export async function listFeed(
   mode: FeedMode = 'buddies',
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
-  const [hidden, buddyIds] = await Promise.all([myHiddenPostIds(me), myBuddyIds(me)]);
+  const [hidden, buddyIds, followedIds] = await Promise.all([
+    myHiddenPostIds(me),
+    myBuddyIds(me),
+    myFollowedIds(me),
+  ]);
   let query = supabase
     .from('posts')
     .select(POST_SELECT)
@@ -146,7 +168,7 @@ export async function listFeed(
     query = query.eq('page_id', pageId);
   } else {
     query = query.is('group_id', null).is('page_id', null);
-    const known = me ? [me, ...buddyIds] : buddyIds;
+    const known = relationshipFeedIds(me, buddyIds, followedIds);
     if (mode === 'discover') {
       query = query.eq('audience', 'public');
       if (known.length > 0) query = query.not('user_id', 'in', `(${known.join(',')})`);
