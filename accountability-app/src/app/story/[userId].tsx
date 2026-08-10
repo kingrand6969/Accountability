@@ -88,10 +88,11 @@ export default function StoryViewer() {
 
   useEffect(() => {
     mountedRef.current = true;
+    playback.attach();
     return () => {
       mountedRef.current = false;
       focusedRef.current = false;
-      playback.dispose();
+      playback.detach();
       storyReportAction.current?.dispose();
     };
   }, [playback]);
@@ -123,10 +124,11 @@ export default function StoryViewer() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
+      playback.setPlayable(state === 'active');
       setAppActive(state === 'active');
     });
     return () => subscription.remove();
-  }, []);
+  }, [playback]);
 
   const load = useCallback(async () => {
     const requestOwner = ownerId;
@@ -211,6 +213,7 @@ export default function StoryViewer() {
 
   const goNext = useCallback(() => {
     if (!group) return;
+    playback.reset();
     if (storyIndex < group.stories.length - 1) {
       setStoryIndex(storyIndex + 1);
     } else if (groupIndex < groups.length - 1) {
@@ -219,18 +222,20 @@ export default function StoryViewer() {
     } else {
       safeClose();
     }
-  }, [group, groups.length, groupIndex, storyIndex, safeClose]);
+  }, [group, groups.length, groupIndex, storyIndex, safeClose, playback]);
 
   const goPrev = useCallback(() => {
     if (storyIndex > 0) {
+      playback.reset();
       setStoryIndex(storyIndex - 1);
     } else if (groupIndex > 0) {
+      playback.reset();
       const prev = groups[groupIndex - 1];
       setGroupIndex(groupIndex - 1);
       setStoryIndex(Math.max(0, prev.stories.length - 1));
     }
     // at the very first story: do nothing
-  }, [groups, groupIndex, storyIndex]);
+  }, [groups, groupIndex, storyIndex, playback]);
 
   useLayoutEffect(() => {
     playback.setAdvance(goNext);

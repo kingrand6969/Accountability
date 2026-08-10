@@ -19,4 +19,16 @@ describe('story viewer receipt contract', () => {
     expect(source).not.toContain('playback.current');
     expect(source).not.toContain('setTimeout(goNext');
   });
+
+  test('cancels playback synchronously for foreground loss and manual navigation', () => {
+    expect(source).toContain("playback.setPlayable(state === 'active')");
+    expect(source).toMatch(/const goNext[\s\S]*?playback\.reset\(\);[\s\S]*?setStoryIndex/);
+    expect(source).toMatch(/const goPrev[\s\S]*?playback\.reset\(\);[\s\S]*?setStoryIndex/);
+  });
+
+  test('uses replay-safe lifecycle attachment ownership', () => {
+    expect(source).toContain('playback.attach()');
+    expect(source).toContain('playback.detach()');
+    expect(source).not.toContain('playback.dispose();');
+  });
 });

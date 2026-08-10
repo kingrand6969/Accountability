@@ -19,24 +19,26 @@ export function createStoryPlaybackLifecycle(options: StoryPlaybackOptions) {
   const schedule = options.schedule ?? ((run, delay) => setTimeout(run, delay));
   const cancel = options.cancel ?? clearTimeout;
   let generation = 0;
+  let attachmentGeneration = 0;
+  let attached = true;
   let storyId: string | null = null;
   let playable = options.initialPlayable ?? true;
   let disposed = false;
   let fired = false;
   let remainingMs = durationMs;
   let startedAt = 0;
-  let timer: TimerHandle | null = null;
+  let timer: { handle: TimerHandle; token: object } | null = null;
   let advance = options.advance;
 
   function clearTimer() {
-    if (timer !== null) cancel(timer);
+    if (timer !== null) cancel(timer.handle);
     timer = null;
   }
 
-  function fire(expectedGeneration: number, expectedStoryId: string) {
-    timer = null;
+  function advanceCurrent(expectedGeneration: number, expectedStoryId: string) {
     if (
       disposed ||
+      !attached ||
       fired ||
       !playable ||
       generation !== expectedGeneration ||
@@ -46,16 +48,40 @@ export function createStoryPlaybackLifecycle(options: StoryPlaybackOptions) {
     advance();
   }
 
+  function fire(expectedGeneration: number, expectedStoryId: string, token: object) {
+    if (timer?.token !== token) return;
+    timer = null;
+    advanceCurrent(expectedGeneration, expectedStoryId);
+  }
+
   function arm() {
     clearTimer();
-    if (disposed || fired || !playable || !storyId) return;
+    if (disposed || !attached || fired || !playable || !storyId) return;
     startedAt = now();
     const expectedGeneration = generation;
     const expectedStoryId = storyId;
-    timer = schedule(() => fire(expectedGeneration, expectedStoryId), remainingMs);
+    const token = {};
+    const handle = schedule(() => fire(expectedGeneration, expectedStoryId, token), remainingMs);
+    timer = { handle, token };
   }
 
   return {
+    attach() {
+      attachmentGeneration += 1;
+      attached = true;
+      disposed = false;
+    },
+    detach() {
+      const expectedAttachment = ++attachmentGeneration;
+      attached = false;
+      generation += 1;
+      clearTimer();
+      queueMicrotask(() => {
+        if (attachmentGeneration !== expectedAttachment || attached) return;
+        disposed = true;
+        storyId = null;
+      });
+    },
     setAdvance(nextAdvance: () => void) {
       advance = nextAdvance;
     },
@@ -79,7 +105,7 @@ export function createStoryPlaybackLifecycle(options: StoryPlaybackOptions) {
     mediaEnded(endedStoryId: string) {
       if (endedStoryId !== storyId) return;
       clearTimer();
-      fire(generation, endedStoryId);
+      advanceCurrent(generation, endedStoryId);
     },
     acceptMedia(mediaGeneration: number, mediaStoryId: string) {
       return !disposed && mediaGeneration === generation && mediaStoryId === storyId;
@@ -92,6 +118,8 @@ export function createStoryPlaybackLifecycle(options: StoryPlaybackOptions) {
       clearTimer();
     },
     dispose() {
+      attachmentGeneration += 1;
+      attached = false;
       disposed = true;
       generation += 1;
       storyId = null;

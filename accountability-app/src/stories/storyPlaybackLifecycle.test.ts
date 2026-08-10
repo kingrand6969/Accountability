@@ -100,6 +100,55 @@ describe('story playback lifecycle', () => {
     expect(advance).not.toHaveBeenCalled();
   });
 
+  test('StrictMode setup cleanup setup remains usable while a true detach suppresses advance', async () => {
+    const { lifecycle, advance, elapse } = setup();
+    lifecycle.attach();
+    lifecycle.show('story-a');
+    lifecycle.detach();
+    lifecycle.attach();
+    lifecycle.show('story-a');
+    await Promise.resolve();
+    elapse(6000);
+    expect(advance).toHaveBeenCalledTimes(1);
+
+    lifecycle.show('story-b');
+    lifecycle.detach();
+    await Promise.resolve();
+    elapse(6000);
+    expect(advance).toHaveBeenCalledTimes(1);
+  });
+
+  test('a canceled queued callback cannot orphan the replacement timer', () => {
+    let now = 0;
+    let nextTimer = 1;
+    const callbacks = new Map<number, () => void>();
+    const canceled = new Set<number>();
+    const advance = jest.fn();
+    const lifecycle = createStoryPlaybackLifecycle({
+      durationMs: 6000,
+      now: () => now,
+      schedule: (run) => {
+        const id = nextTimer++;
+        callbacks.set(id, run);
+        return id;
+      },
+      cancel: (id) => canceled.add(id as number),
+      advance,
+    });
+
+    lifecycle.show('story-a');
+    now = 1000;
+    lifecycle.setPlayable(false);
+    lifecycle.setPlayable(true);
+    expect(canceled).toContain(1);
+
+    callbacks.get(1)?.();
+    lifecycle.setPlayable(false);
+    expect(canceled).toContain(2);
+    callbacks.get(2)?.();
+    expect(advance).not.toHaveBeenCalled();
+  });
+
   test('video end advances once and cancels fallback timing', () => {
     const { lifecycle, advance, elapse } = setup();
     lifecycle.show('video-a');
