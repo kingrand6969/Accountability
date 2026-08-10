@@ -111,6 +111,7 @@ export async function reportComment(commentId: string, reason?: string): Promise
 export const FEED_PAGE_SIZE = 20;
 const FEED_CANDIDATE_LIMIT = 500;
 const FEED_SESSION_MAX_AGE_MS = 29 * 60 * 1000;
+const FEED_REPLACEMENT_MAX_PAGES = Math.ceil(FEED_CANDIDATE_LIMIT / FEED_PAGE_SIZE);
 
 export type UnifiedFeedSource =
   | 'self'
@@ -199,14 +200,44 @@ function maxPosition(rows: UnifiedFeedRow[]): number {
   return rows.reduce((max, row) => Math.max(max, row.position), 0);
 }
 
+async function refillReplacementSession(
+  sessionId: string,
+  seenBeforeRefresh: Set<string>,
+): Promise<{ rows: UnifiedFeedRow[]; afterPosition: number; encounteredIds: Set<string> }> {
+  const rows: UnifiedFeedRow[] = [];
+  const collectedIds = new Set<string>();
+  const encounteredIds = new Set<string>();
+  let afterPosition = 0;
+
+  // The server snapshot is capped at FEED_CANDIDATE_LIMIT, so this bound can
+  // exhaust it without an open-ended retry loop.
+  for (let page = 0; page < FEED_REPLACEMENT_MAX_PAGES; page += 1) {
+    const batch = await pageFeedSession(sessionId, afterPosition);
+    for (const row of batch) {
+      afterPosition = Math.max(afterPosition, row.position);
+      encounteredIds.add(row.id);
+      if (!seenBeforeRefresh.has(row.id) && !collectedIds.has(row.id)) {
+        rows.push(row);
+        collectedIds.add(row.id);
+        if (rows.length === FEED_PAGE_SIZE) break;
+      }
+    }
+    if (rows.length === FEED_PAGE_SIZE || batch.length < FEED_PAGE_SIZE) break;
+  }
+  return { rows, afterPosition, encounteredIds };
+}
+
 async function refreshPersonalFeed(
   me: string,
   seenBeforeRefresh: Set<string> = new Set(),
 ): Promise<UnifiedFeedPost[]> {
   const generation = ++refreshGeneration;
   const sessionId = await createFeedSession();
-  const rankedRows = await pageFeedSession(sessionId, 0);
-  const unseenRows = rankedRows.filter((row) => !seenBeforeRefresh.has(row.id));
+  const replacement = seenBeforeRefresh.size > 0
+    ? await refillReplacementSession(sessionId, seenBeforeRefresh)
+    : null;
+  const rankedRows = replacement?.rows ?? await pageFeedSession(sessionId, 0);
+  const unseenRows = replacement?.rows ?? rankedRows;
   const posts = await hydrateUnifiedRows(me, unseenRows);
   const confirmedUserId = await currentUserId();
   if (confirmedUserId !== me || generation !== refreshGeneration) return [];
@@ -214,8 +245,11 @@ async function refreshPersonalFeed(
   activeFeedSnapshot = {
     ownerId: me,
     sessionId,
-    afterPosition: maxPosition(rankedRows),
-    seenPostIds: new Set([...seenBeforeRefresh, ...rankedRows.map((row) => row.id)]),
+    afterPosition: replacement?.afterPosition ?? maxPosition(rankedRows),
+    seenPostIds: new Set([
+      ...seenBeforeRefresh,
+      ...(replacement?.encounteredIds ?? new Set(rankedRows.map((row) => row.id))),
+    ]),
     createdAtMs: Date.now(),
   };
   return posts;

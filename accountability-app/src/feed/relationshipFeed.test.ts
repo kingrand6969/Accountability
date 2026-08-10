@@ -105,6 +105,39 @@ describe('unified personal feed snapshot', () => {
     expect(mockRpc).toHaveBeenCalledTimes(5);
   });
 
+  test('replacement session refills past a fully duplicated first page without creating another session', async () => {
+    const duplicatePage = Array.from({ length: 20 }, (_, index) => ({
+      session_id: 'replacement', position: index + 1, id: `seen-${index + 1}`,
+      source: 'buddy', suggested: false,
+    }));
+    mockRpc
+      .mockResolvedValueOnce({ data: 'original', error: null })
+      .mockResolvedValueOnce({ data: duplicatePage.map((row) => ({ ...row, session_id: 'original' })), error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'expired' } })
+      .mockResolvedValueOnce({ data: 'replacement', error: null })
+      .mockResolvedValueOnce({ data: duplicatePage, error: null })
+      .mockResolvedValueOnce({ data: [
+        { session_id: 'replacement', position: 21, id: 'fresh-1', source: 'joined_group', suggested: false },
+        { session_id: 'replacement', position: 22, id: 'fresh-2', source: 'suggested', suggested: true },
+      ], error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'posts') return feedQuery([
+        ...duplicatePage.map((row) => post(row.id)), post('fresh-2'), post('fresh-1'),
+      ]);
+      return likedQuery([]);
+    });
+
+    await expect(listFeed()).resolves.toHaveLength(20);
+    await expect(listFeed('legacy-timestamp')).resolves.toEqual([
+      expect.objectContaining({ id: 'fresh-1', feed_position: 21 }),
+      expect.objectContaining({ id: 'fresh-2', feed_position: 22 }),
+    ]);
+    expect(mockRpc.mock.calls.filter(([name]) => name === 'create_unified_feed_session')).toHaveLength(2);
+    expect(mockRpc).toHaveBeenLastCalledWith('unified_feed_post_ids', {
+      p_session_id: 'replacement', p_after_position: 20, p_limit: 20,
+    });
+  });
+
   test('drops a response when the signed-in account changes during hydration', async () => {
     mockRpc
       .mockResolvedValueOnce({ data: 'session-me', error: null })
