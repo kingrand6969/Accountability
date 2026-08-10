@@ -1,6 +1,25 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
+import {
+  discoverDataCount,
+  loadDiscoverScopeData,
+} from './DiscoverExperience';
+
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock('../auth/AuthProvider', () => ({ useAuth: () => ({ session: null }) }));
+jest.mock('../buddy/api', () => ({ listDiscoveryCandidates: jest.fn(), sendRequest: jest.fn() }));
+jest.mock('../buddy/card', () => ({ getBuddyCards: jest.fn() }));
+jest.mock('../groups/api', () => ({ joinGroup: jest.fn(), listGroups: jest.fn() }));
+jest.mock('../compete/api', () => ({
+  joinChallenge: jest.fn(),
+  listChallenges: jest.fn(),
+  metricMeta: jest.fn(() => ({ label: 'Metric' })),
+}));
+jest.mock('../ui/Toast', () => ({ showToast: jest.fn() }));
+jest.mock('@react-native-community/netinfo', () => ({
+  addEventListener: jest.fn(() => jest.fn()),
+}));
 
 const read = (name: string) => readFileSync(path.join(__dirname, name), 'utf8');
 
@@ -30,5 +49,42 @@ describe('Discover hub contract', () => {
     expect(source).not.toMatch(/createPost|publishPost|SocialModeSelector|feedMode/);
     expect(source).toContain("router.push(`/group/${row.id}` as never)");
     expect(source).toContain("router.push(`/page/${row.id}` as never)");
+  });
+});
+
+describe('people-only discovery behavior', () => {
+  test('does not call unrelated group or challenge APIs', async () => {
+    const listPeople = jest.fn(async () => ({ candidates: [{ id: 'person-1', display_name: 'Kai', avatar_url: null, area: null }], viewerArea: null }));
+    const listGroups = jest.fn(async () => { throw new Error('groups unavailable'); });
+    const listChallenges = jest.fn(async () => { throw new Error('challenges unavailable'); });
+    const getCards = jest.fn(async () => new Map());
+
+    await expect(loadDiscoverScopeData({
+      scope: 'people',
+      listPeople,
+      listGroups,
+      listChallenges,
+      getCards,
+      isCurrent: () => true,
+    })).resolves.toMatchObject({ people: [{ id: 'person-1' }], groups: [], challenges: [] });
+    expect(listGroups).not.toHaveBeenCalled();
+    expect(listChallenges).not.toHaveBeenCalled();
+    expect(getCards).toHaveBeenCalledWith(['person-1']);
+  });
+
+  test('unrelated rows cannot make an empty People section ready', () => {
+    expect(discoverDataCount('people', { people: [], groups: [{ id: 'g' }], challenges: [{ id: 'c' }] })).toBe(0);
+    expect(discoverDataCount('all', { people: [], groups: [{ id: 'g' }], challenges: [{ id: 'c' }] })).toBe(2);
+  });
+
+  test('default full discovery still loads every source and propagates a source failure', async () => {
+    await expect(loadDiscoverScopeData({
+      scope: 'all',
+      listPeople: async () => ({ candidates: [], viewerArea: null }),
+      listGroups: async () => { throw new Error('groups unavailable'); },
+      listChallenges: async () => [],
+      getCards: async () => new Map(),
+      isCurrent: () => true,
+    })).rejects.toThrow('groups unavailable');
   });
 });

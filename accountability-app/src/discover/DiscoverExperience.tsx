@@ -51,7 +51,53 @@ export function deriveDiscoverLayout(fontScale: number) {
   };
 }
 
-export function DiscoverExperience({ scope = 'all' }: { scope?: 'all' | 'people' }) {
+export type DiscoverScope = 'all' | 'people';
+
+type DiscoverScopeData = {
+  people: Candidate[];
+  cards: Map<string, BuddyCardView | null>;
+  groups: Group[];
+  challenges: ChallengeCard[];
+};
+
+export function discoverDataCount(
+  scope: DiscoverScope,
+  data: { people: readonly unknown[]; groups: readonly unknown[]; challenges: readonly unknown[] },
+) {
+  return data.people.length + (scope === 'all' ? data.groups.length + data.challenges.length : 0);
+}
+
+/** Loads only the sources that can affect the requested Discover surface. */
+export async function loadDiscoverScopeData(input: {
+  scope: DiscoverScope;
+  listPeople: typeof listDiscoveryCandidates;
+  listGroups: typeof listGroups;
+  listChallenges: typeof listChallenges;
+  getCards: typeof getBuddyCards;
+  isCurrent: () => boolean;
+}): Promise<DiscoverScopeData | null> {
+  const [discovery, rawGroups, rawChallenges] = await Promise.all([
+    input.listPeople(),
+    input.scope === 'all' ? input.listGroups() : Promise.resolve([]),
+    input.scope === 'all' ? input.listChallenges() : Promise.resolve([]),
+  ]);
+  const prepared = preparePublicCandidates(discovery.candidates, 'public_profiles');
+  if (!input.isCurrent()) return null;
+  const cards = await requestAllowedCardsIfCurrent(
+    prepared.allowedIds,
+    input.isCurrent,
+    input.getCards,
+  );
+  if (!cards || !input.isCurrent()) return null;
+  return {
+    people: prepared.candidates,
+    cards,
+    groups: keepPublicDiscoveryRows(rawGroups),
+    challenges: keepPublicDiscoveryRows(rawChallenges),
+  };
+}
+
+export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope }) {
   const router = useRouter();
   const { fontScale } = useWindowDimensions();
   const layout = deriveDiscoverLayout(fontScale);
@@ -87,29 +133,22 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: 'all' | 'people'
     const ticket = loadGuardRef.current.begin(ownerId);
     setError(null);
     try {
-      const [discovery, nextGroups, nextChallenges] = await Promise.all([
-        listDiscoveryCandidates(),
-        listGroups(),
-        listChallenges(),
-      ]);
-      const prepared = preparePublicCandidates(discovery.candidates, 'public_profiles');
       const isCurrentLoad = () =>
         mountedRef.current &&
         loadGuardRef.current.canCommit(ticket, currentOwnerRef.current);
-      if (!isCurrentLoad()) return;
-      const nextCards = await requestAllowedCardsIfCurrent(
-        prepared.allowedIds,
-        isCurrentLoad,
-        getBuddyCards,
-      );
-      if (!nextCards) return;
-      if (
-        !isCurrentLoad()
-      ) return;
-      setPeople(prepared.candidates);
-      setCards(nextCards);
-      setGroups(keepPublicDiscoveryRows(nextGroups));
-      setChallenges(keepPublicDiscoveryRows(nextChallenges));
+      const next = await loadDiscoverScopeData({
+        scope,
+        listPeople: listDiscoveryCandidates,
+        listGroups,
+        listChallenges,
+        getCards: getBuddyCards,
+        isCurrent: isCurrentLoad,
+      });
+      if (!next || !isCurrentLoad()) return;
+      setPeople(next.people);
+      setCards(next.cards);
+      setGroups(next.groups);
+      setChallenges(next.challenges);
       setDataOwnerId(ownerId);
     } catch (cause) {
       if (
@@ -125,7 +164,7 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: 'all' | 'people'
         loadGuardRef.current.canCommit(ticket, currentOwnerRef.current)
       ) setLoading(false);
     }
-  }, [ownerId]);
+  }, [ownerId, scope]);
 
   useLayoutEffect(() => {
     const loadGuard = loadGuardRef.current;
@@ -232,12 +271,12 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: 'all' | 'people'
     permission: filter === 'nearby' ? nearbyPermission : 'granted',
     nearby: filter === 'nearby',
     privacySafeNearbyQuery: false,
-    dataCount: people.length + groups.length + challenges.length,
+    dataCount: discoverDataCount(scope, { people, groups, challenges }),
   });
   const showData =
     dataOwnerId === ownerId && (state.status === 'ready' ||
     ((state.status === 'offline' || state.status === 'error') &&
-      people.length + groups.length + challenges.length > 0));
+      discoverDataCount(scope, { people, groups, challenges }) > 0));
 
   return (
     <ScrollView

@@ -378,7 +378,7 @@ describe('DiscoverViewState contract', () => {
     expect(experience).toContain('prepared.allowedIds,');
     expect(experience).toContain('getBuddyCards,');
     expect(experience).toContain('requestAllowedCardsIfCurrent(');
-    expect(experience).toContain('if (!isCurrentLoad()) return;');
+    expect(experience).toContain('if (!input.isCurrent()) return null;');
   });
 
   test('reflows search, filters, Nearby copy and state notices from 125 percent text', () => {
