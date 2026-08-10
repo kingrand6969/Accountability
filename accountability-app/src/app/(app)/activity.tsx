@@ -39,7 +39,7 @@ const PILLARS: {
   tint: string;
   title: string;
   sub: string;
-  route: '/gym' | '/finance' | '/today' | '/messages' | '/run' | '/insights' | '/achievements';
+  route: '/gym' | '/today' | '/messages' | '/run' | '/insights' | '/achievements';
 }[] = [
   {
     key: 'body',
@@ -48,14 +48,6 @@ const PILLARS: {
     title: 'Body',
     sub: 'Workout, movement and recovery',
     route: '/gym',
-  },
-  {
-    key: 'money',
-    icon: 'cash-outline',
-    tint: '#168B55',
-    title: 'Money',
-    sub: 'Savings promises and financial proof',
-    route: '/finance',
   },
   {
     key: 'focus',

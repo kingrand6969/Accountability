@@ -172,14 +172,6 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="finance"
-        options={{
-          title: 'Finance',
-          tabBarIcon: tabIcon('wallet', 'wallet-outline'),
-          headerShown: false, // glass hero runs edge-to-edge
-        }}
-      />
-      <Tabs.Screen
         name="activity"
         options={{
           title: 'Journey',

@@ -30,10 +30,10 @@ it('removes a selected promise', () => {
 it('does not add a fourth promise', () => {
   expect([
     ...togglePromiseSelection(
-      new Set(['body-run', 'money-save', 'focus-work']),
+      new Set(['body-run', 'body-strength', 'focus-work']),
       'people-call',
     ),
-  ]).toEqual(['body-run', 'money-save', 'focus-work']);
+  ]).toEqual(['body-run', 'body-strength', 'focus-work']);
 });
 
 it('describes skip completion without a timeline write', () => {
@@ -151,7 +151,7 @@ it('retries partial timeline persistence without duplicating reconciled rows', a
   const setItem = jest.fn(async () => {});
   const request = {
     userId: 'u1',
-    selected: new Set(['body-run', 'money-save']),
+    selected: new Set(['body-run', 'body-strength']),
     completion: 'start' as const,
   };
 
@@ -161,7 +161,7 @@ it('retries partial timeline persistence without duplicating reconciled rows', a
   await expect(completePromiseSelection(request, { persistTimeline, setItem })).resolves.toEqual({
     outcome: 'completed',
   });
-  expect(rows.map((row) => row.title)).toEqual(['Morning run 3.2 km', 'Save $50']);
+  expect(rows.map((row) => row.title)).toEqual(['Morning run 3.2 km', 'Strength workout']);
 });
 
 it('keeps completion keys isolated when accounts switch', async () => {
@@ -172,14 +172,14 @@ it('keeps completion keys isolated when accounts switch', async () => {
     dependencies,
   );
   await completePromiseSelection(
-    { userId: 'user-b', selected: new Set(['money-save']), completion: 'start' },
+    { userId: 'user-b', selected: new Set(['body-strength']), completion: 'start' },
     dependencies,
   );
 
   expect(dependencies.setItem.mock.calls).toEqual([
     ['daily-promises:user-a', '["body-run"]'],
     ['onboarded:user-a', '1'],
-    ['daily-promises:user-b', '["money-save"]'],
+    ['daily-promises:user-b', '["body-strength"]'],
     ['onboarded:user-b', '1'],
   ]);
 });

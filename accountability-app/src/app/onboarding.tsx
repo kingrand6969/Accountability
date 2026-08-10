@@ -30,7 +30,7 @@ import {
 
 const PROMISES = [
   { id: 'body-run', group: 'Body', icon: 'walk' as const, color: '#2563EB', title: 'Morning run 3.2 km' },
-  { id: 'money-save', group: 'Money', icon: 'cash' as const, color: '#16A34A', title: 'Save $50' },
+  { id: 'body-strength', group: 'Body', icon: 'barbell' as const, color: '#16A34A', title: 'Strength workout' },
   { id: 'focus-work', group: 'Focus', icon: 'radio-button-on' as const, color: '#7C3AED', title: '90 min deep work' },
   { id: 'people-call', group: 'People', icon: 'people' as const, color: '#EA580C', title: 'Call someone I care about' },
 ] as const;
@@ -326,7 +326,7 @@ export default function Onboarding() {
       </View>
       <Text style={styles.title}>Welcome to AccountAbility</Text>
       <Text style={styles.subtitle}>
-        Plan your day, track workouts, food, money and runs — and keep your
+        Plan your day, track workouts, meals and runs — and keep your
         streak alive. Let&apos;s set you up.
       </Text>
 
