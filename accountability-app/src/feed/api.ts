@@ -111,27 +111,6 @@ export async function reportComment(commentId: string, reason?: string): Promise
 export const FEED_PAGE_SIZE = 20;
 export type FeedMode = 'buddies' | 'discover';
 
-export function relationshipFeedIds(
-  me: string | null,
-  buddyIds: string[],
-  followedIds: string[],
-): string[] {
-  return [...new Set([...(me ? [me] : []), ...buddyIds, ...followedIds])];
-}
-
-const MAX_RELATIONSHIP_FILTER_LENGTH = 8_000;
-
-export function relationshipAuthorFilter(
-  ids: string[],
-  maxLength = MAX_RELATIONSHIP_FILTER_LENGTH,
-): string {
-  const filter = `(${ids.join(',')})`;
-  if (filter.length > maxLength) {
-    throw new Error('Relationship feed is too large to load safely.');
-  }
-  return filter;
-}
-
 async function myBuddyIds(me: string | null): Promise<string[]> {
   if (!me) return [];
   const { data, error } = await supabase
@@ -140,38 +119,6 @@ async function myBuddyIds(me: string | null): Promise<string[]> {
     .or(`user_a.eq.${me},user_b.eq.${me}`);
   if (error) throw error;
   return (data ?? []).map((link: any) => (link.user_a === me ? link.user_b : link.user_a));
-}
-
-type FollowedIdPage = {
-  data: { target: string }[] | null;
-  error: unknown;
-};
-
-export async function collectFollowedIds(
-  loadPage: (from: number, to: number) => Promise<FollowedIdPage>,
-  pageSize = 500,
-): Promise<string[]> {
-  const ids = new Set<string>();
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await loadPage(from, from + pageSize - 1);
-    if (error) throw error;
-    const rows = data ?? [];
-    for (const row of rows) ids.add(row.target);
-    if (rows.length < pageSize) return [...ids];
-  }
-}
-
-export async function myFollowedIds(me: string | null): Promise<string[]> {
-  if (!me) return [];
-  return collectFollowedIds(async (from, to) => {
-    const { data, error } = await supabase
-      .from('buddy_stars')
-      .select('target')
-      .eq('starrer', me)
-      .order('target', { ascending: true })
-      .range(from, to);
-    return { data: data as { target: string }[] | null, error };
-  });
 }
 
 /**
@@ -186,10 +133,32 @@ export async function listFeed(
   mode: FeedMode = 'buddies',
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
-  const [hidden, buddyIds, followedIds] = await Promise.all([
+  if (!groupId && !pageId) {
+    const { data: idRows, error: idError } = await supabase.rpc('personal_feed_post_ids', {
+      p_mode: mode,
+      p_before: beforeCreatedAt ?? null,
+      p_limit: FEED_PAGE_SIZE,
+    });
+    if (idError) throw idError;
+    const ids: string[] = (idRows ?? []).map((row: any) => row.id as string);
+    if (ids.length === 0) return [];
+    const { data, error } = await supabase.from('posts').select(POST_SELECT).in('id', ids);
+    if (error) throw error;
+    const rowsById = new Map((data ?? []).map((row: any) => [row.id as string, row]));
+    const rows = ids.flatMap((id) => {
+      const row = rowsById.get(id);
+      return row ? [row] : [];
+    });
+    const [likedSet, profiles] = await Promise.all([
+      myLikedSet(me, rows.map((row: any) => row.id)),
+      getPublicProfiles(profileIds(rows)),
+    ]);
+    return rows.map((row: any) => mapPost(row, likedSet, profiles));
+  }
+
+  const [hidden] = await Promise.all([
     myHiddenPostIds(me),
     myBuddyIds(me),
-    groupId || pageId ? Promise.resolve([]) : myFollowedIds(me),
   ]);
   let query = supabase
     .from('posts')
@@ -199,20 +168,8 @@ export async function listFeed(
   if (hidden.length > 0) query = query.not('id', 'in', `(${hidden.join(',')})`);
   if (groupId) {
     query = query.eq('group_id', groupId);
-  } else if (pageId) {
-    query = query.eq('page_id', pageId);
   } else {
-    query = query.is('group_id', null).is('page_id', null);
-    const known = relationshipFeedIds(me, buddyIds, followedIds);
-    const knownFilter = known.length > 0 ? relationshipAuthorFilter(known) : null;
-    if (mode === 'discover') {
-      query = query.eq('audience', 'public');
-      if (knownFilter) query = query.not('user_id', 'in', knownFilter);
-    } else if (known.length > 0) {
-      query = query.in('user_id', known);
-    } else {
-      return [];
-    }
+    query = query.eq('page_id', pageId);
   }
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
   const { data, error } = await query;
