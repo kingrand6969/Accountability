@@ -40,6 +40,50 @@ revoke all on table public.feed_session_items from public, anon, authenticated;
 grant select on table public.feed_sessions to authenticated;
 grant select on table public.feed_session_items to authenticated;
 
+create or replace function public.purge_expired_feed_sessions(
+  p_batch integer default 5000
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_deleted integer;
+begin
+  with expired as (
+    select id from public.feed_sessions
+     where expires_at <= now()
+     order by expires_at, id
+     limit least(greatest(coalesce(p_batch, 5000), 1), 10000)
+  )
+  delete from public.feed_sessions s using expired e where s.id = e.id;
+  get diagnostics v_deleted = row_count;
+  return v_deleted;
+end
+$function$;
+
+revoke all on function public.purge_expired_feed_sessions(integer)
+  from public, anon, authenticated;
+
+do $feed_session_cron$
+declare
+  v_jobid bigint;
+begin
+  create extension if not exists pg_cron;
+  for v_jobid in select jobid from cron.job where jobname = 'purge-expired-feed-sessions' loop
+    perform cron.unschedule(v_jobid);
+  end loop;
+  perform cron.schedule(
+    'purge-expired-feed-sessions',
+    '*/15 * * * *',
+    'select public.purge_expired_feed_sessions(5000)'
+  );
+exception when others then
+  null;
+end
+$feed_session_cron$;
+
 create or replace function public.create_unified_feed_session(
   p_candidate_limit integer default 500
 )
@@ -55,10 +99,19 @@ declare
   v_per_source integer;
 begin
   if v_viewer is null then raise exception 'Authentication required' using errcode = '42501'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('feed-session:' || v_viewer::text, 0));
   v_per_source := greatest(1, floor(v_candidate_limit / 6.0)::integer);
 
+  perform public.purge_expired_feed_sessions(5000);
   delete from public.feed_sessions where user_id = v_viewer and expires_at <= now();
   insert into public.feed_sessions (user_id) values (v_viewer) returning id into v_session_id;
+  delete from public.feed_sessions
+   where id in (
+     select id from public.feed_sessions
+      where user_id = v_viewer and expires_at > now()
+      order by created_at desc, id desc
+      offset 3
+   );
 
   insert into public.feed_session_items (session_id, position, post_id, source, suggested)
   with candidate_posts as (
@@ -70,7 +123,8 @@ begin
     union all
     (select p.id, p.created_at, 'buddy'::text, 1
        from public.posts p
-      where public.are_buddies(v_viewer, p.user_id) and p.moderation_state = 'visible'
+      where p.user_id <> v_viewer and public.are_buddies(v_viewer, p.user_id)
+        and p.moderation_state = 'visible'
         and not public.users_blocked(v_viewer, p.user_id)
         and (p.page_id is not null or (p.group_id is not null and exists (select 1 from public.group_members gm where gm.group_id=p.group_id and gm.user_id=v_viewer)) or (p.group_id is null and p.page_id is null and (p.audience='public' or (p.audience='buddies' and public.are_buddies(p.user_id, v_viewer)))))
         and not exists (select 1 from public.post_hides h where h.post_id=p.id and h.user_id=v_viewer)
@@ -78,7 +132,8 @@ begin
     union all
     (select p.id, p.created_at, 'followed_person'::text, 2
        from public.posts p
-      where exists (select 1 from public.buddy_stars s where s.starrer=v_viewer and s.target=p.user_id)
+      where p.user_id <> v_viewer and not public.are_buddies(v_viewer,p.user_id)
+        and exists (select 1 from public.buddy_stars s where s.starrer=v_viewer and s.target=p.user_id)
         and p.moderation_state = 'visible' and not public.users_blocked(v_viewer, p.user_id)
         and (p.page_id is not null or (p.group_id is not null and exists (select 1 from public.group_members gm where gm.group_id=p.group_id and gm.user_id=v_viewer)) or (p.group_id is null and p.page_id is null and (p.audience='public' or (p.audience='buddies' and public.are_buddies(p.user_id, v_viewer)))))
         and not exists (select 1 from public.post_hides h where h.post_id=p.id and h.user_id=v_viewer)
@@ -87,6 +142,8 @@ begin
     (select p.id, p.created_at, 'joined_group'::text, 3
        from public.posts p
       where p.group_id is not null and exists (select 1 from public.group_members gm where gm.group_id=p.group_id and gm.user_id=v_viewer)
+        and p.user_id <> v_viewer and not public.are_buddies(v_viewer,p.user_id)
+        and not exists (select 1 from public.buddy_stars s where s.starrer=v_viewer and s.target=p.user_id)
         and p.moderation_state = 'visible' and (p.user_id=v_viewer or not public.users_blocked(v_viewer,p.user_id))
         and not exists (select 1 from public.post_hides h where h.post_id=p.id and h.user_id=v_viewer)
       order by p.created_at desc, p.id asc limit v_per_source)
@@ -94,6 +151,9 @@ begin
     (select p.id, p.created_at, 'followed_page'::text, 4
        from public.posts p
       where p.page_id is not null and exists (select 1 from public.page_follows pf where pf.page_id=p.page_id and pf.user_id=v_viewer)
+        and p.user_id <> v_viewer and not public.are_buddies(v_viewer,p.user_id)
+        and not exists (select 1 from public.buddy_stars s where s.starrer=v_viewer and s.target=p.user_id)
+        and not exists (select 1 from public.group_members gm where gm.group_id=p.group_id and gm.user_id=v_viewer)
         and p.moderation_state = 'visible' and (p.user_id=v_viewer or not public.users_blocked(v_viewer,p.user_id))
         and not exists (select 1 from public.post_hides h where h.post_id=p.id and h.user_id=v_viewer)
       order by p.created_at desc, p.id asc limit v_per_source)
@@ -122,7 +182,8 @@ begin
   scored as (
     select p.id, p.created_at, p.source, p.source_priority,
            (select count(*) from public.post_likes pl where pl.post_id = p.id)
-           + (select count(*) from public.post_comments pc where pc.post_id = p.id) as engagement_score
+           + (select count(*) from public.post_comments pc
+               where pc.post_id = p.id and pc.moderation_state = 'visible') as engagement_score
       from bounded_candidates p
   ),
   connections as (

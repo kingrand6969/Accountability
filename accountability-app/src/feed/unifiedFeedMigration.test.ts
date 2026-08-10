@@ -163,6 +163,43 @@ function pageModelSession(
     .slice(0, modelPagerLimit(requestedLimit));
 }
 
+type OverlapCandidate = {
+  id: string;
+  buddy: boolean;
+  followed: boolean;
+  group: boolean;
+  page: boolean;
+  createdAt: string;
+};
+
+function classifyBoundedCandidates(candidates: OverlapCandidate[], perSource: number) {
+  const newest = (rows: OverlapCandidate[]) => [...rows]
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, perSource);
+  const selected: [string, ModelSource][] = [];
+  selected.push(...newest(candidates.filter(({ buddy }) => buddy))
+    .map(({ id }): [string, ModelSource] => [id, 'buddy']));
+  selected.push(...newest(candidates.filter(({ buddy, followed }) => !buddy && followed))
+    .map(({ id }): [string, ModelSource] => [id, 'followed_person']));
+  selected.push(...newest(candidates.filter(({ buddy, followed, group }) =>
+    !buddy && !followed && group)).map(({ id }): [string, ModelSource] => [id, 'joined_group']));
+  selected.push(...newest(candidates.filter(({ buddy, followed, group, page }) =>
+    !buddy && !followed && !group && page)).map(({ id }): [string, ModelSource] => [id, 'followed_page']));
+  return selected;
+}
+
+function modelGlobalPurge<T extends { expiresAt: number }>(sessions: T[], now: number, batch: number): T[] {
+  const expired = sessions.filter(({ expiresAt }) => expiresAt <= now)
+    .sort((left, right) => left.expiresAt - right.expiresAt)
+    .slice(0, Math.min(Math.max(batch, 1), 10000));
+  const purged = new Set(expired);
+  return sessions.filter((session) => !purged.has(session));
+}
+
+function modelEngagementScore(likes: number, comments: ('visible' | 'quarantined')[]): number {
+  return likes + comments.filter((state) => state === 'visible').length;
+}
+
 describe('0101 unified social feed migration', () => {
   const statements = executableStatements(readFileSync(MIGRATION_PATH, 'utf8'));
   const normalized = statements.map(normalize);
@@ -184,8 +221,10 @@ describe('0101 unified social feed migration', () => {
         /^drop policy if exists [a-z_]+ on public\.(?:feed_sessions|feed_session_items)$/,
         /^create policy [a-z_]+ on public\.(?:feed_sessions|feed_session_items)\b/,
         /^create or replace function public\.(?:create_unified_feed_session|unified_feed_post_ids)\s*\(/,
+        /^create or replace function public\.purge_expired_feed_sessions\s*\(/,
+        /^do \$feed_session_cron\$ declare v_jobid bigint; begin create extension if not exists pg_cron; for v_jobid in select jobid from cron\.job where jobname = 'purge-expired-feed-sessions' loop perform cron\.unschedule\(v_jobid\); end loop; perform cron\.schedule\( 'purge-expired-feed-sessions', '\*\/15 \* \* \* \*', 'select public\.purge_expired_feed_sessions\(5000\)' \); exception when others then null; end \$feed_session_cron\$$/,
         /^drop function if exists public\.unified_feed_post_ids\(timestamptz, uuid, integer\)$/,
-        /^revoke all on (?:table public\.(?:feed_sessions|feed_session_items)|function public\.(?:create_unified_feed_session|unified_feed_post_ids)\([^)]*\)) from public, anon(?:, authenticated)?$/,
+        /^revoke all on (?:table public\.(?:feed_sessions|feed_session_items)|function public\.(?:create_unified_feed_session|unified_feed_post_ids|purge_expired_feed_sessions)\([^)]*\)) from public, anon(?:, authenticated)?$/,
         /^grant select on table public\.(?:feed_sessions|feed_session_items) to authenticated$/,
         /^grant execute on function public\.(?:create_unified_feed_session|unified_feed_post_ids)\([^)]*\) to authenticated$/,
       ].filter((pattern) => pattern.test(statement));
@@ -231,6 +270,30 @@ describe('0101 unified social feed migration', () => {
     expect(creator).toMatch(/delete from public\.feed_sessions where user_id = v_viewer and expires_at <= now\(\)/);
     expect(creator).toMatch(/insert into public\.feed_sessions \(user_id\) values \(v_viewer\)/);
     expect(creator).not.toMatch(/p_user|security invoker/);
+    expect(creatorBody).toMatch(/perform public\.purge_expired_feed_sessions\(5000\)/);
+    expect(creatorBody).toMatch(/delete from public\.feed_sessions[\s\S]*user_id = v_viewer[\s\S]*offset 3/);
+  });
+
+  test('purges globally expired sessions in bounded batches and schedules replay-safely', () => {
+    const purge = normalize(statements.find((statement) => /^create or replace function public\.purge_expired_feed_sessions/i.test(statement)) ?? '');
+    expect(purge).toMatch(/p_batch integer default 5000/);
+    expect(purge).toMatch(/returns integer language plpgsql security definer set search_path = public/);
+    expect(purge).toMatch(/where expires_at <= now\(\) order by expires_at, id limit least\(greatest\(coalesce\(p_batch, 5000\), 1\), 10000\)/);
+    expect(purge).toMatch(/delete from public\.feed_sessions s using expired e where s\.id = e\.id/);
+    expect(purge).toMatch(/get diagnostics v_deleted = row_count[\s\S]*return v_deleted/);
+    expect(normalized).toContain('revoke all on function public.purge_expired_feed_sessions(integer) from public, anon, authenticated');
+    const cron = normalized.find((statement) => /^do \$feed_session_cron\$/.test(statement)) ?? '';
+    expect(cron).toMatch(/create extension if not exists pg_cron/);
+    expect(cron).toMatch(/select jobid from cron\.job where jobname = 'purge-expired-feed-sessions'/);
+    expect(cron).toMatch(/perform cron\.unschedule\(v_jobid\)/);
+    expect(cron).toMatch(/perform cron\.schedule\( 'purge-expired-feed-sessions', '\*\/15 \* \* \* \*', 'select public\.purge_expired_feed_sessions\(5000\)' \)/);
+    expect(cron).toMatch(/exception when others then null/);
+    const sessions = [
+      { id: 'abandoned-a', owner: 'absent-a', expiresAt: 1 },
+      { id: 'abandoned-b', owner: 'absent-b', expiresAt: 2 },
+      { id: 'active', owner: 'viewer', expiresAt: 100 },
+    ];
+    expect(modelGlobalPurge(sessions, 50, 1).map(({ id }) => id)).toEqual(['abandoned-b', 'active']);
   });
 
   test('uses the real relationship directions and all five connection tiers', () => {
@@ -240,6 +303,21 @@ describe('0101 unified social feed migration', () => {
     expect(creatorBody).toMatch(/'joined_group'::text[\s\S]*?public\.group_members gm[\s\S]*?gm\.group_id=p\.group_id and gm\.user_id=v_viewer/);
     expect(creatorBody).toMatch(/'followed_page'::text[\s\S]*?public\.page_follows pf[\s\S]*?pf\.page_id=p\.page_id and pf\.user_id=v_viewer/);
     expect(creatorBody).not.toMatch(/'buddy'::text[\s\S]{0,160}p\.group_id is null/);
+    expect(creatorBody).toMatch(/'buddy'::text[\s\S]*?p\.user_id <> v_viewer/);
+    expect(creatorBody).toMatch(/'followed_person'::text[\s\S]*?p\.user_id <> v_viewer[\s\S]*?not public\.are_buddies\(v_viewer,p\.user_id\)/);
+    expect(creatorBody).toMatch(/'joined_group'::text[\s\S]*?p\.user_id <> v_viewer[\s\S]*?not public\.are_buddies\(v_viewer,p\.user_id\)[\s\S]*?not exists \(select 1 from public\.buddy_stars/);
+    expect(creatorBody).toMatch(/'followed_page'::text[\s\S]*?p\.user_id <> v_viewer[\s\S]*?not public\.are_buddies\(v_viewer,p\.user_id\)[\s\S]*?not exists \(select 1 from public\.buddy_stars[\s\S]*?not exists \(select 1 from public\.group_members/);
+  });
+
+  test('excludes truncated higher-tier overlaps from every lower-tier branch', () => {
+    const candidates = [
+      { id: 'buddy-new', buddy: true, followed: false, group: true, page: false, createdAt: '3' },
+      { id: 'buddy-old', buddy: true, followed: false, group: true, page: true, createdAt: '2' },
+      { id: 'follow-old', buddy: false, followed: true, group: true, page: true, createdAt: '1' },
+    ];
+    expect(classifyBoundedCandidates(candidates, 1)).toEqual([
+      ['buddy-new', 'buddy'], ['follow-old', 'followed_person'],
+    ]);
   });
 
   test('preserves RLS/moderation and excludes blocks and hides everywhere', () => {
@@ -391,8 +469,9 @@ describe('0101 unified social feed migration', () => {
 
   test('computes engagement from cheers/likes and comments without multiplying rows', () => {
     expect(creatorBody).toMatch(/select count\(\*\) from public\.post_likes pl where pl\.post_id = p\.id/);
-    expect(creatorBody).toMatch(/select count\(\*\) from public\.post_comments pc where pc\.post_id = p\.id/);
+    expect(creatorBody).toMatch(/select count\(\*\) from public\.post_comments pc where pc\.post_id = p\.id and pc\.moderation_state = 'visible'/);
     expect(creatorBody).not.toMatch(/join public\.(?:post_likes|post_comments)/);
+    expect(modelEngagementScore(2, ['visible', 'quarantined', 'visible'])).toBe(4);
   });
 
   test('interleaves at most one suggestion after four connections without duplicates or suggestion-only output', () => {
