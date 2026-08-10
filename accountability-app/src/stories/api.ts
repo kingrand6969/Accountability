@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { resolveMediaUrls } from '../media/privateMedia';
+import { orderStoryGroups } from './storyOrdering';
 
 export type Story = {
   id: string;
@@ -16,8 +17,55 @@ export type StoryGroup = {
   name: string | null;
   avatar: string | null;
   isMe: boolean;
+  viewed: boolean;
+  latestCreatedAt: string;
   stories: Story[];
 };
+
+type PublicProfile = { display_name?: string | null; avatar_url?: string | null };
+
+export function buildStoryGroups(
+  rows: Story[],
+  uid: string | null,
+  viewedStoryIds: ReadonlySet<string>,
+  authors: ReadonlyMap<string, PublicProfile>,
+): StoryGroup[] {
+  const byUser = new Map<string, Story[]>();
+  for (const story of rows) {
+    const list = byUser.get(story.user_id) ?? [];
+    list.push(story);
+    byUser.set(story.user_id, list);
+  }
+  return orderStoryGroups(
+    [...byUser.entries()].map(([user_id, stories]) => {
+      const isMe = user_id === uid;
+      const latestCreatedAt = stories[stories.length - 1]?.created_at ?? '';
+      return {
+        user_id,
+        name: authors.get(user_id)?.display_name ?? null,
+        avatar: authors.get(user_id)?.avatar_url ?? null,
+        isMe,
+        viewed: isMe || stories.every((story) => viewedStoryIds.has(story.id)),
+        latestCreatedAt,
+        stories,
+      };
+    }),
+  );
+}
+
+type ReceiptError = { code?: string } | null;
+type InsertReceipt = (
+  values: { story_id: string; user_id: string },
+) => PromiseLike<{ error: ReceiptError }>;
+
+export async function insertStoryViewReceipt(
+  storyId: string,
+  userId: string,
+  insert: InsertReceipt,
+): Promise<void> {
+  const { error } = await insert({ story_id: storyId, user_id: userId });
+  if (error && error.code !== '23505') throw error;
+}
 
 async function me(): Promise<string | null> {
   const { data } = await supabase.auth.getUser();
@@ -40,22 +88,26 @@ export async function listStoryGroups(): Promise<StoryGroup[]> {
     ...story,
     image_url: urls.get(story.image_url) ?? story.image_url,
   }));
-  const byUser = new Map<string, Story[]>();
-  for (const s of rows) {
-    const list = byUser.get(s.user_id) ?? [];
-    list.push(s);
-    byUser.set(s.user_id, list);
+  const viewedStoryIds = new Set<string>();
+  if (uid && rawRows.length > 0) {
+    const { data: receipts, error: receiptError } = await supabase
+      .from('story_views')
+      .select('story_id')
+      .eq('user_id', uid)
+      .in('story_id', rawRows.map((story) => story.id));
+    if (receiptError) throw receiptError;
+    for (const receipt of receipts ?? []) viewedStoryIds.add(receipt.story_id as string);
   }
-  const authors = await getPublicProfiles([...byUser.keys()]);
-  const groups: StoryGroup[] = [...byUser.entries()].map(([user_id, stories]) => ({
-    user_id,
-    name: authors.get(user_id)?.display_name ?? null,
-    avatar: authors.get(user_id)?.avatar_url ?? null,
-    isMe: user_id === uid,
-    stories,
-  }));
-  groups.sort((a, b) => Number(b.isMe) - Number(a.isMe));
-  return groups;
+  const authors = await getPublicProfiles([...new Set(rows.map((story) => story.user_id))]);
+  return buildStoryGroups(rows, uid, viewedStoryIds, authors);
+}
+
+export async function markStoryViewed(storyId: string): Promise<void> {
+  const uid = await me();
+  if (!uid) throw new Error('Not signed in.');
+  await insertStoryViewReceipt(storyId, uid, (values) =>
+    supabase.from('story_views').insert(values),
+  );
 }
 
 /** Post a 24-hour story (image required — that's what a story is). */

@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import {
   deriveFeedCardPresentation,
   deriveFeedViewState,
-  deriveMyDayValues,
   feedRowsBelongToView,
   restoreFeedSession,
   scheduleIdentityBoundAction,
@@ -21,7 +20,6 @@ function source(name: string) {
 }
 const brandHeaderSource = source('SocialBrandHeader.tsx');
 const modeSelectorSource = source('SocialModeSelector.tsx');
-const myDaySource = source('MyDayRail.tsx');
 const proofCardSource = source('FeedProofCard.tsx');
 const headlineSource = source('ProofHeadlineOverlay.tsx');
 const metricSource = source('RunRouteMetricOverlay.tsx');
@@ -53,7 +51,6 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain("router.push('/compose' as never)");
     expect(feedSource).toContain("router.push('/compose?photo=1' as never)");
     expect(feedSource).toContain("router.push('/win-card' as never)");
-    expect(feedSource).toContain('<MyDayRail values={myDayValues} />');
     expect(feedSource).toContain('<StoryRail');
     expect(feedSource).toContain('ref={storyRailRef}');
     expect(feedSource).toContain("pathname: '/post/[id]'");
@@ -64,11 +61,9 @@ describe('Group 3 social Feed contract', () => {
   test('uses the approved Group 3 Feed presentation contracts', () => {
     expect(feedSource).toContain("from '../../feed/SocialBrandHeader'");
     expect(feedSource).toContain("from '../../feed/SocialModeSelector'");
-    expect(feedSource).toContain("from '../../feed/MyDayRail'");
     expect(feedSource).toContain("from '../../feed/FeedProofCard'");
     expect(feedSource).toContain('<SocialBrandHeader');
     expect(feedSource).toContain('<SocialModeSelector');
-    expect(feedSource).toContain('<MyDayRail');
     expect(feedSource).toContain('<FeedProofCard');
   });
 
@@ -91,15 +86,6 @@ describe('Group 3 social Feed contract', () => {
     expect(brandHeaderSource).toContain('accessibilityLabel="AccountAbility"');
     expect(brandHeaderSource).toContain('minWidth: 44');
     expect(brandHeaderSource).toContain('minHeight: 44');
-  });
-
-  test('keeps a deterministic four-tile My Day model without fabricated metrics', () => {
-    expect(myDaySource).toContain("key: 'move'");
-    expect(myDaySource).toContain("key: 'fuel'");
-    expect(myDaySource).toContain("key: 'mind'");
-    expect(myDaySource).toContain("key: 'connect'");
-    expect(myDaySource).toContain("value.value ?? 'Not set'");
-    expect(myDaySource).not.toContain('<StoryRail');
   });
 
   test('uses approved proof typography, metrics, actions, and supporter summary', () => {
@@ -133,7 +119,7 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('ListHeaderComponent={feedHeader}');
     expect(feedSource).not.toContain('return false ?');
     expect(feedSource).toContain('const feedHeader = (');
-    expect(feedSource).toContain('<MyDayRail');
+    expect(feedSource).toContain('<StoryRail');
   });
 
   test('keeps previews best-effort, suppresses Pro ads, and separates error from empty', () => {
@@ -150,7 +136,6 @@ describe('Group 3 social Feed contract', () => {
       feedSource,
       brandHeaderSource,
       modeSelectorSource,
-      myDaySource,
       proofCardSource,
       headlineSource,
       metricSource,
@@ -184,24 +169,6 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).not.toContain('JSON.stringify(page)');
   });
 
-  test('derives honest My Day values only from authorized inputs', () => {
-    const run = {
-      id: 'run-1',
-      user_id: 'me',
-      post_type: 'run',
-      image_url: 'authorized-image',
-      share_data: { verified: true, distance_m: 5200 },
-    } as unknown as FeedPost;
-    const values = deriveMyDayValues([run], 'me', 3);
-    expect(values.move).toEqual({ value: '5.20 km', image: 'authorized-image' });
-    expect(values.connect.value).toBe('3 encouraged');
-    expect(values.fuel).toEqual({ value: null, image: null });
-    expect(deriveMyDayValues([run], 'someone-else', 0).move).toEqual({
-      value: null,
-      image: null,
-    });
-  });
-
   test('derives truthful ownership, audience, and redaction labels', () => {
     const post = {
       user_id: 'me',
@@ -220,14 +187,13 @@ describe('Group 3 social Feed contract', () => {
     });
   });
 
-  test('keeps the story controller mounted outside the closing create modal', () => {
+  test('keeps the visible story rail in the Feed header and picker ref available', () => {
     expect(feedSource).toContain('<StoryRail');
     expect(feedSource).toContain('ref={storyRailRef}');
-    expect(feedSource).toContain('controllerOnly');
-    expect(feedSource.indexOf('</Modal>')).toBeLessThan(feedSource.lastIndexOf('<StoryRail'));
+    expect(feedSource).not.toContain('controllerOnly');
+    expect(feedSource.indexOf('<StoryRail', feedSource.indexOf('const feedHeader'))).toBeGreaterThan(-1);
     expect(feedSource).toContain('storyRailRef.current?.openPicker()');
-    expect(storyRailSource).toContain('if (controllerOnly) return;');
-    expect(storyRailSource).toContain('if (controllerOnly) {');
+    expect(storyRailSource).not.toContain('controllerOnly');
   });
 
   test('never exposes rows across logout or account transitions', () => {
@@ -275,7 +241,7 @@ describe('Group 3 social Feed contract', () => {
   test('tears down story editor state across logout and account switch', () => {
     expect(feedSource).toContain('{myId ? (');
     expect(feedSource).toContain('key={myId}');
-    expect(feedSource).toContain('controllerOnly');
+    expect(feedSource).not.toContain('controllerOnly');
     expect(feedSource).toContain("disabled={item.kind === 'story' && !myId}");
   });
 

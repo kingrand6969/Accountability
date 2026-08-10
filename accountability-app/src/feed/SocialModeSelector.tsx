@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { FeedMode } from './api';
 import { colors, font, radius, spacing } from '../ui/theme';
-import { formatKm } from '../activity/geo';
 import type { FeedPost } from './types';
 
 export type PersistedFeedSession = { mode: FeedMode; buddiesOffset: number };
@@ -75,30 +74,6 @@ export function deriveFeedCardPresentation(post: FeedPost, currentUserId: string
           ? 'Group restricted'
           : 'Buddies only',
   } as const;
-}
-
-export type MyDayValue = { value: string | null; image: string | null };
-export type MyDayValues = Record<'move' | 'fuel' | 'mind' | 'connect', MyDayValue>;
-
-export function deriveMyDayValues(
-  posts: FeedPost[],
-  currentUserId: string | null,
-  connectionCount: number,
-): MyDayValues {
-  const run = posts.find(
-    (post) =>
-      post.user_id === currentUserId &&
-      post.post_type === 'run' &&
-      post.share_data.verified === true,
-  );
-  const distance =
-    run && typeof run.share_data.distance_m === 'number' ? formatKm(run.share_data.distance_m) : null;
-  return {
-    move: { value: distance ? `${distance} km` : null, image: run?.image_url ?? null },
-    fuel: { value: null, image: null },
-    mind: { value: null, image: null },
-    connect: { value: connectionCount > 0 ? `${connectionCount} encouraged` : null, image: null },
-  };
 }
 
 export function SocialModeSelector({

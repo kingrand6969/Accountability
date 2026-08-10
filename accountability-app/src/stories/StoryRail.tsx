@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -32,7 +33,6 @@ export type StoryRailHandle = { openPicker: () => void };
 type StoryRailProps = {
   meName?: string | null;
   meAvatar?: string | null;
-  controllerOnly?: boolean;
 };
 
 export function storyTileSizeForFontScale(fontScale: number) {
@@ -47,7 +47,7 @@ export function storyTileSizeForFontScale(fontScale: number) {
 
 /** Compact, photo-first My Day rail. It supports the feed without becoming the feed. */
 export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function StoryRail(
-  { meName, meAvatar, controllerOnly = false },
+  { meName, meAvatar },
   ref,
 ) {
   const router = useRouter();
@@ -62,18 +62,42 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
   const [posting, setPosting] = useState(false);
   const [editorUri, setEditorUri] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const loadGeneration = useRef(0);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    if (controllerOnly) return;
-    AsyncStorage.getItem('story-buddy-hint-dismissed').then((value) => setShowHint(value !== '1'));
-  }, [controllerOnly]);
+    mountedRef.current = true;
+    AsyncStorage.getItem('story-buddy-hint-dismissed').then((value) => {
+      if (mountedRef.current) setShowHint(value !== '1');
+    });
+    return () => {
+      mountedRef.current = false;
+      loadGeneration.current += 1;
+    };
+  }, []);
 
-  const load = useCallback(() => {
-    if (controllerOnly) return;
-    listStoryGroups().then(setGroups).catch(() => {});
-  }, [controllerOnly]);
+  const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    if (mountedRef.current) setLoadError(false);
+    try {
+      const nextGroups = await listStoryGroups();
+      if (!mountedRef.current || generation !== loadGeneration.current) return;
+      setGroups(nextGroups);
+    } catch {
+      if (!mountedRef.current || generation !== loadGeneration.current) return;
+      setLoadError(true);
+    }
+  }, []);
 
-  useFocusEffect(load);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      return () => {
+        loadGeneration.current += 1;
+      };
+    }, [load]),
+  );
 
   async function onAddStory() {
     if (posting) return;
@@ -107,7 +131,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
     try {
       await addStory(asset.base64, ext);
       showToast('Flex posted — visible for 24 hours');
-      load();
+      void load();
     } catch (e) {
       Alert.alert('Could not post story', String((e as Error).message ?? e));
     } finally {
@@ -122,7 +146,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
     try {
       await addStory(base64, ext);
       showToast('Flex posted — visible for 24 hours');
-      load();
+      void load();
     } catch (e) {
       Alert.alert('Could not post story', String((e as Error).message ?? e));
     } finally {
@@ -133,12 +157,6 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
   function onEdited(photo: EditedPhoto) {
     setEditorUri(null);
     postStory(photo.base64, 'jpg');
-  }
-
-  if (controllerOnly) {
-    return editorUri ? (
-      <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
-    ) : null;
   }
 
   const mine = groups.find((g) => g.isMe);
@@ -225,12 +243,24 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
           image={g.stories[g.stories.length - 1].image_url}
           avatar={g.avatar}
           name={authorLabel(g.name)}
+          viewed={g.viewed}
           tileSize={tileSize}
           onPress={() =>
             router.push({ pathname: '/story/[userId]', params: { userId: g.user_id } })
           }
         />
       ))}
+
+      {loadError ? (
+        <Pressable
+          style={[styles.retryTile, { height: tileHeight }]}
+          onPress={() => void load()}
+          accessibilityRole="button"
+          accessibilityLabel="Couldn’t load My Day. Retry"
+        >
+          <Text style={styles.retryText}>Couldn’t load My Day · Retry</Text>
+        </Pressable>
+      ) : null}
 
       {/* no buddies' stories yet — turn the empty rail into a useful nudge */}
       {others.length === 0 && showHint ? (
@@ -268,12 +298,14 @@ function StoryTile({
   image,
   avatar,
   name,
+  viewed,
   tileSize,
   onPress,
 }: {
   image: string;
   avatar: string | null;
   name: string;
+  viewed: boolean;
   tileSize: { width: number; height: number };
   onPress: () => void;
 }) {
@@ -290,7 +322,7 @@ function StoryTile({
         style={styles.tileScrim}
         pointerEvents="none"
       />
-      <View style={styles.tileAvatarRing}>
+      <View style={[styles.tileAvatarRing, viewed && styles.tileAvatarRingViewed]}>
         {avatar ? (
           <CachedImage uri={avatar} style={styles.tileAvatar} />
         ) : (
@@ -343,6 +375,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tileAvatar: { width: 25, height: 25, borderRadius: 12.5 },
+  tileAvatarRingViewed: { borderColor: colors.border },
   tileAvatarFallback: {
     backgroundColor: colors.primary,
     alignItems: 'center',
@@ -412,6 +445,24 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.primarySoft,
     overflow: 'hidden',
+  },
+  retryTile: {
+    width: 112,
+    minHeight: 44,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.sm,
+  },
+  retryText: {
+    color: colors.primary,
+    fontFamily: font.semibold,
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
   },
   hintContent: {
     flex: 1,

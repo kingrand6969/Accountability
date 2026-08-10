@@ -46,12 +46,10 @@ import { SocialBrandHeader } from '../../feed/SocialBrandHeader';
 import {
   SocialModeSelector,
   deriveFeedViewState,
-  deriveMyDayValues,
   feedRowsBelongToView,
   restoreFeedSession,
   scheduleIdentityBoundAction,
 } from '../../feed/SocialModeSelector';
-import { MyDayRail } from '../../feed/MyDayRail';
 import { FeedProofCard } from '../../feed/FeedProofCard';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -438,14 +436,6 @@ export default function Feed() {
     });
     return rows;
   }, [adsReady, isPro, proLoading, visiblePosts]);
-  const connectionCount = useMemo(
-    () => [...encouragementPreviews.values()].reduce((total, preview) => total + preview.count, 0),
-    [encouragementPreviews],
-  );
-  const myDayValues = useMemo(
-    () => deriveMyDayValues(visiblePosts, myId, connectionCount),
-    [connectionCount, myId, visiblePosts],
-  );
   const viewState = deriveFeedViewState({
     loading,
     loadingMore,
@@ -479,7 +469,14 @@ export default function Feed() {
           <QuickShare icon="sparkles-outline" label="Flex" onPress={() => router.push('/win-card' as never)} />
         </View>
       </View>
-      <MyDayRail values={myDayValues} />
+      {myId ? (
+        <StoryRail
+          key={myId}
+          ref={storyRailRef}
+          meName={profileOwnerId === myId ? me.name : null}
+          meAvatar={profileOwnerId === myId ? me.avatar : null}
+        />
+      ) : null}
       {viewState === 'offline-cached' || viewState === 'offline-uncached' ? (
         <View style={styles.offlineNotice} accessible accessibilityLabel="Offline">
           <Ionicons name="cloud-offline-outline" size={18} color={colors.textMuted} />
@@ -554,18 +551,6 @@ export default function Feed() {
           </Pressable>
         </Pressable>
       </Modal>
-      {myId ? (
-        <View style={styles.hiddenStoryController} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-          <StoryRail
-            key={myId}
-            ref={storyRailRef}
-            meName={profileOwnerId === myId ? me.name : null}
-            meAvatar={profileOwnerId === myId ? me.avatar : null}
-            controllerOnly
-          />
-        </View>
-      ) : null}
-
       <SocialModeSelector value={feedMode} onChange={changeFeedMode} />
       {/* Discover owns its ScrollView; explicit offset persistence is deferred to Task 3.3. */}
       <View style={feedMode === 'discover' ? styles.modeVisible : styles.modeHidden}>
@@ -641,7 +626,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.surfaceAlt },
   modeVisible: { flex: 1 },
   modeHidden: { display: 'none' },
-  hiddenStoryController: { width: 1, height: 1, overflow: 'hidden', opacity: 0 },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,.45)', paddingTop: 64, alignItems: 'flex-end', paddingRight: spacing.md },
   sheet: { width: 280, borderRadius: radius.lg, overflow: 'hidden', padding: spacing.sm, ...shadow.card },
   sheetGlass: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,.82)' },

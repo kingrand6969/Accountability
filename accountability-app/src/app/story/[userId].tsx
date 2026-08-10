@@ -12,7 +12,7 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { listStoryGroups, deleteStory, reportStory, type StoryGroup } from '../../stories/api';
+import { listStoryGroups, markStoryViewed, deleteStory, reportStory, type StoryGroup } from '../../stories/api';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
@@ -183,6 +183,11 @@ export default function StoryViewer() {
   useLayoutEffect(() => {
     currentStoryIdRef.current = story?.id ?? null;
   }, [story?.id]);
+
+  useEffect(() => {
+    if (!story || !ownerId) return;
+    void markStoryViewed(story.id).catch(() => {});
+  }, [story?.id, ownerId, viewKey]);
 
   const goNext = useCallback(() => {
     if (!group) return;

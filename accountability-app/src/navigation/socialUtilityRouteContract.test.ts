@@ -18,6 +18,7 @@ const mockRouter = {
 };
 const mockListStoryGroups = jest.fn<() => Promise<unknown[]>>();
 const mockDeleteStory = jest.fn<(id: string) => Promise<void>>();
+const mockMarkStoryViewed = jest.fn<(id: string) => Promise<void>>(async () => {});
 const mockListNotifications = jest.fn<() => Promise<unknown[]>>();
 const mockMarkAllRead = jest.fn<(ownerId: string) => Promise<void>>();
 const mockGetPost = jest.fn<() => Promise<unknown>>();
@@ -50,6 +51,7 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('../stories/api', () => ({
   listStoryGroups: () => mockListStoryGroups(),
   deleteStory: (id: string) => mockDeleteStory(id),
+  markStoryViewed: (id: string) => mockMarkStoryViewed(id),
 }));
 jest.mock('../notify/api', () => ({
   listNotifications: () => mockListNotifications(),
