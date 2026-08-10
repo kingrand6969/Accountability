@@ -123,9 +123,9 @@ function functionStatement(statements: string[], functionName: string): string {
   const pattern = new RegExp(
     `^create or replace function public\\.${functionName}\\s*\\(`,
   );
-  const statement = statements.find((candidate) => pattern.test(normalize(candidate)));
-  expect(statement).toBeDefined();
-  return statement as string;
+  const matches = statements.filter((candidate) => pattern.test(normalize(candidate)));
+  expect(matches).toHaveLength(1);
+  return matches[0];
 }
 
 function dollarQuotedBody(statement: string): string {
@@ -184,7 +184,13 @@ const REMOVED_FUNCTION_SIGNATURES = [
 ];
 
 const DESTRUCTIVE_PREFIX = /^(?:drop\s+(?:table|schema|database|function|trigger)\b|delete\s+from\b|truncate\b|alter\s+table\b)/;
-const APPROVED_AI_SCANS_ALTER = /^alter table public\.ai_scans (?:drop constraint(?: if exists)? [a-z_][a-z0-9_]*|add constraint [a-z_][a-z0-9_]* check\s*\(\s*kind\s*=\s*'food'\s*\))$/;
+const DROP_AI_SCANS_KIND_CONSTRAINT =
+  /^alter table public\.ai_scans drop constraint if exists ai_scans_kind_check$/;
+const ADD_AI_SCANS_KIND_CONSTRAINT =
+  /^alter table public\.ai_scans add constraint ai_scans_kind_check check\s*\(\s*kind\s*=\s*'food'\s*\)$/;
+const APPROVED_AI_SCANS_ALTER = new RegExp(
+  `(?:${DROP_AI_SCANS_KIND_CONSTRAINT.source})|(?:${ADD_AI_SCANS_KIND_CONSTRAINT.source})`,
+);
 
 function dropTableTargets(statement: string): string[] | null {
   const match = statement.match(/^drop table(?: if exists)? (.+)$/);
@@ -316,14 +322,14 @@ describe('0097 finance and business removal migration', () => {
     expect(deletes.filter((statement) => /^delete from public\.ai_scans where kind\s*=\s*'receipt'$/.test(statement))).toHaveLength(1);
 
     const alters = destructiveStatements.filter((statement) => /^alter table\b/.test(statement));
-    expect(alters.length).toBeGreaterThanOrEqual(2);
+    expect(alters).toHaveLength(2);
     expect(
       alters.every((statement) =>
         APPROVED_AI_SCANS_ALTER.test(statement),
       ),
     ).toBe(true);
-    expect(alters.some((statement) => / drop constraint(?: if exists)? /.test(statement))).toBe(true);
-    expect(alters.some((statement) => / add constraint /.test(statement))).toBe(true);
+    expect(alters.filter((statement) => DROP_AI_SCANS_KIND_CONSTRAINT.test(statement))).toHaveLength(1);
+    expect(alters.filter((statement) => ADD_AI_SCANS_KIND_CONSTRAINT.test(statement))).toHaveLength(1);
 
     const dropFunctions = destructiveStatements.filter((statement) => /^drop function\b/.test(statement));
     const droppedFunctions: string[] = [];
