@@ -57,7 +57,13 @@ $$;
 revoke all on function public.my_metric_counts() from public;
 grant execute on function public.my_metric_counts() to authenticated;
 
-drop trigger if exists money_tx_mirror on public.money_transactions;
+do $money_trigger_guard$
+begin
+  if to_regclass('public.money_transactions') is not null then
+    execute 'drop trigger if exists money_tx_mirror on public.money_transactions';
+  end if;
+end
+$money_trigger_guard$;
 
 drop function if exists public.biz_dashboard(uuid, date, date);
 drop function if exists public.biz_items_costed(uuid);

@@ -273,8 +273,8 @@ describe('0097 finance and business removal migration', () => {
       /^create or replace function public\.(?:my_scan_quota|my_metric_counts)\s*\(\)/;
     const replacementPermission =
       /^(?:revoke all on function public\.(?:my_scan_quota|my_metric_counts)\(\) from public|grant execute on function public\.(?:my_scan_quota|my_metric_counts)\(\) to authenticated)$/;
-    const approvedTrigger =
-      /^drop trigger(?: if exists)? money_tx_mirror on public\.money_transactions$/;
+    const approvedTriggerGuard =
+      /^do \$money_trigger_guard\$ begin if to_regclass\('public\.money_transactions'\) is not null then execute 'drop trigger if exists money_tx_mirror on public\.money_transactions'; end if; end \$money_trigger_guard\$$/;
 
     for (const statement of normalizedStatements) {
       const tableTargets = dropTableTargets(statement);
@@ -287,7 +287,7 @@ describe('0097 finance and business removal migration', () => {
         APPROVED_RETAINED_TYPE_ALTER.test(statement),
         replacementFunction.test(statement),
         replacementPermission.test(statement),
-        approvedTrigger.test(statement),
+        approvedTriggerGuard.test(statement),
         functionTargets !== null &&
           functionTargets.length > 0 &&
           functionTargets.every((target) => allowedFunctions.has(target)),
@@ -358,10 +358,7 @@ describe('0097 finance and business removal migration', () => {
     expect(droppedFunctions.sort()).toEqual(REMOVED_FUNCTION_SIGNATURES);
 
     const dropTriggers = destructiveStatements.filter((statement) => /^drop trigger\b/.test(statement));
-    expect(dropTriggers).toHaveLength(1);
-    expect(dropTriggers[0]).toMatch(
-      /^drop trigger(?: if exists)? money_tx_mirror on public\.money_transactions$/,
-    );
+    expect(dropTriggers).toEqual([]);
 
     const accountedCount =
       dropTables.length + deletes.length + alters.length + dropFunctions.length + dropTriggers.length;
@@ -385,6 +382,24 @@ describe('0097 finance and business removal migration', () => {
     }
     expect(normalizedStatements.filter((statement) => /drop policy.*(?:sg_select|sgm_select|sgc_select|sgc_insert)/.test(statement))).toEqual([]);
     expect(normalizedStatements.slice(0, helperIndex)).toEqual(expect.arrayContaining(dependencyTableDrops));
+  });
+
+  test('guards the mirror trigger for replay while preserving fresh-run dependency order', () => {
+    const guard = "do $money_trigger_guard$ begin if to_regclass('public.money_transactions') is not null then execute 'drop trigger if exists money_tx_mirror on public.money_transactions'; end if; end $money_trigger_guard$";
+    const guardIndex = normalizedStatements.indexOf(guard);
+    const functionIndex = normalizedStatements.indexOf('drop function if exists public.mirror_money_tx()');
+    const tableIndex = normalizedStatements.indexOf('drop table if exists public.money_transactions');
+
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(guardIndex).toBeLessThan(functionIndex);
+    expect(guardIndex).toBeLessThan(tableIndex);
+    expect(normalizedStatements).not.toContain('drop trigger if exists money_tx_mirror on public.money_transactions');
+    expect(guard.match(/execute /g)).toHaveLength(1);
+    expect(guard).not.toMatch(/format\(|cascade|\$\{|\|\|/);
+
+    const modelGuard = (relationExists: boolean) => relationExists ? ['money_tx_mirror'] : [];
+    expect(modelGuard(false)).toEqual([]);
+    expect(modelGuard(true)).toEqual(['money_tx_mirror']);
   });
 
   test('replaces scan quota with its food-only contract and permissions', () => {
