@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { colors, font, radius, spacing } from '../ui/theme';
@@ -169,6 +169,7 @@ type Props = ShareCallbacks & {
   visible: boolean;
   payloadKey?: string | number;
   resetKey?: string | number;
+  feedDisabledReason?: string;
 };
 
 export function AchievementSharePrompt({
@@ -179,12 +180,11 @@ export function AchievementSharePrompt({
   onStory,
   onPrivate,
   onClose,
+  feedDisabledReason,
 }: Props) {
-  const lifecycleRef = useRef<ReturnType<typeof createAchievementSharePromptLifecycle> | null>(null);
-  if (lifecycleRef.current === null) {
-    lifecycleRef.current = createAchievementSharePromptLifecycle({ onFeed, onStory, onPrivate, onClose });
-  }
-  const lifecycle = lifecycleRef.current;
+  const [lifecycle] = useState(() =>
+    createAchievementSharePromptLifecycle({ onFeed, onStory, onPrivate, onClose }),
+  );
   const controller = lifecycle.controller;
   const [state, setState] = useState(controller.getState);
 
@@ -226,9 +226,10 @@ export function AchievementSharePrompt({
             <DestinationButton
               label="Share to Feed"
               selected={selected === 'feed'}
-              disabled={state.working}
+              disabled={state.working || !!feedDisabledReason}
               onPress={() => controller.select('feed')}
             />
+            {feedDisabledReason ? <Text style={styles.disabledReason}>{feedDisabledReason}</Text> : null}
             <DestinationButton
               label="Add to My Day"
               selected={selected === 'story'}
@@ -341,4 +342,5 @@ const styles = StyleSheet.create({
   error: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, color: colors.danger, textAlign: 'center' },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
+  disabledReason: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted, textAlign: 'center' },
 });

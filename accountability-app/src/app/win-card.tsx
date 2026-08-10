@@ -14,9 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
+import * as Crypto from 'expo-crypto';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createPost } from '../feed/api';
-import { addStory } from '../stories/api';
+import { addStoryIdempotent } from '../stories/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { saveImageToMemories } from '../memories/api';
 import { supabase } from '../lib/supabase';
@@ -55,6 +56,12 @@ import {
   type ProofCaptureRendererContext,
 } from '../entry/ProofCaptureCard';
 import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
+import {
+  achievementPayloadKey,
+  retainAchievementStoryOperation,
+  type AchievementCompletion,
+  type AchievementStoryOperation,
+} from '../entry/achievementCompletion';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
@@ -66,6 +73,7 @@ export default function WinCard() {
     route?: string | string[];
     buddyName?: string | string[];
     achievementKind?: string | string[];
+    achievementSourceId?: string | string[];
     achievementTitle?: string | string[];
     autoPrompt?: string | string[];
   }>();
@@ -73,6 +81,8 @@ export default function WinCard() {
   const proofRoute = sanitizeProofParam(params.route);
   const proofBuddyName = sanitizeProofParam(params.buddyName);
   const achievementTitle = sanitizeProofParam(params.achievementTitle);
+  const achievementKind = sanitizeProofParam(params.achievementKind);
+  const achievementSourceId = sanitizeProofParam(params.achievementSourceId);
   const {
     stats,
     loadError,
@@ -105,6 +115,7 @@ export default function WinCard() {
   );
   const cardRef = useRef<View>(null);
   const retryGuardRef = useRef(createProofRetryGuard());
+  const storyOperationRef = useRef<AchievementStoryOperation | null>(null);
   // Fonts (Inter + Anton) are loaded globally in the root layout.
 
   useFocusEffect(
@@ -232,6 +243,14 @@ export default function WinCard() {
     unavailableRendererContext(buildExternalProofExport(proofInput, proofOptIns));
   const cardModel = captureContext.dto;
   const proofCardSummary = buildProofCardSummary(cardModel);
+  const completionPayload: AchievementCompletion = {
+    kind: achievementKind === 'workout' || achievementKind === 'challenge'
+      ? achievementKind
+      : 'streak',
+    sourceId: achievementSourceId ?? `streak-${stats.streak}-${new Date().toISOString().slice(0, 10)}`,
+    text: message,
+    mediaUri: null,
+  };
 
   async function captureCard(result: 'base64' | 'tmpfile'): Promise<string | null> {
     if (Platform.OS === 'web' || !cardRef.current) return null;
@@ -318,7 +337,20 @@ export default function WinCard() {
       const base64 = await captureDestination(buildFeedProofExport, 'base64', token);
       if (!base64) throw new Error('Could not prepare the Daily Proof image. Please try again.');
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      await addStory(base64, 'png', message);
+      const expectedOwnerId = ownerIdRef.current;
+      if (!expectedOwnerId) throw new Error('Not signed in.');
+      const operation = (storyOperationRef.current = retainAchievementStoryOperation(
+        storyOperationRef.current,
+        completionPayload,
+        Crypto.randomUUID,
+      ));
+      await addStoryIdempotent({
+        expectedOwnerId,
+        operationId: operation.operationId,
+        base64,
+        ext: 'png',
+        caption: message,
+      });
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
     } finally {
       endAction(token);
@@ -562,7 +594,7 @@ export default function WinCard() {
       ))}
       <AchievementSharePrompt
         visible={sharePromptVisible}
-        payloadKey={`${sanitizeProofParam(params.achievementKind) ?? 'streak'}:${achievementTitle ?? message}`}
+        payloadKey={achievementPayloadKey(completionPayload)}
         onFeed={onShareToFeed}
         onStory={onShareToStory}
         onPrivate={() => Promise.resolve()}

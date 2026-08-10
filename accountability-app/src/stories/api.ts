@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
-import { uploadPostImage } from '../feed/uploadPostImage';
+import { uploadPostImage, uploadPostImageForOwner } from '../feed/uploadPostImage';
+import { createIdempotentStory } from './idempotentStory';
 import { resolveMediaUrls } from '../media/privateMedia';
 import { orderStoryGroups } from './storyOrdering';
 
@@ -129,6 +130,31 @@ export async function addStory(
     .from('stories')
     .insert({ user_id: uid, image_url: imageUrl, caption: caption?.trim() || null });
   if (error) throw error;
+}
+
+export async function addStoryIdempotent(input: {
+  expectedOwnerId: string;
+  operationId: string;
+  base64: string;
+  ext: string;
+  caption?: string;
+}): Promise<string> {
+  return createIdempotentStory(input, {
+    currentOwnerId: me,
+    upload: ({ base64, ext, operationId, expectedOwnerId }) =>
+      uploadPostImageForOwner(base64, ext, operationId, expectedOwnerId),
+    commit: async ({ expectedOwnerId, operationId, imageUrl, caption }) => {
+      const { data, error } = await supabase.rpc('create_story_idempotent', {
+        p_expected_owner: expectedOwnerId,
+        p_operation_id: operationId,
+        p_image_url: imageUrl,
+        p_caption: caption?.trim() || null,
+      });
+      if (error) throw error;
+      if (typeof data !== 'string') throw new Error('Could not confirm story creation.');
+      return data;
+    },
+  });
 }
 
 export async function deleteStory(id: string): Promise<void> {

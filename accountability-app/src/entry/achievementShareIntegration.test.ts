@@ -10,12 +10,12 @@ describe('achievement sharing integration', () => {
   test('run completion uses the generated run card for confirmed Feed and My Day shares', () => {
     const sheet = source('src/activity/RunShareSheet.tsx');
 
-    expect(sheet).toContain("import { addStory } from '../stories/api'");
+    expect(sheet).toContain("import { addStoryIdempotent } from '../stories/api'");
     expect(sheet).toContain("import { AchievementSharePrompt } from '../entry/AchievementSharePrompt'");
     expect(sheet).toContain('<AchievementSharePrompt');
     expect(sheet).toContain("onFeed={() => onDestination('feed')}");
     expect(sheet).toContain('onStory={onStoryDestination}');
-    expect(sheet).toContain("addStory(base64, 'jpg', caption)");
+    expect(sheet).toContain('addStoryIdempotent({');
     expect(sheet).toContain('onPrivate={() => closeEditor()}');
   });
 
@@ -31,10 +31,20 @@ describe('achievement sharing integration', () => {
   test('a workout opens the reusable achievement card only when its checklist becomes complete', () => {
     const item = source('src/app/item/[id].tsx');
 
-    expect(item).toContain("item?.type === 'workout'");
-    expect(item).toContain('becameCompleteChecklist(list, next)');
+    expect(item).toContain("it.type === 'workout'");
+    expect(item).toContain('becameCompleteChecklist(previous, next)');
     expect(item).toContain("pathname: '/win-card'");
     expect(item).toContain("achievementKind: 'workout'");
+  });
+
+  test('gym and exercise screens save workout definitions; they do not claim completion', () => {
+    const gym = source('src/app/gym.tsx');
+    const exercise = source('src/app/exercise/[id].tsx');
+
+    expect(gym).toContain('done: false');
+    expect(exercise).toContain('done: false');
+    expect(gym).not.toContain('<AchievementSharePrompt');
+    expect(exercise).not.toContain('<AchievementSharePrompt');
   });
 
   test('streak and ended challenge wins enter the same explicit Win Card sharing path', () => {
@@ -43,9 +53,10 @@ describe('achievement sharing integration', () => {
 
     expect(winCard).toContain('<AchievementSharePrompt');
     expect(winCard).toContain('onStory={onShareToStory}');
-    expect(winCard).toContain("await addStory(base64, 'png', message)");
+    expect(winCard).toContain('await addStoryIdempotent({');
     expect(challenge).toContain("achievementKind: 'challenge'");
     expect(challenge).toContain("pathname: '/win-card'");
-    expect(challenge).toContain('Flex this challenge');
+    expect(challenge).toContain('hasVerifiedChallengeWin(');
+    expect(challenge).toContain('Flex this win');
   });
 });

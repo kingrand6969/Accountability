@@ -1,4 +1,4 @@
-import { useCallback, useState, type ComponentProps } from 'react';
+import { useCallback, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import { EmptyState } from '../../ui/EmptyState';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
 import type { ChecklistItem, TimelineItem } from '../../timeline/types';
 import { becameCompleteChecklist } from '../../timeline/completion';
+import { createChecklistPersistence } from '../../timeline/checklistPersistence';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -27,6 +28,7 @@ export default function ItemDetail() {
   const [list, setList] = useState<ChecklistItem[]>([]);
   const [newText, setNewText] = useState('');
   const [loading, setLoading] = useState(true);
+  const persistenceRef = useRef<ReturnType<typeof createChecklistPersistence> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -34,33 +36,40 @@ export default function ItemDetail() {
       getItem(id)
         .then((it) => {
           setItem(it);
-          setList(it?.checklist ?? []);
+          const initial = it?.checklist ?? [];
+          setList(initial);
+          persistenceRef.current = it ? createChecklistPersistence(
+            initial,
+            (next) => updateItemChecklist(it.id, next),
+            {
+              onLatestSuccess: (_revision, previous, next) => {
+                if (it.type === 'workout' && becameCompleteChecklist(previous, next)) {
+                  router.push({
+                    pathname: '/win-card',
+                    params: {
+                      achievementKind: 'workout',
+                      achievementSourceId: it.id,
+                      achievementTitle: it.title,
+                      autoPrompt: '1',
+                    },
+                  } as never);
+                }
+              },
+              onLatestFailure: (_revision, committed, error) => {
+                setList([...committed]);
+                Alert.alert('Could not save', String((error as Error).message ?? error));
+              },
+            },
+          ) : null;
         })
         .catch((e) => Alert.alert('Could not load', String((e as Error).message ?? e)))
         .finally(() => setLoading(false));
-    }, [id]),
+    }, [id, router]),
   );
 
-  async function persist(next: ChecklistItem[]) {
-    const previous = list;
+  function persist(next: ChecklistItem[]) {
     setList(next);
-    if (!id) return;
-    try {
-      await updateItemChecklist(id, next);
-      if (item?.type === 'workout' && becameCompleteChecklist(list, next)) {
-        router.push({
-          pathname: '/win-card',
-          params: {
-            achievementKind: 'workout',
-            achievementTitle: item.title,
-            autoPrompt: '1',
-          },
-        } as never);
-      }
-    } catch (e) {
-      setList(previous);
-      Alert.alert('Could not save', String((e as Error).message ?? e));
-    }
+    void persistenceRef.current?.submit(next).catch(() => undefined);
   }
 
   function toggle(i: number) {

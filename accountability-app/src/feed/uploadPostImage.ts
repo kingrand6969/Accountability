@@ -16,9 +16,18 @@ export async function uploadPostImage(
   ext: string,
   operationId?: string,
 ): Promise<string> {
+  return uploadPostImageForOwner(base64, ext, operationId);
+}
+
+export async function uploadPostImageForOwner(
+  base64: string,
+  ext: string,
+  operationId?: string,
+  expectedOwnerId?: string,
+): Promise<string> {
   const bytes = estimateBase64Bytes(base64);
   try {
-    const url = await uploadToR2(base64, 'post', ext, { operationId });
+    const url = await uploadToR2(base64, 'post', ext, { operationId, expectedOwnerId });
     void recordUploadEvent({ provider: 'r2', kind: 'post', outcome: 'success', bytes });
     return url;
   } catch (e) {
@@ -33,7 +42,7 @@ export async function uploadPostImage(
       throw e;
     }
     console.warn('[uploadPostImage] R2 unavailable, using Supabase Storage:', e);
-    const url = await uploadToSupabase(base64, ext, operationId);
+    const url = await uploadToSupabase(base64, ext, operationId, expectedOwnerId);
     void recordUploadEvent({
       provider: 'supabase',
       kind: 'post',
@@ -66,11 +75,13 @@ async function uploadToSupabase(
   base64: string,
   ext: string,
   operationId?: string,
+  expectedOwnerId?: string,
 ): Promise<string> {
   const { data, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   const uid = data.user?.id;
   if (!uid) throw new Error('Not signed in.');
+  if (expectedOwnerId && uid !== expectedOwnerId) throw new Error('Account changed.');
 
   const safeExt = ext === 'png' ? 'png' : 'jpg';
   const path = operationId

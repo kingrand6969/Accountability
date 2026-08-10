@@ -30,6 +30,8 @@ import {
 import { MissionIcon } from '../../achievements/MissionIcon';
 import { challengeEnded, daysLeft } from '../../achievements/challengeTime';
 import { challengeArtFor } from '../../achievements/missionArt';
+import { useAuth } from '../../auth/AuthProvider';
+import { hasVerifiedChallengeWin } from '../../compete/challengeResult';
 
 function fmtRange(startsAt: string, endsAt: string, checkedAt: number): string {
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
@@ -41,6 +43,7 @@ function fmtRange(startsAt: string, endsAt: string, checkedAt: number): string {
 
 export default function ChallengeDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { session } = useAuth();
   const router = useRouter();
   const { isPro } = useIsPro();
   const { width } = useWindowDimensions();
@@ -143,6 +146,11 @@ export default function ChallengeDetail() {
 
   const meta = metricMeta(challenge.metric);
   const ended = challengeEnded(challenge.ends_at, challengeCheckedAt);
+  const verifiedWin = ended && hasVerifiedChallengeWin(
+    session?.user.id ?? null,
+    challenge.participants,
+    standings,
+  );
 
   return (
     <View style={styles.screen}>
@@ -172,22 +180,23 @@ export default function ChallengeDetail() {
                 <View style={[styles.joinBtn, styles.endedBtn]}>
                   <Text style={styles.endedText}>Challenge ended</Text>
                 </View>
-                {challenge.joined ? (
+                {verifiedWin ? (
                   <Pressable
                     style={({ pressed }) => [styles.inviteBtn, pressed && styles.pressed]}
                     onPress={() => router.push({
                       pathname: '/win-card',
                       params: {
                         achievementKind: 'challenge',
+                        achievementSourceId: challenge.id,
                         achievementTitle: challenge.title,
                         autoPrompt: '1',
                       },
                     } as never)}
                     accessibilityRole="button"
-                    accessibilityLabel="Flex this challenge"
+                    accessibilityLabel="Flex this challenge win"
                   >
                     <Ionicons name="trophy-outline" size={15} color={ACCENT} />
-                    <Text style={styles.inviteText}>Flex this challenge</Text>
+                    <Text style={styles.inviteText}>Flex this win</Text>
                   </Pressable>
                 ) : null}
               </>

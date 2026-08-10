@@ -92,13 +92,17 @@ Deno.serve(async (req) => {
     if (authErr || !user) return json({ error: 'unauthorized' }, 401);
 
     // 2) Validate the request.
-    const { kind, ext, bytes, contentType, operationId } = (await req.json().catch(() => ({}))) as {
+    const { kind, ext, bytes, contentType, operationId, expectedOwnerId } = (await req.json().catch(() => ({}))) as {
       kind?: string;
       ext?: string;
       bytes?: number;
       contentType?: string;
       operationId?: string;
+      expectedOwnerId?: string;
     };
+    if (expectedOwnerId && expectedOwnerId !== user.id) {
+      return json({ error: 'account changed' }, 403);
+    }
     const cfg = KINDS[kind ?? ''];
     if (!cfg) return json({ error: 'invalid kind' }, 400);
     // REQUIRE size + type (don't let a client omit them to skip the checks).
