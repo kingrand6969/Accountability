@@ -103,8 +103,20 @@ function normalize(statement: string): string {
   return statement.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-function statementStartingWith(statements: string[], prefix: RegExp): string[] {
-  return statements.map(normalize).filter((statement) => prefix.test(statement));
+function splitTopLevelCommaList(value: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === '(') depth += 1;
+    if (value[index] === ')') depth -= 1;
+    if (value[index] === ',' && depth === 0) {
+      parts.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  parts.push(value.slice(start).trim());
+  return parts;
 }
 
 function functionStatement(statements: string[], functionName: string): string {
@@ -145,102 +157,127 @@ function expectExecutePermissions(statements: string[], functionName: string): v
   ).toBe(true);
 }
 
+const REMOVED_TABLES = [
+  'accounts',
+  'bills',
+  'biz_business',
+  'biz_cost',
+  'biz_customer',
+  'biz_fixed_cost',
+  'biz_item',
+  'biz_loss',
+  'biz_payment',
+  'biz_recipe_line',
+  'biz_sale',
+  'biz_supply',
+  'biz_tenant',
+  'debt_payments',
+  'debts',
+  'money_transactions',
+  'savings_goals',
+  'shared_goal_contributions',
+  'shared_goal_members',
+  'shared_goals',
+];
+
+const REMOVED_FUNCTION_SIGNATURES = [
+  'public.biz_dashboard(uuid,date,date)',
+  'public.biz_item_unit_cost(uuid,int)',
+  'public.biz_items_costed(uuid)',
+  'public.income_trend(int)',
+  'public.is_goal_member(uuid,uuid)',
+  'public.mark_bill_paid_atomic(uuid,numeric,uuid)',
+  'public.mirror_money_tx()',
+  'public.pay_card_atomic(uuid,numeric,uuid)',
+  'public.shared_goal_creator_join()',
+];
+
+const DESTRUCTIVE_PREFIX = /^(?:drop\s+(?:table|schema|database|function|trigger)\b|delete\s+from\b|truncate\b|alter\s+table\b)/;
+
+function expectNoRemovedIdentifiers(body: string): void {
+  const removedIdentifiers = [
+    ...REMOVED_TABLES,
+    ...REMOVED_FUNCTION_SIGNATURES.map((signature) =>
+      signature.slice('public.'.length, signature.indexOf('(')),
+    ),
+    'goals_hit',
+  ];
+  for (const identifier of removedIdentifiers) {
+    expect(body).not.toMatch(new RegExp(`\\b${identifier}\\b`));
+  }
+}
+
 describe('0097 finance and business removal migration', () => {
   const statements = executableStatements(readFileSync(MIGRATION_PATH, 'utf8'));
   const normalizedStatements = statements.map(normalize);
 
-  test('has a closed, non-cascading table-drop boundary', () => {
-    const allowedDroppedTables = [
-      'accounts',
-      'bills',
-      'biz_business',
-      'biz_cost',
-      'biz_customer',
-      'biz_fixed_cost',
-      'biz_item',
-      'biz_loss',
-      'biz_payment',
-      'biz_recipe_line',
-      'biz_sale',
-      'biz_supply',
-      'biz_tenant',
-      'debt_payments',
-      'debts',
-      'money_transactions',
-      'savings_goals',
-      'shared_goal_contributions',
-      'shared_goal_members',
-      'shared_goals',
-    ];
-    const dropStatements = statementStartingWith(statements, /^drop\b/);
-    const dropTableStatements = dropStatements.filter((statement) =>
-      /^drop table\b/.test(statement),
+  test('allowlists every executable destructive statement', () => {
+    const destructiveStatements = normalizedStatements.filter((statement) =>
+      DESTRUCTIVE_PREFIX.test(statement),
     );
-    const actualDroppedTables = dropTableStatements.flatMap((statement) =>
-      [...statement.matchAll(/\bpublic\.([a-z_][a-z0-9_]*)\b/g)].map(
-        (match) => match[1],
-      ),
-    );
+    expect(destructiveStatements).not.toContainEqual(expect.stringMatching(/\bcascade\b/));
+    expect(destructiveStatements.filter((statement) => /^drop (schema|database)\b/.test(statement))).toEqual([]);
+    expect(destructiveStatements.filter((statement) => /^truncate\b/.test(statement))).toEqual([]);
 
-    expect([...new Set(actualDroppedTables)].sort()).toEqual(allowedDroppedTables);
-    expect(dropTableStatements.length).toBeGreaterThan(0);
-    expect(dropStatements.every((statement) => !/\bcascade\b/.test(statement))).toBe(true);
-    expect(normalizedStatements.some((statement) => /^drop (schema|database)\b/.test(statement))).toBe(false);
-    expect(normalizedStatements.some((statement) => /^truncate\b/.test(statement))).toBe(false);
-  });
-
-  test('deletes only the finance-shaped rows from retained mixed-use tables', () => {
-    const deletes = statementStartingWith(statements, /^delete from\b/);
-    const requiredDeletes: Array<[string, string]> = [
-      ['timeline_items', 'expense'],
-      ['timeline_items', 'income'],
-      ['posts', 'savings'],
-      ['ai_scans', 'receipt'],
-    ];
-
-    for (const [table, value] of requiredDeletes) {
-      const valuePredicate = new RegExp(
-        `\\b(?:type|post_type|kind)\\s*(?:=\\s*'${value}'|in\\s*\\([^)]*'${value}')`,
-      );
-      expect(
-        deletes.some(
-          (statement) =>
-            new RegExp(`^delete from public\\.${table}\\b`).test(statement) &&
-            valuePredicate.test(statement),
-        ),
-      ).toBe(true);
+    const dropTables = destructiveStatements.filter((statement) => /^drop table\b/.test(statement));
+    const droppedTables: string[] = [];
+    for (const statement of dropTables) {
+      const match = statement.match(/^drop table(?: if exists)? (.+)$/);
+      expect(match).not.toBeNull();
+      for (const target of splitTopLevelCommaList(match?.[1] ?? '')) {
+        const targetMatch = target.match(/^public\.([a-z_][a-z0-9_]*)$/);
+        expect(targetMatch).not.toBeNull();
+        droppedTables.push(targetMatch?.[1] ?? 'unparseable');
+      }
     }
+    expect(droppedTables.sort()).toEqual(REMOVED_TABLES);
 
+    const deletes = destructiveStatements.filter((statement) => /^delete from\b/.test(statement));
+    expect(deletes).toHaveLength(3);
+    const timelineDelete = deletes.find((statement) =>
+      /^delete from public\.timeline_items where type in\b/.test(statement),
+    );
+    const timelineValues = timelineDelete
+      ?.match(/^delete from public\.timeline_items where type in\s*\(([^)]*)\)$/)?.[1]
+      .split(',')
+      .map((value) => value.trim().match(/^'([a-z_]+)'$/)?.[1])
+      .sort();
+    expect(timelineValues).toEqual(['expense', 'income']);
+    expect(deletes.filter((statement) => /^delete from public\.posts where post_type\s*=\s*'savings'$/.test(statement))).toHaveLength(1);
+    expect(deletes.filter((statement) => /^delete from public\.ai_scans where kind\s*=\s*'receipt'$/.test(statement))).toHaveLength(1);
+
+    const alters = destructiveStatements.filter((statement) => /^alter table\b/.test(statement));
+    expect(alters.length).toBeGreaterThanOrEqual(2);
     expect(
-      normalizedStatements.some(
-        (statement) =>
-          /^alter table public\.ai_scans\b/.test(statement) &&
-          /\bcheck\s*\(\s*kind\s*=\s*'food'\s*\)/.test(statement),
+      alters.every((statement) =>
+        /^alter table public\.ai_scans (?:drop constraint(?: if exists)? [a-z_][a-z0-9_]*|add constraint [a-z_][a-z0-9_]* check\s*\(\s*kind\s*=\s*'food'\s*\))$/.test(statement),
       ),
     ).toBe(true);
-  });
+    expect(alters.some((statement) => / drop constraint(?: if exists)? /.test(statement))).toBe(true);
+    expect(alters.some((statement) => / add constraint /.test(statement))).toBe(true);
 
-  test('removes finance functions through executable DROP FUNCTION statements', () => {
-    const removedFunctions = [
-      'mirror_money_tx',
-      'income_trend',
-      'mark_bill_paid_atomic',
-      'pay_card_atomic',
-      'is_goal_member',
-      'shared_goal_creator_join',
-      'biz_item_unit_cost',
-      'biz_items_costed',
-      'biz_dashboard',
-    ];
-    const dropFunctions = statementStartingWith(statements, /^drop function\b/);
-
-    for (const functionName of removedFunctions) {
-      expect(
-        dropFunctions.some((statement) =>
-          new RegExp(`\\bpublic\\.${functionName}\\s*\\(`).test(statement),
-        ),
-      ).toBe(true);
+    const dropFunctions = destructiveStatements.filter((statement) => /^drop function\b/.test(statement));
+    const droppedFunctions: string[] = [];
+    for (const statement of dropFunctions) {
+      const match = statement.match(/^drop function(?: if exists)? (.+)$/);
+      expect(match).not.toBeNull();
+      for (const target of splitTopLevelCommaList(match?.[1] ?? '')) {
+        const compactTarget = target.replace(/\s+/g, '');
+        expect(compactTarget).toMatch(/^public\.[a-z_][a-z0-9_]*\((?:[a-z_]+(?:,[a-z_]+)*)?\)$/);
+        droppedFunctions.push(compactTarget);
+      }
     }
+    expect(droppedFunctions.sort()).toEqual(REMOVED_FUNCTION_SIGNATURES);
+
+    const dropTriggers = destructiveStatements.filter((statement) => /^drop trigger\b/.test(statement));
+    expect(dropTriggers).toHaveLength(1);
+    expect(dropTriggers[0]).toMatch(
+      /^drop trigger(?: if exists)? money_tx_mirror on public\.money_transactions$/,
+    );
+
+    const accountedCount =
+      dropTables.length + deletes.length + alters.length + dropFunctions.length + dropTriggers.length;
+    expect(accountedCount).toBe(destructiveStatements.length);
   });
 
   test('replaces scan quota with its food-only contract and permissions', () => {
@@ -248,7 +285,12 @@ describe('0097 finance and business removal migration', () => {
 
     expect(body).toMatch(/'limit'/);
     expect(body).toMatch(/'food_used'/);
+    expect(body).toMatch(/\bfrom public\.ai_scans\b/);
+    expect(body).toMatch(/\buser_id\s*=\s*auth\.uid\(\)/);
+    expect(body).toMatch(/\bkind\s*=\s*'food'/);
+    expect(body).toMatch(/\bcreated_at\s*>=\s*date_trunc\('month',\s*now\(\)\)/);
     expect(body).not.toMatch(/\breceipt\b/);
+    expectNoRemovedIdentifiers(body);
     expectExecutePermissions(statements, 'my_scan_quota');
   });
 
@@ -267,8 +309,19 @@ describe('0097 finance and business removal migration', () => {
     ];
 
     for (const key of retainedKeys) expect(body).toMatch(new RegExp(`'${key}'`));
-    expect(body).not.toMatch(/'goals_hit'/);
-    expect(body).not.toMatch(/\bpublic\.savings_goals\b/);
+    const canonicalSources = [
+      /'workouts'[\s\S]*?from public\.timeline_items where user_id = auth\.uid\(\) and type = 'workout'/,
+      /'challenges'[\s\S]*?from public\.challenge_participants where user_id = auth\.uid\(\)/,
+      /'memories'[\s\S]*?from public\.memories where user_id = auth\.uid\(\)/,
+      /'places'[\s\S]*?from public\.memories where user_id = auth\.uid\(\) and location is not null/,
+      /'posts'[\s\S]*?from public\.posts where user_id = auth\.uid\(\)/,
+      /'likes'[\s\S]*?from public\.post_likes where user_id = auth\.uid\(\)/,
+      /'groups'[\s\S]*?from public\.group_members where user_id = auth\.uid\(\)/,
+      /'messages'[\s\S]*?from public\.buddy_messages where sender = auth\.uid\(\)/,
+      /'profile_fields'[\s\S]*?avatar_url[\s\S]*?bio[\s\S]*?display_name[\s\S]*?from public\.profiles where id = auth\.uid\(\)/,
+    ];
+    for (const source of canonicalSources) expect(body).toMatch(source);
+    expectNoRemovedIdentifiers(body);
     expectExecutePermissions(statements, 'my_metric_counts');
   });
 
