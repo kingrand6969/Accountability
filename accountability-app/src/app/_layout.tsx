@@ -160,6 +160,7 @@ function RootNavigator() {
         <Stack.Screen name="group/[id]" options={{ headerShown: true, title: 'Group' }} />
         <Stack.Screen name="group-new" options={{ headerShown: true, title: 'New Group' }} />
         <Stack.Screen name="menu" options={{ headerShown: true, title: 'Menu' }} />
+        <Stack.Screen name="discover" options={{ headerShown: true, title: 'Discover' }} />
         <Stack.Screen name="help" options={{ headerShown: true, title: 'Help & Support' }} />
         <Stack.Screen name="memories" options={{ headerShown: true, title: 'Memories' }} />
         <Stack.Screen name="search" options={{ headerShown: true, title: 'Search' }} />

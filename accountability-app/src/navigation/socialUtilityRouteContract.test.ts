@@ -3,7 +3,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { Alert, Text, TextInput } from 'react-native';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { resolveColdLink } from './routeAccessContract';
 
@@ -203,6 +203,7 @@ describe('Group 3 manifest generated from the Expo app tree', () => {
   const actual = discoverAppRoutes(path.resolve(__dirname, '../app'));
   const byRoute = new Map(actual.map((entry) => [entry.route, entry]));
   const required = new Map<string, string[]>([
+    ['/discover', []],
     ['/groups', []],
     ['/group/:id', ['id']],
     ['/group-new', []],
@@ -216,6 +217,13 @@ describe('Group 3 manifest generated from the Expo app tree', () => {
     ['/win-card', []],
     ['/share/:id', ['id']],
   ]);
+
+  test('Menu exposes separate Buddies and Discover destinations', () => {
+    const menuSource = readFileSync(path.resolve(__dirname, '../app/menu.tsx'), 'utf8');
+    expect(menuSource).toContain("title: 'Buddies'");
+    expect(menuSource).toContain("title: 'Discover'");
+    expect(menuSource).toContain("route: '/discover'");
+  });
 
   test('contains every required Group 3 route with its actual dynamic parameters', () => {
     const missing = [...required.keys()].filter((route) => !byRoute.has(route));

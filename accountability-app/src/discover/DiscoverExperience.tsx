@@ -51,7 +51,7 @@ export function deriveDiscoverLayout(fontScale: number) {
   };
 }
 
-export function DiscoverExperience() {
+export function DiscoverExperience({ scope = 'all' }: { scope?: 'all' | 'people' }) {
   const router = useRouter();
   const { fontScale } = useWindowDimensions();
   const layout = deriveDiscoverLayout(fontScale);
@@ -258,7 +258,7 @@ export function DiscoverExperience() {
         <Ionicons name="options-outline" size={19} color={colors.primary} />
       </Pressable>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+      {scope === 'all' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         {([
           ['for-you', 'For you'],
           ['nearby', 'Nearby'],
@@ -287,8 +287,8 @@ export function DiscoverExperience() {
             </Text>
           </Pressable>
         ))}
-      </ScrollView>
-      <Text
+      </ScrollView> : null}
+      {scope === 'all' ? <Text
         style={[
           styles.nearbyExplanation,
           isLargeText && styles.nearbyExplanationLargeText,
@@ -296,7 +296,7 @@ export function DiscoverExperience() {
         accessibilityLabel="Nearby unavailable"
       >
         Nearby is off until private location permission and a privacy-safe public query are proven.
-      </Text>
+      </Text> : null}
 
       {state.status === 'offline' ? <StateNotice status="offline" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
       {state.status === 'error' ? <StateNotice status="error" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
@@ -309,7 +309,7 @@ export function DiscoverExperience() {
         />
       ) : null}
 
-      {showData && filter === 'for-you' ? (
+      {showData && (scope === 'people' || filter === 'for-you') ? (
         <>
           <SectionHeader
             title="People you may connect with"
@@ -336,7 +336,7 @@ export function DiscoverExperience() {
         </>
       ) : null}
 
-      {showData && (filter === 'for-you' || filter === 'groups') ? (
+      {scope === 'all' && showData && (filter === 'for-you' || filter === 'groups') ? (
         <>
           <SectionHeader title="Recommended group" action="See all" onPress={() => router.push('/groups' as never)} largeText={layout.stackCards} />
           {recommendedGroups.slice(0, filter === 'groups' ? 8 : 1).map((group) => (
@@ -355,7 +355,7 @@ export function DiscoverExperience() {
         </>
       ) : null}
 
-      {showData && (filter === 'for-you' || filter === 'challenges') ? (
+      {scope === 'all' && showData && (filter === 'for-you' || filter === 'challenges') ? (
         <>
           <SectionHeader title="Challenge spotlight" action="See all" onPress={() => router.push('/compete' as never)} largeText={layout.stackCards} />
           {recommendedChallenges.slice(0, filter === 'challenges' ? 8 : 1).map((challenge) => (
