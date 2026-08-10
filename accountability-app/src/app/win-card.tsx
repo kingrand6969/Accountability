@@ -16,6 +16,7 @@ import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createPost } from '../feed/api';
+import { addStory } from '../stories/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { saveImageToMemories } from '../memories/api';
 import { supabase } from '../lib/supabase';
@@ -53,6 +54,7 @@ import {
   ProofCaptureCard,
   type ProofCaptureRendererContext,
 } from '../entry/ProofCaptureCard';
+import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
@@ -63,10 +65,14 @@ export default function WinCard() {
     location?: string | string[];
     route?: string | string[];
     buddyName?: string | string[];
+    achievementKind?: string | string[];
+    achievementTitle?: string | string[];
+    autoPrompt?: string | string[];
   }>();
   const proofLocation = sanitizeProofParam(params.location);
   const proofRoute = sanitizeProofParam(params.route);
   const proofBuddyName = sanitizeProofParam(params.buddyName);
+  const achievementTitle = sanitizeProofParam(params.achievementTitle);
   const {
     stats,
     loadError,
@@ -94,6 +100,9 @@ export default function WinCard() {
   const [privacy, setPrivacy] = useState<ProofPrivacy>({ ...DEFAULT_PROOF_PRIVACY });
   const [selectedCaptureContext, setSelectedCaptureContext] =
     useState<ProofCaptureRendererContext | null>(null);
+  const [sharePromptVisible, setSharePromptVisible] = useState(
+    sanitizeProofParam(params.autoPrompt) === '1',
+  );
   const cardRef = useRef<View>(null);
   const retryGuardRef = useRef(createProofRetryGuard());
   // Fonts (Inter + Anton) are loaded globally in the root layout.
@@ -193,12 +202,14 @@ export default function WinCard() {
   }
 
   const message =
-    stats.streak > 0
+    achievementTitle
+      ? `${achievementTitle} completed on AccountAbility. I showed up today.`
+      : stats.streak > 0
       ? `${stats.streak}-day streak on AccountAbility. Achieve consistency.`
       : `Building better habits with AccountAbility - ${stats.weekWorkouts} workouts this week.`;
   const proofInput: ProofExportInput = {
     brand: 'AccountAbility',
-    headline: 'I showed up today.',
+    headline: achievementTitle ?? 'I showed up today.',
     format,
     metrics: {
       workouts: stats.weekWorkouts,
@@ -254,7 +265,7 @@ export default function WinCard() {
 
   async function onShareToFeed() {
     const token = beginAction('post-feed');
-    if (!token) return;
+    if (!token) throw new Error('Another share is already in progress.');
     let pending: PendingProofActionV1 | null = null;
     let dispatched = false;
     try {
@@ -280,12 +291,12 @@ export default function WinCard() {
       await createPost(message, imageUrl);
       const ownerStayedCurrent = await requireCurrentActionOwner(token);
       await confirmDurableAction(pending);
-      if (!ownerStayedCurrent) return;
+      if (!ownerStayedCurrent) throw new Error('Account changed.');
       mutateForToken(token, () => {
         dispatchAction({ type: 'success', action: 'post-feed' });
         Alert.alert('Shared to your feed', 'Your Daily Proof is now on your feed.');
       });
-    } catch {
+    } catch (error) {
       if (pending && dispatched) {
         retainAmbiguous(token, pending, 'The post may have completed. Check Feed before trying again.');
       } else {
@@ -294,6 +305,21 @@ export default function WinCard() {
           Alert.alert('Could not post Daily Proof', 'Nothing was posted. Please try again.');
         });
       }
+      throw error;
+    } finally {
+      endAction(token);
+    }
+  }
+
+  async function onShareToStory() {
+    const token = beginAction('share-external');
+    if (!token) throw new Error('Another share is already in progress.');
+    try {
+      const base64 = await captureDestination(buildFeedProofExport, 'base64', token);
+      if (!base64) throw new Error('Could not prepare the Daily Proof image. Please try again.');
+      if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
+      await addStory(base64, 'png', message);
+      if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
     } finally {
       endAction(token);
     }
@@ -502,7 +528,7 @@ export default function WinCard() {
       ) : null}
 
       <View style={styles.actions}>
-        <ProofAction icon="people-outline" label="Post to Feed" onPress={onShareToFeed} busy={isProofActionBusy(actionState, 'post-feed')} disabled={actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'} />
+        <ProofAction icon="people-outline" label="Share achievement" onPress={() => setSharePromptVisible(true)} busy={isProofActionBusy(actionState, 'post-feed')} disabled={actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'} />
         <ProofAction icon="share-social-outline" label="Share outside app" onPress={onShareExternally} busy={isProofActionBusy(actionState, 'share-external')} />
         {Platform.OS !== 'web' ? <ProofAction icon="download-outline" label="Save to phone" onPress={onSavePhone} busy={isProofActionBusy(actionState, 'save-phone')} /> : null}
         <ProofAction icon="bookmark-outline" label="Save to Memories" onPress={onSaveMemories} busy={isProofActionBusy(actionState, 'save-memories')} disabled={actionState['save-memories'].status === 'unresolved' || actionState['save-memories'].status === 'ambiguous'} />
@@ -534,6 +560,14 @@ export default function WinCard() {
           </View>
         </View>
       ))}
+      <AchievementSharePrompt
+        visible={sharePromptVisible}
+        payloadKey={`${sanitizeProofParam(params.achievementKind) ?? 'streak'}:${achievementTitle ?? message}`}
+        onFeed={onShareToFeed}
+        onStory={onShareToStory}
+        onPrivate={() => Promise.resolve()}
+        onClose={() => setSharePromptVisible(false)}
+      />
     </ScrollView>
   );
 

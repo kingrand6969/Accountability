@@ -9,18 +9,20 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { getItem, updateItemChecklist } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
 import { EmptyState } from '../../ui/EmptyState';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
 import type { ChecklistItem, TimelineItem } from '../../timeline/types';
+import { becameCompleteChecklist } from '../../timeline/completion';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [item, setItem] = useState<TimelineItem | null>(null);
   const [list, setList] = useState<ChecklistItem[]>([]);
   const [newText, setNewText] = useState('');
@@ -40,11 +42,23 @@ export default function ItemDetail() {
   );
 
   async function persist(next: ChecklistItem[]) {
+    const previous = list;
     setList(next);
     if (!id) return;
     try {
       await updateItemChecklist(id, next);
+      if (item?.type === 'workout' && becameCompleteChecklist(list, next)) {
+        router.push({
+          pathname: '/win-card',
+          params: {
+            achievementKind: 'workout',
+            achievementTitle: item.title,
+            autoPrompt: '1',
+          },
+        } as never);
+      }
     } catch (e) {
+      setList(previous);
       Alert.alert('Could not save', String((e as Error).message ?? e));
     }
   }

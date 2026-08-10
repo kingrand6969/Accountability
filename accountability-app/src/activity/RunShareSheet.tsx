@@ -76,6 +76,8 @@ import {
 } from './beauty/BeautyEditor';
 import type { BeautyCaptureSource } from './beauty/cameraMode';
 import { DEFAULT_BEAUTY } from './beauty/types';
+import { addStory } from '../stories/api';
+import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
 
 const LIME = '#c6f24e';
 
@@ -179,6 +181,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const [mediaFit, setMediaFit] = useState<RunMediaFit>('cover');
   const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
   const [activeDestination, setActiveDestination] = useState<RunMediaDestination | null>(null);
+  const [sharePromptVisible, setSharePromptVisible] = useState(true);
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
   const [beautyStage, setBeautyStage] = useState<'camera' | 'editor' | null>(
     null,
@@ -739,6 +742,30 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     if (!ran) throw new Error('Another run-image action is already in progress.');
   }
 
+  async function onStoryDestination(): Promise<void> {
+    const ran = await shareOperationGate.run(async () => {
+      const boundary = ownerBoundary();
+      boundary.assertOwned();
+      setActiveDestination('share');
+      try {
+        if (Platform.OS === 'web') {
+          throw new Error('Adding a run card to My Day is available on your phone.');
+        }
+        const item = await currentRunMedia();
+        boundary.assertOwned();
+        const base64 = await new File(item.uri).base64();
+        boundary.assertOwned();
+        await boundary.runSideEffect(() => addStory(base64, 'jpg', caption));
+        boundary.assertOwned();
+        hasPersistentDestination.current = true;
+        await closeEditor();
+      } finally {
+        setActiveDestination(null);
+      }
+    });
+    if (!ran) throw new Error('Another run-image action is already in progress.');
+  }
+
   if (!ownerMatches) {
     return (
       <View
@@ -973,9 +1000,18 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
       <RunMediaActions
         onDestination={onDestination}
+        onShareAchievement={() => setSharePromptVisible(true)}
         disabled={busy}
         activityQueued={activityQueued}
         feedDisabledReason={feedDisabledReason}
+      />
+      <AchievementSharePrompt
+        visible={sharePromptVisible}
+        payloadKey={run.activityId ?? `${run.ownerId}:${run.elapsed}:${run.distance}`}
+        onFeed={() => onDestination('feed')}
+        onStory={onStoryDestination}
+        onPrivate={() => closeEditor()}
+        onClose={() => setSharePromptVisible(false)}
       />
     </View>
   );

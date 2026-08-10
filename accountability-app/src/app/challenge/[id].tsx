@@ -168,9 +168,29 @@ export default function ChallengeDetail() {
               {fmtRange(challenge.starts_at, challenge.ends_at, challengeCheckedAt)}
             </Text>
             {ended ? (
-              <View style={[styles.joinBtn, styles.endedBtn]}>
-                <Text style={styles.endedText}>Challenge ended</Text>
-              </View>
+              <>
+                <View style={[styles.joinBtn, styles.endedBtn]}>
+                  <Text style={styles.endedText}>Challenge ended</Text>
+                </View>
+                {challenge.joined ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.inviteBtn, pressed && styles.pressed]}
+                    onPress={() => router.push({
+                      pathname: '/win-card',
+                      params: {
+                        achievementKind: 'challenge',
+                        achievementTitle: challenge.title,
+                        autoPrompt: '1',
+                      },
+                    } as never)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Flex this challenge"
+                  >
+                    <Ionicons name="trophy-outline" size={15} color={ACCENT} />
+                    <Text style={styles.inviteText}>Flex this challenge</Text>
+                  </Pressable>
+                ) : null}
+              </>
             ) : (
               <Pressable
                 style={({ pressed }) => [
