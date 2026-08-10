@@ -71,8 +71,24 @@ const normalize = (value: string): string => value.toLowerCase().replace(/\s+/g,
 
 type ModelSource = 'self' | 'buddy' | 'followed_person' | 'joined_group' | 'followed_page' | 'suggested';
 type ModelRow = { id: string; source: ModelSource; createdAt: string; score: number };
+type ModelItem = ModelRow & { position: number };
+type ModelPostState = {
+  visible: boolean;
+  hidden?: boolean;
+  blocked?: boolean;
+  self?: boolean;
+  page?: boolean;
+  groupMember?: boolean;
+  audience?: 'public' | 'buddies';
+  buddy?: boolean;
+};
 
-function modelPage(rows: ModelRow[], before: { id: string; createdAt: string } | null, limit: number) {
+const modelCandidateLimit = (requested?: number | null) =>
+  Math.min(Math.max(requested ?? 500, 1), 1000);
+const modelPagerLimit = (requested?: number | null) =>
+  Math.min(Math.max(requested ?? 20, 1), 50);
+
+function modelSequence(rows: ModelRow[]): ModelRow[] {
   const priority: Record<Exclude<ModelSource, 'suggested'>, number> = {
     self: 0, buddy: 1, followed_person: 2, joined_group: 3, followed_page: 4,
   };
@@ -91,12 +107,60 @@ function modelPage(rows: ModelRow[], before: { id: string; createdAt: string } |
     const suggestion = suggestions[Math.floor(index / 4)];
     if ((index + 1) % 4 === 0 && suggestion) sequence.push(suggestion);
   });
+  return sequence.map((row) => ({ ...row }));
+}
+
+function modelPage(rows: ModelRow[], before: { id: string; createdAt: string } | null, limit: number) {
+  const sequence = modelSequence(rows);
   const cursorOrdinal = before === null
     ? -1
     : sequence.findIndex(({ id, createdAt }) => id === before.id && createdAt === before.createdAt);
   if (before !== null && cursorOrdinal < 0) return [];
-  return sequence.slice(cursorOrdinal + 1, cursorOrdinal + 1 + Math.max(1, Math.min(limit, 50)))
+  return sequence.slice(cursorOrdinal + 1, cursorOrdinal + 1 + modelPagerLimit(limit))
     .map((row) => ({ ...row }));
+}
+
+let modelSessionSequence = 0;
+
+function createModelSession(
+  owner: string,
+  now: number,
+  rows: ModelRow[],
+  requestedLimit?: number | null,
+) {
+  const items: ModelItem[] = modelSequence(rows)
+    .slice(0, modelCandidateLimit(requestedLimit))
+    .map((row, index) => ({ ...row, position: index + 1 }));
+  return {
+    id: `model-session-${modelSessionSequence += 1}`,
+    owner,
+    expiresAt: now + 30 * 60_000,
+    items,
+  };
+}
+
+function modelPolicyAllows(state: ModelPostState): boolean {
+  if (!state.visible || state.hidden || state.blocked) return false;
+  return Boolean(state.self
+    || state.page
+    || state.groupMember
+    || state.audience === 'public'
+    || (state.audience === 'buddies' && state.buddy));
+}
+
+function pageModelSession(
+  session: ReturnType<typeof createModelSession>,
+  viewer: string,
+  now: number,
+  afterPosition: number | null,
+  states: ReadonlyMap<string, ModelPostState>,
+  requestedLimit?: number | null,
+) {
+  if (session.owner !== viewer || session.expiresAt <= now) return [];
+  return session.items
+    .filter(({ id, position }) =>
+      position > Math.max(afterPosition ?? 0, 0) && modelPolicyAllows(states.get(id) ?? { visible: false }))
+    .slice(0, modelPagerLimit(requestedLimit));
 }
 
 describe('0101 unified social feed migration', () => {
@@ -230,6 +294,9 @@ describe('0101 unified social feed migration', () => {
     const first = create('viewer-a', now, rows);
     const refresh = create('viewer-a', now + 1, rows);
     expect(refresh.id).not.toBe(first.id);
+    expect(refresh.items).not.toBe(first.items);
+    refresh.items[0].source = 'buddy';
+    expect(first.items[0].source).toBe('self');
     expect(page(first, 'viewer-b', now, 0, new Set(['anchor', 'later']))).toEqual([]);
     expect(page(first, 'viewer-a', first.expiresAt, 0, new Set(['anchor', 'later']))).toEqual([]);
     expect(page(first, 'viewer-a', now, 1, new Set(['later'])).map(({ id }) => id)).toEqual(['later']);
@@ -252,6 +319,74 @@ describe('0101 unified social feed migration', () => {
     }));
     const suggestions: ModelRow[] = ['s1', 's2', 's3'].map((id) => ({ id, source: 'suggested', createdAt: '2027-01-01', score: 9 }));
     expect(modelPage([...many, ...suggestions], null, 50).filter(({ source }) => source === 'suggested')).toHaveLength(2);
+  });
+
+  test('continues from a deleted page-one anchor position', () => {
+    const session = createModelSession('viewer', 0, [
+      { id: 'anchor', source: 'self', createdAt: '2026-01-01', score: 0 },
+      { id: 'later', source: 'buddy', createdAt: '2026-01-02', score: 0 },
+    ]);
+    session.items = session.items.filter(({ id }) => id !== 'anchor');
+    expect(pageModelSession(session, 'viewer', 1, 1, new Map([['later', { visible: true, audience: 'public' }]]))
+      .map(({ id, position }) => [id, position])).toEqual([['later', 2]]);
+  });
+
+  test('omits hidden items without deleting positions and continues later', () => {
+    const session = createModelSession('viewer', 0, [
+      { id: 'anchor', source: 'self', createdAt: '2026-01-01', score: 0 },
+      { id: 'hidden', source: 'buddy', createdAt: '2026-01-03', score: 0 },
+      { id: 'later', source: 'buddy', createdAt: '2026-01-02', score: 0 },
+    ]);
+    const state = new Map<string, ModelPostState>([
+      ['hidden', { visible: true, hidden: true }],
+      ['later', { visible: true, audience: 'public' }],
+    ]);
+    expect(session.items.map(({ position }) => position)).toEqual([1, 2, 3]);
+    expect(pageModelSession(session, 'viewer', 1, 1, state).map(({ id, position }) => [id, position]))
+      .toEqual([['later', 3]]);
+  });
+
+  test('keeps snapshot source/order while current personal audience policy reacts to relationship loss', () => {
+    const session = createModelSession('viewer', 0, [
+      { id: 'buddy-only', source: 'buddy', createdAt: '2026-01-03', score: 0 },
+      { id: 'public-buddy', source: 'buddy', createdAt: '2026-01-02', score: 0 },
+      { id: 'later', source: 'followed_page', createdAt: '2026-01-01', score: 0 },
+    ]);
+    const afterLoss = new Map<string, ModelPostState>([
+      ['buddy-only', { visible: true, audience: 'buddies', buddy: false }],
+      ['public-buddy', { visible: true, audience: 'public', buddy: false }],
+      ['later', { visible: true, page: true }],
+    ]);
+    const page = pageModelSession(session, 'viewer', 1, 0, afterLoss);
+    expect(page.map(({ id, source, position }) => [id, source, position])).toEqual([
+      ['public-buddy', 'buddy', 2], ['later', 'followed_page', 3],
+    ]);
+  });
+
+  test.each([
+    [undefined, 500], [null, 500], [-10, 1], [0, 1], [1, 1], [1000, 1000], [5000, 1000],
+  ])('bounds creation candidate limit %p to %i', (requested, expected) => {
+    expect(modelCandidateLimit(requested)).toBe(expected);
+  });
+
+  test('never stores more than the total cap and retains the 4:1 suggestion cap', () => {
+    const connections = Array.from({ length: 1200 }, (_, index): ModelRow => ({
+      id: `c-${index}`, source: 'buddy', createdAt: `2026-${String(index).padStart(4, '0')}`, score: 0,
+    }));
+    const suggestions = Array.from({ length: 400 }, (_, index): ModelRow => ({
+      id: `s-${index}`, source: 'suggested', createdAt: `2027-${String(index).padStart(4, '0')}`, score: 0,
+    }));
+    const session = createModelSession('viewer', 0, [...connections, ...suggestions], 5000);
+    expect(session.items.length).toBeLessThanOrEqual(1000);
+    const suggested = session.items.filter(({ source }) => source === 'suggested').length;
+    const connected = session.items.length - suggested;
+    expect(suggested).toBeLessThanOrEqual(Math.floor(connected / 4));
+  });
+
+  test.each([
+    [undefined, 20], [null, 20], [-10, 1], [0, 1], [1, 1], [50, 50], [500, 50],
+  ])('bounds pager limit %p to %i', (requested, expected) => {
+    expect(modelPagerLimit(requested)).toBe(expected);
   });
 
   test('computes engagement from cheers/likes and comments without multiplying rows', () => {
