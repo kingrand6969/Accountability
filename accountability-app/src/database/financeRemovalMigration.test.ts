@@ -136,25 +136,16 @@ function dollarQuotedBody(statement: string): string {
 
 function expectExecutePermissions(statements: string[], functionName: string): void {
   const escapedName = functionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const functionReference = new RegExp(`\\bpublic\\.${escapedName}\\s*\\(`);
   const normalized = statements.map(normalize);
+  const revoke = new RegExp(
+    `^revoke all on function public\\.${escapedName}\\(\\) from public$`,
+  );
+  const grant = new RegExp(
+    `^grant execute on function public\\.${escapedName}\\(\\) to authenticated$`,
+  );
 
-  expect(
-    normalized.some(
-      (statement) =>
-        /^revoke\b/.test(statement) &&
-        functionReference.test(statement) &&
-        /\bfrom public$/.test(statement),
-    ),
-  ).toBe(true);
-  expect(
-    normalized.some(
-      (statement) =>
-        /^grant execute on function\b/.test(statement) &&
-        functionReference.test(statement) &&
-        /\bto authenticated$/.test(statement),
-    ),
-  ).toBe(true);
+  expect(normalized.filter((statement) => revoke.test(statement))).toHaveLength(1);
+  expect(normalized.filter((statement) => grant.test(statement))).toHaveLength(1);
 }
 
 const REMOVED_TABLES = [
@@ -193,6 +184,52 @@ const REMOVED_FUNCTION_SIGNATURES = [
 ];
 
 const DESTRUCTIVE_PREFIX = /^(?:drop\s+(?:table|schema|database|function|trigger)\b|delete\s+from\b|truncate\b|alter\s+table\b)/;
+const APPROVED_AI_SCANS_ALTER = /^alter table public\.ai_scans (?:drop constraint(?: if exists)? [a-z_][a-z0-9_]*|add constraint [a-z_][a-z0-9_]* check\s*\(\s*kind\s*=\s*'food'\s*\))$/;
+
+function dropTableTargets(statement: string): string[] | null {
+  const match = statement.match(/^drop table(?: if exists)? (.+)$/);
+  if (!match) return null;
+  const targets = splitTopLevelCommaList(match[1]);
+  if (targets.some((target) => !/^public\.[a-z_][a-z0-9_]*$/.test(target))) return null;
+  return targets.map((target) => target.slice('public.'.length));
+}
+
+function normalizeFunctionSignature(signature: string): string {
+  return signature.replace(/\binteger\b/g, 'int').replace(/\s+/g, '');
+}
+
+function dropFunctionTargets(statement: string): string[] | null {
+  const match = statement.match(/^drop function(?: if exists)? (.+)$/);
+  if (!match) return null;
+  const targets = splitTopLevelCommaList(match[1]).map(normalizeFunctionSignature);
+  if (
+    targets.some(
+      (target) =>
+        !/^public\.[a-z_][a-z0-9_]*\((?:[a-z_]+(?:,[a-z_]+)*)?\)$/.test(target),
+    )
+  ) {
+    return null;
+  }
+  return targets;
+}
+
+function isApprovedDelete(statement: string): boolean {
+  if (/^delete from public\.posts where post_type\s*=\s*'savings'$/.test(statement)) {
+    return true;
+  }
+  if (/^delete from public\.ai_scans where kind\s*=\s*'receipt'$/.test(statement)) {
+    return true;
+  }
+  const timeline = statement.match(
+    /^delete from public\.timeline_items where type in\s*\(([^)]*)\)$/,
+  );
+  if (!timeline) return false;
+  const values = timeline[1]
+    .split(',')
+    .map((value) => value.trim().match(/^'([a-z_]+)'$/)?.[1])
+    .sort();
+  return JSON.stringify(values) === JSON.stringify(['expense', 'income']);
+}
 
 function expectNoRemovedIdentifiers(body: string): void {
   const removedIdentifiers = [
@@ -211,6 +248,42 @@ describe('0097 finance and business removal migration', () => {
   const statements = executableStatements(readFileSync(MIGRATION_PATH, 'utf8'));
   const normalizedStatements = statements.map(normalize);
 
+  test('rejects every unreviewed top-level executable statement', () => {
+    const allowedTables = new Set(REMOVED_TABLES);
+    const allowedFunctions = new Set(REMOVED_FUNCTION_SIGNATURES);
+    const replacementFunction =
+      /^create or replace function public\.(?:my_scan_quota|my_metric_counts)\s*\(\)/;
+    const replacementPermission =
+      /^(?:revoke all on function public\.(?:my_scan_quota|my_metric_counts)\(\) from public|grant execute on function public\.(?:my_scan_quota|my_metric_counts)\(\) to authenticated)$/;
+    const approvedTrigger =
+      /^drop trigger(?: if exists)? money_tx_mirror on public\.money_transactions$/;
+
+    for (const statement of normalizedStatements) {
+      const tableTargets = dropTableTargets(statement);
+      const functionTargets = dropFunctionTargets(statement);
+      const categories = [
+        statement === 'begin',
+        statement === 'commit',
+        isApprovedDelete(statement),
+        APPROVED_AI_SCANS_ALTER.test(statement),
+        replacementFunction.test(statement),
+        replacementPermission.test(statement),
+        approvedTrigger.test(statement),
+        functionTargets !== null &&
+          functionTargets.length > 0 &&
+          functionTargets.every((target) => allowedFunctions.has(target)),
+        tableTargets !== null &&
+          tableTargets.length > 0 &&
+          tableTargets.every((target) => allowedTables.has(target)),
+      ];
+
+      expect({ statement, matchingCategories: categories.filter(Boolean).length }).toEqual({
+        statement,
+        matchingCategories: 1,
+      });
+    }
+  });
+
   test('allowlists every executable destructive statement', () => {
     const destructiveStatements = normalizedStatements.filter((statement) =>
       DESTRUCTIVE_PREFIX.test(statement),
@@ -222,13 +295,9 @@ describe('0097 finance and business removal migration', () => {
     const dropTables = destructiveStatements.filter((statement) => /^drop table\b/.test(statement));
     const droppedTables: string[] = [];
     for (const statement of dropTables) {
-      const match = statement.match(/^drop table(?: if exists)? (.+)$/);
-      expect(match).not.toBeNull();
-      for (const target of splitTopLevelCommaList(match?.[1] ?? '')) {
-        const targetMatch = target.match(/^public\.([a-z_][a-z0-9_]*)$/);
-        expect(targetMatch).not.toBeNull();
-        droppedTables.push(targetMatch?.[1] ?? 'unparseable');
-      }
+      const targets = dropTableTargets(statement);
+      expect(targets).not.toBeNull();
+      droppedTables.push(...(targets ?? []));
     }
     expect(droppedTables.sort()).toEqual(REMOVED_TABLES);
 
@@ -250,7 +319,7 @@ describe('0097 finance and business removal migration', () => {
     expect(alters.length).toBeGreaterThanOrEqual(2);
     expect(
       alters.every((statement) =>
-        /^alter table public\.ai_scans (?:drop constraint(?: if exists)? [a-z_][a-z0-9_]*|add constraint [a-z_][a-z0-9_]* check\s*\(\s*kind\s*=\s*'food'\s*\))$/.test(statement),
+        APPROVED_AI_SCANS_ALTER.test(statement),
       ),
     ).toBe(true);
     expect(alters.some((statement) => / drop constraint(?: if exists)? /.test(statement))).toBe(true);
@@ -259,13 +328,9 @@ describe('0097 finance and business removal migration', () => {
     const dropFunctions = destructiveStatements.filter((statement) => /^drop function\b/.test(statement));
     const droppedFunctions: string[] = [];
     for (const statement of dropFunctions) {
-      const match = statement.match(/^drop function(?: if exists)? (.+)$/);
-      expect(match).not.toBeNull();
-      for (const target of splitTopLevelCommaList(match?.[1] ?? '')) {
-        const compactTarget = target.replace(/\s+/g, '');
-        expect(compactTarget).toMatch(/^public\.[a-z_][a-z0-9_]*\((?:[a-z_]+(?:,[a-z_]+)*)?\)$/);
-        droppedFunctions.push(compactTarget);
-      }
+      const targets = dropFunctionTargets(statement);
+      expect(targets).not.toBeNull();
+      droppedFunctions.push(...(targets ?? []));
     }
     expect(droppedFunctions.sort()).toEqual(REMOVED_FUNCTION_SIGNATURES);
 
