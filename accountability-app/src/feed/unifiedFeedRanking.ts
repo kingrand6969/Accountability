@@ -6,12 +6,22 @@ export type UnifiedFeedSource =
   | 'followed_page'
   | 'suggested';
 
-export type RankedFeedCandidate = {
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+type JsonObject = { readonly [key: string]: JsonValue };
+
+export type RankedFeedCandidate = Readonly<{
   id: string;
   source: UnifiedFeedSource;
   createdAt: string;
   score: number;
-};
+}> & JsonObject;
 
 export type ConnectionCandidate = RankedFeedCandidate & {
   source: Exclude<UnifiedFeedSource, 'suggested'>;
@@ -28,6 +38,14 @@ const SOURCE_PRIORITY: Record<Exclude<UnifiedFeedSource, 'suggested'>, number> =
   joined_group: 3,
   followed_page: 4,
 };
+
+const CONNECTION_SOURCES = new Set<ConnectionCandidate['source']>([
+  'self',
+  'buddy',
+  'followed_person',
+  'joined_group',
+  'followed_page',
+]);
 
 type InterleaveUnifiedFeedInput<
   C extends ConnectionCandidate,
@@ -51,18 +69,58 @@ function compareId(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function stableRepresentation(value: unknown, ancestors = new Set<object>()): string {
-  if (value === null || typeof value !== 'object') {
-    return `${typeof value}:${String(value)}`;
+function canonicalJson(value: JsonValue): string {
+  if (value === null) return 'null';
+  if (typeof value === 'boolean') return `boolean:${value ? '1' : '0'}`;
+  if (typeof value === 'number') {
+    const normalized = Object.is(value, -0) ? 0 : value;
+    return `number:${String(normalized)}`;
   }
-  if (ancestors.has(value)) return '[circular]';
-  const nextAncestors = new Set(ancestors).add(value);
+  if (typeof value === 'string') return `string:${JSON.stringify(value)}`;
   if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableRepresentation(entry, nextAncestors)).join(',')}]`;
+    return `array:${JSON.stringify(value.map(canonicalJson))}`;
   }
-  return `{${Object.keys(value).sort().map((key) =>
-    `${key}:${stableRepresentation((value as Record<string, unknown>)[key], nextAncestors)}`
-  ).join(',')}}`;
+  const objectValue = value as JsonObject;
+  const entries = Object.keys(objectValue).sort()
+    .map((key) => [key, canonicalJson(objectValue[key])]);
+  return `object:${JSON.stringify(entries)}`;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isPlainObject(value) && Object.values(value).every(isJsonValue);
+}
+
+function isCandidateRecord(value: unknown): value is RankedFeedCandidate {
+  if (!isPlainObject(value)) return false;
+  if (!Object.hasOwn(value, 'id')
+    || !Object.hasOwn(value, 'source')
+    || !Object.hasOwn(value, 'createdAt')
+    || !Object.hasOwn(value, 'score')
+    || typeof value.id !== 'string'
+    || typeof value.source !== 'string'
+    || typeof value.createdAt !== 'string'
+    || typeof value.score !== 'number') return false;
+  return Object.entries(value).every(([key, entry]) => key === 'score' || isJsonValue(entry));
+}
+
+function canonicalCandidate(candidate: RankedFeedCandidate): string {
+  const entries = Object.keys(candidate).sort().map((key) => {
+    const value = candidate[key];
+    if (key === 'score' && typeof value === 'number' && !Number.isFinite(value)) {
+      return [key, `number:${String(value)}`];
+    }
+    return [key, canonicalJson(value)];
+  });
+  return `candidate:${JSON.stringify(entries)}`;
 }
 
 function compareWithinTier(left: RankedFeedCandidate, right: RankedFeedCandidate): number {
@@ -80,7 +138,7 @@ function compareConnections(left: RankedFeedCandidate, right: RankedFeedCandidat
     : SOURCE_PRIORITY[right.source];
   return leftPriority - rightPriority
     || compareWithinTier(left, right)
-    || compareId(stableRepresentation(left), stableRepresentation(right));
+    || compareId(canonicalCandidate(left), canonicalCandidate(right));
 }
 
 function uniqueById<T extends RankedFeedCandidate>(candidates: readonly T[]): T[] {
@@ -104,7 +162,8 @@ export function interleaveUnifiedFeed<
   const boundedLimit = Math.floor(limit);
   const rankedConnections = uniqueById(
     connections.filter((candidate): candidate is C =>
-      (candidate as RankedFeedCandidate).source !== 'suggested')
+      isCandidateRecord(candidate)
+        && CONNECTION_SOURCES.has(candidate.source as ConnectionCandidate['source']))
       .sort(compareConnections),
   );
   if (rankedConnections.length === 0) return [];
@@ -112,10 +171,11 @@ export function interleaveUnifiedFeed<
   const connectionIds = new Set(rankedConnections.map(({ id }) => id));
   const rankedSuggestions = uniqueById(
     suggestions.filter((candidate): candidate is S =>
-      (candidate as RankedFeedCandidate).source === 'suggested'
+      isCandidateRecord(candidate)
+        && candidate.source === 'suggested'
         && !connectionIds.has(candidate.id))
       .sort((left, right) => compareWithinTier(left, right)
-        || compareId(stableRepresentation(left), stableRepresentation(right))),
+        || compareId(canonicalCandidate(left), canonicalCandidate(right))),
   );
 
   const result: (C | S)[] = [];

@@ -2,25 +2,41 @@ import { describe, expect, test } from '@jest/globals';
 import {
   interleaveUnifiedFeed,
   type ConnectionCandidate,
+  type JsonValue,
   type RankedFeedCandidate,
   type SuggestionCandidate,
   type UnifiedFeedSource,
 } from './unifiedFeedRanking';
 
 type Candidate<S extends UnifiedFeedSource = UnifiedFeedSource> =
-  RankedFeedCandidate & { source: S; marker?: string };
+  RankedFeedCandidate & { source: S; marker: string };
 
 const item = <S extends UnifiedFeedSource>(
   id: string,
   source: S,
   createdAt = '2026-08-10T12:00:00.000Z',
   score = 0,
-  marker?: string,
+  marker = '',
 ): Candidate<S> => ({ id, source, createdAt, score, marker });
 
 const ids = (rows: readonly RankedFeedCandidate[]) => rows.map(({ id }) => id);
 
 describe('interleaveUnifiedFeed', () => {
+  test('accepts recursive readonly JSON metadata and rejects non-JSON metadata types', () => {
+    const metadata = {
+      flags: [true, null, { count: 2 }],
+    } as const satisfies JsonValue;
+    const valid = { ...item('json', 'buddy'), metadata } satisfies ConnectionCandidate;
+    expect(valid.metadata).toBe(metadata);
+
+    // @ts-expect-error Date metadata is outside the public JSON candidate domain.
+    const invalidDate: ConnectionCandidate = { ...item('date', 'buddy'), metadata: new Date() };
+    // @ts-expect-error Map metadata is outside the public JSON candidate domain.
+    const invalidMap: ConnectionCandidate = { ...item('map', 'buddy'), metadata: new Map() };
+    expect(invalidDate.id).toBe('date');
+    expect(invalidMap.id).toBe('map');
+  });
+
   test('exposes discriminated connection and suggestion bucket types', () => {
     const connection = item('connection', 'buddy') satisfies ConnectionCandidate;
     const suggestion = item('suggestion', 'suggested') satisfies SuggestionCandidate;
@@ -129,6 +145,26 @@ describe('interleaveUnifiedFeed', () => {
     }
   });
 
+  test('canonicalizes nested JSON metadata independent of object key and input order', () => {
+    const preferred = {
+      ...item('nested', 'buddy'),
+      metadata: { profile: { a: 1, b: [true, 'x'] }, label: 'a' },
+    } satisfies ConnectionCandidate;
+    const other = {
+      ...item('nested', 'buddy'),
+      metadata: { label: 'z', profile: { b: [true, 'x'], a: 1 } },
+    } satisfies ConnectionCandidate;
+
+    const forward = interleaveUnifiedFeed({
+      connections: [other, preferred], suggestions: [], limit: 5,
+    });
+    const reversed = interleaveUnifiedFeed({
+      connections: [preferred, other], suggestions: [], limit: 5,
+    });
+    expect(forward).toEqual([preferred]);
+    expect(reversed).toEqual([preferred]);
+  });
+
   test('defensively ignores candidates placed in the wrong semantic bucket', () => {
     const malformedConnections = [
       item('bad-connection', 'suggested'),
@@ -148,6 +184,25 @@ describe('interleaveUnifiedFeed', () => {
       suggestions: malformedSuggestions,
       limit: 10,
     }))).toEqual(['c2', 'c3', 'c4', 'good-connection', 'good-suggestion']);
+  });
+
+  test('rejects unknown source values from both runtime buckets', () => {
+    const bogusConnection = {
+      ...item('bogus-connection', 'buddy'), source: 'bogus',
+    } as unknown as ConnectionCandidate;
+    const bogusSuggestion = {
+      ...item('bogus-suggestion', 'suggested'), source: 'bogus',
+    } as unknown as SuggestionCandidate;
+    const connections = [
+      item('c1', 'buddy'), item('c2', 'buddy'), item('c3', 'buddy'), item('c4', 'buddy'),
+      bogusConnection,
+    ];
+
+    expect(ids(interleaveUnifiedFeed({
+      connections,
+      suggestions: [bogusSuggestion, item('valid-suggestion', 'suggested')],
+      limit: 10,
+    }))).toEqual(['c1', 'c2', 'c3', 'c4', 'valid-suggestion']);
   });
 
   test('treats nonfinite scores as lowest deterministically', () => {
