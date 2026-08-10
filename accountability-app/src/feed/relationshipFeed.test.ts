@@ -21,48 +21,100 @@ beforeEach(() => {
   mockRpc.mockReset();
 });
 
-describe('personal relationship feed RPC', () => {
-  test.each(['buddies', 'discover'] as const)('%s uses the server-side relationship query only', async (mode) => {
-    mockRpc.mockResolvedValue({ data: [{ id: 'post-1' }], error: null });
-    const posts = feedQuery([post('post-1')]);
+describe('unified personal feed snapshot', () => {
+  test('refresh creates a session, pages it, and preserves ranked metadata and order', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'session-1', error: null })
+      .mockResolvedValueOnce({
+        data: [
+          { session_id: 'session-1', position: 1, id: 'buddy', source: 'buddy', suggested: false },
+          { session_id: 'session-1', position: 2, id: 'suggested', source: 'suggested', suggested: true },
+        ],
+        error: null,
+      });
     mockFrom.mockImplementation((table: string) => {
-      if (table === 'posts') return posts;
+      if (table === 'posts') return feedQuery([post('suggested'), post('buddy')]);
       if (table === 'post_likes') return likedQuery([]);
-      throw new Error(`Unexpected client relationship query: ${table}`);
+      throw new Error(`Unexpected table ${table}`);
     });
 
-    await expect(listFeed('2026-08-01T00:00:00Z', undefined, undefined, mode)).resolves.toHaveLength(1);
-
-    expect(mockRpc).toHaveBeenCalledWith('personal_feed_post_ids', {
-      p_mode: mode,
-      p_before: '2026-08-01T00:00:00Z',
-      p_limit: 20,
-    });
-    expect(mockFrom).not.toHaveBeenCalledWith('buddy_links');
-    expect(mockFrom).not.toHaveBeenCalledWith('buddy_stars');
-    expect(posts.in).toHaveBeenCalledWith('id', ['post-1']);
-  });
-
-  test('returns no posts without issuing a details query when the RPC is empty', async () => {
-    mockRpc.mockResolvedValue({ data: [], error: null });
-    await expect(listFeed()).resolves.toEqual([]);
-    expect(mockFrom).not.toHaveBeenCalled();
-  });
-
-  test('rejects an RPC error without widening the feed', async () => {
-    const denied = { code: '42501', message: 'denied' };
-    mockRpc.mockResolvedValue({ data: null, error: denied });
-    await expect(listFeed(undefined, undefined, undefined, 'discover')).rejects.toBe(denied);
-    expect(mockFrom).not.toHaveBeenCalled();
-  });
-
-  test('preserves the RPC post-id order while hydrating post details', async () => {
-    mockRpc.mockResolvedValue({ data: [{ id: 'newer' }, { id: 'same-time-lower-id' }], error: null });
-    mockFrom.mockReturnValue(feedQuery([post('same-time-lower-id'), post('newer')]));
     await expect(listFeed()).resolves.toEqual([
-      expect.objectContaining({ id: 'newer' }),
-      expect.objectContaining({ id: 'same-time-lower-id' }),
+      expect.objectContaining({ id: 'buddy', feed_source: 'buddy', suggested: false, feed_position: 1 }),
+      expect.objectContaining({ id: 'suggested', feed_source: 'suggested', suggested: true, feed_position: 2 }),
     ]);
+    expect(mockRpc).toHaveBeenNthCalledWith(1, 'create_unified_feed_session', { p_candidate_limit: 500 });
+    expect(mockRpc).toHaveBeenNthCalledWith(2, 'unified_feed_post_ids', {
+      p_session_id: 'session-1', p_after_position: 0, p_limit: 20,
+    });
+  });
+
+  test('next page advances by server position instead of timestamp', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'session-2', error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'session-2', position: 7, id: 'first', source: 'self', suggested: false }], error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'session-2', position: 11, id: 'second', source: 'joined_group', suggested: false }], error: null });
+    mockFrom.mockImplementation((table: string) => table === 'posts' ? feedQuery([post('first'), post('second')]) : likedQuery([]));
+
+    await listFeed();
+    await expect(listFeed('legacy-timestamp')).resolves.toEqual([
+      expect.objectContaining({ id: 'second', feed_position: 11 }),
+    ]);
+    expect(mockRpc).toHaveBeenLastCalledWith('unified_feed_post_ids', {
+      p_session_id: 'session-2', p_after_position: 7, p_limit: 20,
+    });
+  });
+
+  test('RPC errors fail closed without hydrating arbitrary posts', async () => {
+    const denied = { code: '42501', message: 'denied' };
+    mockRpc.mockResolvedValueOnce({ data: null, error: denied });
+    await expect(listFeed()).rejects.toBe(denied);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('a failed refresh retains the prior successful session for later pagination', async () => {
+    const refreshError = { message: 'offline' };
+    mockRpc
+      .mockResolvedValueOnce({ data: 'stable-session', error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'stable-session', position: 3, id: 'one', source: 'self', suggested: false }], error: null })
+      .mockResolvedValueOnce({ data: null, error: refreshError })
+      .mockResolvedValueOnce({ data: [{ session_id: 'stable-session', position: 4, id: 'two', source: 'buddy', suggested: false }], error: null });
+    mockFrom.mockImplementation((table: string) => table === 'posts' ? feedQuery([post('one'), post('two')]) : likedQuery([]));
+
+    await listFeed();
+    await expect(listFeed()).rejects.toBe(refreshError);
+    await expect(listFeed('legacy-timestamp')).resolves.toEqual([expect.objectContaining({ id: 'two' })]);
+    expect(mockRpc).toHaveBeenLastCalledWith('unified_feed_post_ids', {
+      p_session_id: 'stable-session', p_after_position: 3, p_limit: 20,
+    });
+  });
+
+  test('a pagination RPC failure refreshes once and never returns duplicate posts', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'old-session', error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'old-session', position: 1, id: 'seen', source: 'self', suggested: false }], error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'expired' } })
+      .mockResolvedValueOnce({ data: 'new-session', error: null })
+      .mockResolvedValueOnce({ data: [
+        { session_id: 'new-session', position: 1, id: 'seen', source: 'self', suggested: false },
+        { session_id: 'new-session', position: 2, id: 'fresh', source: 'buddy', suggested: false },
+      ], error: null });
+    mockFrom.mockImplementation((table: string) => table === 'posts' ? feedQuery([post('seen'), post('fresh')]) : likedQuery([]));
+
+    await listFeed();
+    await expect(listFeed('legacy-timestamp')).resolves.toEqual([expect.objectContaining({ id: 'fresh' })]);
+    expect(mockRpc).toHaveBeenCalledTimes(5);
+  });
+
+  test('drops a response when the signed-in account changes during hydration', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'session-me', error: null })
+      .mockResolvedValueOnce({ data: [{ session_id: 'session-me', position: 1, id: 'private', source: 'self', suggested: false }], error: null });
+    mockFrom.mockImplementation((table: string) => table === 'posts' ? feedQuery([post('private')]) : likedQuery([]));
+    mockGetUser
+      .mockResolvedValueOnce({ data: { user: { id: 'me' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'other' } }, error: null });
+
+    await expect(listFeed()).resolves.toEqual([]);
   });
 });
 
@@ -70,7 +122,7 @@ describe('scoped feeds', () => {
   test.each([
     { groupId: 'group-1', pageId: undefined, column: 'group_id' },
     { groupId: undefined, pageId: 'page-1', column: 'page_id' },
-  ])('group/page keeps the existing query path and never calls the personal RPC', async ({ groupId, pageId, column }) => {
+  ])('group/page keeps the existing query path and never calls a Feed snapshot RPC', async ({ groupId, pageId, column }) => {
     const posts = feedQuery([]);
     mockFrom.mockImplementation((table: string) => {
       if (table === 'post_hides') return selectEqResult([]);

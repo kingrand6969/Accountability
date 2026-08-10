@@ -109,7 +109,140 @@ export async function reportComment(commentId: string, reason?: string): Promise
 }
 
 export const FEED_PAGE_SIZE = 20;
+const FEED_CANDIDATE_LIMIT = 500;
+const FEED_SESSION_MAX_AGE_MS = 29 * 60 * 1000;
+
+export type UnifiedFeedSource =
+  | 'self'
+  | 'buddy'
+  | 'followed_person'
+  | 'joined_group'
+  | 'followed_page'
+  | 'suggested';
+
+export type UnifiedFeedPost = FeedPost & {
+  feed_source: UnifiedFeedSource;
+  suggested: boolean;
+  feed_position: number;
+  feed_session_id: string;
+};
+
+type UnifiedFeedRow = {
+  session_id: string;
+  position: number;
+  id: string;
+  source: UnifiedFeedSource;
+  suggested: boolean;
+};
+
+type FeedSnapshot = {
+  ownerId: string;
+  sessionId: string;
+  afterPosition: number;
+  seenPostIds: Set<string>;
+  createdAtMs: number;
+};
+
+let activeFeedSnapshot: FeedSnapshot | null = null;
+let refreshGeneration = 0;
+
+/** @deprecated Removed with the Feed selector in the next UI task. */
 export type FeedMode = 'buddies' | 'discover';
+
+async function createFeedSession(): Promise<string> {
+  const { data, error } = await supabase.rpc('create_unified_feed_session', {
+    p_candidate_limit: FEED_CANDIDATE_LIMIT,
+  });
+  if (error) throw error;
+  if (typeof data !== 'string' || data.length === 0) throw new Error('Feed session could not be created.');
+  return data;
+}
+
+async function pageFeedSession(sessionId: string, afterPosition: number): Promise<UnifiedFeedRow[]> {
+  const { data, error } = await supabase.rpc('unified_feed_post_ids', {
+    p_session_id: sessionId,
+    p_after_position: afterPosition,
+    p_limit: FEED_PAGE_SIZE,
+  });
+  if (error) throw error;
+  return (data ?? []) as UnifiedFeedRow[];
+}
+
+async function hydrateUnifiedRows(me: string, rankedRows: UnifiedFeedRow[]): Promise<UnifiedFeedPost[]> {
+  const ids = rankedRows.map((row) => row.id);
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from('posts').select(POST_SELECT).in('id', ids);
+  if (error) throw error;
+  const rows = data ?? [];
+  const rowsById = new Map(rows.map((row: any) => [row.id as string, row]));
+  const [likedSet, profiles] = await Promise.all([
+    myLikedSet(me, rows.map((row: any) => row.id)),
+    getPublicProfiles(profileIds(rows)),
+  ]);
+  const postsById = new Map(
+    rows.map((row: any) => [row.id as string, mapPost(row, likedSet, profiles)]),
+  );
+  return rankedRows.flatMap((ranked) => {
+    if (!rowsById.has(ranked.id)) return [];
+    const post = postsById.get(ranked.id);
+    return post ? [{
+      ...post,
+      feed_source: ranked.source,
+      suggested: ranked.suggested,
+      feed_position: ranked.position,
+      feed_session_id: ranked.session_id,
+    }] : [];
+  });
+}
+
+function maxPosition(rows: UnifiedFeedRow[]): number {
+  return rows.reduce((max, row) => Math.max(max, row.position), 0);
+}
+
+async function refreshPersonalFeed(
+  me: string,
+  seenBeforeRefresh: Set<string> = new Set(),
+): Promise<UnifiedFeedPost[]> {
+  const generation = ++refreshGeneration;
+  const sessionId = await createFeedSession();
+  const rankedRows = await pageFeedSession(sessionId, 0);
+  const unseenRows = rankedRows.filter((row) => !seenBeforeRefresh.has(row.id));
+  const posts = await hydrateUnifiedRows(me, unseenRows);
+  const confirmedUserId = await currentUserId();
+  if (confirmedUserId !== me || generation !== refreshGeneration) return [];
+
+  activeFeedSnapshot = {
+    ownerId: me,
+    sessionId,
+    afterPosition: maxPosition(rankedRows),
+    seenPostIds: new Set([...seenBeforeRefresh, ...rankedRows.map((row) => row.id)]),
+    createdAtMs: Date.now(),
+  };
+  return posts;
+}
+
+async function pagePersonalFeed(me: string): Promise<UnifiedFeedPost[]> {
+  const snapshot = activeFeedSnapshot;
+  if (!snapshot || snapshot.ownerId !== me) return refreshPersonalFeed(me);
+  if (Date.now() - snapshot.createdAtMs >= FEED_SESSION_MAX_AGE_MS) {
+    return refreshPersonalFeed(me, snapshot.seenPostIds);
+  }
+
+  let rankedRows: UnifiedFeedRow[];
+  try {
+    rankedRows = await pageFeedSession(snapshot.sessionId, snapshot.afterPosition);
+  } catch {
+    // A server-expired or invalid snapshot gets one fresh-session attempt. The
+    // old IDs are filtered so recovery cannot duplicate already rendered rows.
+    return refreshPersonalFeed(me, snapshot.seenPostIds);
+  }
+  const posts = await hydrateUnifiedRows(me, rankedRows);
+  const confirmedUserId = await currentUserId();
+  if (confirmedUserId !== me || activeFeedSnapshot !== snapshot) return [];
+  snapshot.afterPosition = Math.max(snapshot.afterPosition, maxPosition(rankedRows));
+  rankedRows.forEach((row) => snapshot.seenPostIds.add(row.id));
+  return posts;
+}
 
 async function myBuddyIds(me: string | null): Promise<string[]> {
   if (!me) return [];
@@ -130,30 +263,12 @@ export async function listFeed(
   beforeCreatedAt?: string,
   groupId?: string,
   pageId?: string,
-  mode: FeedMode = 'buddies',
+  _legacyMode: FeedMode = 'buddies',
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
   if (!groupId && !pageId) {
-    const { data: idRows, error: idError } = await supabase.rpc('personal_feed_post_ids', {
-      p_mode: mode,
-      p_before: beforeCreatedAt ?? null,
-      p_limit: FEED_PAGE_SIZE,
-    });
-    if (idError) throw idError;
-    const ids: string[] = (idRows ?? []).map((row: any) => row.id as string);
-    if (ids.length === 0) return [];
-    const { data, error } = await supabase.from('posts').select(POST_SELECT).in('id', ids);
-    if (error) throw error;
-    const rowsById = new Map((data ?? []).map((row: any) => [row.id as string, row]));
-    const rows = ids.flatMap((id) => {
-      const row = rowsById.get(id);
-      return row ? [row] : [];
-    });
-    const [likedSet, profiles] = await Promise.all([
-      myLikedSet(me, rows.map((row: any) => row.id)),
-      getPublicProfiles(profileIds(rows)),
-    ]);
-    return rows.map((row: any) => mapPost(row, likedSet, profiles));
+    if (!me) return [];
+    return beforeCreatedAt ? pagePersonalFeed(me) : refreshPersonalFeed(me);
   }
 
   const [hidden] = await Promise.all([
