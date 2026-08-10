@@ -134,7 +134,7 @@ export default function AppLayout() {
     <>
       <StatusBar style={statusBarStyleForPath(pathname)} />
       <Tabs
-      // custom quiet bar — guarantees the approved five destinations and spacing
+      // custom quiet bar — guarantees the approved four destinations and spacing
       tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
         headerShown: true,

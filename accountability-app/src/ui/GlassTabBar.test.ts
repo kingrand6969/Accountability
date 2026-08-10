@@ -137,12 +137,11 @@ describe('GlassTabBar contract', () => {
     jest.clearAllMocks();
   });
 
-  it('shows exactly the approved five destinations in order', () => {
+  it('shows exactly the approved four destinations in order', () => {
     const { renderer } = renderTabBar();
 
     expect(VISIBLE_TAB_LABELS).toEqual([
       'Feed',
-      'Finance',
       'Journey',
       'Run',
       'Messages',
@@ -154,18 +153,18 @@ describe('GlassTabBar contract', () => {
   });
 
   it('uses quiet ink and a restrained indicator for the selected destination', () => {
-    const { renderer } = renderTabBar({ focusedIndex: 1 });
-    const finance = pressableByLabel(renderer, 'Finance');
+    const { renderer } = renderTabBar({ focusedIndex: 2 });
+    const journey = pressableByLabel(renderer, 'Journey');
 
-    expect(finance.props.accessibilityRole).toBe('tab');
-    expect(finance.props.accessibilityState).toEqual({ selected: true });
+    expect(journey.props.accessibilityRole).toBe('tab');
+    expect(journey.props.accessibilityState).toEqual({ selected: true });
     expect(
-      renderer.root.findByProps({ testID: 'tab-label-Finance' }).props.style,
+      renderer.root.findByProps({ testID: 'tab-label-Journey' }).props.style,
     ).toEqual(
       expect.arrayContaining([expect.objectContaining({ color: colors.navy })]),
     );
     expect(
-      renderer.root.findByProps({ testID: 'tab-indicator-Finance' }).props.style,
+      renderer.root.findByProps({ testID: 'tab-indicator-Journey' }).props.style,
     ).toEqual(
       expect.objectContaining({
         backgroundColor: colors.navy,
@@ -252,7 +251,6 @@ describe('GlassTabBar contract', () => {
     const { renderer } = renderTabBar();
     const expected = {
       Feed: 'Home',
-      Finance: 'Cash',
       Journey: 'Path',
       Run: 'Run',
       Messages: 'Chat',
@@ -270,18 +268,18 @@ describe('GlassTabBar contract', () => {
 
   it('preserves tabPress prevention, navigation, and haptics', () => {
     const prevented = renderTabBar({ preventPress: true });
-    act(() => pressableByLabel(prevented.renderer, 'Finance').props.onPress());
+    act(() => pressableByLabel(prevented.renderer, 'Journey').props.onPress());
     expect(prevented.emit).toHaveBeenCalledWith({
       type: 'tabPress',
-      target: 'finance',
+      target: 'journey',
       canPreventDefault: true,
     });
     expect(prevented.navigate).not.toHaveBeenCalled();
     expect(hapticSelect).not.toHaveBeenCalled();
 
     const allowed = renderTabBar();
-    act(() => pressableByLabel(allowed.renderer, 'Finance').props.onPress());
-    expect(allowed.navigate).toHaveBeenCalledWith('finance');
+    act(() => pressableByLabel(allowed.renderer, 'Journey').props.onPress());
+    expect(allowed.navigate).toHaveBeenCalledWith('activity');
     expect(hapticSelect).toHaveBeenCalledTimes(1);
   });
 
