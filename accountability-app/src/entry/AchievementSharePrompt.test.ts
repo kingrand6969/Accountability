@@ -178,6 +178,7 @@ describe('AchievementSharePrompt lifecycle', () => {
     const first = callbacks();
     first.onFeed.mockReturnValue(pending.promise);
     const lifecycle = createAchievementSharePromptLifecycle(first);
+    lifecycle.attach();
     const controller = lifecycle.controller;
     controller.select('feed');
     const submit = controller.confirm();
@@ -238,5 +239,40 @@ describe('AchievementSharePrompt lifecycle', () => {
     await submit;
 
     expect(cb.onClose).not.toHaveBeenCalled();
+  });
+
+  test('detach synchronously suppresses close when submit continuation is already queued', async () => {
+    const pending = deferred();
+    const cb = callbacks();
+    cb.onFeed.mockReturnValue(pending.promise);
+    const lifecycle = createAchievementSharePromptLifecycle(cb);
+    lifecycle.attach();
+    lifecycle.controller.select('feed');
+    const submit = lifecycle.controller.confirm();
+
+    pending.resolve();
+    lifecycle.detach();
+    await submit;
+
+    expect(cb.onFeed).toHaveBeenCalledTimes(1);
+    expect(cb.onClose).not.toHaveBeenCalled();
+  });
+
+  test('StrictMode detach then attach before the microtask still permits queued close', async () => {
+    const pending = deferred();
+    const cb = callbacks();
+    cb.onFeed.mockReturnValue(pending.promise);
+    const lifecycle = createAchievementSharePromptLifecycle(cb);
+    lifecycle.attach();
+    lifecycle.controller.select('feed');
+    const submit = lifecycle.controller.confirm();
+
+    pending.resolve();
+    lifecycle.detach();
+    lifecycle.attach();
+    await submit;
+
+    expect(cb.onFeed).toHaveBeenCalledTimes(1);
+    expect(cb.onClose).toHaveBeenCalledTimes(1);
   });
 });

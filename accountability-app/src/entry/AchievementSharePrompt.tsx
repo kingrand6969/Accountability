@@ -127,7 +127,9 @@ export function createAchievementSharePromptLifecycle(initialCallbacks: ShareCal
     onFeed: () => latestCallbacks.onFeed(),
     onStory: () => latestCallbacks.onStory(),
     onPrivate: () => latestCallbacks.onPrivate(),
-    onClose: () => latestCallbacks.onClose(),
+    onClose: () => {
+      if (attached) latestCallbacks.onClose();
+    },
   });
 
   return {
