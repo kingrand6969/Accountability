@@ -626,7 +626,7 @@ export async function sendVoiceEncouragement(
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
   if (durationMs < 250 || durationMs > 10_000) {
-    throw new Error('Voice encouragement must be between 1 and 10 seconds.');
+    throw new Error('A voice Cheer must be between 1 and 10 seconds.');
   }
   const file = new File(uri);
   const bytes = await file.bytes();
@@ -655,7 +655,7 @@ type VoiceSafetyTarget = {
 
 function assertOpaqueVoiceId(voiceId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(voiceId)) {
-    throw new Error('Voice encouragement is invalid.');
+    throw new Error('The voice Cheer is invalid.');
   }
 }
 
@@ -667,9 +667,9 @@ async function voiceSafetyTarget(voiceId: string): Promise<VoiceSafetyTarget> {
     .eq('id', voiceId)
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error('Voice encouragement is unavailable.');
+  if (!data) throw new Error('The voice Cheer is unavailable.');
   const post = Array.isArray((data as any).post) ? (data as any).post[0] : (data as any).post;
-  if (!post?.user_id) throw new Error('Voice encouragement is unavailable.');
+  if (!post?.user_id) throw new Error('The voice Cheer is unavailable.');
   return {
     senderId: (data as any).user_id as string,
     postOwnerId: post.user_id as string,
@@ -695,12 +695,12 @@ export async function reportVoiceEncouragement(voiceId: string): Promise<void> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
   const target = await voiceSafetyTarget(voiceId);
-  if (target.senderId === me) throw new Error('You cannot report your own encouragement.');
-  if (target.postOwnerId !== me) throw new Error('Only the recipient can report this encouragement.');
+  if (target.senderId === me) throw new Error('You cannot report your own Cheer.');
+  if (target.postOwnerId !== me) throw new Error('Only the recipient can report this Cheer.');
   const { error } = await supabase.from('buddy_reports').insert({
     reporter: me,
     reported: target.senderId,
-    reason: `Reported voice encouragement ${voiceId}`,
+    reason: `Reported voice Cheer ${voiceId}`,
   });
   if (error) throw error;
 }

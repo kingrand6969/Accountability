@@ -69,7 +69,7 @@ export function notificationLine(n: AppNotification): string {
   const who = n.actor_name ?? 'Someone';
   switch (n.type) {
     case 'like':
-      return `${who} encouraged your post`;
+      return `${who} cheered your post`;
     case 'comment':
       return `${who} commented on your post`;
     case 'tag':

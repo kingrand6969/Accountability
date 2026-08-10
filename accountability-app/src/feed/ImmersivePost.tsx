@@ -344,7 +344,7 @@ export function ImmersivePost({
           style={({ pressed }) => [styles.encouragementCard, pressed && styles.pressed]}
           onPress={onOpenEncouragement}
           accessibilityRole="button"
-          accessibilityLabel={`${supporterCount} supporters. Open encouragement.`}
+          accessibilityLabel={`${supporterCount} supporters. Open Cheers.`}
         >
           <View style={styles.faces}>
             {supporterAvatars.slice(0, 3).map((person, index) => (
@@ -368,7 +368,7 @@ export function ImmersivePost({
         </Pressable>
 
         <View style={styles.actionBar}>
-          <Action icon={post.liked_by_me ? 'flame' : 'flame-outline'} label="Encourage this post" shortLabel="Encourage" active={post.liked_by_me} onPress={onEncourage} />
+          <Action icon={post.liked_by_me ? 'flame' : 'flame-outline'} label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
           <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
         </View>

@@ -527,7 +527,7 @@ export default function GroupDetail() {
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 onPress={() => onToggleLike(item)}
                 hitSlop={8}
-                accessibilityLabel={item.liked_by_me ? 'Remove encouragement' : 'Encourage'}
+                accessibilityLabel={item.liked_by_me ? 'Remove Cheer' : 'Cheer'}
               >
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}

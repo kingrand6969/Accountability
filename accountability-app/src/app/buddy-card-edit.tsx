@@ -15,9 +15,10 @@ import { supabase } from '../lib/supabase';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import { presentationTraitName, traitOptionSelected } from '../buddy/presentation';
 
 const TRAITS = [
-  'Encouraging',
+  'Cheering',
   'Consistent',
   'Goal focused',
   'Morning training',
@@ -150,7 +151,7 @@ export default function BuddyCardEdit() {
       <Text style={styles.traitHint}>Choose up to three traits visitors should know.</Text>
       <View style={styles.traitGrid}>
         {TRAITS.map((trait) => {
-          const selected = card.traits?.includes(trait) ?? false;
+          const selected = traitOptionSelected(card.traits, trait);
           const full = (card.traits?.length ?? 0) >= 3;
           return (
             <Pressable
@@ -159,7 +160,7 @@ export default function BuddyCardEdit() {
                 setCard((current) => ({
                   ...current,
                   traits: selected
-                    ? (current.traits ?? []).filter((item) => item !== trait)
+                    ? (current.traits ?? []).filter((item) => presentationTraitName(item) !== trait)
                     : [...(current.traits ?? []), trait].slice(0, 3),
                 }))
               }

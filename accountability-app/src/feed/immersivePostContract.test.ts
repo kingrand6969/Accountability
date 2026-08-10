@@ -149,7 +149,7 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain('operations.current.start(');
     expect(routeSource).toContain('operations.current.complete(');
     expect(routeSource).toContain('viewGeneration.current += 1');
-    expect(componentSource).toContain('label="Encourage this post"');
+    expect(componentSource).toContain('label="Cheer this post"');
     expect(componentSource).toContain('label="Comment on this post"');
     expect(componentSource).toContain('label="Share this post"');
     expect(componentSource).toContain('accessibilityLabel={label}');

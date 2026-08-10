@@ -232,7 +232,7 @@ describe('voice safety API behavior', () => {
     expect(insert).toHaveBeenCalledWith({
       reporter: OWNER,
       reported: SENDER,
-      reason: `Reported voice encouragement ${VOICE}`,
+      reason: `Reported voice Cheer ${VOICE}`,
     });
     expect(JSON.stringify(insert.mock.calls)).not.toContain('r2://');
   });

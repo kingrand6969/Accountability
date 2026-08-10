@@ -136,7 +136,7 @@ export function FeedProofCard({
               onPress={onOpen}
               accessibilityRole="link"
               accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
-              accessibilityHint="Opens the full post, comments, and encouragement"
+              accessibilityHint="Opens the full post, comments, and Cheers"
               style={({ pressed }) => [styles.media, pressed && styles.pressed]}
             >
           {post.post_type === 'video' ? (
@@ -157,8 +157,8 @@ export function FeedProofCard({
       <View style={styles.actions}>
         <Action
           icon={post.liked_by_me ? 'flame' : 'flame-outline'}
-          label={`Encourage${post.like_count > 0 ? ` ${post.like_count}` : ''}`}
-          accessibilityLabel={post.liked_by_me ? 'Remove encouragement' : 'Encourage'}
+          label={`Cheer${post.like_count > 0 ? ` ${post.like_count}` : ''}`}
+          accessibilityLabel={post.liked_by_me ? 'Remove Cheer' : 'Cheer'}
           active={post.liked_by_me}
           onPress={onToggleLike}
         />
@@ -201,7 +201,7 @@ function FeedSupporterSummary({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${count} ${count === 1 ? 'buddy has' : 'buddies have'} encouraged this post`}
+      accessibilityLabel={`${count} ${count === 1 ? 'buddy has' : 'buddies have'} cheered this post`}
       style={({ pressed }) => [styles.supporters, pressed && styles.pressed]}
     >
       <View style={styles.supporterAvatars} accessibilityElementsHidden>
@@ -212,7 +212,7 @@ function FeedSupporterSummary({
         ))}
       </View>
       <Text style={styles.supporterText}>
-        {count} {count === 1 ? 'buddy encouraged this' : 'buddies encouraged this'}
+        {count} {count === 1 ? 'buddy cheered this' : 'buddies cheered this'}
       </Text>
     </Pressable>
   );

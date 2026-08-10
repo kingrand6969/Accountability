@@ -62,7 +62,7 @@ const PILLARS: {
     icon: 'people-outline',
     tint: '#D45B2C',
     title: 'People',
-    sub: 'Buddies, encouragement and connection',
+    sub: 'Buddies, Cheers and connection',
     route: '/messages',
   },
 ];

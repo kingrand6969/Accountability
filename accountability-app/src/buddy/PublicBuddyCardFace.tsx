@@ -9,9 +9,10 @@ import { authorLabel, timeAgo } from '../feed/format';
 import { CachedImage } from '../ui/CachedImage';
 import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
 import { font, radius, spacing } from '../ui/theme';
+import { presentationTraitName } from './presentation';
 
 const TRAIT_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Encouraging: 'heart-outline',
+  Cheering: 'heart-outline',
   Consistent: 'calendar-outline',
   'Goal focused': 'flag-outline',
   'Morning training': 'sunny-outline',
@@ -116,12 +117,15 @@ export function PublicBuddyCardFace({
         {headline ? <Text style={styles.headline}>{headline}</Text> : null}
         {traits.length ? (
           <View style={styles.traitRow}>
-            {traits.map((trait) => (
-              <View key={trait} style={styles.trait}>
-                <Ionicons name={TRAIT_ICONS[trait] ?? 'checkmark-circle-outline'} size={14} color="#123B79" />
-                <Text style={styles.traitText} numberOfLines={1}>{trait}</Text>
-              </View>
-            ))}
+            {traits.map((trait) => {
+              const label = presentationTraitName(trait);
+              return (
+                <View key={trait} style={styles.trait}>
+                  <Ionicons name={TRAIT_ICONS[label] ?? 'checkmark-circle-outline'} size={14} color="#123B79" />
+                  <Text style={styles.traitText} numberOfLines={1}>{label}</Text>
+                </View>
+              );
+            })}
           </View>
         ) : null}
 

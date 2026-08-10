@@ -540,7 +540,7 @@ function PostDetailView({
           ) : (
             <EmptyState
             icon="chatbubble-ellipses-outline"
-            title={`Be the first to encourage ${authorLabel(post.author_name)}`}
+            title={`Be the first to Cheer ${authorLabel(post.author_name)}`}
             subtitle="A little support can keep a streak going."
             />
           )
@@ -578,12 +578,12 @@ function PostDetailView({
             <TextInput
               ref={inputRef}
               style={styles.input}
-              placeholder="Write an encouraging comment…"
+              placeholder="Write a supportive comment…"
               placeholderTextColor={colors.textFaint}
               value={text}
               onChangeText={setText}
               multiline
-              accessibilityLabel="Encouraging comment"
+              accessibilityLabel="Supportive comment"
             />
             <Pressable
               onPress={onSend}

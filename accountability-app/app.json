@@ -68,7 +68,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "AccountAbility uses your microphone only when you choose to record a voice encouragement.",
+          "microphonePermission": "AccountAbility uses your microphone only when you choose to record a voice Cheer.",
           "recordAudioAndroid": true,
           "enableBackgroundRecording": false
         }

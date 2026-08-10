@@ -49,7 +49,7 @@ describe('Group 3 encouragement contract', () => {
 
   test('redacted state renders no identity message or playable media rows', () => {
     expect(sheetSource).toContain("state === 'privacy-redacted'");
-    expect(sheetSource).toContain('Encouragement is private or no longer available.');
+    expect(sheetSource).toContain('Cheers are private or no longer available.');
     expect(sheetSource).toContain("state === 'populated' ? comments.map");
     expect(sheetSource).toContain("state === 'populated' ? voices.map");
   });
@@ -86,7 +86,7 @@ describe('Group 3 encouragement contract', () => {
     expect(recorderPermissionState({ granted: true, canAskAgain: true })).toBe('granted');
     expect(recorderPermissionState({ granted: false, canAskAgain: true })).toBe('denied');
     expect(recorderPermissionState({ granted: false, canAskAgain: false })).toBe('blocked');
-    expect(recorderPermissionMessage('denied')).toContain('write a text encouragement');
+    expect(recorderPermissionMessage('denied')).toContain('write a text Cheer');
     expect(recorderPermissionMessage('blocked')).toContain('device settings');
     expect(recorderSource).toContain('forDuration: 10');
     expect(recorderSource).toContain('Math.min(10_000');

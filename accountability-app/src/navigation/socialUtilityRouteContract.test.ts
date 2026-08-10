@@ -58,7 +58,7 @@ jest.mock('../stories/api', () => ({
 jest.mock('../notify/api', () => ({
   listNotifications: () => mockListNotifications(),
   markAllRead: (ownerId: string) => mockMarkAllRead(ownerId),
-  notificationLine: (item: { actor_name: string }) => `${item.actor_name} encouraged you`,
+  notificationLine: (item: { actor_name: string }) => `${item.actor_name} cheered you`,
 }));
 jest.mock('../feed/api', () => ({
   getPost: () => mockGetPost(),
@@ -408,7 +408,7 @@ describe('notification behavioral safety', () => {
     });
     await flush();
     expect(mockMarkAllRead).toHaveBeenCalledWith('owner-a');
-    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya encouraged you' });
+    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya cheered you' });
     await act(async () => row.props.onPress());
     await flush();
     expect(Alert.alert).toHaveBeenCalledWith(
@@ -427,7 +427,7 @@ describe('notification behavioral safety', () => {
       renderer = render(React.createElement(Notifications));
     });
     await flush();
-    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya encouraged you' });
+    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya cheered you' });
     act(() => {
       void row.props.onPress();
     });
