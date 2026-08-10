@@ -26,7 +26,6 @@ import {
   listFeed,
   setLiked,
   type EncouragementPreview,
-  type FeedMode,
 } from '../../feed/api';
 import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
@@ -44,13 +43,10 @@ import { getMyProfile } from '../../profiles/api';
 import type { FeedPost } from '../../feed/types';
 import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
 import { hapticTap } from '../../ui/haptics';
-import { DiscoverExperience } from '../../discover/DiscoverExperience';
 import { SocialBrandHeader } from '../../feed/SocialBrandHeader';
 import {
-  SocialModeSelector,
   deriveFeedViewState,
   feedRowsBelongToView,
-  restoreFeedSession,
   scheduleIdentityBoundAction,
 } from '../../feed/SocialModeSelector';
 import { FeedProofCard } from '../../feed/FeedProofCard';
@@ -107,10 +103,7 @@ export default function Feed() {
   const isFocused = useIsFocused();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
-  const [dataMode, setDataMode] = useState<FeedMode | null>(null);
   const [encouragementPreviews, setEncouragementPreviews] = useState<Map<string, EncouragementPreview>>(new Map());
-  const [feedMode, setFeedMode] = useState<FeedMode>('buddies');
-  const [discoverVisited, setDiscoverVisited] = useState(false);
   const [restored, setRestored] = useState(false);
   const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -130,8 +123,8 @@ export default function Feed() {
   const loadGeneration = useRef(0);
   const storyPickerQueue = useMemo(() => createStoryPickerQueue(myId), [myId]);
   const feedListRef = useRef<FlatList<FeedRow>>(null);
-  const buddiesOffset = useRef(0);
-  const pendingBuddiesOffset = useRef<number | null>(null);
+  const feedOffset = useRef(0);
+  const pendingFeedOffset = useRef<number | null>(null);
   const listContentReady = useRef(false);
   const connectivityRef = useRef(true);
   const profileGeneration = useRef(0);
@@ -165,7 +158,7 @@ export default function Feed() {
     };
   }, [myId]);
 
-  const feedGeneration = `${myId ?? ''}:${feedMode}:${dataOwnerId ?? ''}:${dataMode ?? ''}`;
+  const feedGeneration = `${myId ?? ''}:${dataOwnerId ?? ''}`;
 
   useEffect(() => {
     return () => storyPickerQueue.reset();
@@ -202,7 +195,6 @@ export default function Feed() {
       setRestored(false);
       setPosts([]);
       setDataOwnerId(null);
-      setDataMode(null);
       setEncouragementPreviews(new Map());
       setLoadError(null);
       setLoadingMore(false);
@@ -215,16 +207,17 @@ export default function Feed() {
       setAttending(new Set());
       setCreateOpen(false);
       likesInFlight.current.clear();
-      pendingBuddiesOffset.current = null;
+      pendingFeedOffset.current = null;
       listContentReady.current = false;
       try {
         const raw = await AsyncStorage.getItem(FEED_SESSION_KEY);
-        const saved = restoreFeedSession(raw ? JSON.parse(raw) : null);
+        const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+        const savedOffset = typeof parsed.feedOffset === 'number' && Number.isFinite(parsed.feedOffset)
+          ? Math.max(0, parsed.feedOffset)
+          : 0;
         if (!alive) return;
-        buddiesOffset.current = saved.buddiesOffset;
-        pendingBuddiesOffset.current = saved.buddiesOffset;
-        setFeedMode(saved.mode);
-        setDiscoverVisited(saved.mode === 'discover');
+        feedOffset.current = savedOffset;
+        pendingFeedOffset.current = savedOffset;
       } catch {
         // Harmless preferences are optional.
       } finally {
@@ -238,26 +231,22 @@ export default function Feed() {
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
-    if (feedMode === 'buddies') {
-      pendingBuddiesOffset.current = buddiesOffset.current;
-      listContentReady.current = false;
-    }
+    pendingFeedOffset.current = feedOffset.current;
+    listContentReady.current = false;
     setLoadError(null);
     setLoadingMore(false);
     if (!myId) {
       setPosts([]);
       setDataOwnerId(null);
-      setDataMode(null);
       setLoading(false);
       setRefreshing(false);
       return;
     }
     try {
-      const page = await listFeed(undefined, undefined, undefined, feedMode);
+      const page = await listFeed();
       if (generation !== loadGeneration.current) return;
       setPosts(page);
       setDataOwnerId(myId);
-      setDataMode(feedMode);
       setEndReached(page.length < FEED_PAGE_SIZE);
       try {
         const previews = await listEncouragementPreviews(page.map((post) => post.id));
@@ -275,7 +264,7 @@ export default function Feed() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [feedMode, myId]);
+  }, [myId]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -296,16 +285,16 @@ export default function Feed() {
   const persistFeedPosition = useCallback(() => {
     void AsyncStorage.setItem(
       FEED_SESSION_KEY,
-      JSON.stringify({ mode: feedMode, buddiesOffset: buddiesOffset.current }),
+      JSON.stringify({ feedOffset: feedOffset.current }),
     );
-  }, [feedMode]);
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       setAppActive(nextState === 'active');
       if (nextState !== 'active') {
         loadGeneration.current += 1;
-        pendingBuddiesOffset.current = buddiesOffset.current;
+        pendingFeedOffset.current = feedOffset.current;
         listContentReady.current = false;
         persistFeedPosition();
         return;
@@ -323,46 +312,29 @@ export default function Feed() {
       }
       return () => {
         loadGeneration.current += 1;
-        pendingBuddiesOffset.current = buddiesOffset.current;
+        pendingFeedOffset.current = feedOffset.current;
         listContentReady.current = false;
         persistFeedPosition();
       };
     }, [load, persistFeedPosition, restored]),
   );
 
-  function changeFeedMode(mode: FeedMode) {
-    if (mode === feedMode) return;
-    if (feedMode === 'buddies') {
-      pendingBuddiesOffset.current = buddiesOffset.current;
-      listContentReady.current = false;
-    }
-    if (mode === 'discover') setDiscoverVisited(true);
-    setFeedMode(mode);
-    void AsyncStorage.setItem(FEED_SESSION_KEY, JSON.stringify({ mode, buddiesOffset: buddiesOffset.current }));
-    if (mode === 'buddies') {
-      pendingBuddiesOffset.current = buddiesOffset.current;
-    }
+  function rememberFeedOffset(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    feedOffset.current = event.nativeEvent.contentOffset.y;
   }
 
-  function rememberModeOffset(event: NativeSyntheticEvent<NativeScrollEvent>) {
-    if (feedMode === 'buddies') {
-      buddiesOffset.current = event.nativeEvent.contentOffset.y;
-    }
-  }
-
-  function restorePendingBuddiesOffset() {
+  function restorePendingFeedOffset() {
     if (
-      feedMode !== 'buddies' ||
-      pendingBuddiesOffset.current == null ||
+      pendingFeedOffset.current == null ||
       !listContentReady.current ||
       !feedListRef.current
     ) return;
-    const offset = pendingBuddiesOffset.current;
+    const offset = pendingFeedOffset.current;
     requestAnimationFrame(() => {
       const list = feedListRef.current;
       if (!list) return;
       list.scrollToOffset({ offset, animated: false });
-      if (pendingBuddiesOffset.current === offset) pendingBuddiesOffset.current = null;
+      if (pendingFeedOffset.current === offset) pendingFeedOffset.current = null;
     });
   }
 
@@ -377,7 +349,7 @@ export default function Feed() {
     const generation = loadGeneration.current;
     try {
       const oldest = posts[posts.length - 1].created_at;
-      const page = await listFeed(oldest, undefined, undefined, feedMode);
+      const page = await listFeed(oldest);
       if (generation !== loadGeneration.current) return;
       if (page.length < FEED_PAGE_SIZE) setEndReached(true);
       if (page.length > 0) {
@@ -450,8 +422,8 @@ export default function Feed() {
 
   const adsReady = useFeedAdsReady();
   const visiblePosts = useMemo(
-    () => (feedRowsBelongToView(dataOwnerId, myId, dataMode, feedMode) ? posts : []),
-    [dataMode, dataOwnerId, feedMode, myId, posts],
+    () => (feedRowsBelongToView(dataOwnerId, myId) ? posts : []),
+    [dataOwnerId, myId, posts],
   );
   const feedData = useMemo<FeedRow[]>(() => {
     const rows: FeedRow[] = [];
@@ -471,7 +443,7 @@ export default function Feed() {
     online,
   });
   const activeVideoId = activeVideoPost({
-    focused: isFocused && feedMode === 'buddies',
+    focused: isFocused,
     appActive,
     overlayOpen: createOpen || broadcast !== null,
     generation: feedGeneration,
@@ -589,13 +561,8 @@ export default function Feed() {
           </Pressable>
         </Pressable>
       </Modal>
-      <SocialModeSelector value={feedMode} onChange={changeFeedMode} />
-      {/* Discover owns its ScrollView; explicit offset persistence is deferred to Task 3.3. */}
-      <View style={feedMode === 'discover' ? styles.modeVisible : styles.modeHidden}>
-        {discoverVisited ? <DiscoverExperience /> : null}
-      </View>
-      <View style={feedMode === 'buddies' ? styles.modeVisible : styles.modeHidden}>
-        {feedMode !== 'buddies' ? null : loading ? (
+      <View style={styles.feedContent}>
+        {loading ? (
           <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
         ) : (
           <FlatList
@@ -608,12 +575,12 @@ export default function Feed() {
             removeClippedSubviews={Platform.OS === 'android'}
             viewabilityConfig={viewabilityConfig}
             onViewableItemsChanged={onViewableItemsChanged}
-            onScroll={rememberModeOffset}
+            onScroll={rememberFeedOffset}
             onScrollEndDrag={persistFeedPosition}
             onMomentumScrollEnd={persistFeedPosition}
             onContentSizeChange={() => {
               listContentReady.current = true;
-              restorePendingBuddiesOffset();
+              restorePendingFeedOffset();
             }}
             scrollEventThrottle={16}
             ListHeaderComponent={feedHeader}
@@ -626,8 +593,8 @@ export default function Feed() {
             ListEmptyComponent={loadError ? null : (
               <View style={styles.emptyCard}>
                 <Ionicons name="people-outline" size={38} color={colors.primary} />
-                <Text style={styles.emptyTitle}>No buddy posts yet</Text>
-                <Text style={styles.emptySub}>Share a win or add an accountability buddy.</Text>
+                <Text style={styles.emptyTitle}>Your Feed is ready</Text>
+                <Text style={styles.emptySub}>Share a win or discover people and communities to follow.</Text>
                 <View style={styles.emptyActions}>
                   <Pressable onPress={() => router.push('/compose' as never)} style={styles.emptyPrimary} accessibilityRole="button">
                     <Text style={styles.emptyPrimaryText}>Share a win</Text>
@@ -670,8 +637,7 @@ export default function Feed() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.surfaceAlt },
-  modeVisible: { flex: 1 },
-  modeHidden: { display: 'none' },
+  feedContent: { flex: 1 },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,.45)', paddingTop: 64, alignItems: 'flex-end', paddingRight: spacing.md },
   sheet: { width: 280, borderRadius: radius.lg, overflow: 'hidden', padding: spacing.sm, ...shadow.card },
   sheetGlass: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,.82)' },

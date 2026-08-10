@@ -153,9 +153,6 @@ class FeedSnapshotPageError extends Error {
   }
 }
 
-/** @deprecated Removed with the Feed selector in the next UI task. */
-export type FeedMode = 'buddies' | 'discover';
-
 async function createFeedSession(): Promise<string> {
   const { data, error } = await supabase.rpc('create_unified_feed_session', {
     p_candidate_limit: FEED_CANDIDATE_LIMIT,
@@ -302,7 +299,6 @@ export async function listFeed(
   beforeCreatedAt?: string,
   groupId?: string,
   pageId?: string,
-  _legacyMode: FeedMode = 'buddies',
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
   if (!groupId && !pageId) {

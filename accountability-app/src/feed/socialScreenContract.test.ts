@@ -5,7 +5,6 @@ import {
   deriveFeedCardPresentation,
   deriveFeedViewState,
   feedRowsBelongToView,
-  restoreFeedSession,
   scheduleIdentityBoundAction,
 } from './SocialModeSelector';
 import type { FeedPost } from './types';
@@ -31,7 +30,7 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('const generation = ++loadGeneration.current');
     expect(feedSource).toContain('if (generation !== loadGeneration.current) return');
     expect(feedSource).toContain(
-      'const page = await listFeed(oldest, undefined, undefined, feedMode)',
+      'const page = await listFeed(oldest)',
     );
     expect(feedSource).toContain('if (page.length < FEED_PAGE_SIZE) setEndReached(true)');
     expect(feedSource).toContain(
@@ -40,11 +39,12 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('setLoadingMore(false)');
   });
 
-  test('preserves Buddies and Discover as modes of the same Feed screen', () => {
-    expect(feedSource).toContain("type FeedMode");
-    expect(feedSource).toContain("const [feedMode, setFeedMode] = useState<FeedMode>('buddies')");
-    expect(modeSelectorSource).toContain("(['buddies', 'discover'] as const)");
-    expect(feedSource).toContain('<DiscoverExperience />');
+  test('presents one unified Feed without the oversized Buddies and Discover selector', () => {
+    expect(feedSource).not.toContain('SocialModeSelector,');
+    expect(feedSource).not.toContain('DiscoverExperience');
+    expect(feedSource).not.toContain('feedMode');
+    expect(feedSource).not.toContain('dataMode');
+    expect(modeSelectorSource).not.toContain("(['buddies', 'discover'] as const)");
   });
 
   test('preserves composer, story, post-detail, and encouragement-preview handoffs', () => {
@@ -63,20 +63,18 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain("from '../../feed/SocialModeSelector'");
     expect(feedSource).toContain("from '../../feed/FeedProofCard'");
     expect(feedSource).toContain('<SocialBrandHeader');
-    expect(feedSource).toContain('<SocialModeSelector');
+    expect(feedSource).not.toContain('<SocialModeSelector');
     expect(feedSource).toContain('<FeedProofCard');
   });
 
-  test('renders the exact compact social header and selected cobalt selector', () => {
+  test('renders the exact compact social header without a segmented selector', () => {
     expect(brandHeaderSource).toContain('<BrandMark');
     expect(brandHeaderSource).toContain('AccountAbility');
     expect(brandHeaderSource).toContain('accessibilityLabel="Search"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Create"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Notifications"');
     expect(brandHeaderSource).toContain('minWidth: 44');
-    expect(modeSelectorSource).toContain("(['buddies', 'discover'] as const)");
-    expect(modeSelectorSource).toContain('accessibilityState={{ selected: mode === value }}');
-    expect(modeSelectorSource).toContain('backgroundColor: colors.primary');
+    expect(modeSelectorSource).not.toContain('accessibilityRole="tablist"');
   });
 
   test('keeps the social brand mark accessible without large-text wordmark clipping', () => {
@@ -107,10 +105,10 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain("'I showed up today.'");
   });
 
-  test('preserves one FlatList and an honest Buddies offset contract', () => {
+  test('preserves one FlatList and an honest unified Feed offset contract', () => {
     expect(feedSource.match(/<FlatList(?=\s)/g)).toHaveLength(1);
-    expect(feedSource).toContain('const buddiesOffset = useRef(0)');
-    expect(feedSource).toContain('buddiesOffset.current = event.nativeEvent.contentOffset.y');
+    expect(feedSource).toContain('const feedOffset = useRef(0)');
+    expect(feedSource).toContain('feedOffset.current = event.nativeEvent.contentOffset.y');
     expect(feedSource).toContain('scrollToOffset');
     expect(feedSource).not.toContain('modeOffsets');
   });
@@ -153,18 +151,11 @@ describe('Group 3 social Feed contract', () => {
     expect(deriveFeedViewState({ loading: false, loadingMore: false, postCount: 0, error: null, online: false })).toBe('offline-uncached');
   });
 
-  test('restores only safe Feed session values', () => {
-    expect(restoreFeedSession({ mode: 'discover', buddiesOffset: 172.5 })).toEqual({
-      mode: 'discover',
-      buddiesOffset: 172.5,
-    });
-    expect(restoreFeedSession({ mode: 'invalid', buddiesOffset: -9 })).toEqual({
-      mode: 'buddies',
-      buddiesOffset: 0,
-    });
-    expect(feedSource).toContain('pendingBuddiesOffset.current = saved.buddiesOffset');
+  test('restores only a safe unified Feed offset', () => {
+    expect(feedSource).toContain('pendingFeedOffset.current = savedOffset');
+    expect(feedSource).toContain("typeof parsed.feedOffset === 'number'");
     expect(feedSource).toContain('onContentSizeChange={() =>');
-    expect(feedSource).toContain('explicit offset persistence is deferred to Task 3.3');
+    expect(feedSource).not.toContain('explicit offset persistence is deferred to Task 3.3');
     expect(feedSource).not.toContain('feed-cache');
     expect(feedSource).not.toContain('JSON.stringify(page)');
   });
@@ -219,11 +210,10 @@ describe('Group 3 social Feed contract', () => {
   });
 
   test('never exposes rows across logout or account transitions', () => {
-    expect(feedRowsBelongToView('user-a', 'user-a', 'buddies', 'buddies')).toBe(true);
-    expect(feedRowsBelongToView('user-a', null, 'buddies', 'buddies')).toBe(false);
-    expect(feedRowsBelongToView('user-a', 'user-b', 'buddies', 'buddies')).toBe(false);
-    expect(feedRowsBelongToView(null, 'user-b', 'buddies', 'buddies')).toBe(false);
-    expect(feedRowsBelongToView('user-a', 'user-a', 'discover', 'buddies')).toBe(false);
+    expect(feedRowsBelongToView('user-a', 'user-a')).toBe(true);
+    expect(feedRowsBelongToView('user-a', null)).toBe(false);
+    expect(feedRowsBelongToView('user-a', 'user-b')).toBe(false);
+    expect(feedRowsBelongToView(null, 'user-b')).toBe(false);
     expect(feedSource).toContain('setDataOwnerId(null)');
     expect(feedSource).toContain('setPosts([])');
     expect(feedSource).toContain('setEncouragementPreviews(new Map())');
@@ -240,11 +230,11 @@ describe('Group 3 social Feed contract', () => {
 
   test('clears pending offset only after a real list scroll call', () => {
     const scrollIndex = feedSource.indexOf('list.scrollToOffset({ offset, animated: false })');
-    const clearIndex = feedSource.indexOf('pendingBuddiesOffset.current = null', scrollIndex);
+    const clearIndex = feedSource.indexOf('pendingFeedOffset.current = null', scrollIndex);
     expect(scrollIndex).toBeGreaterThan(-1);
     expect(clearIndex).toBeGreaterThan(scrollIndex);
     expect(feedSource).toContain('!feedListRef.current');
-    expect(feedSource).not.toContain('onLayout={restorePendingBuddiesOffset}');
+    expect(feedSource).not.toContain('onLayout={restorePendingFeedOffset}');
     expect(feedSource).toContain('listContentReady.current = false');
   });
 
