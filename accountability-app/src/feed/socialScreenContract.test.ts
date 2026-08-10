@@ -192,10 +192,17 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('ref={attachStoryRail}');
     expect(feedSource).not.toContain('controllerOnly');
     expect(feedSource.indexOf('<StoryRail', feedSource.indexOf('const feedHeader'))).toBeGreaterThan(-1);
-    expect(feedSource).toContain('storyPickerQueue.current.request()');
+    expect(feedSource).toContain('storyPickerQueue.request()');
     expect(feedSource).toContain('ref={attachStoryRail}');
-    expect(feedSource).toContain('pickerQueue.reset()');
+    expect(feedSource).toContain('storyPickerQueue.reset()');
     expect(storyRailSource).not.toContain('controllerOnly');
+  });
+
+  test('isolates picker queue cleanup to the account that created it', () => {
+    expect(feedSource).toContain('useMemo(() => createStoryPickerQueue(myId), [myId])');
+    expect(feedSource).toContain('storyPickerQueue.reset()');
+    expect(feedSource).toContain('}, [storyPickerQueue]);');
+    expect(feedSource).not.toContain('useRef(createStoryPickerQueue())');
   });
 
   test('never exposes rows across logout or account transitions', () => {

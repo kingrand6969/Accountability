@@ -51,4 +51,16 @@ describe('createStoryPickerQueue', () => {
     await flushMicrotasks();
     expect(handle.openPicker).not.toHaveBeenCalled();
   });
+
+  test('old-account cleanup cannot reset a new account queue that already attached', () => {
+    const accountAQueue = createStoryPickerQueue();
+    const accountBQueue = createStoryPickerQueue();
+    const accountBHandle: StoryPickerHandle = { openPicker: jest.fn() };
+
+    accountBQueue.attach(accountBHandle);
+    accountAQueue.reset();
+    accountBQueue.request();
+
+    expect(accountBHandle.openPicker).toHaveBeenCalledTimes(1);
+  });
 });

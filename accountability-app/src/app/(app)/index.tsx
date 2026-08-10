@@ -119,7 +119,7 @@ export default function Feed() {
   const [profileOwnerId, setProfileOwnerId] = useState<string | null>(null);
   const likesInFlight = useRef<Set<string>>(new Set());
   const loadGeneration = useRef(0);
-  const storyPickerQueue = useRef(createStoryPickerQueue());
+  const storyPickerQueue = useMemo(() => createStoryPickerQueue(myId), [myId]);
   const feedListRef = useRef<FlatList<FeedRow>>(null);
   const buddiesOffset = useRef(0);
   const pendingBuddiesOffset = useRef<number | null>(null);
@@ -134,22 +134,25 @@ export default function Feed() {
   const { unread } = useUnreadNotifications();
   const { isPro, loading: proLoading } = useIsPro();
   const attachStoryRail = useCallback((handle: StoryRailHandle | null) => {
-    storyPickerQueue.current.attach(handle);
-  }, []);
+    storyPickerQueue.attach(handle);
+  }, [storyPickerQueue]);
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
   useEffect(() => {
-    const pickerQueue = storyPickerQueue.current;
+    currentUserIdRef.current = myId;
     return () => {
       currentUserIdRef.current = null;
-      pickerQueue.reset();
       if (pendingCreateAction.current) clearTimeout(pendingCreateAction.current);
       pendingCreateAction.current = null;
     };
   }, [myId]);
+
+  useEffect(() => {
+    return () => storyPickerQueue.reset();
+  }, [storyPickerQueue]);
 
   useEffect(() => {
     const generation = ++profileGeneration.current;
@@ -533,7 +536,7 @@ export default function Feed() {
                     () => currentUserIdRef.current,
                     () => {
                       if (item.kind === 'story') {
-                        storyPickerQueue.current.request();
+                        storyPickerQueue.request();
                       } else {
                         router.push(item.route as never);
                       }

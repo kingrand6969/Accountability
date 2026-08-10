@@ -1,6 +1,6 @@
 export type StoryPickerHandle = { openPicker: () => void };
 
-export function createStoryPickerQueue() {
+export function createStoryPickerQueue(_identityKey: string | null = null) {
   let handle: StoryPickerHandle | null = null;
   let pending = false;
   let generation = 0;
