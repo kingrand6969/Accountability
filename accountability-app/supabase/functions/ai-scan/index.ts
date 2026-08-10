@@ -1,12 +1,10 @@
 // Supabase Edge Function: ai-scan
 //
-// Photo → structured data, for two Pro features:
-//   kind:'food'    → calories + macros for a meal photo (feeds the Diet log)
-//   kind:'receipt' → merchant, date, total (feeds a money transaction)
+// Food photo → calories + macros for the Diet log.
 //
 // COST DISCIPLINE (this is billed, unlike moderation):
 //   * Pro is checked HERE against profiles — a client claiming Pro gets 403.
-//   * 20 scans per kind per calendar month, counted HERE in ai_scans — a client
+//   * 20 food scans per calendar month, counted HERE in ai_scans — a client
 //     claiming a low count gets 429.
 //   * The quota row is written BEFORE the OpenAI call, so a crash mid-call can
 //     never hand out free retries.
@@ -34,13 +32,6 @@ Rules: list each distinct food you can see. Estimate a realistic portion in gram
 "note" = one short sentence on your confidence and what you assumed. If the photo is not food,
 return {"items":[],"note":"No food detected."}`;
 
-const RECEIPT_PROMPT = `You read receipts. Return JSON only:
-{"merchant":string|null,"date":string|null,"total":number|null,"currency":string|null,"category":string,"note":string}
-"date" must be YYYY-MM-DD if visible, else null. "total" is the final amount paid as a number
-(no currency symbol). "category" must be one of: food, transport, shopping, bills, health,
-entertainment, other. "note" = one short sentence on anything unclear. If it is not a receipt,
-return {"merchant":null,"date":null,"total":null,"currency":null,"category":"other","note":"Not a receipt."}`;
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
@@ -52,7 +43,7 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: 'unauthorized' }, 401);
 
     const { kind, image } = await req.json().catch(() => ({}));
-    if (kind !== 'food' && kind !== 'receipt') return json({ error: 'bad kind' }, 400);
+    if (kind !== 'food') return json({ error: 'bad kind' }, 400);
     if (typeof image !== 'string' || image.length < 100) return json({ error: 'image required' }, 400);
     if (image.length > MAX_IMAGE_CHARS) return json({ error: 'image too large' }, 413);
 
@@ -79,19 +70,19 @@ Deno.serve(async (req) => {
       .from('ai_scans')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
-      .eq('kind', kind)
+      .eq('kind', 'food')
       .gte('created_at', monthStart.toISOString());
     const used = count ?? 0;
     if (used >= MONTHLY_LIMIT) {
       return json({
-        error: `You've used all ${MONTHLY_LIMIT} ${kind} scans this month. Your allowance resets on the 1st.`,
+        error: `You've used all ${MONTHLY_LIMIT} food scans this month. Your allowance resets on the 1st.`,
         used,
         limit: MONTHLY_LIMIT,
       }, 429);
     }
 
     // Reserve the scan BEFORE spending money, so a failure can't be retried free.
-    await admin.from('ai_scans').insert({ user_id: user.id, kind });
+    await admin.from('ai_scans').insert({ user_id: user.id, kind: 'food' });
 
     // ── vision call ─────────────────────────────────────────────────────────
     const dataUrl = image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
@@ -103,11 +94,11 @@ Deno.serve(async (req) => {
         response_format: { type: 'json_object' },
         max_tokens: 700,
         messages: [
-          { role: 'system', content: kind === 'food' ? FOOD_PROMPT : RECEIPT_PROMPT },
+          { role: 'system', content: FOOD_PROMPT },
           {
             role: 'user',
             content: [
-              { type: 'text', text: kind === 'food' ? 'Estimate this meal.' : 'Read this receipt.' },
+              { type: 'text', text: 'Estimate this meal.' },
               { type: 'image_url', image_url: { url: dataUrl, detail: 'low' } },
             ],
           },
@@ -126,7 +117,7 @@ Deno.serve(async (req) => {
       return json({ error: "We couldn't read that photo. Try a clearer, well-lit shot." }, 422);
     }
 
-    return json({ ok: true, kind, result: parsed, used: used + 1, limit: MONTHLY_LIMIT });
+    return json({ ok: true, kind: 'food', result: parsed, used: used + 1, limit: MONTHLY_LIMIT });
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 500);
   }

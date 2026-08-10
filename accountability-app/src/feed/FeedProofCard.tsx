@@ -33,7 +33,6 @@ function postTypeLabel(post: FeedPost): string | null {
     milestone: 'Milestone',
     event: 'Event',
     memory: 'Memory',
-    savings: 'Savings win',
   };
   return labels[post.post_type] ?? null;
 }

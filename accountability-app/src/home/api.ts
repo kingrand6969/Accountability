@@ -7,7 +7,6 @@ export type HomeStats = {
   todayCount: number;
   weekWorkouts: number;
   weekActivities: number;
-  weekSpend: number;
   buddyRequests: number;
   buddyCount: number;
 };
@@ -17,7 +16,6 @@ const ZERO: HomeStats = {
   todayCount: 0,
   weekWorkouts: 0,
   weekActivities: 0,
-  weekSpend: 0,
   buddyRequests: 0,
   buddyCount: 0,
 };
@@ -35,7 +33,7 @@ export async function getHomeStats(): Promise<HomeStats> {
   weekStart.setDate(weekStart.getDate() - 6);
   weekStart.setHours(0, 0, 0, 0);
 
-  const [itemsRes, txRes, reqRes, linkRes] = await Promise.all([
+  const [itemsRes, reqRes, linkRes] = await Promise.all([
     // Newest-first + explicit limit: PostgREST caps at 1000 rows, so without
     // an order the *recent* days could be the ones silently dropped and the
     // streak would collapse for very active users.
@@ -46,11 +44,6 @@ export async function getHomeStats(): Promise<HomeStats> {
       .gte('starts_at', since.toISOString())
       .order('starts_at', { ascending: false })
       .limit(1000),
-    supabase
-      .from('money_transactions')
-      .select('amount,kind,tx_date')
-      .eq('user_id', uid)
-      .gte('tx_date', toLocalDateString(weekStart)),
     supabase
       .from('buddy_requests')
       // count only — we just need the number, not the rows
@@ -65,7 +58,7 @@ export async function getHomeStats(): Promise<HomeStats> {
 
   // Surface failures instead of rendering zeroed stats (a false "streak lost"
   // signal is the worst thing an accountability app can show).
-  const failed = [itemsRes, txRes, reqRes, linkRes].find((r) => r.error);
+  const failed = [itemsRes, reqRes, linkRes].find((r) => r.error);
   if (failed?.error) throw failed.error;
 
   const items = itemsRes.data ?? [];
@@ -78,16 +71,11 @@ export async function getHomeStats(): Promise<HomeStats> {
   const weekWorkouts = weekItems.filter((r: any) => r.type === 'workout').length;
   const weekActivities = weekItems.filter((r: any) => r.type === 'activity').length;
 
-  const weekSpend = (txRes.data ?? [])
-    .filter((t: any) => t.kind === 'expense')
-    .reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
-
   return {
     streak,
     todayCount,
     weekWorkouts,
     weekActivities,
-    weekSpend,
     buddyRequests: reqRes.count ?? 0,
     buddyCount: linkRes.count ?? 0,
   };

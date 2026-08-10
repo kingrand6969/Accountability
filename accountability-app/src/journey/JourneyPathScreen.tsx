@@ -13,7 +13,7 @@ import type { TimelineItem } from '../timeline/types';
 
 const ZERO: Metrics = {
   streak: 0, totalKm: 0, workouts: 0, challenges: 0, buddies: 0, activities: 0,
-  longestKm: 0, activeDays: 0, challengeWins: 0, memories: 0, goalsHit: 0,
+  longestKm: 0, activeDays: 0, challengeWins: 0, memories: 0,
   totalHours: 0, places: 0, invitesAccepted: 0, postsShared: 0, likesGiven: 0,
   groupsJoined: 0, buddyMessages: 0, profileFields: 0,
 };

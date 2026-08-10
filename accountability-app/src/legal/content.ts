@@ -16,8 +16,8 @@
 //   6. Confirm the retention periods in the Privacy Policy match your REAL practice.
 //   7. Confirm CONTACT_EMAIL, JURISDICTION (governing-law anchor = your entity's home), MIN_AGE.
 
-export const LEGAL_VERSION = '2026-07-23';
-export const EFFECTIVE_DATE = 'July 23, 2026';
+export const LEGAL_VERSION = '2026-08-10';
+export const EFFECTIVE_DATE = 'August 10, 2026';
 
 export const OPERATOR = 'AccountAbility'; // consumer / brand name
 export const OPERATOR_ENTITY = ''; // TODO(founder): exact registered legal name, once the entity is formed
@@ -63,7 +63,7 @@ export const TERMS: LegalDoc = {
     {
       h: '2. What the app is',
       p: [
-        `${OPERATOR} is a social accountability and fitness app. It lets you track activities and habits, record runs and workouts, connect with accountability buddies, chat, share posts and stories, join challenges, and keep private "Memories". It also includes personal money tools to track your accounts, bills, credit-card debt, and savings; an optional Pro business tracker for revenue, costs, and break-even; and AI features that estimate calories and macros from a food photo or read a receipt. These money, business, and AI features are informational tools to help you organise your own numbers — see the disclaimers below.`,
+        `${OPERATOR} is a social accountability and fitness app. It lets you track activities and habits, record runs and workouts, connect with accountability buddies, chat, share posts and stories, join challenges, keep private "Memories", and use AI to estimate calories and macros from a food photo. The food scan is an informational tool — see the health and AI disclaimers below.`,
         'The app is provided on an ongoing but not guaranteed basis. We may change, add, limit, suspend, or permanently stop offering the app or any feature — for everyone or for particular users, regions, or devices — at any time, with or without notice. Where we reasonably can, we will give notice of major changes or a shutdown so you can export or save your content first. Except where the law says otherwise, we are not liable to you for changing, suspending, or ending the app or a feature, or for any content you did not save before it stopped. If we permanently shut down the app and you have unused paid time, we will handle any refund through the applicable App Store or Google Play rules.',
       ],
     },
@@ -115,17 +115,10 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      h: '8. Money & business tools are not financial advice',
+      h: '8. AI features give estimates, not facts',
       p: [
-        `${OPERATOR} includes tools to track your personal finances (accounts, bills, credit-card debt, savings) and, with Pro, a business tracker (revenue, costs, and break-even). These are simple tools to help you organise and see your own numbers. They are NOT financial, tax, accounting, investment, debt, or legal advice, and we are not your accountant, financial adviser, or broker. Any totals, charts, break-even points, or projections the app shows are general information based only on what you enter — they are not a recommendation to spend, save, borrow, invest, or make any business decision. For advice about your money, taxes, debt, or business, please talk to a qualified professional.`,
-        'Your numbers are your responsibility. The app can only work with the information you put into it. You are responsible for entering your data accurately, keeping it up to date, and checking it against your real bank, card, lender, and business records. We do not verify your figures, and we are not responsible for decisions you make from incomplete or incorrect data — or from any total, balance, due date, reminder, or break-even result the app calculates from it. Always treat your official statements — from your bank, card issuer, lender, or accountant — as the source of truth. Any money or business decision you make is your own, and you make it at your own risk.',
-      ],
-    },
-    {
-      h: '9. AI features give estimates, not facts',
-      p: [
-        'Some features use AI to estimate things from a photo — for example guessing the calories and macros in a meal, or reading the amounts off a receipt. These results are automated ESTIMATES and can be wrong, sometimes by a lot. Food scans are a rough guide only — they are not nutritional, dietary, or medical advice.',
-        'Do not rely on an AI estimate for any decision where getting it wrong could hurt you: managing diabetes or blood sugar, dosing insulin or other medication, avoiding an allergen, following a medically prescribed diet, recovering from an eating disorder, or nutrition during pregnancy. Receipt and other scans can misread amounts, dates, and items. Always check an AI result against the real item, label, or receipt before you rely on it, and fix anything that looks off. If a number really matters to your health or your money, verify it yourself or ask a qualified professional.',
+        'The food scanner uses AI to estimate calories and macros from a photo. These results are automated ESTIMATES and can be wrong, sometimes by a lot. Food scans are a rough guide only — they are not nutritional, dietary, or medical advice.',
+        'Do not rely on an AI estimate for any decision where getting it wrong could hurt you: managing diabetes or blood sugar, dosing insulin or other medication, avoiding an allergen, following a medically prescribed diet, recovering from an eating disorder, or nutrition during pregnancy. Always check an estimate against the real food and its label where available. If a number matters to your health, verify it yourself or ask a qualified professional.',
       ],
     },
     {
@@ -167,7 +160,7 @@ export const TERMS: LegalDoc = {
     {
       h: '15. Disclaimers, limits on our liability & indemnification',
       p: [
-        'We provide the app "as is" and "as available", without promises of any kind. To the fullest extent the law allows, we disclaim all warranties, whether spoken, written, or implied — including any implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement. We do not promise that the app will be uninterrupted, on time, secure, error-free, or free of viruses, that defects will be fixed, or that it will meet your needs. In particular, we do not warrant that any figure, total, balance, due date, projection, break-even result, or AI estimate (including calorie, macro, or receipt scans) is accurate, complete, current, or reliable — these are informational and depend on what you enter and on automated systems that can err. Some places don’t allow certain warranties to be excluded, so parts of this may not apply to you.',
+        'We provide the app "as is" and "as available", without promises of any kind. To the fullest extent the law allows, we disclaim all warranties, whether spoken, written, or implied — including any implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement. We do not promise that the app will be uninterrupted, on time, secure, error-free, or free of viruses, that defects will be fixed, or that it will meet your needs. In particular, we do not warrant that any calorie or macro estimate is accurate, complete, current, or reliable — it is informational and depends on an automated system that can err. Some places don’t allow certain warranties to be excluded, so parts of this may not apply to you.',
         'Some damages we’re never responsible for. To the fullest extent the law allows, we won’t be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for any lost profits, lost data, lost savings, lost goodwill, or business interruption — even if we knew such losses were possible.',
         'And there’s an overall limit on what we owe. For everything else, our total liability to you for all claims connected to the app or these Terms, added together, is limited to whichever is greater: (a) the amount you paid us for the app in the 12 months before the event that led to the claim, or (b) US $100. These limits are a basic part of the agreement between us and apply no matter what legal theory a claim is based on. Nothing here limits liability that the law says cannot be limited — for example, for death or personal injury caused by our negligence, for fraud, or any right your local consumer-protection law gives you.',
         'Indemnification. To the fullest extent the law allows, you agree to defend, indemnify, and hold harmless ' + OPERATOR + ' and the people who work on it from any third-party claims, demands, losses, liabilities, damages, and reasonable costs (including reasonable legal fees) that arise out of or relate to: (a) content you post, send, or share; (b) your use of the app; (c) your breach of these Terms or our community rules; or (d) your violation of any law or of anyone else’s rights, including intellectual-property and privacy rights. We may take over the defence of any covered claim (at your expense), and you agree to cooperate and not to settle it in a way that affects us without our written consent. This section survives the end of your account.',
@@ -226,7 +219,6 @@ export const PRIVACY: LegalDoc = {
         'Account: your email address and password (passwords are stored securely by our authentication provider, never in plain text).',
         'Profile & content: your first and last name, your city or area (required at sign-up so we can match you with nearby buddies), optional details you add (bio, photo, cover, birthday, and similar), and the posts, stories, comments, chat messages, challenges, and Memories you create.',
         'Activity & health-adjacent data: workouts, runs/walks/rides, distances, durations, precise GPS routes when you record an activity, and the calorie and macro estimates the AI produces from any food photo you scan.',
-        'Money data you enter: if you use the finance tracker or Pro business tools, the figures you enter — such as account balances, bills, debts, savings goals, and (for business owners) revenue, costs, and break-even numbers. You enter these to track your own finances; we don’t sell them, use them for ads, or share them for marketing, and you can delete them with your account.',
         'Usage & device: basic app usage, crash/diagnostic data, and an advertising identifier used for ads (see the advertising section).',
         'Safety & moderation: the network (IP) address your device connects from (recorded each time you use the app), reports you send or that concern you, and moderation records — warnings, strikes, restrictions, content removals, and bans. We collect these to keep the community safe and to enforce bans, including at the network level.',
       ],
@@ -244,7 +236,7 @@ export const PRIVACY: LegalDoc = {
       h: '3. Why we’re allowed to use your data (legal bases)',
       p: [
         'If you’re in the European Economic Area or the UK, data-protection law requires us to have a legal basis for each thing we do with your data. Ours are:',
-        'To run the app and give you the features you sign up for (account, buddies, feed, chat, run tracking, finance and business trackers, Pro) — because it’s necessary to perform our agreement with you (the Terms).',
+        'To run the app and give you the features you sign up for (account, buddies, feed, chat, run tracking, food scanning, and Pro) — because it’s necessary to perform our agreement with you (the Terms).',
         'To keep the community safe, prevent abuse, spam and fraud, secure the service, and enforce bans (including IP logging) — because it’s in our and other members’ legitimate interests to run a safe app, balanced against your rights.',
         'To show ads to free members — with your consent where the law requires it, otherwise on the basis of our legitimate interest in funding a free tier.',
         'Health and fitness details (workouts, runs, calorie/macro estimates) and precise GPS routes get extra protection under EEA/UK law. We only handle these because you choose to record or scan them — that is, on your explicit consent — and you can stop, delete them, or turn off location at any time.',
@@ -255,7 +247,7 @@ export const PRIVACY: LegalDoc = {
       h: '4. Automated screening & the AI scanners',
       p: [
         'To keep the community safe, new posts, comments, stories, and messages may be checked automatically for things like nudity, hate, or threats. These automated checks never decide anything about your account on their own — a human moderator reviews every case and makes the final call before anything is removed or any strike, restriction, or ban is applied, and you can contact us to contest a decision.',
-        'Separately, if you use the photo food scanner or receipt scanner, an AI service processes the image you submit to estimate calories, macros, or receipt details. These estimates are guidance only (see the Terms) and are not used to make decisions about your account.',
+        'Separately, if you use the food-photo scanner, an AI service processes the image you submit to estimate calories and macros. These estimates are guidance only (see the Terms) and are not used to make decisions about your account.',
       ],
     },
     {
@@ -268,7 +260,7 @@ export const PRIVACY: LegalDoc = {
     {
       h: '6. Service providers',
       p: [
-        'We use trusted providers to run the app, who process data on our behalf under their own security terms: a backend/database and authentication provider, cloud object storage and a content-delivery network for images, mapping for activity routes, an AI provider for the food/receipt scanners, and an advertising provider for free accounts.',
+        'We use trusted providers to run the app, who process data on our behalf under their own security terms: a backend/database and authentication provider, cloud object storage and a content-delivery network for images, mapping for activity routes, an AI provider for the food scanner, and an advertising provider for free accounts.',
         'These providers may store data on servers outside your country. We share only what is needed to run the service.',
       ],
     },

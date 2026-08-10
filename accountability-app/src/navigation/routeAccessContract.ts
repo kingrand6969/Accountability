@@ -28,7 +28,6 @@ export function navigateBackSafely(router: SafeBackRouter): 'back' | 'fallback' 
 const PROTECTED_ROUTES = new Set([
   '/body',
   '/journey-path',
-  '/business',
   '/groups',
   '/group-new',
   '/pages',

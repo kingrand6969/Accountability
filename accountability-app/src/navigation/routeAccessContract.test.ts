@@ -89,14 +89,14 @@ describe('cold-link route access contract', () => {
     expect(statusBarStyleForPath?.('/body')).toBe('dark');
   });
 
-  test.each(['/body', '/journey-path', '/business'] as const)(
+  test.each(['/body', '/journey-path'] as const)(
     'requires authentication and resume for signed-out protected route %s',
     (path) => {
       expect(resolveColdLink(path, 'signed-out')).toBe('authenticate-and-resume');
     },
   );
 
-  test.each(['/body', '/journey-path', '/business'] as const)(
+  test.each(['/body', '/journey-path'] as const)(
     'opens signed-in protected route %s',
     (path) => {
       expect(resolveColdLink(path, 'signed-in')).toBe('open-protected');

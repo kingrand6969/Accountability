@@ -124,25 +124,6 @@ function RootNavigator() {
         <Stack.Screen name="gym-plan" options={{ headerShown: true, title: 'Build my plan' }} />
         <Stack.Screen name="diet" options={{ headerShown: true, title: 'Diet' }} />
         <Stack.Screen name="food-search" options={{ headerShown: true, title: 'Add Food' }} />
-        <Stack.Screen name="money-add" options={{ headerShown: true, title: 'Add Transaction' }} />
-        <Stack.Screen name="bill-new" options={{ headerShown: true, title: 'Add bill' }} />
-        <Stack.Screen
-          name="account-new"
-          options={{ headerShown: true, title: 'Add bank or wallet' }}
-        />
-        <Stack.Screen
-          name="saving-new"
-          options={{ headerShown: true, title: 'Add savings goal' }}
-        />
-        <Stack.Screen name="debt-new" options={{ headerShown: true, title: 'Add debt' }} />
-        <Stack.Screen
-          name="shared-goal-new"
-          options={{ headerShown: true, title: 'New shared goal' }}
-        />
-        <Stack.Screen
-          name="shared-goal/[id]"
-          options={{ headerShown: true, title: 'Saving Buddies' }}
-        />
         <Stack.Screen
           name="add"
           options={{ headerShown: true, title: 'Add', presentation: 'modal' }}
@@ -175,7 +156,6 @@ function RootNavigator() {
           name="journey-path"
           options={{ headerShown: true, title: 'Journey Path' }}
         />
-        <Stack.Screen name="business" options={{ headerShown: true, title: 'Business' }} />
         <Stack.Screen name="groups" options={{ headerShown: true, title: 'Groups' }} />
         <Stack.Screen name="group/[id]" options={{ headerShown: true, title: 'Group' }} />
         <Stack.Screen name="group-new" options={{ headerShown: true, title: 'New Group' }} />
