@@ -140,7 +140,7 @@ describe('Group 3 group/page compatibility routes', () => {
     expect(groupNew).toContain('gatekey:');
     expect(group).toContain('joinGroupWithKey(target.id, keyInput)');
     expect(group).toContain('g?.is_member ? await listFeed(undefined, id) : []');
-    expect(group).toContain('data={group.is_member ? posts : []}');
+    expect(group).toContain('posts: group?.is_member ? posts : []');
     expect(group).toContain('getGroupGatekey(target.id)');
   });
 
