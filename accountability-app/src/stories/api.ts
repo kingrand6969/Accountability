@@ -102,9 +102,9 @@ export async function listStoryGroups(): Promise<StoryGroup[]> {
   return buildStoryGroups(rows, uid, viewedStoryIds, authors);
 }
 
-export async function markStoryViewed(storyId: string): Promise<void> {
+export async function markStoryViewed(storyId: string, expectedViewerId: string): Promise<void> {
   const uid = await me();
-  if (!uid) throw new Error('Not signed in.');
+  if (uid !== expectedViewerId) return;
   await insertStoryViewReceipt(storyId, uid, (values) =>
     supabase.from('story_views').insert(values),
   );

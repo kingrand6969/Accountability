@@ -185,9 +185,9 @@ export default function StoryViewer() {
   }, [story?.id]);
 
   useEffect(() => {
-    if (!story || !ownerId) return;
-    void markStoryViewed(story.id).catch(() => {});
-  }, [story?.id, ownerId, viewKey]);
+    if (!story || !ownerId || dataViewKey !== viewKey) return;
+    void markStoryViewed(story.id, ownerId).catch(() => {});
+  }, [story?.id, ownerId, viewKey, dataViewKey]);
 
   const goNext = useCallback(() => {
     if (!group) return;
