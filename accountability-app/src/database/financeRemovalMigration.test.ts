@@ -100,7 +100,7 @@ describe('0097 finance and business removal migration', () => {
       /\bdelete from public\.ai_scans where kind\s*=\s*'receipt'\s*;/,
     );
     expect(sql).toMatch(
-      /\balter table public\.ai_scans\b[\s\S]*\bcheck\s*\(\s*kind\s*=\s*'food'\s*\)/,
+      /\balter table public\.ai_scans\b[^;]*\bcheck\s*\(\s*kind\s*=\s*'food'\s*\)/,
     );
     expect(sql).not.toMatch(dropTablePattern('ai_scans'));
   });
