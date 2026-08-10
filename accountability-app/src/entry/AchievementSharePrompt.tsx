@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { colors, font, radius, spacing } from '../ui/theme';
@@ -49,7 +49,7 @@ export function createAchievementShareController(callbacks: ShareCallbacks) {
   }
 
   async function submit(destination: AchievementDestination) {
-    if (state.working || disposed) return;
+    if (state.working || closed || disposed) return;
     const currentGeneration = generation;
     publish({ ...state, error: null, working: true });
     try {
@@ -75,21 +75,25 @@ export function createAchievementShareController(callbacks: ShareCallbacks) {
       };
     },
     select(destination: Exclude<AchievementDestination, 'private'>) {
-      if (!state.working && !disposed) {
+      if (!state.working && !closed && !disposed) {
         publish({ ...state, decision: chooseAchievementDestination(state.decision, destination), error: null });
       }
     },
     confirm() {
-      if (state.decision.destination === null || state.decision.destination === 'private') {
+      if (
+        closed ||
+        disposed ||
+        state.decision.destination === null ||
+        state.decision.destination === 'private'
+      ) {
         return Promise.resolve();
       }
       publish({ ...state, decision: confirmAchievementShare(state.decision) });
       return submit(state.decision.destination);
     },
     keepPrivate() {
-      if (!state.working && !disposed) {
-        publish({ ...state, decision: chooseAchievementDestination(state.decision, 'private'), error: null });
-      }
+      if (state.working || closed || disposed) return Promise.resolve();
+      publish({ ...state, decision: chooseAchievementDestination(state.decision, 'private'), error: null });
       return submit('private');
     },
     cancel() {
@@ -104,6 +108,44 @@ export function createAchievementShareController(callbacks: ShareCallbacks) {
       disposed = true;
       generation += 1;
       listeners.clear();
+    },
+  };
+}
+
+type PresentationIdentity = {
+  visible: boolean;
+  payloadKey?: string | number;
+  resetKey?: string | number;
+};
+
+export function createAchievementSharePromptLifecycle(initialCallbacks: ShareCallbacks) {
+  let latestCallbacks = initialCallbacks;
+  let presentation: PresentationIdentity | undefined;
+  const controller = createAchievementShareController({
+    onFeed: () => latestCallbacks.onFeed(),
+    onStory: () => latestCallbacks.onStory(),
+    onPrivate: () => latestCallbacks.onPrivate(),
+    onClose: () => latestCallbacks.onClose(),
+  });
+
+  return {
+    controller,
+    updateCallbacks(callbacks: ShareCallbacks) {
+      latestCallbacks = callbacks;
+    },
+    syncPresentation(next: PresentationIdentity) {
+      if (
+        presentation === undefined ||
+        presentation.visible !== next.visible ||
+        presentation.payloadKey !== next.payloadKey ||
+        presentation.resetKey !== next.resetKey
+      ) {
+        presentation = next;
+        controller.reset();
+      }
+    },
+    dispose() {
+      controller.dispose();
     },
   };
 }
@@ -123,17 +165,20 @@ export function AchievementSharePrompt({
   onPrivate,
   onClose,
 }: Props) {
-  const controller = useMemo(
-    () => createAchievementShareController({ onFeed, onStory, onPrivate, onClose }),
-    [onFeed, onStory, onPrivate, onClose],
-  );
+  const lifecycleRef = useRef<ReturnType<typeof createAchievementSharePromptLifecycle> | null>(null);
+  if (lifecycleRef.current === null) {
+    lifecycleRef.current = createAchievementSharePromptLifecycle({ onFeed, onStory, onPrivate, onClose });
+  }
+  const lifecycle = lifecycleRef.current;
+  lifecycle.updateCallbacks({ onFeed, onStory, onPrivate, onClose });
+  const controller = lifecycle.controller;
   const [state, setState] = useState(controller.getState);
 
   useEffect(() => controller.subscribe(setState), [controller]);
   useEffect(() => {
-    controller.reset();
-  }, [controller, visible, payloadKey, resetKey]);
-  useEffect(() => () => controller.dispose(), [controller]);
+    lifecycle.syncPresentation({ visible, payloadKey, resetKey });
+  }, [lifecycle, visible, payloadKey, resetKey]);
+  useEffect(() => () => lifecycle.dispose(), [lifecycle]);
 
   const selected = state.decision.destination;
 

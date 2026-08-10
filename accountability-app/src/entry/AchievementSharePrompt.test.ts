@@ -1,5 +1,8 @@
 import { describe, expect, jest, test } from '@jest/globals';
-import { createAchievementShareController } from './AchievementSharePrompt';
+import {
+  createAchievementShareController,
+  createAchievementSharePromptLifecycle,
+} from './AchievementSharePrompt';
 
 function deferred() {
   let resolve!: () => void;
@@ -115,6 +118,91 @@ describe('AchievementSharePrompt controller', () => {
     controller.select('feed');
     const submit = controller.confirm();
     controller.dispose();
+    pending.resolve();
+    await submit;
+    expect(cb.onClose).not.toHaveBeenCalled();
+  });
+
+  test('success is terminal until reset', async () => {
+    const cb = callbacks();
+    const controller = createAchievementShareController(cb);
+    controller.select('feed');
+    await controller.confirm();
+
+    controller.select('story');
+    await controller.confirm();
+    await controller.keepPrivate();
+    controller.cancel();
+
+    expect(cb.onFeed).toHaveBeenCalledTimes(1);
+    expect(cb.onStory).not.toHaveBeenCalled();
+    expect(cb.onPrivate).not.toHaveBeenCalled();
+    expect(cb.onClose).toHaveBeenCalledTimes(1);
+
+    controller.reset();
+    await controller.keepPrivate();
+    expect(cb.onPrivate).toHaveBeenCalledTimes(1);
+    expect(cb.onClose).toHaveBeenCalledTimes(2);
+  });
+
+  test('private success and cancel are terminal until reset', async () => {
+    const privateCallbacks = callbacks();
+    const privateController = createAchievementShareController(privateCallbacks);
+    await privateController.keepPrivate();
+    await privateController.keepPrivate();
+    privateController.cancel();
+    expect(privateCallbacks.onPrivate).toHaveBeenCalledTimes(1);
+    expect(privateCallbacks.onClose).toHaveBeenCalledTimes(1);
+
+    const cancelCallbacks = callbacks();
+    const cancelController = createAchievementShareController(cancelCallbacks);
+    cancelController.cancel();
+    await cancelController.keepPrivate();
+    expect(cancelCallbacks.onPrivate).not.toHaveBeenCalled();
+    expect(cancelCallbacks.onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AchievementSharePrompt lifecycle', () => {
+  test('mounting invokes no destination callback', () => {
+    const cb = callbacks();
+    createAchievementSharePromptLifecycle(cb);
+    expect(cb.onFeed).not.toHaveBeenCalled();
+    expect(cb.onStory).not.toHaveBeenCalled();
+    expect(cb.onPrivate).not.toHaveBeenCalled();
+    expect(cb.onClose).not.toHaveBeenCalled();
+  });
+
+  test('callback rerender keeps controller stable during a deferred submit', async () => {
+    const pending = deferred();
+    const first = callbacks();
+    first.onFeed.mockReturnValue(pending.promise);
+    const lifecycle = createAchievementSharePromptLifecycle(first);
+    const controller = lifecycle.controller;
+    controller.select('feed');
+    const submit = controller.confirm();
+
+    const rerendered = callbacks();
+    lifecycle.updateCallbacks(rerendered);
+    expect(lifecycle.controller).toBe(controller);
+    pending.resolve();
+    await submit;
+
+    expect(first.onClose).not.toHaveBeenCalled();
+    expect(rerendered.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('visible and payload changes reset state and invalidate stale completion', async () => {
+    const pending = deferred();
+    const cb = callbacks();
+    cb.onStory.mockReturnValue(pending.promise);
+    const lifecycle = createAchievementSharePromptLifecycle(cb);
+    lifecycle.syncPresentation({ visible: true, payloadKey: 'first' });
+    lifecycle.controller.select('story');
+    const submit = lifecycle.controller.confirm();
+
+    lifecycle.syncPresentation({ visible: true, payloadKey: 'second' });
+    expect(lifecycle.controller.getState().decision.destination).toBeNull();
     pending.resolve();
     await submit;
     expect(cb.onClose).not.toHaveBeenCalled();
