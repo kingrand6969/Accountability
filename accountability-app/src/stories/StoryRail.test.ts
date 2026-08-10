@@ -26,4 +26,10 @@ describe('StoryRail receipt and retry presentation', () => {
     expect(source).toContain('generation !== loadGeneration.current');
     expect(source).toContain('mountedRef.current');
   });
+
+  test('drops editor and posting results when the rail loses focus or ownership', () => {
+    expect(source).toContain('mutationGeneration.current += 1');
+    expect(source).toContain('setEditorUri(null)');
+    expect(source).toContain('generation !== mutationGeneration.current');
+  });
 });

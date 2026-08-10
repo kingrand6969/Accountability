@@ -64,6 +64,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
   const [showHint, setShowHint] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const loadGeneration = useRef(0);
+  const mutationGeneration = useRef(0);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -74,6 +75,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
     return () => {
       mountedRef.current = false;
       loadGeneration.current += 1;
+      mutationGeneration.current += 1;
     };
   }, []);
 
@@ -95,14 +97,19 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
       void load();
       return () => {
         loadGeneration.current += 1;
+        mutationGeneration.current += 1;
+        setEditorUri(null);
+        setPosting(false);
       };
     }, [load]),
   );
 
   async function onAddStory() {
     if (posting) return;
+    const generation = ++mutationGeneration.current;
     if (Platform.OS !== 'web') {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!mountedRef.current || generation !== mutationGeneration.current) return;
       if (!perm.granted) {
         Alert.alert('Permission needed', 'Allow photo access to post a story.');
         return;
@@ -115,6 +122,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
       allowsEditing: true,
       aspect: [9, 16],
     });
+    if (!mountedRef.current || generation !== mutationGeneration.current) return;
     if (res.canceled) return;
     const asset = res.assets[0];
     if (!asset.base64) {
@@ -130,33 +138,38 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
     setPosting(true);
     try {
       await addStory(asset.base64, ext);
+      if (!mountedRef.current || generation !== mutationGeneration.current) return;
       showToast('Flex posted — visible for 24 hours');
       void load();
     } catch (e) {
+      if (!mountedRef.current || generation !== mutationGeneration.current) return;
       Alert.alert('Could not post story', String((e as Error).message ?? e));
     } finally {
-      setPosting(false);
+      if (mountedRef.current && generation === mutationGeneration.current) setPosting(false);
     }
   }
 
   useImperativeHandle(ref, () => ({ openPicker: onAddStory }));
 
   async function postStory(base64: string, ext: string) {
+    const generation = ++mutationGeneration.current;
     setPosting(true);
     try {
       await addStory(base64, ext);
+      if (!mountedRef.current || generation !== mutationGeneration.current) return;
       showToast('Flex posted — visible for 24 hours');
       void load();
     } catch (e) {
+      if (!mountedRef.current || generation !== mutationGeneration.current) return;
       Alert.alert('Could not post story', String((e as Error).message ?? e));
     } finally {
-      setPosting(false);
+      if (mountedRef.current && generation === mutationGeneration.current) setPosting(false);
     }
   }
 
   function onEdited(photo: EditedPhoto) {
     setEditorUri(null);
-    postStory(photo.base64, 'jpg');
+    void postStory(photo.base64, 'jpg');
   }
 
   const mine = groups.find((g) => g.isMe);

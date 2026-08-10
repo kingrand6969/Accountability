@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   AccessibilityInfo,
   Alert,
+  AppState,
   Image,
   Pressable,
   StyleSheet,
@@ -20,8 +21,7 @@ import { font, spacing } from '../../ui/theme';
 import { useAuth } from '../../auth/AuthProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 import { canReportContent, createReportAction } from '../../moderation/reportAction';
-
-const STORY_DURATION_MS = 6000;
+import { createStoryPlaybackLifecycle } from '../../stories/storyPlaybackLifecycle';
 
 export default function StoryViewer() {
   const router = useRouter();
@@ -37,6 +37,12 @@ export default function StoryViewer() {
   const mountedRef = useRef(true);
   const focusedRef = useRef(false);
   const currentStoryIdRef = useRef<string | null>(null);
+  const [playback] = useState(() =>
+    createStoryPlaybackLifecycle({
+      advance: () => {},
+      initialPlayable: false,
+    }),
+  );
 
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [groupIndex, setGroupIndex] = useState(0);
@@ -46,8 +52,9 @@ export default function StoryViewer() {
   const [paused, setPaused] = useState(false);
   const [dataViewKey, setDataViewKey] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [reporting, setReporting] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const storyReportAction = useRef<ReturnType<typeof createReportAction> | null>(null);
 
   useLayoutEffect(() => {
@@ -84,15 +91,17 @@ export default function StoryViewer() {
     return () => {
       mountedRef.current = false;
       focusedRef.current = false;
+      playback.dispose();
       storyReportAction.current?.dispose();
     };
-  }, []);
+  }, [playback]);
 
   useEffect(() => {
     const lifecycle = ++lifecycleGeneration.current;
     currentOwnerRef.current = ownerId;
     currentViewKeyRef.current = viewKey;
     loadGeneration.current += 1;
+    playback.reset();
     storyReportAction.current?.invalidate();
     queueMicrotask(() => {
       if (
@@ -110,7 +119,14 @@ export default function StoryViewer() {
       setReporting(false);
       setLoading(ownerId !== null);
     });
-  }, [ownerId, viewKey]);
+  }, [ownerId, viewKey, playback]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      setAppActive(state === 'active');
+    });
+    return () => subscription.remove();
+  }, []);
 
   const load = useCallback(async () => {
     const requestOwner = ownerId;
@@ -160,22 +176,25 @@ export default function StoryViewer() {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      setFocused(true);
       void load();
       return () => {
         focusedRef.current = false;
+        setFocused(false);
         loadGeneration.current += 1;
         lifecycleGeneration.current += 1;
         storyReportAction.current?.invalidate();
-        if (timer.current) clearTimeout(timer.current);
+        playback.reset();
         setPaused(false);
         setReporting(false);
       };
-    }, [load]),
+    }, [load, playback]),
   );
 
   const safeClose = useCallback(() => {
+    playback.reset();
     navigateBackSafely(router);
-  }, [router]);
+  }, [router, playback]);
 
   const group: StoryGroup | undefined = groups[groupIndex];
   const story = group?.stories[storyIndex];
@@ -213,14 +232,23 @@ export default function StoryViewer() {
     // at the very first story: do nothing
   }, [groups, groupIndex, storyIndex]);
 
-  // Auto-advance after 6s per story; cleared on any index change / unmount.
+  useLayoutEffect(() => {
+    playback.setAdvance(goNext);
+  }, [goNext, playback]);
+
   useEffect(() => {
-    if (loading || paused || !story) return;
-    timer.current = setTimeout(goNext, STORY_DURATION_MS);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [loading, paused, story, goNext]);
+    if (!displayedStoryId) {
+      playback.reset();
+      return;
+    }
+    playback.show(displayedStoryId);
+  }, [displayedStoryId, playback]);
+
+  useEffect(() => {
+    playback.setPlayable(
+      focused && appActive && !loading && !paused && dataViewKey === viewKey,
+    );
+  }, [focused, appActive, loading, paused, dataViewKey, viewKey, playback]);
 
   function isCurrentMutation(requestOwner: string, lifecycle: number, requestViewKey: string) {
     return (
