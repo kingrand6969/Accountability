@@ -2,11 +2,10 @@ import { supabase } from '../lib/supabase';
 import type { TimelineItem, TimelineType } from '../timeline/types';
 import { toLocalDateString } from '../timeline/datetime';
 
-export type JourneyPillar = 'body' | 'money' | 'focus' | 'people';
+export type JourneyPillar = 'body' | 'focus' | 'people';
 
 export function timelinePillar(type: TimelineType): JourneyPillar {
-  if (type === 'workout' || type === 'activity' || type === 'meal') return 'body';
-  if (type === 'expense' || type === 'income' || type === 'grocery') return 'money';
+  if (type === 'workout' || type === 'activity' || type === 'meal' || type === 'grocery') return 'body';
   if (type === 'event' || type === 'task') return 'focus';
   return 'people';
 }
@@ -17,12 +16,10 @@ export function timelinePillar(type: TimelineType): JourneyPillar {
  * done. A plain note/title is not treated as completion.
  */
 export function hasCompletionProof(item: TimelineItem): boolean {
-  // These types are themselves persisted records/logs/transactions. Their
+  // These types are themselves persisted records/logs. Their
   // existence is proof; they do not need a checklist layered on top.
   if (
     item.type === 'activity' ||
-    item.type === 'expense' ||
-    item.type === 'income' ||
     item.type === 'meal'
   ) {
     return true;

@@ -21,7 +21,6 @@ const ZERO: Metrics = {
 const FILTERS = [
   { key: 'all', label: 'All', icon: 'infinite-outline' as const, color: '#155EEF' },
   { key: 'body', label: 'Body', icon: 'walk-outline' as const, color: '#74A62C' },
-  { key: 'money', label: 'Money', icon: 'cash-outline' as const, color: '#437CCC' },
   { key: 'focus', label: 'Focus', icon: 'radio-button-on-outline' as const, color: '#B17A31' },
   { key: 'people', label: 'People', icon: 'people-outline' as const, color: '#7D6E9D' },
 ] as const;

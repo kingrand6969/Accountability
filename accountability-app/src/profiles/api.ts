@@ -45,7 +45,7 @@ export async function updateMyProfile(update: ProfileUpdate): Promise<void> {
 
 /**
  * Permanently delete the signed-in account. Wipes everything about the member
- * (profile, posts, activity, money, buddies, groups, achievements-source data);
+ * (profile, posts, activity, buddies, groups, achievements-source data);
  * only the other side of any chat survives, where they'll appear as "Deleted
  * Account". Irreversible. Caller should sign out immediately after.
  */

@@ -99,7 +99,6 @@ export const semanticColors = {
 
 export const category = {
   body: semanticColors.status.success,
-  money: colors.primary,
   focus: colors.pro,
   people: colors.cheer,
 } as const;

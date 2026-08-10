@@ -30,13 +30,21 @@ describe('fitness focus contract', () => {
   test('removes money from Journey, menu, onboarding and invitations', () => {
     const files = [
       'src/app/(app)/activity.tsx',
+      'src/journey/JourneyPathScreen.tsx',
+      'src/journey/JournalScreen.tsx',
+      'src/journey/data.ts',
+      'src/timeline/format.ts',
+      'src/timeline/types.ts',
+      'src/ui/theme.ts',
+      'src/app/add.tsx',
+      'src/profiles/api.ts',
       'src/app/menu.tsx',
       'src/app/onboarding.tsx',
       'src/social/invite.ts',
     ];
 
     for (const file of files) {
-      expect(source(file)).not.toMatch(/finance|money|save \$|wallet-outline|cash-outline/i);
+      expect(source(file)).not.toMatch(/finance|money|expense|income|save \$|wallet-outline|cash-outline/i);
     }
   });
 });
