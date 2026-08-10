@@ -224,6 +224,7 @@ export function ImmersivePost({
   supporterCount,
   supporterNames,
   supporterAvatars,
+  mediaActive = false,
   onBack,
   onOptions,
   onEncourage,
@@ -236,6 +237,7 @@ export function ImmersivePost({
   supporterCount: number;
   supporterNames: string;
   supporterAvatars: { id: string; name: string | null; avatar_url: string | null }[];
+  mediaActive?: boolean;
   onBack(): void;
   onOptions(): void;
   onEncourage(): void;
@@ -266,7 +268,7 @@ export function ImmersivePost({
                 { transform: [{ scale: Math.max(1, height / Math.max(width * (16 / 9), 1)) }] },
               ]}
             >
-              <PostVideo url={post.image_url} detail />
+              <PostVideo url={post.image_url} detail active={mediaActive} />
             </View>
           ) : (
             <View

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   AccessibilityInfo,
   Alert,
+  AppState,
   FlatList,
   Pressable,
   StyleSheet,
@@ -10,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import {
   addComment,
@@ -72,6 +73,7 @@ function PostDetailView({
   myId: string | null;
 }) {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const renderViewKey = `${id ?? ''}:${myId ?? ''}`;
   const [snapshot, setSnapshot] = useState<
     ImmersiveSnapshot<FeedPost, PostComment, PostEncourager, VoiceEncouragement>
@@ -101,9 +103,17 @@ function PostDetailView({
   const [sendingVoice, setSendingVoice] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [reportingCommentIds, setReportingCommentIds] = useState<Set<string>>(() => new Set());
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const inputRef = useRef<TextInput>(null);
   const mountedRef = useRef(true);
   const focusedRef = useRef(false);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      setAppActive(state === 'active');
+    });
+    return () => subscription.remove();
+  }, []);
   const requestGeneration = useRef(0);
   const viewGeneration = useRef(0);
   const operations = useRef(new ImmersiveOperationCoordinator());
@@ -487,6 +497,7 @@ function PostDetailView({
           <>
             <ImmersivePost
               post={post}
+              mediaActive={isFocused && appActive && !encouragementOpen && !voiceOpen && !broadcastOpen}
               viewerId={myId}
               supporterCount={supporters.length}
               supporterNames={

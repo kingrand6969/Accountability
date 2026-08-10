@@ -15,6 +15,7 @@ import { deriveFeedCardPresentation } from './SocialModeSelector';
 type Props = {
   post: FeedPost;
   currentUserId: string | null;
+  mediaActive?: boolean;
   preview?: EncouragementPreview;
   attending: boolean;
   onOpen: () => void;
@@ -40,6 +41,7 @@ function postTypeLabel(post: FeedPost): string | null {
 export function FeedProofCard({
   post,
   currentUserId,
+  mediaActive = false,
   preview,
   attending,
   onOpen,
@@ -127,7 +129,7 @@ export function FeedProofCard({
               style={({ pressed }) => [styles.media, pressed && styles.pressed]}
             >
           {post.post_type === 'video' ? (
-            <PostVideo url={post.image_url} />
+            <PostVideo url={post.image_url} active={mediaActive} />
           ) : (
             <PostImage url={post.image_url} capTall />
           )}

@@ -5,6 +5,7 @@ import {
   AppState,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -12,8 +13,9 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ViewToken,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useIsFocused, useNavigation, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -52,6 +54,7 @@ import {
   scheduleIdentityBoundAction,
 } from '../../feed/SocialModeSelector';
 import { FeedProofCard } from '../../feed/FeedProofCard';
+import { activeVideoPost } from '../../feed/videoPolicy';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type CreateItem = {
@@ -60,7 +63,9 @@ type CreateItem = {
   title: string;
   sub: string;
 } & ({ kind: 'story' } | { kind: 'route'; route: string });
-type FeedRow = { kind: 'post'; post: FeedPost } | { kind: 'ad'; id: string };
+type FeedRow =
+  | { kind: 'post'; post: FeedPost; generation: string }
+  | { kind: 'ad'; id: string; generation: string };
 
 const AD_EVERY = 5;
 const FEED_SESSION_KEY = 'feed-session-v1';
@@ -99,6 +104,7 @@ export default function Feed() {
   const navigation = useNavigation();
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
+  const isFocused = useIsFocused();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
   const [dataMode, setDataMode] = useState<FeedMode | null>(null);
@@ -117,6 +123,9 @@ export default function Feed() {
   const [broadcast, setBroadcast] = useState<FeedPost | null>(null);
   const [me, setMe] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
   const [profileOwnerId, setProfileOwnerId] = useState<string | null>(null);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
+  const [visibilityGeneration, setVisibilityGeneration] = useState('');
   const likesInFlight = useRef<Set<string>>(new Set());
   const loadGeneration = useRef(0);
   const storyPickerQueue = useMemo(() => createStoryPickerQueue(myId), [myId]);
@@ -127,6 +136,12 @@ export default function Feed() {
   const connectivityRef = useRef(true);
   const profileGeneration = useRef(0);
   const currentUserIdRef = useRef(myId);
+  const [viewabilityConfig] = useState({ itemVisiblePercentThreshold: 65, minimumViewTime: 180 });
+  const [onViewableItemsChanged] = useState(() => ({ viewableItems }: { viewableItems: ViewToken<FeedRow>[] }) => {
+    const ids = viewableItems.flatMap(({ item }) => item?.kind === 'post' ? [item.post.id] : []);
+    setVisiblePostIds((current) => current.join('|') === ids.join('|') ? current : ids);
+    setVisibilityGeneration(viewableItems[0]?.item?.generation ?? '');
+  });
   // This latest-value ref prevents a prior identity's delayed action during the render-to-effect gap.
   // eslint-disable-next-line react-hooks/refs
   currentUserIdRef.current = myId;
@@ -149,6 +164,8 @@ export default function Feed() {
       pendingCreateAction.current = null;
     };
   }, [myId]);
+
+  const feedGeneration = `${myId ?? ''}:${feedMode}:${dataOwnerId ?? ''}:${dataMode ?? ''}`;
 
   useEffect(() => {
     return () => storyPickerQueue.reset();
@@ -285,6 +302,7 @@ export default function Feed() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
+      setAppActive(nextState === 'active');
       if (nextState !== 'active') {
         loadGeneration.current += 1;
         pendingBuddiesOffset.current = buddiesOffset.current;
@@ -438,19 +456,30 @@ export default function Feed() {
   const feedData = useMemo<FeedRow[]>(() => {
     const rows: FeedRow[] = [];
     visiblePosts.forEach((post, index) => {
-      rows.push({ kind: 'post', post });
+      rows.push({ kind: 'post', post, generation: feedGeneration });
       if (adsReady && !isPro && !proLoading && (index + 1) % AD_EVERY === 0) {
-        rows.push({ kind: 'ad', id: `ad-${post.id}` });
+        rows.push({ kind: 'ad', id: `ad-${post.id}`, generation: feedGeneration });
       }
     });
     return rows;
-  }, [adsReady, isPro, proLoading, visiblePosts]);
+  }, [adsReady, feedGeneration, isPro, proLoading, visiblePosts]);
   const viewState = deriveFeedViewState({
     loading,
     loadingMore,
     postCount: visiblePosts.length,
     error: loadError,
     online,
+  });
+  const activeVideoId = activeVideoPost({
+    focused: isFocused && feedMode === 'buddies',
+    appActive,
+    overlayOpen: createOpen || broadcast !== null,
+    generation: feedGeneration,
+    visibilityGeneration,
+    visiblePostIds,
+    eligibleVideoIds: visiblePosts.flatMap((post) =>
+      post.post_type === 'video' && post.image_url ? [post.id] : [],
+    ),
   });
 
   const feedHeader = (
@@ -572,6 +601,13 @@ export default function Feed() {
           <FlatList
             ref={feedListRef}
             data={feedData}
+            initialNumToRender={4}
+            maxToRenderPerBatch={4}
+            updateCellsBatchingPeriod={50}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS === 'android'}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
             onScroll={rememberModeOffset}
             onScrollEndDrag={persistFeedPosition}
             onMomentumScrollEnd={persistFeedPosition}
@@ -608,6 +644,7 @@ export default function Feed() {
               return (
                 <FeedProofCard
                   post={item}
+                  mediaActive={activeVideoId === item.id}
                   currentUserId={myId}
                   preview={encouragementPreviews.get(item.id)}
                   attending={!!item.event && attending.has(item.event.group_id)}

@@ -198,6 +198,19 @@ describe('Group 3 social Feed contract', () => {
     expect(storyRailSource).not.toContain('controllerOnly');
   });
 
+  test('bounds Feed rendering and activates media from stable viewability callbacks', () => {
+    expect(feedSource).toContain('itemVisiblePercentThreshold: 65');
+    expect(feedSource).toContain('minimumViewTime: 180');
+    expect(feedSource).toContain('initialNumToRender={4}');
+    expect(feedSource).toContain('maxToRenderPerBatch={4}');
+    expect(feedSource).toContain('updateCellsBatchingPeriod={50}');
+    expect(feedSource).toContain('windowSize={7}');
+    expect(feedSource).toContain("removeClippedSubviews={Platform.OS === 'android'}");
+    expect(feedSource).toContain('onViewableItemsChanged={onViewableItemsChanged}');
+    expect(feedSource).toContain('mediaActive={activeVideoId === item.id}');
+    expect(proofCardSource).toContain('<PostVideo url={post.image_url} active={mediaActive} />');
+  });
+
   test('isolates picker queue cleanup to the account that created it', () => {
     expect(feedSource).toContain('useMemo(() => createStoryPickerQueue(myId), [myId])');
     expect(feedSource).toContain('storyPickerQueue.reset()');
