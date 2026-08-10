@@ -21,7 +21,10 @@ import { font, spacing } from '../../ui/theme';
 import { useAuth } from '../../auth/AuthProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 import { canReportContent, createReportAction } from '../../moderation/reportAction';
-import { createStoryPlaybackLifecycle } from '../../stories/storyPlaybackLifecycle';
+import {
+  createStoryPlaybackLifecycle,
+  isStoryPlaybackPlayable,
+} from '../../stories/storyPlaybackLifecycle';
 
 export default function StoryViewer() {
   const router = useRouter();
@@ -94,6 +97,7 @@ export default function StoryViewer() {
       focusedRef.current = false;
       playback.detach();
       storyReportAction.current?.dispose();
+      storyReportAction.current = null;
     };
   }, [playback]);
 
@@ -124,7 +128,7 @@ export default function StoryViewer() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      playback.setPlayable(state === 'active');
+      if (state !== 'active') playback.setPlayable(false);
       setAppActive(state === 'active');
     });
     return () => subscription.remove();
@@ -250,9 +254,13 @@ export default function StoryViewer() {
   }, [displayedStoryId, playback]);
 
   useEffect(() => {
-    playback.setPlayable(
-      focused && appActive && !loading && !paused && dataViewKey === viewKey,
-    );
+    playback.setPlayable(isStoryPlaybackPlayable({
+      focused,
+      appActive,
+      loading,
+      paused,
+      dataReady: dataViewKey === viewKey,
+    }));
   }, [focused, appActive, loading, paused, dataViewKey, viewKey, playback]);
 
   function isCurrentMutation(requestOwner: string, lifecycle: number, requestViewKey: string) {

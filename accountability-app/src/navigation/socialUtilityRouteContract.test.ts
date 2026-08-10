@@ -18,6 +18,7 @@ const mockRouter = {
 };
 const mockListStoryGroups = jest.fn<() => Promise<unknown[]>>();
 const mockDeleteStory = jest.fn<(id: string) => Promise<void>>();
+const mockReportStory = jest.fn<(id: string) => Promise<void>>();
 const mockMarkStoryViewed = jest.fn<(id: string) => Promise<void>>(async () => {});
 const mockListNotifications = jest.fn<() => Promise<unknown[]>>();
 const mockMarkAllRead = jest.fn<(ownerId: string) => Promise<void>>();
@@ -51,6 +52,7 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('../stories/api', () => ({
   listStoryGroups: () => mockListStoryGroups(),
   deleteStory: (id: string) => mockDeleteStory(id),
+  reportStory: (id: string) => mockReportStory(id),
   markStoryViewed: (id: string) => mockMarkStoryViewed(id),
 }));
 jest.mock('../notify/api', () => ({
@@ -176,6 +178,7 @@ beforeEach(() => {
   mockRouter.canGoBack.mockReturnValue(false);
   mockListStoryGroups.mockResolvedValue([]);
   mockDeleteStory.mockResolvedValue(undefined);
+  mockReportStory.mockResolvedValue(undefined);
   mockListNotifications.mockResolvedValue([]);
   mockMarkAllRead.mockResolvedValue(undefined);
   mockGetPost.mockResolvedValue(null);
@@ -293,6 +296,33 @@ describe('story behavioral safety', () => {
     });
     await flush();
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Delete this story' })).toHaveLength(0);
+  });
+
+  test('reporting survives StrictMode effect replay while true unmount suppresses stale confirmation', async () => {
+    mockListStoryGroups.mockResolvedValue([
+      { user_id: 'restored-user', name: 'Kin', avatar: null, isMe: false, stories: [story] },
+    ]);
+    let confirmation: { text?: string; onPress?: () => void | Promise<void> }[] | undefined;
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      confirmation = buttons;
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = render(React.createElement(React.StrictMode, null, React.createElement(StoryViewer)));
+    });
+    await flush();
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Report this story' }).props.onPress());
+    const confirm = confirmation?.find((button) => button.text === 'Report');
+    expect(confirm?.onPress).toBeDefined();
+    await act(async () => { await confirm?.onPress?.(); });
+    expect(mockReportStory).toHaveBeenCalledTimes(1);
+
+    mockReportStory.mockClear();
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Report this story' }).props.onPress());
+    const staleConfirm = confirmation?.find((button) => button.text === 'Report');
+    act(() => renderer.unmount());
+    await act(async () => { await staleConfirm?.onPress?.(); });
+    expect(mockReportStory).not.toHaveBeenCalled();
   });
 
   test('owner confirmation deletes exactly the currently displayed story', async () => {

@@ -9,6 +9,18 @@ type StoryPlaybackOptions = {
   advance: () => void;
 };
 
+type StoryPlaybackGate = {
+  focused: boolean;
+  appActive: boolean;
+  loading: boolean;
+  paused: boolean;
+  dataReady: boolean;
+};
+
+export function isStoryPlaybackPlayable(gate: StoryPlaybackGate): boolean {
+  return gate.focused && gate.appActive && !gate.loading && !gate.paused && gate.dataReady;
+}
+
 /**
  * Owns the single auto-advance deadline for the displayed story.
  * Pausing preserves elapsed time; changing stories always starts a fresh deadline.

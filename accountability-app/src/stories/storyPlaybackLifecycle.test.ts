@@ -1,5 +1,5 @@
 import { describe, expect, jest, test } from '@jest/globals';
-import { createStoryPlaybackLifecycle } from './storyPlaybackLifecycle';
+import { createStoryPlaybackLifecycle, isStoryPlaybackPlayable } from './storyPlaybackLifecycle';
 
 describe('story playback lifecycle', () => {
   function setup() {
@@ -167,5 +167,14 @@ describe('story media generations', () => {
     expect(lifecycle.acceptMedia(oldGeneration, 'story-a')).toBe(false);
     expect(lifecycle.acceptMedia(currentGeneration, 'story-b')).toBe(true);
     lifecycle.dispose();
+  });
+});
+
+describe('story playback gate', () => {
+  test.each([
+    ['overlay', { focused: true, appActive: true, loading: false, paused: true, dataReady: true }],
+    ['lost focus', { focused: false, appActive: true, loading: false, paused: false, dataReady: true }],
+  ])('foregrounding does not bypass the %s gate', (_label, state) => {
+    expect(isStoryPlaybackPlayable(state)).toBe(false);
   });
 });
