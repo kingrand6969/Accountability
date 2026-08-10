@@ -56,7 +56,6 @@ export default function GroupDetail() {
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [keyInput, setKeyInput] = useState('');
-  const [mediaGeneration, setMediaGeneration] = useState(0);
   const [screenFocused, setScreenFocused] = useState(false);
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
@@ -100,7 +99,6 @@ export default function GroupDetail() {
   }
 
   const load = useCallback(async () => {
-    setMediaGeneration((current) => current + 1);
     const requestViewKey = `${myId ?? 'signed-out'}:${id ?? 'missing'}`;
     const generation = ++loadGeneration.current;
     if (!myId || !id) {
@@ -155,7 +153,7 @@ export default function GroupDetail() {
 
   const videoPlayback = useActiveVideoList({
     posts: group?.is_member ? posts : [],
-    generation: `${viewKey}:${dataViewKey ?? 'loading'}:${mediaGeneration}`,
+    scopeKey: viewKey,
     focused: screenFocused,
     blocked: loading || refreshing || posting || joining || leaving,
   });

@@ -43,6 +43,8 @@ describe('PostVideo consumers', () => {
     (file) => {
       const contents = source(file);
       expect(contents).toContain('useActiveVideoList({');
+      expect(contents).toContain('scopeKey: viewKey');
+      expect(contents).not.toContain('mediaGeneration');
       expect(contents).toContain('onViewableItemsChanged={videoPlayback.onViewableItemsChanged}');
       expect(contents).toContain('viewabilityConfig={videoPlayback.viewabilityConfig}');
       expect(contents).toContain('active={videoPlayback.activeVideoId === row.post.id}');

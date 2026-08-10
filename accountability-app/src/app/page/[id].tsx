@@ -53,7 +53,6 @@ export default function PageDetail() {
   const [body, setBody] = useState('');
   const [posting, setPosting] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
-  const [mediaGeneration, setMediaGeneration] = useState(0);
   const [screenFocused, setScreenFocused] = useState(false);
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
@@ -95,7 +94,6 @@ export default function PageDetail() {
   }
 
   const load = useCallback(async () => {
-    setMediaGeneration((current) => current + 1);
     const requestViewKey = `${myId ?? 'signed-out'}:${id ?? 'missing'}`;
     const generation = ++loadGeneration.current;
     if (!myId || !id) {
@@ -147,7 +145,7 @@ export default function PageDetail() {
 
   const videoPlayback = useActiveVideoList({
     posts,
-    generation: `${viewKey}:${dataViewKey ?? 'loading'}:${mediaGeneration}`,
+    scopeKey: viewKey,
     focused: screenFocused,
     blocked: loading || refreshing || posting || followBusy,
   });

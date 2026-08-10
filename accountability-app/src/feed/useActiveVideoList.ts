@@ -7,15 +7,16 @@ export type VideoFeedRow = { post: FeedPost; generation: string };
 
 export function useActiveVideoList({
   posts,
-  generation,
+  scopeKey,
   focused,
   blocked = false,
 }: {
   posts: readonly FeedPost[];
-  generation: string;
+  scopeKey: string;
   focused: boolean;
   blocked?: boolean;
 }) {
+  const generation = `${scopeKey}:${posts.map((post) => post.id).join('|')}`;
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
   const [visibilityGeneration, setVisibilityGeneration] = useState('');
