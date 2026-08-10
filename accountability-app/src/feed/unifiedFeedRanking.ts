@@ -13,6 +13,14 @@ export type RankedFeedCandidate = {
   score: number;
 };
 
+export type ConnectionCandidate = RankedFeedCandidate & {
+  source: Exclude<UnifiedFeedSource, 'suggested'>;
+};
+
+export type SuggestionCandidate = RankedFeedCandidate & {
+  source: 'suggested';
+};
+
 const SOURCE_PRIORITY: Record<Exclude<UnifiedFeedSource, 'suggested'>, number> = {
   self: 0,
   buddy: 1,
@@ -21,9 +29,12 @@ const SOURCE_PRIORITY: Record<Exclude<UnifiedFeedSource, 'suggested'>, number> =
   followed_page: 4,
 };
 
-type InterleaveUnifiedFeedInput<T extends RankedFeedCandidate> = {
-  connections: readonly T[];
-  suggestions: readonly T[];
+type InterleaveUnifiedFeedInput<
+  C extends ConnectionCandidate,
+  S extends SuggestionCandidate,
+> = {
+  connections: readonly C[];
+  suggestions: readonly S[];
   limit: number;
 };
 
@@ -40,6 +51,20 @@ function compareId(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function stableRepresentation(value: unknown, ancestors = new Set<object>()): string {
+  if (value === null || typeof value !== 'object') {
+    return `${typeof value}:${String(value)}`;
+  }
+  if (ancestors.has(value)) return '[circular]';
+  const nextAncestors = new Set(ancestors).add(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableRepresentation(entry, nextAncestors)).join(',')}]`;
+  }
+  return `{${Object.keys(value).sort().map((key) =>
+    `${key}:${stableRepresentation((value as Record<string, unknown>)[key], nextAncestors)}`
+  ).join(',')}}`;
+}
+
 function compareWithinTier(left: RankedFeedCandidate, right: RankedFeedCandidate): number {
   return timestamp(right.createdAt) - timestamp(left.createdAt)
     || comparableScore(right.score) - comparableScore(left.score)
@@ -53,7 +78,9 @@ function compareConnections(left: RankedFeedCandidate, right: RankedFeedCandidat
   const rightPriority = right.source === 'suggested'
     ? Number.POSITIVE_INFINITY
     : SOURCE_PRIORITY[right.source];
-  return leftPriority - rightPriority || compareWithinTier(left, right);
+  return leftPriority - rightPriority
+    || compareWithinTier(left, right)
+    || compareId(stableRepresentation(left), stableRepresentation(right));
 }
 
 function uniqueById<T extends RankedFeedCandidate>(candidates: readonly T[]): T[] {
@@ -65,22 +92,33 @@ function uniqueById<T extends RankedFeedCandidate>(candidates: readonly T[]): T[
   });
 }
 
-export function interleaveUnifiedFeed<T extends RankedFeedCandidate>({
+export function interleaveUnifiedFeed<
+  C extends ConnectionCandidate,
+  S extends SuggestionCandidate,
+>({
   connections,
   suggestions,
   limit,
-}: InterleaveUnifiedFeedInput<T>): T[] {
+}: InterleaveUnifiedFeedInput<C, S>): (C | S)[] {
   if (!Number.isFinite(limit) || limit <= 0) return [];
   const boundedLimit = Math.floor(limit);
-  const rankedConnections = uniqueById(connections).sort(compareConnections);
+  const rankedConnections = uniqueById(
+    connections.filter((candidate): candidate is C =>
+      (candidate as RankedFeedCandidate).source !== 'suggested')
+      .sort(compareConnections),
+  );
   if (rankedConnections.length === 0) return [];
 
   const connectionIds = new Set(rankedConnections.map(({ id }) => id));
   const rankedSuggestions = uniqueById(
-    suggestions.filter(({ id }) => !connectionIds.has(id)),
-  ).sort(compareWithinTier);
+    suggestions.filter((candidate): candidate is S =>
+      (candidate as RankedFeedCandidate).source === 'suggested'
+        && !connectionIds.has(candidate.id))
+      .sort((left, right) => compareWithinTier(left, right)
+        || compareId(stableRepresentation(left), stableRepresentation(right))),
+  );
 
-  const result: T[] = [];
+  const result: (C | S)[] = [];
   let suggestionIndex = 0;
   for (let connectionIndex = 0;
     connectionIndex < rankedConnections.length && result.length < boundedLimit;
