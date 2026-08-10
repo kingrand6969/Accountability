@@ -408,7 +408,7 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
               onOpen={() =>
                 router.push({ pathname: '/challenge/[id]', params: { id: challenge.id } } as never)
               }
-              onJoin={() => act('challenge', challenge.id, () => joinChallenge(challenge.id), `Joined ${challenge.title}`)}
+              onJoin={() => act('challenge', challenge.id, (expectedOwner) => joinChallenge(challenge.id, expectedOwner), `Joined ${challenge.title}`)}
             />
           ))}
           {challenges.length === 0 ? <Empty icon="trophy-outline" text="The next challenge is being prepared." /> : null}

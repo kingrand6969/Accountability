@@ -14,6 +14,7 @@ jest.mock('../profiles/publicProfiles', () => ({ getPublicProfiles: jest.fn() })
 const { sendRequest } = require('../buddy/api') as typeof import('../buddy/api');
 const { joinGroup } = require('../groups/api') as typeof import('../groups/api');
 const { followPage } = require('../pages/api') as typeof import('../pages/api');
+const { joinChallenge } = require('../compete/api') as typeof import('../compete/api');
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -27,6 +28,7 @@ const mutationCases: [string, (owner: string) => Promise<void>, string][] = [
   ['buddy request', (owner: string) => sendRequest('target', owner), 'buddy_requests'],
   ['group join', (owner: string) => joinGroup('target', owner), 'group_members'],
   ['page follow', (owner: string) => followPage('target', owner), 'page_follows'],
+  ['challenge join', (owner: string) => joinChallenge('target', owner), 'challenge_participants'],
 ];
 
 describe.each(mutationCases)('%s mutation ownership', (_label, mutate, table) => {

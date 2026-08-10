@@ -377,14 +377,15 @@ export async function createChallenge(input: {
   return data.id;
 }
 
-export async function joinChallenge(id: string): Promise<void> {
+export async function joinChallenge(id: string, expectedOwner?: string): Promise<void> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in');
+  if (expectedOwner && uid !== expectedOwner) throw new Error('Account changed. Try again.');
   const { error } = await supabase
     .from('challenge_participants')
     .insert({
       challenge_id: id,
-      user_id: uid,
+      user_id: expectedOwner ?? uid,
       timezone_offset: new Date().getTimezoneOffset(),
     });
   // 23505 = unique-violation (already joined) — treat as a no-op

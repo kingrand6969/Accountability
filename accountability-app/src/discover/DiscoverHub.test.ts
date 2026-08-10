@@ -53,6 +53,12 @@ describe('Discover hub contract', () => {
     expect(source).toContain("router.push(`/group/${row.id}` as never)");
     expect(source).toContain("router.push(`/page/${row.id}` as never)");
   });
+
+  test('binds challenge joins to the same initiating owner as the busy lock', () => {
+    const source = read('DiscoverExperience.tsx');
+    expect(source).toContain("act('challenge', challenge.id, (expectedOwner) => joinChallenge(challenge.id, expectedOwner)");
+    expect(source).toContain("isDiscoverActionBusy(busy, ownerId, 'challenge', challenge.id)");
+  });
 });
 
 describe('people-only discovery behavior', () => {
