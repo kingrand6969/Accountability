@@ -37,7 +37,6 @@ type Route = { key: string; name: string };
 
 const routes: Route[] = [
   { key: 'feed', name: 'index' },
-  { key: 'finance', name: 'finance' },
   { key: 'journey', name: 'activity' },
   { key: 'run', name: 'run' },
   { key: 'messages', name: 'messages' },
@@ -48,7 +47,6 @@ const routes: Route[] = [
 
 const titles: Record<string, string> = {
   feed: 'Feed',
-  finance: 'Finance',
   journey: 'Journey',
   run: 'Run',
   messages: 'Messages',
@@ -90,7 +88,7 @@ function renderTabBar({
       {
         options: {
           title: titles[route.key],
-          tabBarIcon: index < 5 ? icon(titles[route.key]) : undefined,
+          tabBarIcon: index < 4 ? icon(titles[route.key]) : undefined,
           tabBarStyle:
             hideFocused && index === focusedIndex ? { display: 'none' } : undefined,
         },
@@ -153,7 +151,7 @@ describe('GlassTabBar contract', () => {
   });
 
   it('uses quiet ink and a restrained indicator for the selected destination', () => {
-    const { renderer } = renderTabBar({ focusedIndex: 2 });
+    const { renderer } = renderTabBar({ focusedIndex: 1 });
     const journey = pressableByLabel(renderer, 'Journey');
 
     expect(journey.props.accessibilityRole).toBe('tab');
@@ -175,7 +173,7 @@ describe('GlassTabBar contract', () => {
   });
 
   it('renders Journey with the approved mark and no filled or elevated holder', () => {
-    const { renderer } = renderTabBar({ focusedIndex: 2 });
+    const { renderer } = renderTabBar({ focusedIndex: 1 });
     const journey = pressableByLabel(renderer, 'Journey');
     const mark = renderer.root.findByProps({ testID: 'approved-brand-mark' });
     const idleStyles = journey.props.style({ pressed: false });
@@ -199,7 +197,7 @@ describe('GlassTabBar contract', () => {
   });
 
   it('provides 44 by 44 targets and exposes selected state accessibly', () => {
-    const { renderer } = renderTabBar({ focusedIndex: 4 });
+    const { renderer } = renderTabBar({ focusedIndex: 3 });
 
     expect(
       renderer.root.findByProps({ testID: 'primary-tab-list' }).props
@@ -284,7 +282,7 @@ describe('GlassTabBar contract', () => {
   });
 
   it('renders nothing when the focused immersive route hides the bar', () => {
-    const { renderer } = renderTabBar({ focusedIndex: 3, hideFocused: true });
+    const { renderer } = renderTabBar({ focusedIndex: 2, hideFocused: true });
 
     expect(renderer.toJSON()).toBeNull();
   });
