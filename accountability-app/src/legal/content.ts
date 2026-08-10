@@ -122,26 +122,26 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      h: '10. Location features',
+      h: '9. Location features',
       p: [
         'Some features (like run tracking and the buddy map) use your device location, including in the background while an activity is recording. You control location permission in your device settings and can turn it off at any time.',
       ],
     },
     {
-      h: '11. Paid features (Pro)',
+      h: '10. Paid features (Pro)',
       p: [
         'The app may offer optional paid subscriptions ("Pro"). If offered, purchases are handled by the Apple App Store or Google Play under their terms, and their billing, renewal, and refund rules apply. We do not store your card details.',
       ],
     },
     {
-      h: '12. Other members & third-party services',
+      h: '11. Other members & third-party services',
       p: [
         'We’re not responsible for other people or outside services. Other members create their own content and act on their own — we don’t control them, and to the fullest extent the law allows we’re not responsible for what they post, say, or do, whether on the app or in person, including anything that happens if you meet or interact with someone offline. Please use normal caution and good judgment when connecting with people.',
         'The app also depends on outside services we don’t control — like the Apple App Store and Google Play, maps, hosting and content delivery, and advertising. We’re not responsible for their acts, content, outages, charges, or decisions, and any dispute you have with another member or an outside provider is between you and them. How our providers handle data is described in our Privacy Policy.',
       ],
     },
     {
-      h: '13. App stores (Apple & Google)',
+      h: '12. App stores (Apple & Google)',
       p: [
         'You got this app from the Apple App Store or Google Play, so some extra terms apply:',
         'These Terms are between you and us only — not with Apple or Google. Apple and Google are not responsible for the app or its content and have no obligation to provide maintenance or support for it. Your right to use the app is a personal, non-transferable licence to run it on Apple- or Google-branded devices you own or control, following the App Store or Google Play usage rules.',
@@ -150,7 +150,7 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      h: '14. Suspending or ending your account',
+      h: '13. Suspending or ending your account',
       p: [
         'You can delete your account at any time from the app, which permanently removes your data as described in the Privacy Policy.',
         'We may suspend, restrict, or end your access — sometimes immediately and without prior notice — if we reasonably believe you’ve broken these Terms or the law, to investigate suspected abuse or fraud, to protect other members or the service, if your account is inactive for a long time, or if a provider, court, or law requires it. Where it’s appropriate and safe to do so, we’ll tell you why.',
@@ -158,7 +158,7 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      h: '15. Disclaimers, limits on our liability & indemnification',
+      h: '14. Disclaimers, limits on our liability & indemnification',
       p: [
         'We provide the app "as is" and "as available", without promises of any kind. To the fullest extent the law allows, we disclaim all warranties, whether spoken, written, or implied — including any implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement. We do not promise that the app will be uninterrupted, on time, secure, error-free, or free of viruses, that defects will be fixed, or that it will meet your needs. In particular, we do not warrant that any calorie or macro estimate is accurate, complete, current, or reliable — it is informational and depends on an automated system that can err. Some places don’t allow certain warranties to be excluded, so parts of this may not apply to you.',
         'Some damages we’re never responsible for. To the fullest extent the law allows, we won’t be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for any lost profits, lost data, lost savings, lost goodwill, or business interruption — even if we knew such losses were possible.',
@@ -167,7 +167,7 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      h: '16. Sorting out disagreements',
+      h: '15. Sorting out disagreements',
       p: [
         `If you ever have a problem with the app, please contact us first at ${CONTACT_EMAIL} — most issues can be sorted out quickly and informally, and we ask you to give us 30 days to try before starting any formal process.`,
         'Arbitration and no class actions (where the law allows). Where this kind of agreement is legally enforceable for consumers — generally the case in the United States and some other countries, but restricted or not allowed for consumers in the EU, the UK, and elsewhere — you and we agree that any dispute that can’t be resolved informally will be settled by final, binding individual arbitration rather than in court, and that each of us waives the right to a jury trial. You and we also agree that claims may only be brought in your or our individual capacity, and NOT as a plaintiff or class member in any class, collective, or representative action.',
@@ -177,13 +177,13 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      h: '17. Changes to these Terms',
+      h: '16. Changes to these Terms',
       p: [
         'We may update these Terms. If we make material changes, we will let you know in the app and, where appropriate, ask you to accept the new version. Continuing to use the app after an update means you accept it.',
       ],
     },
     {
-      h: '18. General terms',
+      h: '17. General terms',
       p: [
         'The complete agreement. These Terms, together with our Privacy Policy, are the entire agreement between you and us about the app, and they replace any earlier discussions, promises, or agreements about it. If we give you extra terms for a specific feature (for example a contest or a paid plan), those apply on top of these for that feature.',
         'Keeping the rest in force (severability). If any part of these Terms turns out to be unenforceable or invalid in a particular place, only that part is affected — it is treated as removed, or narrowed to the smallest change needed to make it valid, and everything else stays fully in force. A clause being unenforceable in one country does not affect whether it applies in another.',
@@ -197,7 +197,7 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      h: '19. Worldwide scope, governing law & contact',
+      h: '18. Worldwide scope, governing law & contact',
       p: [
         'These Terms apply to everyone who uses the app, in every country. We operate a single worldwide service with one set of community rules.',
         `These Terms are governed by the laws of ${JURISDICTION}. However, if the mandatory consumer-protection laws of the country where you live grant you additional rights or require certain disputes to be handled locally, nothing in these Terms takes those protections away from you.`,
