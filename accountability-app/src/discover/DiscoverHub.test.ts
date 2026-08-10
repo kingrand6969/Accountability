@@ -40,6 +40,9 @@ describe('Discover hub contract', () => {
     expect(source).toContain('listPages()');
     expect(source).toContain("row.privacy === 'public'");
     expect(source).toContain('requestOwner !== currentOwnerRef.current');
+    expect(source).toContain('discoverActionKey(requestOwner, actionKind, row.id)');
+    expect(source).toContain('actionLockRef.current.acquire(key)');
+    expect(source).toContain('actionLockRef.current.clear()');
     expect(source).toContain('Retry');
     expect(source).toContain('No public');
   });

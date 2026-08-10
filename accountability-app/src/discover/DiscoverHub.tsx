@@ -15,6 +15,11 @@ import { followPage, listPages, type Page } from '../pages/api';
 import { showToast } from '../ui/Toast';
 import { colors, font, radius, shadow, spacing } from '../ui/theme';
 import { DiscoverExperience } from './DiscoverExperience';
+import {
+  createDiscoverActionLock,
+  discoverActionKey,
+  isDiscoverActionBusy,
+} from './discoverViewState';
 
 type Section = 'people' | 'groups' | 'pages' | 'interests';
 const SECTIONS: readonly { value: Section; label: string }[] = [
@@ -61,7 +66,8 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
   const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const actionLockRef = useRef(createDiscoverActionLock());
 
   useLayoutEffect(() => {
     currentOwnerRef.current = ownerId;
@@ -71,7 +77,8 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
     setRows([]);
     setDataOwnerId(null);
     setError(null);
-    setBusyId(null);
+    actionLockRef.current.clear();
+    setBusy(new Set());
     setLoading(Boolean(ownerId));
   }, [ownerId, kind]);
 
@@ -105,22 +112,28 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
   }, [kind, ownerId]);
 
   useEffect(() => {
+    const actionLock = actionLockRef.current;
     // This effect starts the account-scoped remote read; load owns its state transitions.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     return () => {
       generationRef.current += 1;
+      actionLock.clear();
     };
   }, [load]);
 
   async function act(row: Group | Page) {
     const requestOwner = ownerId;
     const generation = generationRef.current;
-    if (!requestOwner || busyId) return;
-    setBusyId(row.id);
+    if (!requestOwner) return;
+    const actionKind = kind === 'groups' ? 'group' : 'page';
+    const key = discoverActionKey(requestOwner, actionKind, row.id);
+    const token = actionLockRef.current.acquire(key);
+    if (!token) return;
+    setBusy((current) => new Set(current).add(key));
     try {
-      if (kind === 'groups') await joinGroup(row.id);
-      else await followPage(row.id);
+      if (kind === 'groups') await joinGroup(row.id, requestOwner);
+      else await followPage(row.id, requestOwner);
       if (generation !== generationRef.current || requestOwner !== currentOwnerRef.current) return;
       showToast(kind === 'groups' ? `Joined ${row.name}` : `Following ${row.name}`);
       setRows((current) => current.filter((item) => item.id !== row.id));
@@ -128,7 +141,14 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
       if (generation !== generationRef.current || requestOwner !== currentOwnerRef.current) return;
       showToast(kind === 'groups' ? 'Could not join this group.' : 'Could not follow this page.');
     } finally {
-      if (generation === generationRef.current && requestOwner === currentOwnerRef.current) setBusyId(null);
+      if (generation === generationRef.current && requestOwner === currentOwnerRef.current) {
+        setBusy((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
+      actionLockRef.current.release(token);
     }
   }
 
@@ -157,7 +177,10 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
           <Text style={styles.emptyTitle}>No public {kind} to suggest yet.</Text>
           <Text style={styles.emptyCopy}>New fitness communities will appear here when they are available.</Text>
         </View>
-      ) : visibleRows.map((row) => (
+      ) : visibleRows.map((row) => {
+        const actionKind = kind === 'groups' ? 'group' : 'page';
+        const isBusy = isDiscoverActionBusy(busy, ownerId, actionKind, row.id);
+        return (
         <Pressable
           key={row.id}
           style={styles.row}
@@ -177,18 +200,20 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
             </Text>
           </View>
           <Pressable
-            style={[styles.action, busyId === row.id && styles.disabled]}
+            style={[styles.action, isBusy && styles.disabled]}
             onPress={() => void act(row)}
-            disabled={busyId !== null}
+            disabled={isBusy}
             accessibilityRole="button"
+            accessibilityState={{ disabled: isBusy, busy: isBusy }}
             accessibilityLabel={`${kind === 'groups' ? 'Join' : 'Follow'} ${row.name}`}
           >
-            {busyId === row.id ? <ActivityIndicator size="small" color={colors.onPrimary} /> : (
+            {isBusy ? <ActivityIndicator size="small" color={colors.onPrimary} /> : (
               <Text style={styles.actionText}>{kind === 'groups' ? 'Join' : 'Follow'}</Text>
             )}
           </Pressable>
         </Pressable>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 }

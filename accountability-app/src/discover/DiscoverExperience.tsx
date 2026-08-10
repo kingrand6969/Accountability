@@ -26,10 +26,12 @@ import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
 import {
   createDiscoverActionLock,
+  discoverActionKey,
   createDiscoverLoadGuard,
   createDiscoverOperationGuard,
   DISCOVER_GEOMETRY,
   keepPublicDiscoveryRows,
+  isDiscoverActionBusy,
   mapDiscoverViewState,
   preparePublicCandidates,
   readDiscoverFixtureConfig,
@@ -203,16 +205,16 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
     [],
   );
 
-  async function act(kind: 'person' | 'group' | 'challenge', id: string, action: () => Promise<void>, message: string) {
+  async function act(kind: 'person' | 'group' | 'challenge', id: string, action: (expectedOwner: string) => Promise<void>, message: string) {
     const actionOwner = currentOwnerRef.current;
     if (!actionOwner) return;
-    const key = `${actionOwner}:${kind}:${id}`;
+    const key = discoverActionKey(actionOwner, kind, id);
     const lockToken = actionLockRef.current.acquire(key);
     if (!lockToken) return;
     const ticket = operationGuardRef.current.begin(key, actionOwner);
     setBusy((current) => new Set(current).add(key));
     try {
-      await action();
+      await action(actionOwner);
       if (!operationGuardRef.current.canCommit(ticket, currentOwnerRef.current)) return;
       showToast(message);
       await load();
@@ -362,13 +364,13 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
               person={person}
               card={cards.get(person.id) ?? null}
               comparisonFixture={fixture?.personId === person.id}
-              busy={busy.has(`person:${person.id}`)}
+                busy={isDiscoverActionBusy(busy, ownerId, 'person', person.id)}
               largeText={useAdaptiveGeometry}
               onOpen={() =>
                 router.push({ pathname: '/buddy-card/[id]', params: { id: person.id } } as never)
               }
               onConnect={() =>
-                act('person', person.id, () => sendRequest(person.id), `Connection request sent to ${person.display_name ?? 'this member'}`)
+                act('person', person.id, (expectedOwner) => sendRequest(person.id, expectedOwner), `Connection request sent to ${person.display_name ?? 'this member'}`)
               }
             />
           ))}
@@ -383,11 +385,11 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
               key={group.id}
               group={group}
               fixtureMediaUrl={fixture?.groupId === group.id ? fixture.groupMediaUrl : null}
-              busy={busy.has(`group:${group.id}`)}
+              busy={isDiscoverActionBusy(busy, ownerId, 'group', group.id)}
               largeText={layout.stackCards}
               clampDynamicText={layout.clampDynamicText}
               onOpen={() => router.push(`/group/${group.id}` as never)}
-              onJoin={() => act('group', group.id, () => joinGroup(group.id), `Joined ${group.name}`)}
+              onJoin={() => act('group', group.id, (expectedOwner) => joinGroup(group.id, expectedOwner), `Joined ${group.name}`)}
             />
           ))}
           {groups.length === 0 ? <Empty icon="people-circle-outline" text="No public groups to recommend yet." /> : null}
@@ -401,7 +403,7 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
             <ChallengeRow
               key={challenge.id}
               challenge={challenge}
-              busy={busy.has(`challenge:${challenge.id}`)}
+              busy={isDiscoverActionBusy(busy, ownerId, 'challenge', challenge.id)}
               largeText={layout.stackCards}
               onOpen={() =>
                 router.push({ pathname: '/challenge/[id]', params: { id: challenge.id } } as never)
@@ -506,8 +508,9 @@ function PersonCard({
       <Pressable
         style={({ pressed }) => [styles.connect, largeText && styles.connectLargeText, pressed && styles.pressed, busy && styles.disabled]}
         onPress={onConnect}
-        disabled={busy}
-        accessibilityRole="button"
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: busy, busy }}
         accessibilityLabel={`Connect with ${person.display_name ?? 'member'}`}
       >
         {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectText}>Connect</Text>}
@@ -584,6 +587,7 @@ function GroupCard({
         onPress={group.is_member ? onOpen : onJoin}
         disabled={busy}
         accessibilityRole="button"
+        accessibilityState={{ disabled: busy, busy }}
         accessibilityLabel={group.is_member ? `Open ${group.name}` : `Join ${group.name}`}
       >
         <Text style={[styles.joinText, group.is_member && styles.joinedText]}>
@@ -627,6 +631,7 @@ function ChallengeRow({
         onPress={challenge.joined ? onOpen : onJoin}
         disabled={busy}
         accessibilityRole="button"
+        accessibilityState={{ disabled: busy, busy }}
         accessibilityLabel={challenge.joined ? `Open ${challenge.title}` : `Join ${challenge.title}`}
       >
         <Text style={styles.challengeNumber}>
