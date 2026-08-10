@@ -119,6 +119,19 @@ export function relationshipFeedIds(
   return [...new Set([...(me ? [me] : []), ...buddyIds, ...followedIds])];
 }
 
+const MAX_RELATIONSHIP_FILTER_LENGTH = 8_000;
+
+export function relationshipAuthorFilter(
+  ids: string[],
+  maxLength = MAX_RELATIONSHIP_FILTER_LENGTH,
+): string {
+  const filter = `(${ids.join(',')})`;
+  if (filter.length > maxLength) {
+    throw new Error('Relationship feed is too large to load safely.');
+  }
+  return filter;
+}
+
 async function myBuddyIds(me: string | null): Promise<string[]> {
   if (!me) return [];
   const { data, error } = await supabase
@@ -129,14 +142,36 @@ async function myBuddyIds(me: string | null): Promise<string[]> {
   return (data ?? []).map((link: any) => (link.user_a === me ? link.user_b : link.user_a));
 }
 
+type FollowedIdPage = {
+  data: { target: string }[] | null;
+  error: unknown;
+};
+
+export async function collectFollowedIds(
+  loadPage: (from: number, to: number) => Promise<FollowedIdPage>,
+  pageSize = 500,
+): Promise<string[]> {
+  const ids = new Set<string>();
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await loadPage(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = data ?? [];
+    for (const row of rows) ids.add(row.target);
+    if (rows.length < pageSize) return [...ids];
+  }
+}
+
 export async function myFollowedIds(me: string | null): Promise<string[]> {
   if (!me) return [];
-  const { data, error } = await supabase
-    .from('buddy_stars')
-    .select('target')
-    .eq('starrer', me);
-  if (error) throw error;
-  return (data ?? []).map((star: any) => star.target as string);
+  return collectFollowedIds(async (from, to) => {
+    const { data, error } = await supabase
+      .from('buddy_stars')
+      .select('target')
+      .eq('starrer', me)
+      .order('target', { ascending: true })
+      .range(from, to);
+    return { data: data as { target: string }[] | null, error };
+  });
 }
 
 /**
@@ -169,9 +204,10 @@ export async function listFeed(
   } else {
     query = query.is('group_id', null).is('page_id', null);
     const known = relationshipFeedIds(me, buddyIds, followedIds);
+    const knownFilter = known.length > 0 ? relationshipAuthorFilter(known) : null;
     if (mode === 'discover') {
       query = query.eq('audience', 'public');
-      if (known.length > 0) query = query.not('user_id', 'in', `(${known.join(',')})`);
+      if (knownFilter) query = query.not('user_id', 'in', knownFilter);
     } else if (known.length > 0) {
       query = query.in('user_id', known);
     } else {

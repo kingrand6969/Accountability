@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { listFeed, myFollowedIds, relationshipFeedIds } from './api';
+import {
+  collectFollowedIds,
+  listFeed,
+  myFollowedIds,
+  relationshipAuthorFilter,
+  relationshipFeedIds,
+} from './api';
 import { supabase } from '../lib/supabase';
 
 jest.mock('../lib/supabase', () => ({
@@ -34,22 +40,68 @@ describe('relationshipFeedIds', () => {
     expect(relationshipFeedIds(null, ['buddy', 'buddy'], ['buddy', 'followed']))
       .toEqual(['buddy', 'followed']);
   });
+
+  test('rejects an oversized author filter instead of truncating relationship ids', () => {
+    expect(() => relationshipAuthorFilter(['person-1', 'person-2'], 12))
+      .toThrow('Relationship feed is too large');
+  });
+});
+
+describe('collectFollowedIds', () => {
+  test('collects, orders and deduplicates more than 1000 followed ids across range pages', async () => {
+    const rows = Array.from({ length: 1_205 }, (_, index) => ({
+      target: `person-${String(Math.floor(index / 2)).padStart(4, '0')}`,
+    }));
+    const loadPage = jest.fn(async (from: number, to: number) => ({
+      data: rows.slice(from, to + 1),
+      error: null,
+    }));
+
+    const result = await collectFollowedIds(loadPage, 500);
+
+    expect(loadPage.mock.calls).toEqual([[0, 499], [500, 999], [1000, 1499]]);
+    expect(result).toHaveLength(603);
+    expect(result[0]).toBe('person-0000');
+    expect(result.at(-1)).toBe('person-0602');
+  });
+
+  test('continues after a full page and stops after the first short page', async () => {
+    const loadPage = jest
+      .fn<any>()
+      .mockResolvedValueOnce({ data: [{ target: 'a' }, { target: 'b' }], error: null })
+      .mockResolvedValueOnce({ data: [{ target: 'c' }], error: null });
+
+    await expect(collectFollowedIds(loadPage, 2)).resolves.toEqual(['a', 'b', 'c']);
+    expect(loadPage.mock.calls).toEqual([[0, 1], [2, 3]]);
+  });
+
+  test('propagates an error from any page without returning partial ids', async () => {
+    const denied = { code: '42501', message: 'page denied' };
+    const loadPage = jest
+      .fn<any>()
+      .mockResolvedValueOnce({ data: [{ target: 'a' }, { target: 'b' }], error: null })
+      .mockResolvedValueOnce({ data: [], error: denied });
+
+    await expect(collectFollowedIds(loadPage, 2)).rejects.toBe(denied);
+  });
 });
 
 describe('followed people feed API', () => {
   test('loads followed ids from buddy_stars where the current user is the starrer', async () => {
-    const stars = selectEqResult([{ target: 'followed-1' }, { target: 'followed-2' }]);
+    const stars = pagedStarsResult([{ target: 'followed-1' }, { target: 'followed-2' }]);
     mockFrom.mockReturnValueOnce(stars);
 
     await expect(myFollowedIds('me')).resolves.toEqual(['followed-1', 'followed-2']);
     expect(mockFrom).toHaveBeenCalledWith('buddy_stars');
     expect(stars.select).toHaveBeenCalledWith('target');
     expect(stars.eq).toHaveBeenCalledWith('starrer', 'me');
+    expect(stars.order).toHaveBeenCalledWith('target', { ascending: true });
+    expect(stars.range).toHaveBeenCalledWith(0, 499);
   });
 
   test('propagates followed-id query errors', async () => {
     const denied = { code: '42501', message: 'denied' };
-    mockFrom.mockReturnValueOnce(selectEqResult([], denied));
+    mockFrom.mockReturnValueOnce(pagedStarsResult([], denied));
     await expect(myFollowedIds('me')).rejects.toBe(denied);
   });
 
@@ -62,7 +114,7 @@ describe('followed people feed API', () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'post_hides') return selectEqResult([]);
       if (table === 'buddy_links') return buddyResult([{ user_a: 'me', user_b: 'buddy' }]);
-      if (table === 'buddy_stars') return selectEqResult([{ target: 'buddy' }, { target: 'followed' }]);
+      if (table === 'buddy_stars') return pagedStarsResult([{ target: 'buddy' }, { target: 'followed' }]);
       if (table === 'posts') return posts;
       throw new Error(`Unexpected table ${table}`);
     });
@@ -83,7 +135,7 @@ describe('followed people feed API', () => {
     mockFrom.mockImplementation((table: string) => {
       if (table === 'post_hides') return selectEqResult([]);
       if (table === 'buddy_links') return buddyResult([]);
-      if (table === 'buddy_stars') return selectEqResult([], denied);
+      if (table === 'buddy_stars') return pagedStarsResult([], denied);
       throw new Error(`Discover widened to ${table}`);
     });
 
@@ -102,7 +154,7 @@ describe('followed people feed API', () => {
       if (table === 'buddy_links') return buddyResult([]);
       if (table === 'buddy_stars') {
         const starrer = mockGetUser.mock.calls.length === 1 ? 'followed-a' : 'followed-b';
-        return selectEqResult([{ target: starrer }]);
+        return pagedStarsResult([{ target: starrer }]);
       }
       if (table === 'posts') return postQueries[postIndex++];
       throw new Error(`Unexpected table ${table}`);
@@ -146,6 +198,15 @@ function buddyResult(data: any[], error: unknown = null) {
   const chain: any = {};
   chain.select = jest.fn(() => chain);
   chain.or = jest.fn(() => Promise.resolve({ data, error }));
+  return chain;
+}
+
+function pagedStarsResult(data: any[], error: unknown = null) {
+  const chain: any = {};
+  chain.select = jest.fn(() => chain);
+  chain.eq = jest.fn(() => chain);
+  chain.order = jest.fn(() => chain);
+  chain.range = jest.fn(async () => ({ data, error }));
   return chain;
 }
 
