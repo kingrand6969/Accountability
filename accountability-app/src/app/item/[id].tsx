@@ -18,31 +18,44 @@ import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
 import type { ChecklistItem, TimelineItem } from '../../timeline/types';
 import { becameCompleteChecklist } from '../../timeline/completion';
 import { createChecklistPersistence } from '../../timeline/checklistPersistence';
+import { createItemDetailGeneration } from '../../timeline/itemDetailGeneration';
+import { useAuth } from '../../auth/AuthProvider';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { session } = useAuth();
   const [item, setItem] = useState<TimelineItem | null>(null);
   const [list, setList] = useState<ChecklistItem[]>([]);
   const [newText, setNewText] = useState('');
   const [loading, setLoading] = useState(true);
   const persistenceRef = useRef<ReturnType<typeof createChecklistPersistence> | null>(null);
+  const generationRef = useRef(createItemDetailGeneration());
 
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
+      const identity = `${session?.user.id ?? 'signed-out'}:${id}`;
+      const token = generationRef.current.begin(identity);
+      let active = true;
+      let installedController: ReturnType<typeof createChecklistPersistence> | null = null;
+      persistenceRef.current?.dispose();
+      persistenceRef.current = null;
+      setLoading(true);
       getItem(id)
         .then((it) => {
+          if (!active || !generationRef.current.isCurrent(token, identity)) return;
           setItem(it);
           const initial = it?.checklist ?? [];
           setList(initial);
-          persistenceRef.current = it ? createChecklistPersistence(
+          installedController = it ? createChecklistPersistence(
             initial,
             (next) => updateItemChecklist(it.id, next),
             {
               onLatestSuccess: (_revision, previous, next) => {
+                if (!active || !generationRef.current.isCurrent(token, identity)) return;
                 if (it.type === 'workout' && becameCompleteChecklist(previous, next)) {
                   router.push({
                     pathname: '/win-card',
@@ -56,15 +69,29 @@ export default function ItemDetail() {
                 }
               },
               onLatestFailure: (_revision, committed, error) => {
+                if (!active || !generationRef.current.isCurrent(token, identity)) return;
                 setList([...committed]);
                 Alert.alert('Could not save', String((error as Error).message ?? error));
               },
             },
           ) : null;
+          persistenceRef.current = installedController;
         })
-        .catch((e) => Alert.alert('Could not load', String((e as Error).message ?? e)))
-        .finally(() => setLoading(false));
-    }, [id, router]),
+        .catch((e) => {
+          if (active && generationRef.current.isCurrent(token, identity)) {
+            Alert.alert('Could not load', String((e as Error).message ?? e));
+          }
+        })
+        .finally(() => {
+          if (active && generationRef.current.isCurrent(token, identity)) setLoading(false);
+        });
+      return () => {
+        active = false;
+        generationRef.current.invalidate();
+        installedController?.dispose();
+        if (persistenceRef.current === installedController) persistenceRef.current = null;
+      };
+    }, [id, router, session?.user.id]),
   );
 
   function persist(next: ChecklistItem[]) {

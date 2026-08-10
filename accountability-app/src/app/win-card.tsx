@@ -25,6 +25,7 @@ import {
   isProofActionBusy,
   safeProofActionMessage,
   shareAvailability,
+  expectedProofOwner,
   type ProofActionToken,
 } from '../entry/proofActions';
 import {
@@ -333,12 +334,11 @@ export default function WinCard() {
   async function onShareToStory() {
     const token = beginAction('share-external');
     if (!token) throw new Error('Another share is already in progress.');
+    const expectedOwnerId = expectedProofOwner(token);
     try {
       const base64 = await captureDestination(buildFeedProofExport, 'base64', token);
       if (!base64) throw new Error('Could not prepare the Daily Proof image. Please try again.');
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      const expectedOwnerId = ownerIdRef.current;
-      if (!expectedOwnerId) throw new Error('Not signed in.');
       const operation = (storyOperationRef.current = retainAchievementStoryOperation(
         storyOperationRef.current,
         completionPayload,

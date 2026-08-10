@@ -17,6 +17,7 @@ export function createChecklistPersistence(
   let committed = [...initial];
   let latestRevision = 0;
   let tail: Promise<void> = Promise.resolve();
+  let active = true;
 
   return {
     submit(next: ChecklistItem[]): Promise<void> {
@@ -26,14 +27,18 @@ export function createChecklistPersistence(
         try {
           await write(next);
           committed = [...next];
-          if (revision === latestRevision) callbacks.onLatestSuccess(revision, previous, next);
+          if (active && revision === latestRevision) callbacks.onLatestSuccess(revision, previous, next);
         } catch (error) {
-          if (revision === latestRevision) callbacks.onLatestFailure(revision, committed, error);
+          if (active && revision === latestRevision) callbacks.onLatestFailure(revision, committed, error);
           throw error;
         }
       });
       tail = task.catch(() => undefined);
       return task;
+    },
+    dispose(): void {
+      active = false;
+      latestRevision += 1;
     },
   };
 }

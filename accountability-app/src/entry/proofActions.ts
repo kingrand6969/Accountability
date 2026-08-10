@@ -124,6 +124,11 @@ export type ProofActionToken = Readonly<{
   nonce: number;
 }>;
 
+export function expectedProofOwner(token: ProofActionToken): string {
+  if (!token.ownerId) throw new Error('Not signed in.');
+  return token.ownerId;
+}
+
 export type ProofActionSession = {
   ownerId: string | null;
   generation: number;

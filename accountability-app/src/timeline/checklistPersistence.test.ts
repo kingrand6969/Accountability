@@ -48,4 +48,46 @@ describe('checklist persistence', () => {
     await second;
     expect(failures).toEqual([]);
   });
+
+  test('dispose suppresses deferred success and failure callbacks after blur', async () => {
+    let release!: () => void;
+    const deferred = new Promise<void>((resolve) => { release = resolve; });
+    const success = jest.fn();
+    const failure = jest.fn();
+    const controller = createChecklistPersistence(row(false), () => deferred, {
+      onLatestSuccess: success,
+      onLatestFailure: failure,
+    });
+    const pending = controller.submit(row(true));
+    await Promise.resolve();
+    controller.dispose();
+    release();
+    await pending;
+    expect(success).not.toHaveBeenCalled();
+    expect(failure).not.toHaveBeenCalled();
+  });
+
+  test('dispose suppresses a deferred failure and active completion fires once', async () => {
+    let reject!: (error: Error) => void;
+    const deferred = new Promise<void>((_resolve, rejectPromise) => { reject = rejectPromise; });
+    const failure = jest.fn();
+    const disposed = createChecklistPersistence(row(false), () => deferred, {
+      onLatestSuccess: jest.fn(),
+      onLatestFailure: failure,
+    });
+    const pending = disposed.submit(row(true));
+    await Promise.resolve();
+    disposed.dispose();
+    reject(new Error('late failure'));
+    await expect(pending).rejects.toThrow('late failure');
+    expect(failure).not.toHaveBeenCalled();
+
+    const success = jest.fn();
+    const active = createChecklistPersistence(row(false), async () => undefined, {
+      onLatestSuccess: success,
+      onLatestFailure: jest.fn(),
+    });
+    await active.submit(row(true));
+    expect(success).toHaveBeenCalledTimes(1);
+  });
 });
