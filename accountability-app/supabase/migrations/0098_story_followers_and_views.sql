@@ -20,16 +20,25 @@ create policy story_views_select on public.story_views
 drop policy if exists story_views_insert on public.story_views;
 create policy story_views_insert on public.story_views
   for insert to authenticated
-  with check (user_id = auth.uid());
+  with check (
+    story_views.user_id = auth.uid()
+    and exists (
+      select 1
+      from public.stories visible_story
+      where visible_story.id = story_views.story_id
+    )
+  );
 
+-- Receipts are immutable evidence: viewers cannot retarget them, edit their
+-- server timestamp, or remove them after insert.
 drop policy if exists story_views_update on public.story_views;
-create policy story_views_update on public.story_views
-  for update to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
 
-revoke all on table public.story_views from public, anon;
-grant select, insert, update on table public.story_views to authenticated;
+-- Revoke default table privileges first. Omitting viewed_at from the INSERT
+-- grant forces PostgreSQL to supply now(), while the stories RLS-backed EXISTS
+-- makes blocked, expired, quarantined, and unrelated stories unwritable alike.
+revoke all on table public.story_views from public, anon, authenticated;
+grant select on table public.story_views to authenticated;
+grant insert (story_id, user_id) on table public.story_views to authenticated;
 
 -- A followed viewer is represented by Buddy Stars with the story author as
 -- target and the current viewer as starrer. Expiry and blocks guard the whole

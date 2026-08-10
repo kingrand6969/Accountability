@@ -25,14 +25,23 @@ describe('0098 followed My Day stories and view receipts migration', () => {
     expect(migration).toMatch(/create index if not exists story_views_user_story_idx on public\.story_views \(user_id, story_id\)/);
   });
 
-  test('enables RLS and limits receipt reads and writes to the authenticated viewer', () => {
+  test('enables RLS and only permits receipts for stories visible to the viewer', () => {
     expect(migration).toContain('alter table public.story_views enable row level security');
     expect(migration).toMatch(/create policy story_views_select on public\.story_views for select to authenticated using \(user_id = auth\.uid\(\)\)/);
-    expect(migration).toMatch(/create policy story_views_insert on public\.story_views for insert to authenticated with check \(user_id = auth\.uid\(\)\)/);
-    expect(migration).toMatch(/create policy story_views_update on public\.story_views for update to authenticated using \(user_id = auth\.uid\(\)\) with check \(user_id = auth\.uid\(\)\)/);
-    expect(migration).toContain('revoke all on table public.story_views from public, anon');
-    expect(migration).toContain('grant select, insert, update on table public.story_views to authenticated');
+    expect(migration).toMatch(/create policy story_views_insert on public\.story_views for insert to authenticated with check \( story_views\.user_id = auth\.uid\(\) and exists \( select 1 from public\.stories visible_story where visible_story\.id = story_views\.story_id \) \)/);
+    expect(migration).toContain('revoke all on table public.story_views from public, anon, authenticated');
+    expect(migration).toContain('grant select on table public.story_views to authenticated');
+    expect(migration).toContain('grant insert (story_id, user_id) on table public.story_views to authenticated');
+    expect(migration).not.toMatch(/grant insert \([^)]*viewed_at/);
     expect(migration).not.toMatch(/grant [^;]*story_views[^;]* to (?:public|anon)\b/);
+  });
+
+  test('keeps receipts immutable after their composite identity is inserted', () => {
+    expect(migration).toMatch(/primary key \(story_id, user_id\)/);
+    expect(migration).not.toMatch(/create policy story_views_update/);
+    expect(migration).not.toMatch(/grant (?:[^;]*, )?update(?:,| on)/);
+    expect(migration).not.toMatch(/create policy story_views_delete/);
+    expect(migration).not.toMatch(/grant (?:[^;]*, )?delete(?:,| on)/);
   });
 
   test('shows active, unblocked stories to buddies or followers without precedence leaks', () => {
