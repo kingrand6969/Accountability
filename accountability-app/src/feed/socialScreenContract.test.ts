@@ -52,7 +52,7 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain("router.push('/compose?photo=1' as never)");
     expect(feedSource).toContain("router.push('/win-card' as never)");
     expect(feedSource).toContain('<StoryRail');
-    expect(feedSource).toContain('ref={storyRailRef}');
+    expect(feedSource).toContain('ref={attachStoryRail}');
     expect(feedSource).toContain("pathname: '/post/[id]'");
     expect(feedSource).toContain('listEncouragementPreviews(page.map((post) => post.id))');
     expect(feedSource).toContain("encouragement: '1'");
@@ -189,10 +189,12 @@ describe('Group 3 social Feed contract', () => {
 
   test('keeps the visible story rail in the Feed header and picker ref available', () => {
     expect(feedSource).toContain('<StoryRail');
-    expect(feedSource).toContain('ref={storyRailRef}');
+    expect(feedSource).toContain('ref={attachStoryRail}');
     expect(feedSource).not.toContain('controllerOnly');
     expect(feedSource.indexOf('<StoryRail', feedSource.indexOf('const feedHeader'))).toBeGreaterThan(-1);
-    expect(feedSource).toContain('storyRailRef.current?.openPicker()');
+    expect(feedSource).toContain('storyPickerQueue.current.request()');
+    expect(feedSource).toContain('ref={attachStoryRail}');
+    expect(feedSource).toContain('pickerQueue.reset()');
     expect(storyRailSource).not.toContain('controllerOnly');
   });
 

@@ -179,15 +179,16 @@ export default function StoryViewer() {
 
   const group: StoryGroup | undefined = groups[groupIndex];
   const story = group?.stories[storyIndex];
+  const displayedStoryId = story?.id ?? null;
 
   useLayoutEffect(() => {
-    currentStoryIdRef.current = story?.id ?? null;
-  }, [story?.id]);
+    currentStoryIdRef.current = displayedStoryId;
+  }, [displayedStoryId]);
 
   useEffect(() => {
-    if (!story || !ownerId || dataViewKey !== viewKey) return;
-    void markStoryViewed(story.id, ownerId).catch(() => {});
-  }, [story?.id, ownerId, viewKey, dataViewKey]);
+    if (!displayedStoryId || !ownerId || dataViewKey !== viewKey) return;
+    void markStoryViewed(displayedStoryId, ownerId).catch(() => {});
+  }, [displayedStoryId, ownerId, viewKey, dataViewKey]);
 
   const goNext = useCallback(() => {
     if (!group) return;

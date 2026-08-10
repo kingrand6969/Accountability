@@ -17,6 +17,7 @@ describe('StoryRail receipt and retry presentation', () => {
   test('uses viewed state for the existing story ring', () => {
     expect(source).toContain('viewed={g.viewed}');
     expect(source).toContain('viewed && styles.tileAvatarRingViewed');
+    expect(source).toContain('`${name}, ${viewed ? \'viewed\' : \'unseen\'} story`');
   });
 
   test('renders a compact retry action and guards stale loads', () => {

@@ -72,6 +72,19 @@ async function me(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
+async function listViewedStoryIds(uid: string | null, storyIds: string[]): Promise<Set<string>> {
+  const viewedStoryIds = new Set<string>();
+  if (!uid || storyIds.length === 0) return viewedStoryIds;
+  const { data, error } = await supabase
+    .from('story_views')
+    .select('story_id')
+    .eq('user_id', uid)
+    .in('story_id', storyIds);
+  if (error) throw error;
+  for (const receipt of data ?? []) viewedStoryIds.add(receipt.story_id as string);
+  return viewedStoryIds;
+}
+
 /** Active (unexpired) stories, grouped per user — my ring first. */
 export async function listStoryGroups(): Promise<StoryGroup[]> {
   const uid = await me();
@@ -83,22 +96,15 @@ export async function listStoryGroups(): Promise<StoryGroup[]> {
     .limit(200);
   if (error) throw error;
   const rawRows = (data ?? []) as Story[];
-  const urls = await resolveMediaUrls(rawRows.map((story) => story.image_url));
+  const [urls, authors, viewedStoryIds] = await Promise.all([
+    resolveMediaUrls(rawRows.map((story) => story.image_url)),
+    getPublicProfiles([...new Set(rawRows.map((story) => story.user_id))]),
+    listViewedStoryIds(uid, rawRows.map((story) => story.id)),
+  ]);
   const rows = rawRows.map((story) => ({
     ...story,
     image_url: urls.get(story.image_url) ?? story.image_url,
   }));
-  const viewedStoryIds = new Set<string>();
-  if (uid && rawRows.length > 0) {
-    const { data: receipts, error: receiptError } = await supabase
-      .from('story_views')
-      .select('story_id')
-      .eq('user_id', uid)
-      .in('story_id', rawRows.map((story) => story.id));
-    if (receiptError) throw receiptError;
-    for (const receipt of receipts ?? []) viewedStoryIds.add(receipt.story_id as string);
-  }
-  const authors = await getPublicProfiles([...new Set(rows.map((story) => story.user_id))]);
   return buildStoryGroups(rows, uid, viewedStoryIds, authors);
 }
 

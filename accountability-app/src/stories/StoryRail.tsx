@@ -313,7 +313,7 @@ function StoryTile({
     <Pressable
       style={({ pressed }) => [styles.tile, tileSize, pressed && styles.pressed]}
       onPress={onPress}
-      accessibilityLabel={`View ${name}`}
+      accessibilityLabel={`${name}, ${viewed ? 'viewed' : 'unseen'} story`}
       accessibilityRole="button"
     >
       <CachedImage uri={image} style={styles.tileImage} contentFit="cover" />

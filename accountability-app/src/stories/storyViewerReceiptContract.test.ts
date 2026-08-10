@@ -7,7 +7,7 @@ describe('story viewer receipt contract', () => {
   test('marks the actually displayed story without blocking viewing or advancing', () => {
     expect(source).toContain('markStoryViewed');
     expect(source).toContain('dataViewKey !== viewKey');
-    expect(source).toContain('void markStoryViewed(story.id, ownerId).catch(() => {})');
-    expect(source).toContain('}, [story?.id, ownerId, viewKey, dataViewKey]);');
+    expect(source).toContain('void markStoryViewed(displayedStoryId, ownerId).catch(() => {})');
+    expect(source).toContain('}, [displayedStoryId, ownerId, viewKey, dataViewKey]);');
   });
 });

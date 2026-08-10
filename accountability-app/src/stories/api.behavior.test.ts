@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
+import {
+  buildStoryGroups,
+  insertStoryViewReceipt,
+  markStoryViewed,
+  type Story,
+} from './api';
+
 const mockGetUser = jest.fn<() => Promise<{ data: { user: { id: string } | null } }>>();
 const mockFrom = jest.fn();
 jest.mock('../lib/supabase', () => ({
@@ -8,13 +15,6 @@ jest.mock('../lib/supabase', () => ({
 jest.mock('../profiles/publicProfiles', () => ({ getPublicProfiles: jest.fn() }));
 jest.mock('../feed/uploadPostImage', () => ({ uploadPostImage: jest.fn() }));
 jest.mock('../media/privateMedia', () => ({ resolveMediaUrls: jest.fn() }));
-
-import {
-  buildStoryGroups,
-  insertStoryViewReceipt,
-  markStoryViewed,
-  type Story,
-} from './api';
 
 beforeEach(() => {
   mockGetUser.mockReset();

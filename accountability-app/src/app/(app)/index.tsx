@@ -30,6 +30,7 @@ import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
 import { attendEvent } from '../../events/api';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
+import { createStoryPickerQueue } from '../../stories/storyPickerQueue';
 import { AdCard } from '../../pro/AdCard';
 import { useFeedAdsReady } from '../../pro/adAdapter';
 import { useIsPro } from '../../pro/ProProvider';
@@ -118,7 +119,7 @@ export default function Feed() {
   const [profileOwnerId, setProfileOwnerId] = useState<string | null>(null);
   const likesInFlight = useRef<Set<string>>(new Set());
   const loadGeneration = useRef(0);
-  const storyRailRef = useRef<StoryRailHandle>(null);
+  const storyPickerQueue = useRef(createStoryPickerQueue());
   const feedListRef = useRef<FlatList<FeedRow>>(null);
   const buddiesOffset = useRef(0);
   const pendingBuddiesOffset = useRef<number | null>(null);
@@ -132,14 +133,19 @@ export default function Feed() {
   const pendingCreateAction = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { unread } = useUnreadNotifications();
   const { isPro, loading: proLoading } = useIsPro();
+  const attachStoryRail = useCallback((handle: StoryRailHandle | null) => {
+    storyPickerQueue.current.attach(handle);
+  }, []);
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
   useEffect(() => {
+    const pickerQueue = storyPickerQueue.current;
     return () => {
       currentUserIdRef.current = null;
+      pickerQueue.reset();
       if (pendingCreateAction.current) clearTimeout(pendingCreateAction.current);
       pendingCreateAction.current = null;
     };
@@ -472,7 +478,7 @@ export default function Feed() {
       {myId ? (
         <StoryRail
           key={myId}
-          ref={storyRailRef}
+          ref={attachStoryRail}
           meName={profileOwnerId === myId ? me.name : null}
           meAvatar={profileOwnerId === myId ? me.avatar : null}
         />
@@ -527,7 +533,7 @@ export default function Feed() {
                     () => currentUserIdRef.current,
                     () => {
                       if (item.kind === 'story') {
-                        storyRailRef.current?.openPicker();
+                        storyPickerQueue.current.request();
                       } else {
                         router.push(item.route as never);
                       }
