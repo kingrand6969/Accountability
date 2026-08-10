@@ -18,6 +18,7 @@ create table if not exists public.feed_session_items (
 );
 
 create index if not exists feed_sessions_user_expires_idx on public.feed_sessions (user_id, expires_at);
+create index if not exists feed_sessions_expires_id_idx on public.feed_sessions (expires_at, id);
 create index if not exists feed_session_items_post_session_idx on public.feed_session_items (post_id, session_id);
 create index if not exists posts_user_created_id_idx on public.posts (user_id, created_at desc, id asc);
 

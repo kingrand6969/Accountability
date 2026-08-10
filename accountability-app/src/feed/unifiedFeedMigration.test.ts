@@ -276,6 +276,7 @@ describe('0101 unified social feed migration', () => {
 
   test('purges globally expired sessions in bounded batches and schedules replay-safely', () => {
     const purge = normalize(statements.find((statement) => /^create or replace function public\.purge_expired_feed_sessions/i.test(statement)) ?? '');
+    expect(normalized).toContain('create index if not exists feed_sessions_expires_id_idx on public.feed_sessions (expires_at, id)');
     expect(purge).toMatch(/p_batch integer default 5000/);
     expect(purge).toMatch(/returns integer language plpgsql security definer set search_path = public/);
     expect(purge).toMatch(/where expires_at <= now\(\) order by expires_at, id limit least\(greatest\(coalesce\(p_batch, 5000\), 1\), 10000\)/);
