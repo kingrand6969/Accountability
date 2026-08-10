@@ -223,7 +223,7 @@ create or replace function public.unified_feed_post_ids(
   p_after_position integer,
   p_limit integer default 20
 )
-returns table (session_id uuid, position integer, id uuid, source text, suggested boolean)
+returns table (session_id uuid, "position" integer, id uuid, source text, suggested boolean)
 language plpgsql
 stable
 security invoker

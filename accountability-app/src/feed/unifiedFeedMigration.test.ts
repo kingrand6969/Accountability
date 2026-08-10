@@ -236,7 +236,8 @@ describe('0101 unified social feed migration', () => {
   });
 
   test('declares the exact bounded invoker-only page RPC contract', () => {
-    expect(functionSource).toMatch(/^create or replace function public\.unified_feed_post_ids\( p_session_id uuid, p_after_position integer, p_limit integer default 20 \) returns table \(session_id uuid, position integer, id uuid, source text, suggested boolean\) language plpgsql stable security invoker set search_path = public as /);
+    expect(functionSource).toMatch(/^create or replace function public\.unified_feed_post_ids\( p_session_id uuid, p_after_position integer, p_limit integer default 20 \) returns table \(session_id uuid, "position" integer, id uuid, source text, suggested boolean\) language plpgsql stable security invoker set search_path = public as /);
+    expect(functionSource).not.toMatch(/returns table \([^)]*\bsession_id uuid, position integer\b/);
     expect(functionSource).not.toMatch(/security definer|execute\s+format/);
     expect(pageBody).toMatch(/least\(greatest\(coalesce\(p_limit, 20\), 1\), 50\)/);
     expect(pageBody).toMatch(/if auth\.uid\(\) is null then raise exception 'authentication required'[\s\S]*errcode = '42501'/);
