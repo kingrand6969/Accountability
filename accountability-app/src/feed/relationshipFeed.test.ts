@@ -114,6 +114,25 @@ describe('followed people feed API', () => {
     expect(postQueries[0].in).toHaveBeenCalledWith('user_id', ['account-a', 'followed-a']);
     expect(postQueries[1].in).toHaveBeenCalledWith('user_id', ['account-b', 'followed-b']);
   });
+
+  test.each([
+    { scope: 'group', groupId: 'group-1', pageId: undefined },
+    { scope: 'page', groupId: undefined, pageId: 'page-1' },
+  ])('$scope feeds do not query followed relationships', async ({ groupId, pageId }) => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'me' } }, error: null });
+    const posts = feedQuery();
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'post_hides') return selectEqResult([]);
+      if (table === 'buddy_links') return buddyResult([]);
+      if (table === 'buddy_stars') throw new Error('hypothetical star lookup failure');
+      if (table === 'posts') return posts;
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    await expect(listFeed(undefined, groupId, pageId)).resolves.toEqual([]);
+    expect(mockFrom).not.toHaveBeenCalledWith('buddy_stars');
+    expect(posts.eq).toHaveBeenCalledWith(groupId ? 'group_id' : 'page_id', groupId ?? pageId);
+  });
 });
 
 function selectEqResult(data: any[], error: unknown = null) {

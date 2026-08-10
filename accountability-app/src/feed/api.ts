@@ -154,7 +154,7 @@ export async function listFeed(
   const [hidden, buddyIds, followedIds] = await Promise.all([
     myHiddenPostIds(me),
     myBuddyIds(me),
-    myFollowedIds(me),
+    groupId || pageId ? Promise.resolve([]) : myFollowedIds(me),
   ]);
   let query = supabase
     .from('posts')
