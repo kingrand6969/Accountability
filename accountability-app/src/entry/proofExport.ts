@@ -23,7 +23,6 @@ export type ProofExportInput = Readonly<{
   metrics?: Readonly<Record<string, unknown>>;
   locationLabel?: unknown;
   routeImage?: unknown;
-  amountDisplay?: unknown;
   buddyDisplayNames?: unknown;
   buddyPortraitImages?: unknown;
 }>;
@@ -31,7 +30,6 @@ export type ProofExportInput = Readonly<{
 export type ProofExportOptIns = Readonly<{
   location?: unknown;
   route?: unknown;
-  amount?: unknown;
   buddyNames?: unknown;
   buddyPortraits?: unknown;
 }>;
@@ -47,7 +45,6 @@ export type ProofExport = Readonly<{
   }>;
   locationLabel?: string;
   routeImage?: RenderAssetHandle;
-  amountDisplay?: string;
   buddyDisplayNames?: readonly string[];
   buddyPortraitImages?: readonly RenderAssetHandle[];
 }>;
@@ -67,7 +64,6 @@ function buildProofExport(input: ProofExportInput, optIns: ProofExportOptIns): P
     metrics: { workouts: number; activities: number; streakDays: number };
     locationLabel?: string;
     routeImage?: RenderAssetHandle;
-    amountDisplay?: string;
     buddyDisplayNames?: string[];
     buddyPortraitImages?: RenderAssetHandle[];
   } = {
@@ -83,10 +79,6 @@ function buildProofExport(input: ProofExportInput, optIns: ProofExportOptIns): P
   }
   if (optIns.route === true && isAuthenticHandle(input.routeImage)) {
     output.routeImage = input.routeImage;
-  }
-  if (optIns.amount === true) {
-    const value = safeOptionalText(input.amountDisplay);
-    if (value !== undefined) output.amountDisplay = value;
   }
   if (optIns.buddyNames === true) {
     const value = safeTextArray(input.buddyDisplayNames);

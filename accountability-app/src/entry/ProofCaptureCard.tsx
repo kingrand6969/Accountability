@@ -27,7 +27,6 @@ export function buildProofCardSummary(model: ProofExport): string {
     `${metricLabel(model.metrics.activities, 'activity', 'activities')}.`,
     `${model.metrics.streakDays} day streak.`,
     typeof model.locationLabel === 'string' ? `Location: ${model.locationLabel}.` : null,
-    typeof model.amountDisplay === 'string' ? `Amount: ${model.amountDisplay}.` : null,
     Array.isArray(model.buddyDisplayNames) && model.buddyDisplayNames.length > 0
       ? `Buddies: ${model.buddyDisplayNames.join(', ')}.`
       : null,
@@ -101,14 +100,6 @@ export function ProofCaptureCard({ context }: { context: ProofCaptureRendererCon
               <Ionicons name="location" size={13} color="#FFFFFF" />
               <Text allowFontScaling={false} style={styles.proofMetaText}>
                 {cardModel.locationLabel}
-              </Text>
-            </View>
-          ) : null}
-          {typeof cardModel.amountDisplay === 'string' ? (
-            <View style={styles.proofMeta}>
-              <Ionicons name="cash" size={13} color="#FFFFFF" />
-              <Text allowFontScaling={false} style={styles.proofMetaText}>
-                {cardModel.amountDisplay}
               </Text>
             </View>
           ) : null}

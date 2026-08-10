@@ -13,7 +13,6 @@ describe('Daily Proof privacy policy', () => {
     expect(DEFAULT_PROOF_PRIVACY).toEqual({
       hideLocation: true,
       hideRoute: true,
-      hideAmounts: true,
       hideBuddyNames: true,
       hideBuddyPortraits: true,
     });
@@ -29,7 +28,6 @@ describe('Daily Proof privacy policy', () => {
       streak: 8,
       location: 'Kings Park',
       route: 'River loop',
-      amounts: '$42.00',
       buddyNames: ['Alex'],
       buddyPortraits: ['r2://private/alex.jpg'],
       user_id: 'internal-user',
@@ -51,7 +49,6 @@ describe('Daily Proof privacy policy', () => {
     const privacy: ProofPrivacy = {
       ...DEFAULT_PROOF_PRIVACY,
       hideLocation: false,
-      hideAmounts: false,
     };
 
     expect(
@@ -60,7 +57,6 @@ describe('Daily Proof privacy policy', () => {
           brand: 'AccountAbility',
           location: 'Kings Park',
           route: 'River loop',
-          amounts: '$42.00',
           buddyNames: ['Alex'],
           buddyPortraits: ['https://public.example/alex.jpg'],
         },
@@ -69,7 +65,6 @@ describe('Daily Proof privacy policy', () => {
     ).toEqual({
       brand: 'AccountAbility',
       location: 'Kings Park',
-      amounts: '$42.00',
     });
   });
 
@@ -79,12 +74,10 @@ describe('Daily Proof privacy policy', () => {
         {
           headline: 'r2://private/proof',
           location: 'https://project.supabase.co/storage/v1/private',
-          amounts: 'safe\u0000hidden',
         },
         {
           hideLocation: false,
           hideRoute: false,
-          hideAmounts: false,
           hideBuddyNames: false,
           hideBuddyPortraits: false,
         },
@@ -162,7 +155,7 @@ describe('captured Daily Proof binding', () => {
       'utf8',
     );
 
-    expect(capturedSubtree).not.toMatch(/\bstats\.|\bparams\.|\bproof(?:Location|Route|Amount|Buddy)/);
+    expect(capturedSubtree).not.toMatch(/\bstats\.|\bparams\.|\bproof(?:Location|Route|Buddy)/);
     expect(capturedSubtree).toMatch(/cardModel\.metrics\.workouts/);
     expect(capturedSubtree).toMatch(/cardModel\.metrics\.activities/);
     expect(capturedSubtree).toMatch(/cardModel\.metrics\.streakDays/);

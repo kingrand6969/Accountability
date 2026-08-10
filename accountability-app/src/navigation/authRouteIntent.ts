@@ -24,7 +24,6 @@ const QUERY_RULES: Record<
   '/win-card': {
     location: safeProofValue,
     route: safeProofValue,
-    amount: safeProofValue,
     buddyName: safeProofValue,
   },
 };

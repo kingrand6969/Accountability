@@ -38,6 +38,26 @@ describe('finance and business removal contract', () => {
     expect(live).not.toMatch(/money-add|bill-new|account-new|saving-new|debt-new|shared-goal|goalsHit|goals_hit|goalcrusher|Goal Crusher|money_transactions|\.\.\/money|['"]savings['"]/);
   });
 
+  test('proof, win-card, and auth intent surfaces have no finance-only amount path', () => {
+    const live = [
+      'src/app/win-card.tsx',
+      'src/entry/proofExport.ts',
+      'src/entry/ProofCaptureCard.tsx',
+      'src/entry/proofPrivacy.ts',
+      'src/navigation/authRouteIntent.ts',
+      'src/navigation/authRouteIntent.test.ts',
+    ].map(read).join('\n');
+
+    expect(live).not.toMatch(/amountDisplay|hideAmounts|['"]amount['"]|\bamount\??:|cash-outline|Hide amounts/i);
+  });
+
+  test('launch copy describes the four-tab fitness and social app', () => {
+    const launch = read('LAUNCH.md');
+
+    expect(launch).not.toMatch(/5 pillars|five pillars|finance|business tracker|budgets|debts/i);
+    expect(launch).toMatch(/four tabs|Feed, Journey, Run, and Messages/i);
+  });
+
   test('hosted legal documents contain every in-app section title and body', () => {
     for (const [file, doc] of [
       ['legal-web/terms.html', TERMS],

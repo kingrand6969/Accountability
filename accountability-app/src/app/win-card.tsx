@@ -62,12 +62,10 @@ export default function WinCard() {
   const params = useLocalSearchParams<{
     location?: string | string[];
     route?: string | string[];
-    amount?: string | string[];
     buddyName?: string | string[];
   }>();
   const proofLocation = sanitizeProofParam(params.location);
   const proofRoute = sanitizeProofParam(params.route);
-  const proofAmount = sanitizeProofParam(params.amount);
   const proofBuddyName = sanitizeProofParam(params.buddyName);
   const {
     stats,
@@ -209,14 +207,12 @@ export default function WinCard() {
     },
     locationLabel: proofLocation,
     routeImage: undefined,
-    amountDisplay: proofAmount,
     buddyDisplayNames: proofBuddyName ? [proofBuddyName] : undefined,
     buddyPortraitImages: undefined,
   };
   const proofOptIns: ProofExportOptIns = {
     location: !privacy.hideLocation,
     route: !privacy.hideRoute,
-    amount: !privacy.hideAmounts,
     buddyNames: !privacy.hideBuddyNames,
     buddyPortraits: !privacy.hideBuddyPortraits,
   };
@@ -468,7 +464,7 @@ export default function WinCard() {
         ))}
       </View>
 
-      {proofLocation || proofRoute || proofAmount || proofBuddyName ? (
+      {proofLocation || proofRoute || proofBuddyName ? (
         <View style={styles.privacyPanel}>
           <View style={styles.privacyHeading}>
             <Text style={styles.privacyTitle}>Proof privacy</Text>
@@ -491,14 +487,6 @@ export default function WinCard() {
               label="Hide route"
               value={privacy.hideRoute}
               onPress={() => togglePrivacy('hideRoute')}
-            />
-          ) : null}
-          {proofAmount ? (
-            <ToggleRow
-              icon="cash-outline"
-              label="Hide amounts"
-              value={privacy.hideAmounts}
-              onPress={() => togglePrivacy('hideAmounts')}
             />
           ) : null}
           {proofBuddyName ? (

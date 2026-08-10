@@ -1,7 +1,6 @@
 export type ProofPrivacy = {
   hideLocation: boolean;
   hideRoute: boolean;
-  hideAmounts: boolean;
   hideBuddyNames: boolean;
   hideBuddyPortraits: boolean;
 };
@@ -9,7 +8,6 @@ export type ProofPrivacy = {
 export const DEFAULT_PROOF_PRIVACY: Readonly<ProofPrivacy> = Object.freeze({
   hideLocation: true,
   hideRoute: true,
-  hideAmounts: true,
   hideBuddyNames: true,
   hideBuddyPortraits: true,
 });
@@ -24,12 +22,11 @@ const PUBLIC_CARD_FIELDS = [
 ] as const;
 
 const PRIVATE_CARD_FIELDS: readonly {
-  key: 'location' | 'route' | 'amounts' | 'buddyNames' | 'buddyPortraits';
+  key: 'location' | 'route' | 'buddyNames' | 'buddyPortraits';
   privacyKey: keyof ProofPrivacy;
 }[] = [
   { key: 'location', privacyKey: 'hideLocation' },
   { key: 'route', privacyKey: 'hideRoute' },
-  { key: 'amounts', privacyKey: 'hideAmounts' },
   { key: 'buddyNames', privacyKey: 'hideBuddyNames' },
   { key: 'buddyPortraits', privacyKey: 'hideBuddyPortraits' },
 ];
