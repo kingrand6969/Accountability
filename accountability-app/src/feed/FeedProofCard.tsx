@@ -13,7 +13,7 @@ import type { EncouragementPreview } from './api';
 import { deriveFeedCardPresentation } from './SocialModeSelector';
 
 type Props = {
-  post: FeedPost;
+  post: FeedPost & { suggested?: boolean };
   currentUserId: string | null;
   mediaActive?: boolean;
   preview?: EncouragementPreview;
@@ -53,11 +53,22 @@ export function FeedProofCard({
 }: Props) {
   const typeLabel = postTypeLabel(post);
   const presentation = deriveFeedCardPresentation(post, currentUserId);
+  const suggestionLabel = post.suggested ? 'Suggested for you' : null;
   return (
     <View
       style={styles.card}
       accessibilityLabel={`${presentation.ownerLabel}. ${presentation.audienceLabel}`}
     >
+      {suggestionLabel ? (
+        <View
+          style={styles.suggestedRow}
+          accessible
+          accessibilityLabel="Suggested for you"
+        >
+          <Ionicons name="sparkles-outline" size={13} color={colors.textMuted} />
+          <Text style={styles.suggestedText}>{suggestionLabel}</Text>
+        </View>
+      ) : null}
       <View style={styles.authorHeader}>
         <Avatar url={post.author_avatar} name={post.author_name} size={40} />
         <View style={styles.authorCopy}>
@@ -243,6 +254,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     ...shadow.card,
+  },
+  suggestedRow: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  suggestedText: {
+    color: colors.textMuted,
+    fontFamily: font.semibold,
+    fontSize: 11.5,
   },
   authorHeader: {
     minHeight: 60,

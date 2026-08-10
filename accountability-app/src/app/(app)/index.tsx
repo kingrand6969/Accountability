@@ -26,6 +26,7 @@ import {
   listFeed,
   setLiked,
   type EncouragementPreview,
+  type UnifiedFeedPost,
 } from '../../feed/api';
 import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
@@ -60,7 +61,7 @@ type CreateItem = {
   sub: string;
 } & ({ kind: 'story' } | { kind: 'route'; route: string });
 type FeedRow =
-  | { kind: 'post'; post: FeedPost; generation: string }
+  | { kind: 'post'; post: UnifiedFeedPost; generation: string }
   | { kind: 'ad'; id: string; generation: string };
 
 const AD_EVERY = 5;
@@ -101,7 +102,7 @@ export default function Feed() {
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
   const isFocused = useIsFocused();
-  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [posts, setPosts] = useState<UnifiedFeedPost[]>([]);
   const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
   const [encouragementPreviews, setEncouragementPreviews] = useState<Map<string, EncouragementPreview>>(new Map());
   const [restored, setRestored] = useState(false);

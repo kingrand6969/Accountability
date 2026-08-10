@@ -295,6 +295,22 @@ async function myBuddyIds(me: string | null): Promise<string[]> {
  * groupId scopes to one group's feed, pageId to one business page's feed;
  * otherwise the main feed shows only personal posts (no group/page posts).
  */
+export function listFeed(beforeCreatedAt?: string): Promise<UnifiedFeedPost[]>;
+export function listFeed(
+  beforeCreatedAt: string | undefined,
+  groupId: string,
+  pageId?: string,
+): Promise<FeedPost[]>;
+export function listFeed(
+  beforeCreatedAt: string | undefined,
+  groupId: undefined,
+  pageId: string,
+): Promise<FeedPost[]>;
+export function listFeed(
+  beforeCreatedAt: string | undefined,
+  groupId: string | undefined,
+  pageId: string | undefined,
+): Promise<FeedPost[]>;
 export async function listFeed(
   beforeCreatedAt?: string,
   groupId?: string,

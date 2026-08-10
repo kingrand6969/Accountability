@@ -47,6 +47,15 @@ describe('Group 3 social Feed contract', () => {
     expect(modeSelectorSource).not.toContain("(['buddies', 'discover'] as const)");
   });
 
+  test('preserves suggested metadata and labels only suggested Feed rows', () => {
+    expect(feedSource).toContain('useState<UnifiedFeedPost[]>([])');
+    expect(feedSource).toContain('post={item}');
+    expect(proofCardSource).toContain("post.suggested ? 'Suggested for you' : null");
+    expect(proofCardSource).toContain('accessibilityLabel="Suggested for you"');
+    expect(proofCardSource).toContain('{suggestionLabel ? (');
+    expect(proofCardSource).not.toContain('<Text style={styles.suggested}>Suggested for you</Text>');
+  });
+
   test('preserves composer, story, post-detail, and encouragement-preview handoffs', () => {
     expect(feedSource).toContain("router.push('/compose' as never)");
     expect(feedSource).toContain("router.push('/compose?photo=1' as never)");
