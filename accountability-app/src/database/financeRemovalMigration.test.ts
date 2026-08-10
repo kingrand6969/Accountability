@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from '@jest/globals';
 
 const MIGRATION_PATH = join(
   process.cwd(),
@@ -191,6 +192,17 @@ const ADD_AI_SCANS_KIND_CONSTRAINT =
 const APPROVED_AI_SCANS_ALTER = new RegExp(
   `(?:${DROP_AI_SCANS_KIND_CONSTRAINT.source})|(?:${ADD_AI_SCANS_KIND_CONSTRAINT.source})`,
 );
+const DROP_TIMELINE_TYPE_CONSTRAINT =
+  /^alter table public\.timeline_items drop constraint if exists timeline_items_type_check$/;
+const ADD_TIMELINE_TYPE_CONSTRAINT =
+  /^alter table public\.timeline_items add constraint timeline_items_type_check check\s*\(\s*type\s+in\s*\(\s*'event'\s*,\s*'task'\s*,\s*'workout'\s*,\s*'meal'\s*,\s*'activity'\s*,\s*'grocery'\s*,\s*'other'\s*\)\s*\)$/;
+const DROP_POST_TYPE_CONSTRAINT =
+  /^alter table public\.posts drop constraint if exists posts_post_type_check$/;
+const ADD_POST_TYPE_CONSTRAINT =
+  /^alter table public\.posts add constraint posts_post_type_check check\s*\(\s*post_type\s+in\s*\(\s*'post'\s*,\s*'photo'\s*,\s*'video'\s*,\s*'run'\s*,\s*'workout'\s*,\s*'milestone'\s*,\s*'event'\s*,\s*'memory'\s*\)\s*\)$/;
+const APPROVED_RETAINED_TYPE_ALTER = new RegExp(
+  `(?:${DROP_TIMELINE_TYPE_CONSTRAINT.source})|(?:${ADD_TIMELINE_TYPE_CONSTRAINT.source})|(?:${DROP_POST_TYPE_CONSTRAINT.source})|(?:${ADD_POST_TYPE_CONSTRAINT.source})`,
+);
 
 function dropTableTargets(statement: string): string[] | null {
   const match = statement.match(/^drop table(?: if exists)? (.+)$/);
@@ -272,6 +284,7 @@ describe('0097 finance and business removal migration', () => {
         statement === 'commit',
         isApprovedDelete(statement),
         APPROVED_AI_SCANS_ALTER.test(statement),
+        APPROVED_RETAINED_TYPE_ALTER.test(statement),
         replacementFunction.test(statement),
         replacementPermission.test(statement),
         approvedTrigger.test(statement),
@@ -322,14 +335,18 @@ describe('0097 finance and business removal migration', () => {
     expect(deletes.filter((statement) => /^delete from public\.ai_scans where kind\s*=\s*'receipt'$/.test(statement))).toHaveLength(1);
 
     const alters = destructiveStatements.filter((statement) => /^alter table\b/.test(statement));
-    expect(alters).toHaveLength(2);
+    expect(alters).toHaveLength(6);
     expect(
       alters.every((statement) =>
-        APPROVED_AI_SCANS_ALTER.test(statement),
+        APPROVED_AI_SCANS_ALTER.test(statement) || APPROVED_RETAINED_TYPE_ALTER.test(statement),
       ),
     ).toBe(true);
     expect(alters.filter((statement) => DROP_AI_SCANS_KIND_CONSTRAINT.test(statement))).toHaveLength(1);
     expect(alters.filter((statement) => ADD_AI_SCANS_KIND_CONSTRAINT.test(statement))).toHaveLength(1);
+    expect(alters.filter((statement) => DROP_TIMELINE_TYPE_CONSTRAINT.test(statement))).toHaveLength(1);
+    expect(alters.filter((statement) => ADD_TIMELINE_TYPE_CONSTRAINT.test(statement))).toHaveLength(1);
+    expect(alters.filter((statement) => DROP_POST_TYPE_CONSTRAINT.test(statement))).toHaveLength(1);
+    expect(alters.filter((statement) => ADD_POST_TYPE_CONSTRAINT.test(statement))).toHaveLength(1);
 
     const dropFunctions = destructiveStatements.filter((statement) => /^drop function\b/.test(statement));
     const droppedFunctions: string[] = [];
