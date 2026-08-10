@@ -17,20 +17,9 @@
     },
     "preview": {
       "environment": "preview",
-      "distribution": "internal",
-      "channel": "preview",
-      "env": {
-        "APP_VARIANT": "staging"
-      },
-      "android": {
-        "buildType": "apk"
-      }
-    },
-    "staging": {
-      "environment": "preview",
       "developmentClient": false,
       "distribution": "internal",
-      "channel": "staging",
+      "channel": "preview",
       "env": {
         "APP_VARIANT": "staging"
       },
