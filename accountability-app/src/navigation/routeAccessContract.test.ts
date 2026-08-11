@@ -87,7 +87,8 @@ describe('cold-link route access contract', () => {
       "useState(encouragement === '1')",
     );
     expect(postSource).toContain('visible={encouragementOpen}');
-    expect(postSource).toContain('returnFromPost(router)');
+    expect(postSource).toContain('navigateBackSafely(router)');
+    expect(postSource).not.toContain('returnFromPost(router)');
     expect(postSource).toContain("BackHandler.addEventListener('hardwareBackPress'");
   });
 

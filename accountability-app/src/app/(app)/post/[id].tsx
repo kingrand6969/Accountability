@@ -52,7 +52,7 @@ import {
   type ImmersiveSnapshot,
   type ImmersiveViewContext,
 } from '../../../feed/ImmersivePost';
-import { returnFromPost } from '../../../navigation/routeAccessContract';
+import { navigateBackSafely } from '../../../navigation/routeAccessContract';
 
 export default function PostDetailRoute() {
   const { id, encouragement } = useLocalSearchParams<{ id: string; encouragement?: string }>();
@@ -231,7 +231,7 @@ function PostDetailView({
   useFocusEffect(
     useCallback(() => {
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-        returnFromPost(router);
+        navigateBackSafely(router);
         return true;
       });
       return () => subscription.remove();
@@ -451,7 +451,7 @@ function PostDetailView({
         mountedRef.current && focusedRef.current,
       );
       if (!result.apply) return;
-      returnFromPost(router);
+      navigateBackSafely(router);
     });
   }
 
@@ -540,7 +540,7 @@ function PostDetailView({
               }
               supporterAvatars={supporters}
               onBack={() => {
-                returnFromPost(router);
+                navigateBackSafely(router);
               }}
               onOptions={onOptions}
               onEncourage={onToggleLike}
