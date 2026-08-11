@@ -14,9 +14,6 @@ export type SafeBackRouter = {
   canGoBack: () => boolean;
   back: () => void;
   replace: (href: '/') => void;
-  dismissTo?: (href: '/') => void;
-  canDismiss?: () => boolean;
-  dismissAll?: () => void;
 };
 
 export function navigateBackSafely(router: SafeBackRouter): 'back' | 'fallback' {
@@ -29,8 +26,7 @@ export function navigateBackSafely(router: SafeBackRouter): 'back' | 'fallback' 
 }
 
 export function returnFromPost(router: SafeBackRouter): 'feed' {
-  if (router.canDismiss?.() && router.dismissAll) router.dismissAll();
-  else if (router.dismissTo) router.dismissTo('/');
+  if (router.canGoBack()) router.back();
   else router.replace('/');
   return 'feed';
 }

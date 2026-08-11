@@ -43,7 +43,7 @@ describe('cold-link route access contract', () => {
     },
   );
 
-  test('returns from a post to Feed even when native history is misleading', () => {
+  test('pops only the post route so the rendered Feed remains mounted underneath', () => {
     const router = {
       canGoBack: jest.fn(() => true),
       back: jest.fn(),
@@ -54,10 +54,27 @@ describe('cold-link route access contract', () => {
     };
 
     expect(returnFromPost(router)).toBe('feed');
-    expect(router.back).not.toHaveBeenCalled();
-    expect(router.dismissAll).toHaveBeenCalledTimes(1);
+    expect(router.back).toHaveBeenCalledTimes(1);
+    expect(router.dismissAll).not.toHaveBeenCalled();
     expect(router.dismissTo).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  test('replaces a cold-linked post with Feed when there is no prior route', () => {
+    const router = {
+      canGoBack: jest.fn(() => false),
+      back: jest.fn(),
+      replace: jest.fn(),
+      dismissTo: jest.fn(),
+      canDismiss: jest.fn(() => false),
+      dismissAll: jest.fn(),
+    };
+
+    expect(returnFromPost(router)).toBe('feed');
+    expect(router.back).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith('/');
+    expect(router.dismissAll).not.toHaveBeenCalled();
+    expect(router.dismissTo).not.toHaveBeenCalled();
   });
 
   test('keeps the canonical encouragement query handoff and safe post fallback', () => {
