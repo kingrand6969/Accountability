@@ -56,8 +56,8 @@ describe('cold-link route access contract', () => {
     expect(returnFromPost(router)).toBe('feed');
     expect(router.back).not.toHaveBeenCalled();
     expect(router.dismissAll).not.toHaveBeenCalled();
-    expect(router.dismissTo).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith('/(app)');
+    expect(router.dismissTo).toHaveBeenCalledWith('/');
+    expect(router.replace).not.toHaveBeenCalled();
   });
 
   test('replaces a cold-linked post with Feed when there is no prior route', () => {
