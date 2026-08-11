@@ -23,6 +23,7 @@ const proofCardSource = source('FeedProofCard.tsx');
 const headlineSource = source('ProofHeadlineOverlay.tsx');
 const metricSource = source('RunRouteMetricOverlay.tsx');
 const storyRailSource = source('../stories/StoryRail.tsx');
+const memorySource = source('../memories/SaveToMemories.tsx');
 
 function jsxCalls(componentSource: string, componentName: string): string[] {
   return [
@@ -45,6 +46,16 @@ function styleBlock(componentSource: string, styleName: string): string {
 
 function hasBooleanProp(openingTag: string, prop: string): boolean {
   return new RegExp(`\\b${prop}(?=\\s|\\/?>)`).test(openingTag);
+}
+
+function sourceSection(
+  componentSource: string,
+  startMarker: string,
+  endMarker: string,
+): string {
+  const start = componentSource.indexOf(startMarker);
+  const end = componentSource.indexOf(endMarker, start + startMarker.length);
+  return start >= 0 && end > start ? componentSource.slice(start, end) : '';
 }
 
 describe('Group 3 social Feed contract', () => {
@@ -149,12 +160,71 @@ describe('Group 3 social Feed contract', () => {
     expect(commentAction).toMatch(/\bcount=\{post\.comment_count\}/);
     expect(commentAction).not.toMatch(/\blabel=\{`Comment/);
     expect(shareAction).toMatch(/\bicon=["']paper-plane-outline["']/);
+    for (const action of [cheerAction, commentAction, shareAction]) {
+      expect(action).toMatch(/\baccessibilityLabel=/);
+    }
 
     const memoryAction = jsxCalls(proofCardSource, 'SaveToMemories')[0] ?? '';
     expect(memoryAction).toMatch(/\burl=\{post\.image_url\}/);
     expect(hasBooleanProp(memoryAction, 'inline')).toBe(true);
     expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(true);
-    expect(styleBlock(proofCardSource, 'action')).toMatch(/\bminHeight:\s*48\b/);
+    const actionStyle = styleBlock(proofCardSource, 'action');
+    expect(actionStyle).toMatch(/\bflex:\s*1\b/);
+    expect(actionStyle).toMatch(/\bminWidth:\s*48\b/);
+    expect(actionStyle).toMatch(/\bminHeight:\s*48\b/);
+
+    const actionComponent = sourceSection(
+      proofCardSource,
+      'function Action(',
+      'const styles = StyleSheet.create',
+    );
+    expect(actionComponent).toContain('accessibilityState={active === undefined ? undefined : { selected: active }}');
+    expect(actionComponent).toMatch(
+      /Boolean\(active\)\s*\?\s*colors\.primary\s*:\s*colors\.textMuted/,
+    );
+  });
+
+  test.each([
+    ['Cheer', 'onPress={onToggleLike}', 'like_count'],
+    ['Comment', 'onPress={onOpen}', 'comment_count'],
+  ])('%s accessibility omits a numeric zero count', (_name, marker, countName) => {
+    const action = callWith(jsxCalls(proofCardSource, 'Action'), marker);
+    expect(action).toMatch(
+      new RegExp(
+        `accessibilityLabel=\\{[\\s\\S]*post\\.${countName}\\s*>\\s*0`,
+      ),
+    );
+  });
+
+  test('keeps the memory control accessible, stateful, and label-free in icon-only mode', () => {
+    const memoryComponent = sourceSection(
+      memorySource,
+      'export function SaveToMemories(',
+      'const styles = StyleSheet.create',
+    );
+    expect(memoryComponent).toMatch(/\baccessibilityLabel=/);
+    expect(memoryComponent).toMatch(
+      /accessibilityState=\{\{\s*disabled:\s*busy\s*\|\|\s*saved,\s*busy\s*\}\}/,
+    );
+    expect(memoryComponent).toMatch(/inline\s*&&\s*!iconOnly\s*\?/);
+  });
+
+  test.each([
+    [
+      'icon-only Memories uses the album glyph at 21',
+      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*name=\{saved\s*\?\s*['"]albums['"]\s*:\s*['"]albums-outline['"]\}[\s\S]*size=\{21\}/,
+    ],
+    [
+      'legacy Memories retains the bookmark glyph at 17',
+      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*:[\s\S]*name=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\}[\s\S]*size=\{17\}/,
+    ],
+  ])('%s', (_name, contract) => {
+    const memoryComponent = sourceSection(
+      memorySource,
+      'export function SaveToMemories(',
+      'const styles = StyleSheet.create',
+    );
+    expect(memoryComponent).toMatch(contract);
   });
 
   test('preserves one FlatList and an honest unified Feed offset contract', () => {
