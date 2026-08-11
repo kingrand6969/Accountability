@@ -307,19 +307,21 @@ export default function Feed() {
     return () => subscription.remove();
   }, [load, myId, persistFeedPosition, restored]);
 
+  useEffect(() => {
+    if (restored) {
+      setLoading(true);
+      void load();
+    }
+  }, [load, restored]);
+
   useFocusEffect(
     useCallback(() => {
-      if (restored) {
-        setLoading(true);
-        void load();
-      }
       return () => {
-        loadGeneration.current += 1;
         pendingFeedOffset.current = feedOffset.current;
         listContentReady.current = false;
         persistFeedPosition();
       };
-    }, [load, persistFeedPosition, restored]),
+    }, [persistFeedPosition]),
   );
 
   function rememberFeedOffset(event: NativeSyntheticEvent<NativeScrollEvent>) {

@@ -358,6 +358,15 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('if (reconnected && restored && myId) void load()');
   });
 
+  test('loads once after restoration without refreshing on every Feed focus', () => {
+    expect(feedSource).toMatch(
+      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*setLoading\(true\);\s*void load\(\);\s*\}\s*\}, \[load, restored\]\);/,
+    );
+    const focusBlock = feedSource.match(/useFocusEffect\([\s\S]*?\n\s*\);/)?.[0] ?? '';
+    expect(focusBlock).not.toContain('void load()');
+    expect(focusBlock).not.toContain('setLoading(true)');
+  });
+
   test('clears pending offset only after a real list scroll call', () => {
     const scrollIndex = feedSource.indexOf('list.scrollToOffset({ offset, animated: false })');
     const clearIndex = feedSource.indexOf('pendingFeedOffset.current = null', scrollIndex);
