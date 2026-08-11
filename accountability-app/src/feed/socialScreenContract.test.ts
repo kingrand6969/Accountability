@@ -114,6 +114,20 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain("'I showed up today.'");
   });
 
+  test('uses icon-only Feed actions with visible counts and an icon-only memory affordance', () => {
+    expect(proofCardSource).toContain('icon="clap"');
+    expect(proofCardSource).toContain('icon="chatbubble-outline"');
+    expect(proofCardSource).toContain('icon="paper-plane-outline"');
+    expect(proofCardSource).toContain('count={post.like_count}');
+    expect(proofCardSource).toContain('count={post.comment_count}');
+    expect(proofCardSource).toContain(
+      '<SaveToMemories url={post.image_url} inline iconOnly />',
+    );
+    expect(proofCardSource).toContain('minHeight: 48');
+    expect(proofCardSource).not.toContain('label={`Cheer');
+    expect(proofCardSource).not.toContain('label={`Comment');
+  });
+
   test('preserves one FlatList and an honest unified Feed offset contract', () => {
     expect(feedSource.match(/<FlatList(?=\s)/g)).toHaveLength(1);
     expect(feedSource).toContain('const feedOffset = useRef(0)');

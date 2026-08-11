@@ -145,6 +145,9 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain('showPostMenu');
     expect(routeSource).toContain('setLiked');
     expect(routeSource).toContain('<SaveToMemories');
+    expect(routeSource).not.toContain(
+      '<SaveToMemories url={post.image_url} inline iconOnly />',
+    );
     expect(routeSource).toContain('<BroadcastSheet');
     expect(routeSource).toContain('operations.current.start(');
     expect(routeSource).toContain('operations.current.complete(');
