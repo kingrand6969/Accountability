@@ -6,6 +6,8 @@ import {
   AppState,
   BackHandler,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import {
   addComment,
@@ -76,6 +79,7 @@ function PostDetailView({
 }) {
   const router = useRouter();
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const renderViewKey = `${id ?? ''}:${myId ?? ''}`;
   const [snapshot, setSnapshot] = useState<
     ImmersiveSnapshot<FeedPost, PostComment, PostEncourager, VoiceEncouragement>
@@ -494,7 +498,11 @@ function PostDetailView({
   }
 
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
       {viewState === 'offline-cached' ? (
         <View style={styles.offlineBanner} accessibilityRole="alert">
           <Text style={styles.offlineText}>Offline · showing this session’s last loaded copy</Text>
@@ -583,35 +591,33 @@ function PostDetailView({
             </View>
           </View>
         )}
-        ListFooterComponent={
-          <View style={styles.inputBar}>
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              placeholder="Write a supportive comment…"
-              placeholderTextColor={colors.textFaint}
-              value={text}
-              onChangeText={setText}
-              multiline
-              accessibilityLabel="Supportive comment"
-            />
-            <Pressable
-              onPress={onSend}
-              disabled={!text.trim() || sending}
-              style={({ pressed }) => [
-                styles.sendButton,
-                (!text.trim() || sending) && styles.sendDisabled,
-                pressed && styles.pressed,
-              ]}
-              accessibilityLabel="Send comment"
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !text.trim() || sending, busy: sending }}
-            >
-              {sending ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.sendText}>Send</Text>}
-            </Pressable>
-          </View>
-        }
       />
+      <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+        <TextInput
+          ref={inputRef}
+          style={styles.input}
+          placeholder="Write a supportive comment…"
+          placeholderTextColor={colors.textFaint}
+          value={text}
+          onChangeText={setText}
+          multiline
+          accessibilityLabel="Supportive comment"
+        />
+        <Pressable
+          onPress={onSend}
+          disabled={!text.trim() || sending}
+          style={({ pressed }) => [
+            styles.sendButton,
+            (!text.trim() || sending) && styles.sendDisabled,
+            pressed && styles.pressed,
+          ]}
+          accessibilityLabel="Send comment"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !text.trim() || sending, busy: sending }}
+        >
+          {sending ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.sendText}>Send</Text>}
+        </Pressable>
+      </View>
       <EncouragementSheet
         visible={encouragementOpen}
         encouragers={encouragers}
@@ -639,7 +645,7 @@ function PostDetailView({
         onSend={onSendVoice}
       />
       <BroadcastSheet post={broadcastOpen ? post : null} onClose={() => setBroadcastOpen(false)} />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
