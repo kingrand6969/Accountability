@@ -49,11 +49,14 @@ describe('cold-link route access contract', () => {
       back: jest.fn(),
       replace: jest.fn(),
       dismissTo: jest.fn(),
+      canDismiss: jest.fn(() => true),
+      dismissAll: jest.fn(),
     };
 
     expect(returnFromPost(router)).toBe('feed');
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.dismissTo).toHaveBeenCalledWith('/');
+    expect(router.dismissAll).toHaveBeenCalledTimes(1);
+    expect(router.dismissTo).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
   });
 
