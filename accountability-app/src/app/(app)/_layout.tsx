@@ -197,6 +197,16 @@ export default function AppLayout() {
           headerShown: true,
         }}
       />
+      {/* Post details stay inside the mounted app navigator on Android. */}
+      <Tabs.Screen
+        name="post/[id]"
+        options={{
+          href: null,
+          tabBarItemStyle: { display: 'none' },
+          headerShown: true,
+          title: 'Post',
+        }}
+      />
       {/* notifications live in the Feed header now — keep the route reachable */}
       <Tabs.Screen
         name="notifications"

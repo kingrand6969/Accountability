@@ -78,7 +78,7 @@ describe('cold-link route access contract', () => {
   });
 
   test('keeps the canonical encouragement query handoff and safe post fallback', () => {
-    const postSource = routeSource('post/[id].tsx');
+    const postSource = routeSource('(app)/post/[id].tsx');
 
     expect(postSource).toContain(
       "useLocalSearchParams<{ id: string; encouragement?: string }>()",

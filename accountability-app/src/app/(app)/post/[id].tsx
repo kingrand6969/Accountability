@@ -29,20 +29,20 @@ import {
   setLiked,
   type PostEncourager,
   type VoiceEncouragement,
-} from '../../feed/api';
-import { showPostMenu } from '../../feed/postActions';
-import { useAuth } from '../../auth/AuthProvider';
-import { SaveToMemories } from '../../memories/SaveToMemories';
-import { authorLabel, timeAgo } from '../../feed/format';
-import { Avatar } from '../../feed/Avatar';
-import type { FeedPost, PostComment } from '../../feed/types';
-import { EmptyState } from '../../ui/EmptyState';
-import { showToast } from '../../ui/Toast';
-import { colors, font, radius, spacing } from '../../ui/theme';
-import { EncouragementSheet } from '../../feed/EncouragementSheet';
-import { VoiceEncouragementRecorder } from '../../feed/VoiceEncouragementRecorder';
-import { BroadcastSheet } from '../../feed/BroadcastSheet';
-import { canReportContent, createReportAction } from '../../moderation/reportAction';
+} from '../../../feed/api';
+import { showPostMenu } from '../../../feed/postActions';
+import { useAuth } from '../../../auth/AuthProvider';
+import { SaveToMemories } from '../../../memories/SaveToMemories';
+import { authorLabel, timeAgo } from '../../../feed/format';
+import { Avatar } from '../../../feed/Avatar';
+import type { FeedPost, PostComment } from '../../../feed/types';
+import { EmptyState } from '../../../ui/EmptyState';
+import { showToast } from '../../../ui/Toast';
+import { colors, font, radius, spacing } from '../../../ui/theme';
+import { EncouragementSheet } from '../../../feed/EncouragementSheet';
+import { VoiceEncouragementRecorder } from '../../../feed/VoiceEncouragementRecorder';
+import { BroadcastSheet } from '../../../feed/BroadcastSheet';
+import { canReportContent, createReportAction } from '../../../moderation/reportAction';
 import {
   ImmersivePost,
   ImmersiveOperationCoordinator,
@@ -51,8 +51,8 @@ import {
   visibleImmersiveSnapshot,
   type ImmersiveSnapshot,
   type ImmersiveViewContext,
-} from '../../feed/ImmersivePost';
-import { returnFromPost } from '../../navigation/routeAccessContract';
+} from '../../../feed/ImmersivePost';
+import { returnFromPost } from '../../../navigation/routeAccessContract';
 
 export default function PostDetailRoute() {
   const { id, encouragement } = useLocalSearchParams<{ id: string; encouragement?: string }>();

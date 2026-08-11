@@ -28,7 +28,7 @@ import {
   routeIntentFromPath,
   type RouteQuery,
 } from '../navigation/authRouteIntent';
-import { navigateBackSafely, returnFromPost } from '../navigation/routeAccessContract';
+import { navigateBackSafely } from '../navigation/routeAccessContract';
 
 /**
  * A back control that never dead-ends: it pops the stack when there's somewhere
@@ -40,7 +40,7 @@ function HeaderBack() {
   const pathname = usePathname();
   return (
     <Pressable
-      onPress={() => pathname.startsWith('/post/') ? returnFromPost(router) : navigateBackSafely(router)}
+      onPress={() => navigateBackSafely(router)}
       hitSlop={12}
       accessibilityRole="button"
       accessibilityLabel="Go back"
@@ -118,7 +118,6 @@ function RootNavigator() {
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="(app)" />
         <Stack.Screen name="onboarding" />
-        <Stack.Screen name="post/[id]" options={{ headerShown: true, title: 'Post', presentation: 'transparentModal', contentStyle: { backgroundColor: colors.background } }} />
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
         <Stack.Screen name="gym" options={{ headerShown: true, title: 'Exercise Library' }} />
         <Stack.Screen name="exercise/[id]" options={{ headerShown: true, title: 'Exercise' }} />

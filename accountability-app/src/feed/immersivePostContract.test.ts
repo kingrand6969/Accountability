@@ -17,7 +17,7 @@ jest.mock('./Avatar', () => ({ Avatar: () => null }));
 jest.mock('./PostImage', () => ({ PostImage: () => null }));
 jest.mock('./PostVideo', () => ({ PostVideo: () => null }));
 
-const routeSource = readFileSync(require.resolve('../app/post/[id]'), 'utf8');
+const routeSource = readFileSync(require.resolve('../app/(app)/post/[id]'), 'utf8');
 const componentSource = readFileSync(require.resolve('./ImmersivePost'), 'utf8');
 
 function jsxCalls(componentSource: string, componentName: string): string[] {
