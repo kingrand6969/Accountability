@@ -178,7 +178,7 @@ export function FeedProofCard({
           onPress={onShare}
         />
         {post.image_url && post.post_type !== 'video' ? (
-          <SaveToMemories url={post.image_url} inline />
+          <SaveToMemories url={post.image_url} inline iconOnly />
         ) : null}
       </View>
       <FeedSupporterSummary
