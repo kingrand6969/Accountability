@@ -25,6 +25,11 @@ export function navigateBackSafely(router: SafeBackRouter): 'back' | 'fallback' 
   return 'fallback';
 }
 
+export function returnFromPost(router: SafeBackRouter): 'feed' {
+  router.replace('/');
+  return 'feed';
+}
+
 const PROTECTED_ROUTES = new Set([
   '/body',
   '/journey-path',

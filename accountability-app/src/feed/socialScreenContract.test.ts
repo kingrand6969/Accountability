@@ -30,11 +30,11 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('const generation = ++loadGeneration.current');
     expect(feedSource).toContain('if (generation !== loadGeneration.current) return');
     expect(feedSource).toContain(
-      'const page = await listFeed(oldest)',
+      'const page = await listPersonalFeed(myId, oldest)',
     );
     expect(feedSource).toContain('if (page.length < FEED_PAGE_SIZE) setEndReached(true)');
     expect(feedSource).toContain(
-      'if (loadingMore || endReached || loading || posts.length === 0) return',
+      'if (!myId || loadingMore || endReached || loading || posts.length === 0) return',
     );
     expect(feedSource).toContain('setLoadingMore(false)');
   });

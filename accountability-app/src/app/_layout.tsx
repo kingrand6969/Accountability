@@ -28,7 +28,7 @@ import {
   routeIntentFromPath,
   type RouteQuery,
 } from '../navigation/authRouteIntent';
-import { navigateBackSafely } from '../navigation/routeAccessContract';
+import { navigateBackSafely, returnFromPost } from '../navigation/routeAccessContract';
 
 /**
  * A back control that never dead-ends: it pops the stack when there's somewhere
@@ -37,9 +37,10 @@ import { navigateBackSafely } from '../navigation/routeAccessContract';
  */
 function HeaderBack() {
   const router = useRouter();
+  const pathname = usePathname();
   return (
     <Pressable
-      onPress={() => navigateBackSafely(router)}
+      onPress={() => pathname.startsWith('/post/') ? returnFromPost(router) : navigateBackSafely(router)}
       hitSlop={12}
       accessibilityRole="button"
       accessibilityLabel="Go back"

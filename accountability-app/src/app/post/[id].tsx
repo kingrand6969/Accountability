@@ -4,6 +4,7 @@ import {
   AccessibilityInfo,
   Alert,
   AppState,
+  BackHandler,
   FlatList,
   Pressable,
   StyleSheet,
@@ -47,6 +48,7 @@ import {
   type ImmersiveSnapshot,
   type ImmersiveViewContext,
 } from '../../feed/ImmersivePost';
+import { returnFromPost } from '../../navigation/routeAccessContract';
 
 export default function PostDetailRoute() {
   const { id, encouragement } = useLocalSearchParams<{ id: string; encouragement?: string }>();
@@ -206,6 +208,16 @@ function PostDetailView({
         setOnline(nextOnline);
       }),
     [],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        returnFromPost(router);
+        return true;
+      });
+      return () => subscription.remove();
+    }, [router]),
   );
 
   const load = useCallback(async () => {
@@ -421,8 +433,7 @@ function PostDetailView({
         mountedRef.current && focusedRef.current,
       );
       if (!result.apply) return;
-      if (router.canGoBack()) router.back();
-      else router.replace('/');
+      returnFromPost(router);
     });
   }
 
@@ -507,8 +518,7 @@ function PostDetailView({
               }
               supporterAvatars={supporters}
               onBack={() => {
-                if (router.canGoBack()) router.back();
-                else router.replace('/');
+                returnFromPost(router);
               }}
               onOptions={onOptions}
               onEncourage={onToggleLike}

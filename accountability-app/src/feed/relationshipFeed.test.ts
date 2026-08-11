@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { listFeed } from './api';
+import { listFeed, listPersonalFeed } from './api';
 import { supabase } from '../lib/supabase';
 
 jest.mock('../lib/supabase', () => ({
-  supabase: { auth: { getUser: jest.fn() }, from: jest.fn(), rpc: jest.fn() },
+  supabase: { auth: { getUser: jest.fn(), getSession: jest.fn() }, from: jest.fn(), rpc: jest.fn() },
 }));
 jest.mock('../profiles/publicProfiles', () => ({ getPublicProfiles: jest.fn(async () => new Map()) }));
 jest.mock('../lib/r2', () => ({ uploadBytesToR2: jest.fn() }));
@@ -12,16 +12,29 @@ jest.mock('expo-file-system', () => ({ File: class {} }));
 jest.mock('expo-crypto', () => ({ randomUUID: jest.fn() }));
 
 const mockGetUser = supabase.auth.getUser as jest.Mock<any>;
+const mockGetSession = supabase.auth.getSession as jest.Mock<any>;
 const mockFrom = supabase.from as jest.Mock<any>;
 const mockRpc = supabase.rpc as jest.Mock<any>;
 
 beforeEach(() => {
   mockGetUser.mockReset().mockResolvedValue({ data: { user: { id: 'me' } }, error: null });
+  mockGetSession.mockReset().mockResolvedValue({ data: { session: { user: { id: 'me' } } }, error: null });
   mockFrom.mockReset();
   mockRpc.mockReset();
 });
 
 describe('unified personal feed snapshot', () => {
+  test('loads an account-bound Feed without remote auth lookups', async () => {
+    mockGetUser.mockRejectedValue(new Error('remote auth should not run'));
+    mockRpc
+      .mockResolvedValueOnce({ data: 'session-fast', error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+
+    await expect(listPersonalFeed('me')).resolves.toEqual([]);
+    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockGetSession).toHaveBeenCalledTimes(2);
+  });
+
   test('refresh creates a session, pages it, and preserves ranked metadata and order', async () => {
     mockRpc
       .mockResolvedValueOnce({ data: 'session-1', error: null })

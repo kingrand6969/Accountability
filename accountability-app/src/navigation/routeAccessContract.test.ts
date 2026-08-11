@@ -6,6 +6,7 @@ import {
   executeShareHandoff,
   isSafeResolvedPostId,
   navigateBackSafely,
+  returnFromPost,
   resolveColdLink,
 } from './routeAccessContract';
 import * as routeAccessContract from './routeAccessContract';
@@ -42,6 +43,18 @@ describe('cold-link route access contract', () => {
     },
   );
 
+  test('returns from a post to Feed even when native history is misleading', () => {
+    const router = {
+      canGoBack: jest.fn(() => true),
+      back: jest.fn(),
+      replace: jest.fn(),
+    };
+
+    expect(returnFromPost(router)).toBe('feed');
+    expect(router.back).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith('/');
+  });
+
   test('keeps the canonical encouragement query handoff and safe post fallback', () => {
     const postSource = routeSource('post/[id].tsx');
 
@@ -52,8 +65,8 @@ describe('cold-link route access contract', () => {
       "useState(encouragement === '1')",
     );
     expect(postSource).toContain('visible={encouragementOpen}');
-    expect(postSource).toContain("if (router.canGoBack()) router.back()");
-    expect(postSource).toContain("else router.replace('/')");
+    expect(postSource).toContain('returnFromPost(router)');
+    expect(postSource).toContain("BackHandler.addEventListener('hardwareBackPress'");
   });
 
   test.each([

@@ -23,7 +23,7 @@ import NetInfo from '@react-native-community/netinfo';
 import {
   FEED_PAGE_SIZE,
   listEncouragementPreviews,
-  listFeed,
+  listPersonalFeed,
   setLiked,
   type EncouragementPreview,
   type UnifiedFeedPost,
@@ -244,7 +244,7 @@ export default function Feed() {
       return;
     }
     try {
-      const page = await listFeed();
+      const page = await listPersonalFeed(myId);
       if (generation !== loadGeneration.current) return;
       setPosts(page);
       setDataOwnerId(myId);
@@ -345,12 +345,12 @@ export default function Feed() {
   }
 
   async function onLoadMore() {
-    if (loadingMore || endReached || loading || posts.length === 0) return;
+    if (!myId || loadingMore || endReached || loading || posts.length === 0) return;
     setLoadingMore(true);
     const generation = loadGeneration.current;
     try {
       const oldest = posts[posts.length - 1].created_at;
-      const page = await listFeed(oldest);
+      const page = await listPersonalFeed(myId, oldest);
       if (generation !== loadGeneration.current) return;
       if (page.length < FEED_PAGE_SIZE) setEndReached(true);
       if (page.length > 0) {

@@ -158,6 +158,12 @@ async function createFeedSession(): Promise<string> {
   return data;
 }
 
+async function currentSessionUserId(): Promise<string | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return data.session?.user.id ?? null;
+}
+
 async function pageFeedSession(sessionId: string, afterPosition: number): Promise<UnifiedFeedRow[]> {
   const { data, error } = await supabase.rpc('unified_feed_post_ids', {
     p_session_id: sessionId,
@@ -234,11 +240,12 @@ async function loadHydratedSnapshotPage(
 async function refreshPersonalFeed(
   me: string,
   seenBeforeRefresh: Set<string> = new Set(),
+  confirmOwner: () => Promise<string | null> = currentUserId,
 ): Promise<UnifiedFeedPost[]> {
   const generation = ++refreshGeneration;
   const sessionId = await createFeedSession();
   const page = await loadHydratedSnapshotPage(me, sessionId, 0, seenBeforeRefresh);
-  const confirmedUserId = await currentUserId();
+  const confirmedUserId = await confirmOwner();
   if (confirmedUserId !== me || generation !== refreshGeneration) return [];
 
   activeFeedSnapshot = {
@@ -254,11 +261,14 @@ async function refreshPersonalFeed(
   return page.posts;
 }
 
-async function pagePersonalFeed(me: string): Promise<UnifiedFeedPost[]> {
+async function pagePersonalFeed(
+  me: string,
+  confirmOwner: () => Promise<string | null> = currentUserId,
+): Promise<UnifiedFeedPost[]> {
   const snapshot = activeFeedSnapshot;
-  if (!snapshot || snapshot.ownerId !== me) return refreshPersonalFeed(me);
+  if (!snapshot || snapshot.ownerId !== me) return refreshPersonalFeed(me, new Set(), confirmOwner);
   if (Date.now() - snapshot.createdAtMs >= FEED_SESSION_MAX_AGE_MS) {
-    return refreshPersonalFeed(me, snapshot.seenPostIds);
+    return refreshPersonalFeed(me, snapshot.seenPostIds, confirmOwner);
   }
 
   let page: Awaited<ReturnType<typeof loadHydratedSnapshotPage>>;
@@ -268,13 +278,24 @@ async function pagePersonalFeed(me: string): Promise<UnifiedFeedPost[]> {
     if (!(error instanceof FeedSnapshotUnavailableError)) throw error;
     // A server-expired or invalid snapshot gets one fresh-session attempt. The
     // old IDs are filtered so recovery cannot duplicate already rendered rows.
-    return refreshPersonalFeed(me, snapshot.seenPostIds);
+    return refreshPersonalFeed(me, snapshot.seenPostIds, confirmOwner);
   }
-  const confirmedUserId = await currentUserId();
+  const confirmedUserId = await confirmOwner();
   if (confirmedUserId !== me || activeFeedSnapshot !== snapshot) return [];
   snapshot.afterPosition = page.afterPosition;
   page.encounteredIds.forEach((id) => snapshot.seenPostIds.add(id));
   return page.posts;
+}
+
+/** Fast personal-feed path for screens that already own an authenticated identity. */
+export async function listPersonalFeed(
+  expectedOwnerId: string,
+  beforeCreatedAt?: string,
+): Promise<UnifiedFeedPost[]> {
+  if (await currentSessionUserId() !== expectedOwnerId) return [];
+  return beforeCreatedAt
+    ? pagePersonalFeed(expectedOwnerId, currentSessionUserId)
+    : refreshPersonalFeed(expectedOwnerId, new Set(), currentSessionUserId);
 }
 
 async function myBuddyIds(me: string | null): Promise<string[]> {
