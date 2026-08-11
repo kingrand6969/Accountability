@@ -43,12 +43,12 @@ describe('cold-link route access contract', () => {
     },
   );
 
-  test('replaces a post route with Feed instead of relying on a broken native back surface', () => {
+  test('dismisses the Post modal without rebuilding the mounted Feed route', () => {
     const router = {
       canGoBack: jest.fn(() => true),
       back: jest.fn(),
       replace: jest.fn(),
-      dismissTo: jest.fn(),
+      dismiss: jest.fn(),
       canDismiss: jest.fn(() => true),
       dismissAll: jest.fn(),
     };
@@ -56,7 +56,7 @@ describe('cold-link route access contract', () => {
     expect(returnFromPost(router)).toBe('feed');
     expect(router.back).not.toHaveBeenCalled();
     expect(router.dismissAll).not.toHaveBeenCalled();
-    expect(router.dismissTo).toHaveBeenCalledWith('/(app)');
+    expect(router.dismiss).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
   });
 
@@ -65,7 +65,7 @@ describe('cold-link route access contract', () => {
       canGoBack: jest.fn(() => false),
       back: jest.fn(),
       replace: jest.fn(),
-      dismissTo: jest.fn(),
+      dismiss: jest.fn(),
       canDismiss: jest.fn(() => false),
       dismissAll: jest.fn(),
     };
@@ -74,7 +74,7 @@ describe('cold-link route access contract', () => {
     expect(router.back).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith('/(app)');
     expect(router.dismissAll).not.toHaveBeenCalled();
-    expect(router.dismissTo).not.toHaveBeenCalled();
+    expect(router.dismiss).not.toHaveBeenCalled();
   });
 
   test('keeps the canonical encouragement query handoff and safe post fallback', () => {
