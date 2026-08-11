@@ -6,6 +6,7 @@ import {
   AppState,
   BackHandler,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -102,8 +103,9 @@ function PostDetailView({
   const commentsLoading = visibleSnapshot?.commentsLoading ?? false;
   const commentsError = visibleSnapshot?.commentsError ?? false;
   const [online, setOnline] = useState(true);
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
+    const [text, setText] = useState('');
+    const [keyboardInset, setKeyboardInset] = useState(0);
+    const [sending, setSending] = useState(false);
   const [encouragementOpen, setEncouragementOpen] = useState(encouragement === '1');
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [sendingVoice, setSendingVoice] = useState(false);
@@ -119,6 +121,18 @@ function PostDetailView({
       setAppActive(state === 'active');
     });
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const show = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardInset(Math.max(0, event.endCoordinates.height));
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardInset(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
   }, []);
   const requestGeneration = useRef(0);
   const viewGeneration = useRef(0);
@@ -500,7 +514,7 @@ function PostDetailView({
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       {viewState === 'offline-cached' ? (
@@ -592,7 +606,13 @@ function PostDetailView({
           </View>
         )}
       />
-      <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View
+        style={[
+          styles.inputBar,
+          { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+          keyboardInset > 0 && { transform: [{ translateY: -keyboardInset }] },
+        ]}
+      >
         <TextInput
           ref={inputRef}
           style={styles.input}
