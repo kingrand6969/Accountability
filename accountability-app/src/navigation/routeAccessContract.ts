@@ -13,7 +13,8 @@ export type ShareHandoffResult = 'web-fallback' | 'navigated' | 'unavailable';
 export type SafeBackRouter = {
   canGoBack: () => boolean;
   back: () => void;
-  replace: (href: '/' | '/(app)') => void;
+  replace: (href: '/') => void;
+  dismissTo?: (href: '/') => void;
 };
 
 export function navigateBackSafely(router: SafeBackRouter): 'back' | 'fallback' {
@@ -26,7 +27,8 @@ export function navigateBackSafely(router: SafeBackRouter): 'back' | 'fallback' 
 }
 
 export function returnFromPost(router: SafeBackRouter): 'feed' {
-  router.replace('/(app)');
+  if (router.dismissTo) router.dismissTo('/');
+  else router.replace('/');
   return 'feed';
 }
 

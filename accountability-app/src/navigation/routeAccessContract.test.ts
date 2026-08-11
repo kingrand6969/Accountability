@@ -48,11 +48,13 @@ describe('cold-link route access contract', () => {
       canGoBack: jest.fn(() => true),
       back: jest.fn(),
       replace: jest.fn(),
+      dismissTo: jest.fn(),
     };
 
     expect(returnFromPost(router)).toBe('feed');
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith('/(app)');
+    expect(router.dismissTo).toHaveBeenCalledWith('/');
+    expect(router.replace).not.toHaveBeenCalled();
   });
 
   test('keeps the canonical encouragement query handoff and safe post fallback', () => {
