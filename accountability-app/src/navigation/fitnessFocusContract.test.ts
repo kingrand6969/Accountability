@@ -27,6 +27,7 @@ describe('fitness focus contract', () => {
     expect(visibleTabNames(layoutSource)).toEqual(['index', 'activity', 'run', 'messages']);
     expect(layoutSource).toContain('name="post/[id]"');
     expect(layoutSource).toMatch(/name="post\/\[id\]"[\s\S]*?href:\s*null/);
+    expect(layoutSource).toMatch(/name="post\/\[id\]"[\s\S]*?tabBarStyle:\s*\{\s*display:\s*'none'/);
   });
 
   test('removes money from Journey, menu, onboarding and invitations', () => {

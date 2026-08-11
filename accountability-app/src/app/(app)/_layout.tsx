@@ -203,6 +203,7 @@ export default function AppLayout() {
         options={{
           href: null,
           tabBarItemStyle: { display: 'none' },
+          tabBarStyle: { display: 'none' },
           headerShown: true,
           title: 'Post',
         }}
