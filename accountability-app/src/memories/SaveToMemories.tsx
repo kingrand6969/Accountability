@@ -43,11 +43,17 @@ export function SaveToMemories({
     >
       {busy ? (
         <ActivityIndicator size="small" color={inline ? colors.textMuted : '#fff'} />
+      ) : iconOnly ? (
+        <Ionicons
+          name={saved ? 'albums' : 'albums-outline'}
+          size={21}
+          color={inline ? (saved ? colors.primary : colors.textMuted) : '#fff'}
+        />
       ) : (
         <>
           <Ionicons
-            name={saved ? 'albums' : 'albums-outline'}
-            size={21}
+            name={saved ? 'bookmark' : 'bookmark-outline'}
+            size={17}
             color={inline ? (saved ? colors.primary : colors.textMuted) : '#fff'}
           />
           {inline && !iconOnly ? (

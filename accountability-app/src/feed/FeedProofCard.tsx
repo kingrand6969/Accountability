@@ -162,14 +162,14 @@ export function FeedProofCard({
         <Action
           icon="clap"
           count={post.like_count}
-          accessibilityLabel={`${post.liked_by_me ? 'Remove Cheer' : 'Cheer'}, ${post.like_count} ${post.like_count === 1 ? 'Cheer' : 'Cheers'}`}
+          accessibilityLabel={`${post.liked_by_me ? 'Remove Cheer' : 'Cheer'}${post.like_count > 0 ? `, ${post.like_count} ${post.like_count === 1 ? 'Cheer' : 'Cheers'}` : ''}`}
           active={post.liked_by_me}
           onPress={onToggleLike}
         />
         <Action
           icon="chatbubble-outline"
           count={post.comment_count}
-          accessibilityLabel={`${viewCommentsLabel}, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}`}
+          accessibilityLabel={`${viewCommentsLabel}${post.comment_count > 0 ? `, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}` : ''}`}
           onPress={onOpen}
         />
         <Action
@@ -252,9 +252,9 @@ function Action({
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
       {icon === 'clap' ? (
-        <CheerIcon color={Boolean(active) ? colors.cheer : colors.textMuted} />
+        <CheerIcon color={Boolean(active) ? colors.primary : colors.textMuted} />
       ) : (
-        <Ionicons name={icon} size={21} color={Boolean(active) ? colors.cheer : colors.textMuted} />
+        <Ionicons name={icon} size={21} color={Boolean(active) ? colors.primary : colors.textMuted} />
       )}
       {count != null && count > 0 ? (
         <Text style={[styles.actionText, active && styles.active]}>{count}</Text>
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
   cheerLeft: { position: 'absolute', left: 0, top: 0 },
   cheerRight: { position: 'absolute', right: 0, top: 2 },
   actionText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 11 },
-  active: { color: colors.cheer },
+  active: { color: colors.primary },
   supporters: {
     minHeight: 44,
     flexDirection: 'row',
