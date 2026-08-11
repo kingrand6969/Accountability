@@ -234,7 +234,7 @@ function Action({
   icon,
   count,
   accessibilityLabel,
-  active = false,
+  active,
   onPress,
 }: {
   icon: 'clap' | keyof typeof Ionicons.glyphMap;
@@ -248,13 +248,13 @@ function Action({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ selected: active }}
+      accessibilityState={active === undefined ? undefined : { selected: active }}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
       {icon === 'clap' ? (
-        <CheerIcon color={active ? colors.cheer : colors.textMuted} />
+        <CheerIcon color={Boolean(active) ? colors.cheer : colors.textMuted} />
       ) : (
-        <Ionicons name={icon} size={21} color={active ? colors.cheer : colors.textMuted} />
+        <Ionicons name={icon} size={21} color={Boolean(active) ? colors.cheer : colors.textMuted} />
       )}
       {count != null && count > 0 ? (
         <Text style={[styles.actionText, active && styles.active]}>{count}</Text>
