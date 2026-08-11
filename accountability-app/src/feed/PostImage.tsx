@@ -44,7 +44,7 @@ export function PostImage({
           borderRadius: immersive ? 0 : radius.sm,
           backgroundColor: colors.surface,
         }}
-        contentFit="cover"
+        contentFit={immersive ? 'contain' : 'cover'}
       /> : <View style={[styles.privatePlaceholder, immersive && styles.immersivePlaceholder, { aspectRatio: shown }]} />}
       {capped ? (
         <View style={styles.hint} pointerEvents="none">
