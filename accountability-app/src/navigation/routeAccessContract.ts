@@ -26,8 +26,7 @@ export function navigateBackSafely(router: SafeBackRouter): 'back' | 'fallback' 
 }
 
 export function returnFromPost(router: SafeBackRouter): 'feed' {
-  if (router.canGoBack()) router.back();
-  else router.replace('/');
+  router.replace('/');
   return 'feed';
 }
 
