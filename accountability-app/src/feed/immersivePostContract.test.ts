@@ -271,11 +271,13 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(componentSource).toContain('actionBar');
     expect(componentSource).toContain("backgroundColor: 'rgba(2,8,20,.78)'");
     expect(routeSource).toContain('<KeyboardAvoidingView');
-    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : undefined}");
+    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : 'height'}");
     expect(routeSource).toContain("keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}");
     expect(routeSource).not.toContain('ListFooterComponent={');
     expect(routeSource).toMatch(/<FlatList[\s\S]*?\/>\s*<View style=\{\[styles\.inputBar,[\s\S]*?<TextInput/);
     expect(routeSource).toContain('Math.max(insets.bottom, spacing.sm)');
+    expect(componentSource).toContain('style={styles.photoContain}');
+    expect(componentSource).not.toMatch(/<PostImage[\s\S]{0,250}transform:/);
   });
 
   test('prevents the rejected generic Post Detail presentation', () => {

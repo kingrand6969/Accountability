@@ -271,12 +271,7 @@ export function ImmersivePost({
               <PostVideo url={post.image_url} detail active={mediaActive} />
             </View>
           ) : (
-            <View
-              style={[
-                styles.photoFill,
-                { transform: [{ scale: Math.max(1, height / Math.max(width * 1.25, 1)) }] },
-              ]}
-            >
+            <View style={styles.photoContain}>
               <PostImage url={post.image_url} immersive />
             </View>
           )
@@ -406,6 +401,7 @@ function Action({ icon, label, shortLabel, active = false, onPress }: { icon: ke
 const styles = StyleSheet.create({
   hero: { width: '100%', backgroundColor: colors.navy, overflow: 'hidden' },
   photoFill: { width: '100%', alignSelf: 'center' },
+  photoContain: { position: 'absolute', inset: 0, justifyContent: 'center' },
   mediaUnavailable: { flex: 1, minHeight: 720, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.navy },
   mediaUnavailableText: { color: 'rgba(255,255,255,.8)', fontFamily: font.medium },
   topControls: { position: 'absolute', top: spacing.xxl, left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between', zIndex: 3 },
