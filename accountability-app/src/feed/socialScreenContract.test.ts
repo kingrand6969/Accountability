@@ -24,6 +24,29 @@ const headlineSource = source('ProofHeadlineOverlay.tsx');
 const metricSource = source('RunRouteMetricOverlay.tsx');
 const storyRailSource = source('../stories/StoryRail.tsx');
 
+function jsxCalls(componentSource: string, componentName: string): string[] {
+  return [
+    ...componentSource.matchAll(
+      new RegExp(`<${componentName}\\b[\\s\\S]*?\\/>`, 'g'),
+    ),
+  ].map(([call]) => call);
+}
+
+function callWith(calls: string[], marker: string): string {
+  return calls.find((call) => call.includes(marker)) ?? '';
+}
+
+function styleBlock(componentSource: string, styleName: string): string {
+  const match = componentSource.match(
+    new RegExp(`(?:^|\\n)\\s*${styleName}:\\s*\\{([\\s\\S]*?)\\n\\s*\\},`),
+  );
+  return match?.[1] ?? '';
+}
+
+function hasBooleanProp(openingTag: string, prop: string): boolean {
+  return new RegExp(`\\b${prop}(?=\\s|\\/?>)`).test(openingTag);
+}
+
 describe('Group 3 social Feed contract', () => {
   test('preserves cursor pagination and request-generation guards', () => {
     expect(feedSource).toContain('const loadGeneration = useRef(0)');
@@ -115,17 +138,23 @@ describe('Group 3 social Feed contract', () => {
   });
 
   test('uses icon-only Feed actions with visible counts and an icon-only memory affordance', () => {
-    expect(proofCardSource).toContain('icon="clap"');
-    expect(proofCardSource).toContain('icon="chatbubble-outline"');
-    expect(proofCardSource).toContain('icon="paper-plane-outline"');
-    expect(proofCardSource).toContain('count={post.like_count}');
-    expect(proofCardSource).toContain('count={post.comment_count}');
-    expect(proofCardSource).toContain(
-      '<SaveToMemories url={post.image_url} inline iconOnly />',
-    );
-    expect(proofCardSource).toContain('minHeight: 48');
-    expect(proofCardSource).not.toContain('label={`Cheer');
-    expect(proofCardSource).not.toContain('label={`Comment');
+    const actions = jsxCalls(proofCardSource, 'Action');
+    const cheerAction = callWith(actions, 'onPress={onToggleLike}');
+    const commentAction = callWith(actions, 'onPress={onOpen}');
+    const shareAction = callWith(actions, 'onPress={onShare}');
+    expect(cheerAction).toMatch(/\bicon=["']clap["']/);
+    expect(cheerAction).toMatch(/\bcount=\{post\.like_count\}/);
+    expect(cheerAction).not.toMatch(/\blabel=\{`Cheer/);
+    expect(commentAction).toMatch(/\bicon=["']chatbubble-outline["']/);
+    expect(commentAction).toMatch(/\bcount=\{post\.comment_count\}/);
+    expect(commentAction).not.toMatch(/\blabel=\{`Comment/);
+    expect(shareAction).toMatch(/\bicon=["']paper-plane-outline["']/);
+
+    const memoryAction = jsxCalls(proofCardSource, 'SaveToMemories')[0] ?? '';
+    expect(memoryAction).toMatch(/\burl=\{post\.image_url\}/);
+    expect(hasBooleanProp(memoryAction, 'inline')).toBe(true);
+    expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(true);
+    expect(styleBlock(proofCardSource, 'action')).toMatch(/\bminHeight:\s*48\b/);
   });
 
   test('preserves one FlatList and an honest unified Feed offset contract', () => {

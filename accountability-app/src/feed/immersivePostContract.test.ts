@@ -20,6 +20,18 @@ jest.mock('./PostVideo', () => ({ PostVideo: () => null }));
 const routeSource = readFileSync(require.resolve('../app/post/[id]'), 'utf8');
 const componentSource = readFileSync(require.resolve('./ImmersivePost'), 'utf8');
 
+function jsxCalls(componentSource: string, componentName: string): string[] {
+  return [
+    ...componentSource.matchAll(
+      new RegExp(`<${componentName}\\b[\\s\\S]*?\\/>`, 'g'),
+    ),
+  ].map(([call]) => call);
+}
+
+function hasBooleanProp(openingTag: string, prop: string): boolean {
+  return new RegExp(`\\b${prop}(?=\\s|\\/?>)`).test(openingTag);
+}
+
 const post = {
   id: 'post-a',
   user_id: 'owner',
@@ -144,10 +156,15 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain("useState(encouragement === '1')");
     expect(routeSource).toContain('showPostMenu');
     expect(routeSource).toContain('setLiked');
-    expect(routeSource).toContain('<SaveToMemories');
-    expect(routeSource).not.toContain(
-      '<SaveToMemories url={post.image_url} inline iconOnly />',
-    );
+    const memoryActions = jsxCalls(routeSource, 'SaveToMemories');
+    expect(memoryActions).not.toHaveLength(0);
+    expect(memoryActions.some((tag) => hasBooleanProp(tag, 'inline'))).toBe(true);
+    expect(
+      memoryActions.some(
+        (tag) =>
+          hasBooleanProp(tag, 'inline') && hasBooleanProp(tag, 'iconOnly'),
+      ),
+    ).toBe(false);
     expect(routeSource).toContain('<BroadcastSheet');
     expect(routeSource).toContain('operations.current.start(');
     expect(routeSource).toContain('operations.current.complete(');
