@@ -52,7 +52,7 @@ describe('cold-link route access contract', () => {
 
     expect(returnFromPost(router)).toBe('feed');
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith('/');
+    expect(router.replace).toHaveBeenCalledWith('/(app)');
   });
 
   test('keeps the canonical encouragement query handoff and safe post fallback', () => {
