@@ -56,6 +56,8 @@ export function FeedProofCard({
   const typeLabel = postTypeLabel(post);
   const presentation = deriveFeedCardPresentation(post, currentUserId);
   const suggestionLabel = post.suggested ? 'Suggested for you' : null;
+  // Preserve the established accessibilityLabel="View comments" wording before adding the count.
+  const viewCommentsLabel = 'View comments';
   return (
     <View
       style={styles.card}
@@ -158,21 +160,20 @@ export function FeedProofCard({
 
       <View style={styles.actions}>
         <Action
-          icon={post.liked_by_me ? 'flame' : 'flame-outline'}
-          label={`Cheer${post.like_count > 0 ? ` ${post.like_count}` : ''}`}
-          accessibilityLabel={post.liked_by_me ? 'Remove Cheer' : 'Cheer'}
+          icon="clap"
+          count={post.like_count}
+          accessibilityLabel={`${post.liked_by_me ? 'Remove Cheer' : 'Cheer'}, ${post.like_count} ${post.like_count === 1 ? 'Cheer' : 'Cheers'}`}
           active={post.liked_by_me}
           onPress={onToggleLike}
         />
         <Action
           icon="chatbubble-outline"
-          label={`Comment${post.comment_count > 0 ? ` ${post.comment_count}` : ''}`}
-          accessibilityLabel="View comments"
+          count={post.comment_count}
+          accessibilityLabel={`${viewCommentsLabel}, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}`}
           onPress={onOpen}
         />
         <Action
           icon="paper-plane-outline"
-          label="Share"
           accessibilityLabel="Share this post"
           onPress={onShare}
         />
@@ -220,15 +221,24 @@ function FeedSupporterSummary({
   );
 }
 
+function CheerIcon({ color }: { color: string }) {
+  return (
+    <View style={styles.cheerIcon} accessibilityElementsHidden>
+      <Ionicons name="hand-left-outline" size={21} color={color} style={styles.cheerLeft} />
+      <Ionicons name="hand-right-outline" size={21} color={color} style={styles.cheerRight} />
+    </View>
+  );
+}
+
 function Action({
   icon,
-  label,
+  count,
   accessibilityLabel,
   active = false,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
+  icon: 'clap' | keyof typeof Ionicons.glyphMap;
+  count?: number;
   accessibilityLabel: string;
   active?: boolean;
   onPress: () => void;
@@ -238,10 +248,17 @@ function Action({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: active }}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
-      <Ionicons name={icon} size={18} color={active ? colors.cheer : colors.textMuted} />
-      <Text style={[styles.actionText, active && styles.active]}>{label}</Text>
+      {icon === 'clap' ? (
+        <CheerIcon color={active ? colors.cheer : colors.textMuted} />
+      ) : (
+        <Ionicons name={icon} size={21} color={active ? colors.cheer : colors.textMuted} />
+      )}
+      {count != null && count > 0 ? (
+        <Text style={[styles.actionText, active && styles.active]}>{count}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -345,13 +362,17 @@ const styles = StyleSheet.create({
   },
   action: {
     flex: 1,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
     borderRadius: radius.sm,
   },
+  cheerIcon: { width: 27, height: 23, position: 'relative' },
+  cheerLeft: { position: 'absolute', left: 0, top: 0 },
+  cheerRight: { position: 'absolute', right: 0, top: 2 },
   actionText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 11 },
   active: { color: colors.cheer },
   supporters: {
