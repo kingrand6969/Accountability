@@ -19,6 +19,7 @@ type Props = {
   preview?: EncouragementPreview;
   attending: boolean;
   onOpen: () => void;
+  onOpenMedia?: () => void;
   onMenu: () => void;
   onAttend: () => void;
   onToggleLike: () => void;
@@ -45,6 +46,7 @@ export function FeedProofCard({
   preview,
   attending,
   onOpen,
+  onOpenMedia,
   onMenu,
   onAttend,
   onToggleLike,
@@ -133,7 +135,7 @@ export function FeedProofCard({
 
       {post.image_url ? (
             <Pressable
-              onPress={onOpen}
+              onPress={onOpenMedia ?? onOpen}
               accessibilityRole="link"
               accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
               accessibilityHint="Opens the full post, comments, and Cheers"

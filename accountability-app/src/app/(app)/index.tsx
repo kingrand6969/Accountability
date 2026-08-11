@@ -51,6 +51,7 @@ import {
   scheduleIdentityBoundAction,
 } from '../../feed/SocialModeSelector';
 import { FeedProofCard } from '../../feed/FeedProofCard';
+import { PostImage } from '../../feed/PostImage';
 import { activeVideoPost } from '../../feed/videoPolicy';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -98,6 +99,7 @@ function QuickShare({
 
 export default function Feed() {
   const router = useRouter();
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const navigation = useNavigation();
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
@@ -617,6 +619,7 @@ export default function Feed() {
                   preview={encouragementPreviews.get(item.id)}
                   attending={!!item.event && attending.has(item.event.group_id)}
                   onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
+                  onOpenMedia={item.post_type === 'video' || !item.image_url ? undefined : () => setPreviewPhoto(item.image_url)}
                   onMenu={() => onPostMenu(item)}
                   onAttend={() => onAttend(item)}
                   onToggleLike={() => onToggleLike(item)}
@@ -628,6 +631,33 @@ export default function Feed() {
           />
         )}
       </View>
+      <Modal
+        visible={previewPhoto !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setPreviewPhoto(null)}
+      >
+        <View style={styles.photoPreview}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setPreviewPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+          />
+          <Pressable
+            style={styles.photoClose}
+            onPress={() => setPreviewPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
+          <View style={styles.photoFrame} pointerEvents="box-none">
+            {previewPhoto ? <PostImage url={previewPhoto} immersive /> : null}
+          </View>
+        </View>
+      </Modal>
       <BroadcastSheet
         post={dataOwnerId === myId && myId ? broadcast : null}
         onClose={() => setBroadcast(null)}
@@ -639,6 +669,20 @@ export default function Feed() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.surfaceAlt },
   feedContent: { flex: 1 },
+  photoPreview: { flex: 1, justifyContent: 'center', backgroundColor: '#000' },
+  photoFrame: { width: '100%' },
+  photoClose: {
+    position: 'absolute',
+    top: 54,
+    right: spacing.md,
+    zIndex: 2,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,.72)',
+  },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,.45)', paddingTop: 64, alignItems: 'flex-end', paddingRight: spacing.md },
   sheet: { width: 280, borderRadius: radius.lg, overflow: 'hidden', padding: spacing.sm, ...shadow.card },
   sheetGlass: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,.82)' },

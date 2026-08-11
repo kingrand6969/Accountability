@@ -198,6 +198,14 @@ describe('Group 3 social Feed contract', () => {
     expect(storyRailSource).not.toContain('controllerOnly');
   });
 
+  test('opens Feed photos in a contained local overlay that closes without navigation', () => {
+    expect(proofCardSource).toContain('onOpenMedia ?? onOpen');
+    expect(feedSource).toContain('onOpenMedia=');
+    expect(feedSource).toContain('visible={previewPhoto !== null}');
+    expect(feedSource).toContain('onRequestClose={() => setPreviewPhoto(null)}');
+    expect(feedSource).toContain('<PostImage url={previewPhoto} immersive />');
+  });
+
   test('bounds Feed rendering and activates media from stable viewability callbacks', () => {
     expect(feedSource).toContain('itemVisiblePercentThreshold: 65');
     expect(feedSource).toContain('minimumViewTime: 180');
