@@ -56,7 +56,7 @@ describe('cold-link route access contract', () => {
     expect(returnFromPost(router)).toBe('feed');
     expect(router.back).not.toHaveBeenCalled();
     expect(router.dismissAll).not.toHaveBeenCalled();
-    expect(router.dismissTo).toHaveBeenCalledWith('/');
+    expect(router.dismissTo).toHaveBeenCalledWith('/(app)');
     expect(router.replace).not.toHaveBeenCalled();
   });
 
