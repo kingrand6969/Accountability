@@ -1,4 +1,4 @@
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
 import { BRAND_GEOMETRY, BRAND_WORDMARK } from './brandGeometry';
 
@@ -9,11 +9,7 @@ type BrandMarkProps = {
 };
 
 /**
- * AccountAbility's ribbon-people mark.
- *
- * The two figures lean together to make the approved A/M silhouette. Keep the
- * open centre and asymmetric overlap: they are what distinguish this mark from
- * a generic people icon.
+ * Accountability's Unbroken A: strength outside, rising motivation within.
  */
 export function BrandMark({
   size = 28,
@@ -28,18 +24,15 @@ export function BrandMark({
       accessibilityRole="image"
       accessibilityLabel={accessibilityLabel}
     >
-      {BRAND_GEOMETRY.heads.map((head) => (
-        <Circle
-          key={`${head.cx}-${head.cy}`}
-          cx={head.cx}
-          cy={head.cy}
-          r={head.r}
-          fill={color}
-        />
-      ))}
-      {BRAND_GEOMETRY.ribbons.map((ribbon) => (
-        <Path key={ribbon} d={ribbon} fill={color} />
-      ))}
+      <Path d={BRAND_GEOMETRY.mark.primaryPath} fill={color} />
+      <Path
+        d={BRAND_GEOMETRY.mark.accentPath}
+        fill={
+          color === BRAND_GEOMETRY.colors.cobalt
+            ? BRAND_GEOMETRY.colors.cyan
+            : color
+        }
+      />
     </Svg>
   );
 }
