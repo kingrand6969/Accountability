@@ -33,6 +33,7 @@ import {
   buddyCardEditorFingerprint,
   buildBuddyCardEditorPatch,
   createSynchronousSubmitLock,
+  loadBuddyCardEditorData,
   moveFeaturedMedal,
   shouldPreventBuddyCardEditorExit,
   toggleFeaturedMedal,
@@ -141,14 +142,21 @@ export default function BuddyCardEdit() {
       if (!ownerId) throw new Error('Sign in to edit your Buddy Card.');
 
       expectedOwnerRef.current = ownerId;
-      const [storedCard, profile, rank, metrics, stats, boardRank] = await Promise.all([
-        getMyBuddyCard(ownerId),
-        getMyProfile(),
-        getRank(),
-        getCardMetrics(ownerId),
-        getBuddyStats(ownerId),
-        getBoardRank(ownerId),
-      ]);
+      const {
+        card: storedCard,
+        profile,
+        rank,
+        metrics,
+        stats,
+        boardRank,
+      } = await loadBuddyCardEditorData(ownerId, {
+        card: getMyBuddyCard,
+        profile: getMyProfile,
+        rank: () => getRank({ expectedOwnerId: ownerId, snapshot: false }),
+        metrics: getCardMetrics,
+        stats: getBuddyStats,
+        boardRank: getBoardRank,
+      });
       const { data: authAtEnd } = await supabase.auth.getUser();
       if (
         !mountedRef.current ||

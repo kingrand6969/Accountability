@@ -82,6 +82,11 @@ describe('Buddy Card editor presentation controls', () => {
     expect(editorSource).toContain('Keep editing');
     expect(editorSource).toContain('Discard');
   });
+
+  test('loads rank read-only for the initiating owner and treats preview metrics as optional', () => {
+    expect(editorSource).toContain('getRank({ expectedOwnerId: ownerId, snapshot: false })');
+    expect(editorSource).toContain('loadBuddyCardEditorData(ownerId');
+  });
 });
 
 describe('Buddy Card editor model', () => {
@@ -180,6 +185,41 @@ describe('Buddy Card editor model', () => {
     expect(guard.isCurrent(second)).toBe(true);
     guard.unmount();
     expect(guard.isCurrent(second)).toBe(false);
+  });
+
+  test('one optional preview failure does not reject required editor data', async () => {
+    const { loadBuddyCardEditorData } = model();
+    const result = await loadBuddyCardEditorData('owner-a', {
+      card: async () => ({ headline: 'Required card' }),
+      profile: async () => ({ display_name: 'Owner A' }),
+      rank: async () => ({ name: 'Elite', earned: 1, medalList: [{ id: 'streak', tier: 0 }] }),
+      metrics: async () => { throw new Error('metrics unavailable'); },
+      stats: async () => ({ buddies: 2, km: 3, stars: 4, cheers: 5 }),
+      boardRank: async () => ({ city: 'Perth', country: 'AU', cityRank: 1, countryRank: 2 }),
+    });
+
+    expect(result.card).toEqual({ headline: 'Required card' });
+    expect(result.rank.medalList).toEqual([{ id: 'streak', tier: 0 }]);
+    expect(result.metrics).toBeNull();
+    expect(result.stats?.cheers).toBe(5);
+  });
+
+  test('multiple optional preview failures resolve as truthful nulls without partial required state', async () => {
+    const { loadBuddyCardEditorData } = model();
+    const result = await loadBuddyCardEditorData('owner-a', {
+      card: async () => ({ palette_key: 'polar_blue' }),
+      profile: async () => ({ display_name: 'Owner A' }),
+      rank: async () => ({ name: 'Elite', earned: 0, medalList: [] }),
+      metrics: async () => { throw new Error('metrics unavailable'); },
+      stats: async () => { throw new Error('stats unavailable'); },
+      boardRank: async () => { throw new Error('rank unavailable'); },
+    });
+
+    expect(result.card.palette_key).toBe('polar_blue');
+    expect(result.profile.display_name).toBe('Owner A');
+    expect(result.metrics).toBeNull();
+    expect(result.stats).toBeNull();
+    expect(result.boardRank).toBeNull();
   });
 });
 

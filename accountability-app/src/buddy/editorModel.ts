@@ -1,4 +1,4 @@
-import type { BuddyCard } from './card';
+import type { BoardRank, BuddyCard, BuddyStats, CardMetrics } from './card';
 import { MAX_FEATURED_MEDALS, normalizeFeaturedMedalIds } from './featuredMedals';
 import { BUDDY_CARD_PALETTE_KEYS, type BuddyCardPaletteKey } from './palette';
 
@@ -135,4 +135,47 @@ export function createSynchronousSubmitLock() {
       locked = false;
     },
   };
+}
+
+type BuddyCardEditorProfile = {
+  display_name?: string | null;
+  avatar_url?: string | null;
+  area?: string | null;
+  created_at?: string | null;
+  last_active_at?: string | null;
+};
+
+type BuddyCardEditorRank = {
+  name: string;
+  earned: number;
+  medalList: { id: string; tier: number }[];
+};
+
+type BuddyCardEditorDataDependencies = {
+  card: (ownerId: string) => Promise<BuddyCard>;
+  profile: () => Promise<BuddyCardEditorProfile | null>;
+  rank: (ownerId: string) => Promise<BuddyCardEditorRank>;
+  metrics: (ownerId: string) => Promise<CardMetrics>;
+  stats: (ownerId: string) => Promise<BuddyStats>;
+  boardRank: (ownerId: string) => Promise<BoardRank>;
+};
+
+/** Load the editor's account-bound source data as one snapshot. The card,
+ * profile, rank, and earned medals are required; supplementary preview metrics
+ * are independently optional so a transient leaderboard/stat failure cannot
+ * prevent the owner from editing their card. */
+export async function loadBuddyCardEditorData(
+  ownerId: string,
+  dependencies: BuddyCardEditorDataDependencies,
+) {
+  const [card, profile, rank, metrics, stats, boardRank] = await Promise.all([
+    dependencies.card(ownerId),
+    dependencies.profile(),
+    dependencies.rank(ownerId),
+    dependencies.metrics(ownerId).catch(() => null),
+    dependencies.stats(ownerId).catch(() => null),
+    dependencies.boardRank(ownerId).catch(() => null),
+  ]);
+
+  return { card, profile, rank, metrics, stats, boardRank };
 }
