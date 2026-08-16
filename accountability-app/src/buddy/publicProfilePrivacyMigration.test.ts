@@ -7,6 +7,36 @@ const migrationPath = path.resolve(
   'supabase/migrations/0097_buddy_card_presentation.sql',
 );
 const sql = fs.existsSync(migrationPath) ? fs.readFileSync(migrationPath, 'utf8') : '';
+const privacyBaselineSql = fs.readFileSync(
+  path.resolve(process.cwd(), 'supabase/migrations/0088_public_profiles_buddy_card_privacy.sql'),
+  'utf8',
+);
+
+const extractPublicProfilesView = (migrationSql: string) =>
+  migrationSql.match(
+    /create or replace view public\.public_profiles[\s\S]*?from public\.profiles p;/i,
+  )?.[0] ?? '';
+
+const normalizeLineEndings = (value: string) => value.replace(/\r\n/g, '\n');
+const presentationAdditions = `,
+        'palette_key',
+          case
+            when p.buddy_card ->> 'palette_key' in (
+              'polar_blue',
+              'victory_ember',
+              'momentum_teal',
+              'power_violet'
+            ) then p.buddy_card ->> 'palette_key'
+            else 'polar_blue'
+          end,
+        'featured_medal_ids',
+          case when coalesce(p.buddy_card -> 'show_medals' = 'true'::jsonb, false)
+            then p.buddy_card -> 'featured_medal_ids' else null end`;
+const headlineConsentGate = `case when coalesce(p.buddy_card -> 'show_headline' = 'true'::jsonb, false)
+            then p.buddy_card -> 'headline' else null end`;
+
+const stripPresentationAdditions = (viewSql: string) =>
+  normalizeLineEndings(viewSql).replace(presentationAdditions, '');
 
 describe('Buddy Card presentation migration', () => {
   test('replaces and validates a replay-safe presentation constraint', () => {
@@ -81,6 +111,26 @@ describe('Buddy Card presentation migration', () => {
     expect(sql).toMatch(
       /p\.buddy_card -> 'show_area'[\s\S]*?then p\.area[\s\S]*?p\.buddy_card -> 'show_hero'[\s\S]*?then p\.cover_url[\s\S]*?p\.buddy_card -> 'show_bio'[\s\S]*?then p\.bio/i,
     );
+  });
+
+  test('preserves the complete 0088 view boundary except for the presentation additions', () => {
+    const currentView = normalizeLineEndings(extractPublicProfilesView(sql));
+    const baselineView = normalizeLineEndings(extractPublicProfilesView(privacyBaselineSql));
+
+    expect(currentView.split(presentationAdditions)).toHaveLength(2);
+    expect(stripPresentationAdditions(currentView)).toBe(baselineView);
+  });
+
+  test('the 0088 comparison rejects unconditional headline exposure', () => {
+    const currentView = normalizeLineEndings(extractPublicProfilesView(sql));
+    const baselineView = normalizeLineEndings(extractPublicProfilesView(privacyBaselineSql));
+    const unsafeHeadlineView = currentView.replace(
+      headlineConsentGate,
+      "p.buddy_card -> 'headline'",
+    );
+
+    expect(unsafeHeadlineView).not.toBe(currentView);
+    expect(stripPresentationAdditions(unsafeHeadlineView)).not.toBe(baselineView);
   });
 
   test('keeps the view authenticated-only without widening destructive scope', () => {
