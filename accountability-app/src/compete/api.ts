@@ -391,19 +391,13 @@ export async function createChallenge(input: {
 }): Promise<string> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in');
-  const now = new Date();
-  const ends = new Date(now.getTime() + input.days * 86400000);
-  const { data, error } = await supabase
-    .from('challenges')
-    .insert({
-      creator_id: uid,
-      title: input.title.trim(),
-      metric: input.metric,
-      starts_at: now.toISOString(),
-      ends_at: ends.toISOString(),
-    })
-    .select('id')
-    .single();
+  const { data, error } = await supabase.rpc('create_challenge', {
+    p_title: input.title.trim(),
+    p_metric: input.metric,
+    p_days: input.days,
+    p_timezone_offset: new Date().getTimezoneOffset(),
+    p_expected_owner: uid,
+  });
   if (error) {
     // RLS check failure surfaces as a permissions error — make it human
     if (String(error.message).toLowerCase().includes('row-level security')) {
@@ -411,9 +405,8 @@ export async function createChallenge(input: {
     }
     throw error;
   }
-  // creator auto-joins their own challenge
-  await joinChallenge(data.id);
-  return data.id;
+  if (typeof data !== 'string') throw new Error('Challenge creation did not return an ID.');
+  return data;
 }
 
 export async function joinChallenge(id: string): Promise<void> {

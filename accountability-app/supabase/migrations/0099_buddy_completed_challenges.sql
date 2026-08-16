@@ -11,7 +11,108 @@ create policy "Participants read own rows" on public.challenge_participants
 -- Enrollment is server-owned so a client cannot backdate joined_at or join a
 -- challenge after its database-time window has closed.
 drop policy if exists "Join a challenge" on public.challenge_participants;
-revoke insert on table public.challenge_participants from authenticated, anon;
+revoke insert on table public.challenge_participants from public, anon, authenticated;
+
+-- User-created challenges retain the existing authenticated-public visibility.
+-- The current challenge schema has no private/group/page ownership branch: a
+-- user challenge is owned only by its authenticated creator. Creation and the
+-- creator's membership are therefore one transaction behind this RPC.
+revoke insert on table public.challenges from public, anon, authenticated;
+
+create or replace function public.create_challenge(
+  p_title text,
+  p_metric text,
+  p_days integer,
+  p_timezone_offset integer,
+  p_expected_owner uuid
+)
+returns uuid
+language plpgsql
+-- Definer is required because direct challenge and participant inserts are
+-- intentionally revoked. Every caller-controlled field is validated below.
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_now timestamptz := now();
+  v_challenge uuid;
+begin
+  if v_user is null then
+    raise exception 'Authentication required.' using errcode = '42501';
+  end if;
+
+  if p_expected_owner is null or p_expected_owner <> v_user then
+    raise exception 'Challenge owner does not match the signed-in account.' using errcode = '42501';
+  end if;
+
+  if not exists (
+    select 1
+    from public.profiles p
+    where p.id = v_user
+      and p.is_pro = true
+  ) then
+    raise exception 'Creating challenges is a Pro feature.' using errcode = '42501';
+  end if;
+
+  if p_title is null or length(trim(p_title)) not between 1 and 80 then
+    raise exception 'Challenge title must be between 1 and 80 characters.' using errcode = '22023';
+  end if;
+
+  if p_metric is null or p_metric not in ('consistency', 'distance', 'points') then
+    raise exception 'Invalid challenge metric.' using errcode = '22023';
+  end if;
+
+  if p_days is null or p_days not between 1 and 365 then
+    raise exception 'Challenge duration must be between 1 and 365 days.' using errcode = '22023';
+  end if;
+
+  if p_timezone_offset is null or p_timezone_offset not between -840 and 840 then
+    raise exception 'Invalid timezone offset.' using errcode = '22023';
+  end if;
+
+  insert into public.challenges (
+    creator_id,
+    title,
+    metric,
+    starts_at,
+    ends_at,
+    created_at,
+    is_official
+  ) values (
+    v_user,
+    trim(p_title),
+    p_metric,
+    v_now,
+    v_now + make_interval(days => p_days),
+    v_now,
+    false
+  )
+  returning id into v_challenge;
+
+  -- No conflict suppression or exception handler: if creator enrollment ever
+  -- fails, PostgreSQL rolls the whole function call back, including the row above.
+  insert into public.challenge_participants (
+    challenge_id,
+    user_id,
+    joined_at,
+    timezone_offset
+  ) values (
+    v_challenge,
+    v_user,
+    v_now,
+    p_timezone_offset
+  );
+
+  return v_challenge;
+end;
+$$;
+
+revoke execute on function public.create_challenge(text, text, integer, integer, uuid) from public, anon;
+grant execute on function public.create_challenge(text, text, integer, integer, uuid) to authenticated;
+
+comment on function public.create_challenge(text, text, integer, integer, uuid) is
+  'Atomically creates an authenticated-public user challenge and enrolls its authenticated Pro creator using one database timestamp.';
 
 create or replace function public.challenge_participation_summary(p_challenges uuid[])
 returns table(

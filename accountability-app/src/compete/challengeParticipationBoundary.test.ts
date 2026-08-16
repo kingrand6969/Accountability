@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -14,7 +14,7 @@ jest.mock('../lib/supabase', () => ({
   },
 }));
 
-import { getChallenge, joinChallenge, listChallenges } from './api';
+import { createChallenge, getChallenge, joinChallenge, listChallenges } from './api';
 
 const apiSource = fs.readFileSync(path.resolve(process.cwd(), 'src/compete/api.ts'), 'utf8');
 const boundarySql = fs.readFileSync(
@@ -24,6 +24,10 @@ const boundarySql = fs.readFileSync(
 
 const viewerId = '11111111-1111-4111-8111-111111111111';
 const challengeId = '22222222-2222-4222-8222-222222222222';
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 describe('challenge participant least-privilege boundary', () => {
   test('replaces the broad participant-row policy with self-only reads', () => {
@@ -84,7 +88,7 @@ describe('server-owned challenge enrollment', () => {
       'drop policy if exists "Join a challenge" on public.challenge_participants',
     );
     expect(boundarySql).toContain(
-      'revoke insert on table public.challenge_participants from authenticated, anon',
+      'revoke insert on table public.challenge_participants from public, anon, authenticated',
     );
     expect(boundarySql).toMatch(
       /create or replace function public\.join_challenge\(\s*p_challenge uuid,\s*p_timezone_offset integer\s*\)/,
@@ -193,5 +197,104 @@ describe('challenge card aggregate compatibility', () => {
 
     mockRpc.mockResolvedValueOnce({ data: null, error: new Error('summary unavailable') });
     await expect(getChallenge(challengeId)).rejects.toThrow('summary unavailable');
+  });
+});
+
+describe('atomic server-owned challenge creation', () => {
+  const createFunction = boundarySql.match(
+    /create or replace function public\.create_challenge[\s\S]*?\$\$;/,
+  )?.[0] ?? '';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetUser.mockResolvedValue({ data: { user: { id: viewerId } }, error: null });
+  });
+
+  test('binds the expected owner to auth and retains the existing Pro/public boundary', () => {
+    expect(createFunction).toContain('p_expected_owner uuid');
+    expect(createFunction).toContain('v_user uuid := auth.uid()');
+    expect(createFunction).toContain('p_expected_owner <> v_user');
+    expect(createFunction).toContain('p.id = v_user');
+    expect(createFunction).toContain('p.is_pro = true');
+    expect(createFunction).toContain('is_official');
+    expect(createFunction).toContain('false');
+    expect(createFunction).not.toMatch(/p_(privacy|group|page)/);
+    expect(boundarySql).toContain(
+      'User-created challenges retain the existing authenticated-public visibility',
+    );
+  });
+
+  test('uses one database clock for start/created time and validates duration and content', () => {
+    expect(createFunction).toContain('v_now timestamptz := now()');
+    expect(createFunction).toMatch(/starts_at[\s\S]*?v_now/);
+    expect(createFunction).toMatch(/created_at[\s\S]*?v_now/);
+    expect(createFunction).toContain("make_interval(days => p_days)");
+    expect(createFunction).toMatch(/p_days[\s\S]*?between 1 and 365/);
+    expect(createFunction).toContain("p_metric not in ('consistency', 'distance', 'points')");
+    expect(createFunction).toMatch(/length\(trim\(p_title\)\)[\s\S]*?between 1 and 80/);
+  });
+
+  test('creates challenge and creator membership exactly once in the same transactional RPC', () => {
+    expect(createFunction.match(/insert into public\.challenges/g)).toHaveLength(1);
+    expect(createFunction.match(/insert into public\.challenge_participants/g)).toHaveLength(1);
+    expect(createFunction).toMatch(
+      /insert into public\.challenges[\s\S]*?returning id into v_challenge[\s\S]*?insert into public\.challenge_participants/,
+    );
+    expect(createFunction).not.toMatch(/exception\s+when/);
+    expect(createFunction).not.toContain('on conflict');
+    expect(createFunction).toContain('return v_challenge');
+  });
+
+  test('removes legacy direct creation and grants only the narrow RPC', () => {
+    expect(boundarySql).toContain(
+      'revoke insert on table public.challenges from public, anon, authenticated',
+    );
+    expect(boundarySql).toContain(
+      'revoke execute on function public.create_challenge(text, text, integer, integer, uuid) from public, anon',
+    );
+    expect(boundarySql).toContain(
+      'grant execute on function public.create_challenge(text, text, integer, integer, uuid) to authenticated',
+    );
+
+    const clientCreate = apiSource.match(
+      /export async function createChallenge[\s\S]*?\r?\n}\r?\n\r?\nexport async function joinChallenge/,
+    )?.[0] ?? '';
+    expect(clientCreate).toMatch(/supabase\.rpc\(\s*'create_challenge'/);
+    expect(clientCreate).not.toContain("from('challenges')");
+    expect(clientCreate).not.toContain('toISOString');
+    expect(clientCreate).not.toContain('joinChallenge(');
+  });
+
+  test('phone clock cannot move the server-owned window and the returned id is preserved', async () => {
+    const toIso = jest
+      .spyOn(Date.prototype, 'toISOString')
+      .mockImplementation(() => {
+        throw new Error('phone clock must not be used');
+      });
+    const timezone = jest.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(-480);
+    mockRpc.mockResolvedValue({ data: challengeId, error: null });
+
+    await expect(
+      createChallenge({ title: '  August Momentum  ', metric: 'consistency', days: 14 }),
+    ).resolves.toBe(challengeId);
+    expect(mockRpc).toHaveBeenCalledWith('create_challenge', {
+      p_title: 'August Momentum',
+      p_metric: 'consistency',
+      p_days: 14,
+      p_timezone_offset: -480,
+      p_expected_owner: viewerId,
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
+    toIso.mockRestore();
+    timezone.mockRestore();
+  });
+
+  test('creation errors surface without a second enrollment attempt', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: new Error('Creator enrollment failed.') });
+
+    await expect(
+      createChallenge({ title: 'Atomic challenge', metric: 'distance', days: 7 }),
+    ).rejects.toThrow('Creator enrollment failed.');
+    expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 });
