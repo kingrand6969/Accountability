@@ -44,4 +44,16 @@ describe('featured Buddy Card medals', () => {
       ]);
     },
   );
+
+  test('deduplicates legacy earned medals before applying the cap', () => {
+    expect(
+      normalizeFeaturedMedalIds(undefined, [
+        'distance',
+        'distance',
+        'streak',
+        'community',
+        'consistency',
+      ]),
+    ).toEqual(['distance', 'streak', 'community', 'consistency']);
+  });
 });

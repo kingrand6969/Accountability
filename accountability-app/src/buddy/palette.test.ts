@@ -1,6 +1,9 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { BUDDY_CARD_PALETTES, resolveBuddyCardPalette } from './palette';
+import {
+  BUDDY_CARD_PALETTE_KEYS,
+  resolveBuddyCardPalette,
+} from './palette';
 
 const EXPECTED_PALETTES = {
   polar_blue: {
@@ -95,7 +98,7 @@ const EXPECTED_PALETTES = {
 
 describe('Buddy Card palettes', () => {
   test('defines exactly the four approved palette keys', () => {
-    expect(Object.keys(BUDDY_CARD_PALETTES)).toEqual([
+    expect(BUDDY_CARD_PALETTE_KEYS).toEqual([
       'polar_blue',
       'victory_ember',
       'momentum_teal',
@@ -119,4 +122,11 @@ describe('Buddy Card palettes', () => {
       );
     },
   );
+
+  test('isolates the approved palette registry from mutations to resolved tokens', () => {
+    const firstResolution = resolveBuddyCardPalette('polar_blue', 'light');
+    (firstResolution as { accent: string }).accent = '#000000';
+
+    expect(resolveBuddyCardPalette('polar_blue', 'light').accent).toBe('#1768EF');
+  });
 });

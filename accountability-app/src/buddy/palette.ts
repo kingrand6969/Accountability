@@ -1,12 +1,15 @@
-export type BuddyCardPaletteKey =
-  | 'polar_blue'
-  | 'victory_ember'
-  | 'momentum_teal'
-  | 'power_violet';
+export const BUDDY_CARD_PALETTE_KEYS = Object.freeze([
+  'polar_blue',
+  'victory_ember',
+  'momentum_teal',
+  'power_violet',
+] as const);
+
+export type BuddyCardPaletteKey = (typeof BUDDY_CARD_PALETTE_KEYS)[number];
 
 export type BuddyCardColorScheme = 'light' | 'dark';
 
-export type BuddyCardPaletteTokens = {
+export type BuddyCardPaletteTokens = Readonly<{
   accent: string;
   accentSecondary: string;
   surface: string;
@@ -15,17 +18,17 @@ export type BuddyCardPaletteTokens = {
   text: string;
   textMuted: string;
   border: string;
-};
+}>;
 
-export type BuddyCardPalette = Record<
+type BuddyCardPalette = Readonly<Record<
   BuddyCardColorScheme,
   BuddyCardPaletteTokens
->;
+>>;
 
-export const BUDDY_CARD_PALETTES: Record<
+const BUDDY_CARD_PALETTES: Readonly<Record<
   BuddyCardPaletteKey,
   BuddyCardPalette
-> = {
+>> = {
   polar_blue: {
     light: {
       accent: '#1768EF',
@@ -126,5 +129,5 @@ export function resolveBuddyCardPalette(
       ? (value as BuddyCardPaletteKey)
       : 'polar_blue';
 
-  return BUDDY_CARD_PALETTES[key][scheme];
+  return { ...BUDDY_CARD_PALETTES[key][scheme] };
 }
