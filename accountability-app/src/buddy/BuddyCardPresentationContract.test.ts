@@ -452,6 +452,7 @@ describe('PublicBuddyCardFace clean composition', () => {
     }));
     expect(badge.props.color).toBeUndefined();
     expect(badge.props.tintColor).toBeUndefined();
+    expect(badge.props.effects).toBe('none');
   });
 
   it('omits optional metric sections when no authorized values are supplied', () => {
@@ -466,5 +467,45 @@ describe('PublicBuddyCardFace clean composition', () => {
     expect(renderer.root.findAllByProps({ testID: 'buddy-card-rankings' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ testID: 'buddy-card-social-proof' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ testID: 'buddy-card-fitness' })).toHaveLength(0);
+  });
+});
+
+describe('PublicBuddyCardFace runtime wiring', () => {
+  const screenSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/app/buddy-card/[id].tsx'),
+    'utf8',
+  );
+  const editorSource = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/app/buddy-card-edit.tsx'),
+    'utf8',
+  );
+
+  function publicFaceInvocation(source: string) {
+    const start = source.indexOf('<PublicBuddyCardFace');
+    return source.slice(start, source.indexOf('/>', start));
+  }
+
+  it('loads authorized public social data and passes all available visitor values', () => {
+    const invocation = publicFaceInvocation(screenSource);
+
+    expect(screenSource).toContain('getBuddyStats(id).then(setStats)');
+    expect(screenSource).not.toMatch(/if \(buddy\) \{\s*getBuddyStats\(id\)/);
+    expect(invocation).toContain('memberSince={memberSince}');
+    expect(invocation).toContain('stats={stats}');
+    expect(invocation).toContain('boardRank={boardRank}');
+    expect(invocation).toContain('metrics={metrics}');
+  });
+
+  it('loads and passes the same available owner data into the editor visitor preview', () => {
+    const invocation = publicFaceInvocation(editorSource);
+
+    expect(editorSource).toContain('getBuddyStats(uid).then(setMyStats)');
+    expect(editorSource).toContain('getBoardRank(uid).then(setMyBoardRank)');
+    expect(editorSource).toContain('setMyMemberSince(');
+    expect(invocation).toContain('memberSince={myMemberSince}');
+    expect(invocation).toContain('lastActive={myLastActive}');
+    expect(invocation).toContain('stats={myStats}');
+    expect(invocation).toContain('boardRank={myBoardRank}');
+    expect(invocation).toContain('metrics={myMetrics}');
   });
 });

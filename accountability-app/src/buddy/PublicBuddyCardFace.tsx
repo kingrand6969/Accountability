@@ -96,7 +96,7 @@ function BuddyCardIdentity({
           <View style={styles.rankDetails}>
             {card.show_rank ? (
               <View testID="buddy-card-rank-inline" style={styles.rankInline}>
-                <RankBadge rank={rankName} size={32} animated={false} />
+                <RankBadge rank={rankName} size={32} animated={false} effects="none" />
                 <Text style={[styles.rankName, { color: palette.text }]}>{rankName}</Text>
               </View>
             ) : null}

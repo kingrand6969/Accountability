@@ -38,6 +38,7 @@ export function RankBadge({
   size = 34,
   style,
   reducedMotion,
+  effects = 'auto',
   onPress,
 }: {
   rank: string;
@@ -46,6 +47,8 @@ export function RankBadge({
   size?: number;
   style?: StyleProp<ViewStyle>;
   reducedMotion?: boolean;
+  /** `none` renders only the official artwork, without decorative effects. */
+  effects?: 'auto' | 'none';
   onPress?: () => void;
 }) {
   const cfg = rankConfig(rank);
@@ -55,6 +58,7 @@ export function RankBadge({
   // 0 (Rookie) … 1 (Mythical) — drives how much the smoke grows.
   const tierIndex = Math.max(0, RANK_ORDER.indexOf(rank as never));
   const lvl = tierIndex / (RANK_ORDER.length - 1);
+  const showEffects = effects !== 'none';
   // Aura strength: ZERO at Rookie (a clean pill, no haze past its borders), then
   // ramps in fast so it's the intended glow by the mid ranks and holds to the top.
   const glowScale = Math.min(1, lvl * 2);
@@ -73,7 +77,7 @@ export function RankBadge({
       sub?.remove?.();
     };
   }, []);
-  const motion = animated && !reducedMotion && !sysReduce;
+  const motion = showEffects && animated && !reducedMotion && !sysReduce;
 
   // more, bigger, taller, denser smoke as the rank climbs — none at Rookie
   const puffCount = motion ? Math.round(lvl * 5) : 0; // 0 (Rookie) → 5 (Mythical)
@@ -85,9 +89,10 @@ export function RankBadge({
   const [shine] = useState(() => new Animated.Value(0));
   const [flick] = useState(() => new Animated.Value(1));
   const [hover] = useState(() => new Animated.Value(0));
+  const twinkleCount = showEffects ? cfg.sparkles : 0;
   const twinkles = useMemo(
-    () => Array.from({ length: cfg.sparkles }, () => new Animated.Value(0)),
-    [cfg.sparkles],
+    () => Array.from({ length: twinkleCount }, () => new Animated.Value(0)),
+    [twinkleCount],
   );
   const puffs = useMemo(
     () => Array.from({ length: puffCount }, () => new Animated.Value(0)),
@@ -173,8 +178,9 @@ export function RankBadge({
       >
         {/* faint static base aura — a soft tinted cloud behind the badge.
             Skipped entirely at Rookie so the pill stays clean to its edges. */}
-        {glowScale > 0 ? (
+        {showEffects && glowScale > 0 ? (
           <Animated.Image
+            testID="rank-badge-static-aura"
             source={SMOKE}
             style={{
               position: 'absolute',
@@ -194,6 +200,7 @@ export function RankBadge({
           return (
             <Animated.Image
               key={`smoke-${i}`}
+              testID={`rank-badge-smoke-${i}`}
               source={SMOKE}
               style={{
                 position: 'absolute',
@@ -215,14 +222,19 @@ export function RankBadge({
 
         {/* the exact badge artwork — never altered */}
         <Animated.Image
+          testID="rank-badge-artwork"
           source={cfg.image}
           resizeMode="contain"
-          style={[StyleSheet.absoluteFill, { width: w, height: h, opacity: cfg.flicker ? flick : 1 }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { width: w, height: h, opacity: showEffects && cfg.flicker ? flick : 1 },
+          ]}
         />
 
         {/* shine sweep, clipped to the plate */}
         {motion ? (
           <View
+            testID="rank-badge-shine"
             pointerEvents="none"
             style={{ position: 'absolute', left: clipL, top: clipT, width: clipW, height: clipH, borderRadius: clipH / 2, overflow: 'hidden' }}
           >
@@ -251,6 +263,7 @@ export function RankBadge({
           ? twinkles.map((tw, i) => (
               <Animated.View
                 key={`tw-${i}`}
+                testID={`rank-badge-twinkle-${i}`}
                 pointerEvents="none"
                 style={{
                   position: 'absolute',

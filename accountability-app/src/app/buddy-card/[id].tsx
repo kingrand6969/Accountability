@@ -53,9 +53,7 @@ export default function BuddyCardScreen() {
           setView(v);
           const buddy = buddies.some((b) => b.id === id);
           setIsBuddy(buddy);
-          if (buddy) {
-            getBuddyStats(id).then(setStats).catch(() => {});
-          }
+          getBuddyStats(id).then(setStats).catch(() => {});
           const publicMetricsAllowed = Boolean(
             v?.card.show_consistency ||
             v?.card.show_points ||
@@ -211,9 +209,12 @@ export default function BuddyCardScreen() {
             name={view.name}
             area={view.area}
             avatar={view.avatar}
+            memberSince={memberSince}
             lastActive={view.last_active_at}
             headline={headline}
             card={view.card}
+            stats={stats}
+            boardRank={boardRank}
             metrics={metrics}
             onPressMedals={() =>
               router.push({ pathname: '/buddy-medals/[id]', params: { id: id! } } as never)

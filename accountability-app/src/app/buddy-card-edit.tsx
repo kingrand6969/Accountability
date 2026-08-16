@@ -4,8 +4,12 @@ import { useRouter } from 'expo-router';
 import {
   getMyBuddyCard,
   saveMyBuddyCard,
+  getBuddyStats,
+  getBoardRank,
   getCardMetrics,
+  type BoardRank,
   type BuddyCard,
+  type BuddyStats,
   type CardMetrics,
 } from '../buddy/card';
 import { PublicBuddyCardFace } from '../buddy/PublicBuddyCardFace';
@@ -36,6 +40,10 @@ export default function BuddyCardEdit() {
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myArea, setMyArea] = useState<string | null>(null);
   const [myCover, setMyCover] = useState<string | null>(null);
+  const [myMemberSince, setMyMemberSince] = useState('—');
+  const [myLastActive, setMyLastActive] = useState<string | null>(null);
+  const [myStats, setMyStats] = useState<BuddyStats | null>(null);
+  const [myBoardRank, setMyBoardRank] = useState<BoardRank | null>(null);
   const [myMetrics, setMyMetrics] = useState<CardMetrics | null>(null);
   const [myRankName, setMyRankName] = useState<string | null>(null);
   const [myMedals, setMyMedals] = useState<number | null>(null);
@@ -49,6 +57,15 @@ export default function BuddyCardEdit() {
         setMyAvatar(p?.avatar_url ?? null);
         setMyArea(p?.area ?? null);
         setMyCover(p?.cover_url ?? null);
+        setMyMemberSince(
+          p?.created_at
+            ? new Date(p.created_at).toLocaleDateString(undefined, {
+                month: 'short',
+                year: 'numeric',
+              })
+            : '—',
+        );
+        setMyLastActive(p?.last_active_at ?? null);
       })
       .catch(() => {});
     // live data so the preview shows exactly what visitors will see
@@ -56,6 +73,8 @@ export default function BuddyCardEdit() {
       const uid = data.user?.id;
       if (!uid) return;
       getCardMetrics(uid).then(setMyMetrics).catch(() => {});
+      getBuddyStats(uid).then(setMyStats).catch(() => {});
+      getBoardRank(uid).then(setMyBoardRank).catch(() => {});
     });
     getRank()
       .then((r) => {
@@ -192,8 +211,12 @@ export default function BuddyCardEdit() {
           name={myName}
           area={myArea}
           avatar={myAvatar}
+          memberSince={myMemberSince}
+          lastActive={myLastActive}
           headline={headline}
           card={previewCard}
+          stats={myStats}
+          boardRank={myBoardRank}
           metrics={myMetrics}
           onPressMedals={() => router.push('/achievements' as never)}
         />
