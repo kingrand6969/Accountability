@@ -424,6 +424,34 @@ describe('PublicBuddyCardFace clean composition', () => {
     expect(StyleSheet.flatten(challengeWins!.props.style).marginLeft).toBe(0);
   });
 
+  it('separates rank-crest consent from buddies-ranking consent', () => {
+    const crestOnly = publicCard({
+      card: {
+        ...completeCard,
+        show_rank: true,
+        show_consistency: false,
+        show_country_rank: false,
+        show_city_rank: false,
+        show_points: false,
+      },
+    });
+    expect(crestOnly.root.findByProps({ testID: 'buddy-card-rank-inline' })).toBeDefined();
+    expect(crestOnly.root.findAllByProps({ testID: 'buddy-card-rankings' })).toHaveLength(0);
+
+    const buddiesRankingOnly = publicCard({
+      card: {
+        ...completeCard,
+        show_rank: false,
+        show_consistency: true,
+        show_country_rank: false,
+        show_city_rank: false,
+        show_points: false,
+      },
+    });
+    expect(buddiesRankingOnly.root.findAllByProps({ testID: 'buddy-card-rank-inline' })).toHaveLength(0);
+    expect(renderedText(buddiesRankingOnly)).toEqual(expect.arrayContaining(['Buddies', '#3']));
+  });
+
   it('uses Mutual for another viewer and Groups for the owner', () => {
     const visitorCopy = renderedText(publicCard({ ownerView: false }));
     const ownerCopy = renderedText(publicCard({ ownerView: true, groupsCount: 6 }));

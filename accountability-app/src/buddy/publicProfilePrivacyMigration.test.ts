@@ -11,6 +11,10 @@ const privacyBaselineSql = fs.readFileSync(
   path.resolve(process.cwd(), 'supabase/migrations/0088_public_profiles_buddy_card_privacy.sql'),
   'utf8',
 );
+const metricPrivacyBaselineSql = fs.readFileSync(
+  path.resolve(process.cwd(), 'supabase/migrations/0087_member_card_stats_privacy.sql'),
+  'utf8',
+);
 
 const extractPublicProfilesView = (migrationSql: string) =>
   migrationSql.match(
@@ -18,6 +22,10 @@ const extractPublicProfilesView = (migrationSql: string) =>
   )?.[0] ?? '';
 
 const normalizeLineEndings = (value: string) => value.replace(/\r\n/g, '\n');
+const extractMemberCardStatsFunction = (migrationSql: string) =>
+  migrationSql.match(
+    /create or replace function public\.member_card_stats\(p_target uuid\)[\s\S]*?\n\$\$;/i,
+  )?.[0] ?? '';
 const presentationAdditions = `,
         'palette_key',
           case
@@ -262,9 +270,47 @@ describe('Buddy Card presentation migration', () => {
     const grants = sql.match(/^\s*grant\b[^;]*;/gim) ?? [];
     expect(grants.map((grant) => grant.trim())).toEqual([
       'grant select on public.public_profiles to authenticated;',
+      'grant execute on function public.member_card_stats(uuid) to authenticated;',
     ]);
     expect(sql).not.toMatch(/\bcascade\b/i);
-    expect(sql).not.toMatch(/\bexecute\b/i);
-    expect(sql).not.toMatch(/\bsecurity\s+definer\b/i);
+  });
+
+  test('replays the 0087 metric privacy function with only the approved avgkm gate change', () => {
+    const baselineFunction = normalizeLineEndings(
+      extractMemberCardStatsFunction(metricPrivacyBaselineSql),
+    );
+    const expectedFunction = baselineFunction.replace(
+      `    -- avgkm is intentionally not separately exposed by the current editor.\n    -- It remains owner-only until a dedicated consent toggle is added.\n    case when v_self`,
+      `    -- show_distance authorizes average and cumulative distance together.\n    case when v_show_distance`,
+    );
+    const currentFunction = normalizeLineEndings(extractMemberCardStatsFunction(sql));
+
+    expect(currentFunction).not.toBe('');
+    expect(expectedFunction).not.toBe(baselineFunction);
+    expect(currentFunction).toBe(expectedFunction);
+  });
+
+  test('show_distance false exposes neither average nor cumulative distance', () => {
+    const currentFunction = normalizeLineEndings(extractMemberCardStatsFunction(sql));
+
+    expect(currentFunction).toMatch(
+      /case when v_show_distance\s+then public\.compete_score\(p_target, 'avgkm', v_all, now\(\)\)\s+else null::numeric end/i,
+    );
+    expect(currentFunction).toMatch(
+      /case when v_show_distance\s+then public\.compete_score\(p_target, 'distance', v_all, now\(\)\)\s+else null::numeric end/i,
+    );
+    expect(currentFunction).not.toMatch(/case when v_self\s+then public\.compete_score\(p_target, 'avgkm'/i);
+  });
+
+  test('keeps the metric RPC authenticated-only with its original signature and security boundary', () => {
+    expect(sql).toContain(
+      'revoke execute on function public.member_card_stats(uuid) from public, anon;',
+    );
+    expect(sql).toContain(
+      'grant execute on function public.member_card_stats(uuid) to authenticated;',
+    );
+    const currentFunction = extractMemberCardStatsFunction(sql);
+    expect(currentFunction).toMatch(/returns table\(\s*consistency numeric,\s*points numeric,\s*avgkm numeric,\s*distance numeric,\s*chwin numeric,\s*buddies_rank bigint,\s*buddies_total bigint\s*\)/i);
+    expect(currentFunction).toMatch(/security definer\s+set search_path = ''/i);
   });
 });

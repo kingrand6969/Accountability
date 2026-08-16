@@ -154,7 +154,7 @@ function BuddyCardRankings({
       ? { label: 'Country', value: formatRank(boardRank?.countryRank) }
       : null,
     card.show_city_rank ? { label: 'City', value: formatRank(boardRank?.cityRank) } : null,
-    card.show_rank ? { label: 'Buddies', value: formatRank(metrics?.buddiesRank) } : null,
+    card.show_consistency ? { label: 'Buddies', value: formatRank(metrics?.buddiesRank) } : null,
     card.show_points
       ? { label: 'Points', value: formatWholeNumber(metrics?.points) }
       : null,
