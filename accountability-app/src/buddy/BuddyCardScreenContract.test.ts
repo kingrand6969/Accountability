@@ -58,7 +58,7 @@ describe('Buddy Card viewer state', () => {
   });
 
   test('owner renders an edit action and never renders Connect-to-self or profile options', () => {
-    expect(screenSource).toContain('const ownerView = currentUserId === id');
+    expect(screenSource).toContain("const ownerView = accessMode === 'self' && currentUserId === id");
     expect(screenSource).toContain("router.push('/buddy-card-edit' as never)");
     expect(screenSource).toContain('!ownerView && !isBuddy');
     expect(screenSource).toContain('headerRight: ownerView');
@@ -71,6 +71,16 @@ describe('Buddy Card viewer state', () => {
     expect(screenSource).toContain('<PublicBuddyCardFace');
     expect(screenSource).toContain('ownerView={ownerView}');
     expect(screenSource).toContain('getAuthorizedBuddyCard(targetId, viewerId)');
+    expect(screenSource).toContain('getBuddyCardAccessModeAsOwner(viewerId, targetId)');
+    expect(screenSource).not.toContain('areBuddiesAsOwner(viewerId, targetId)');
+  });
+
+  test('render and action guards synchronously follow the latest route target', () => {
+    expect(screenSource).toContain('latestTargetIdRef.current = id');
+    expect(screenSource).toContain('latestTargetIdRef.current === token.targetId');
+    expect(screenSource).toContain('loadContextIsCurrent(loadToken)');
+    expect(screenSource).toContain('view.id !== id');
+    expect(screenSource).toContain('context.targetId !== latestTargetIdRef.current');
   });
 
   test('the signed-in feed avatar is a separate 48-point route to the owner Buddy Card', () => {
@@ -91,6 +101,12 @@ describe('Buddy Card viewer state', () => {
     expect(screenSource).toContain('captureModerationContext()');
     expect(screenSource).toContain('confirmBlock(context)');
     expect(screenSource).toContain('confirmReport(context)');
+    expect(screenSource).toMatch(
+      /async function confirmBlock[\s\S]*?await assertBuddyCardViewer\(context\.ownerId\)/,
+    );
+    expect(screenSource).toMatch(
+      /async function confirmReport[\s\S]*?await assertBuddyCardViewer\(context\.ownerId\)/,
+    );
     expect(screenSource).toContain('moderationLockRef.current.tryAcquire(context.ownerId, context.targetId)');
     expect(screenSource).toContain('blockBuddyAsOwner(context.ownerId, context.targetId)');
     expect(screenSource).toContain('reportBuddyAsOwner(context.ownerId, context.targetId');
@@ -114,23 +130,61 @@ describe('Buddy Card viewer state', () => {
 });
 
 describe('full Buddy profile privacy boundary', () => {
+  test('server resolves self, buddy, public, and blocked/missing as unavailable without leaking why', () => {
+    expect(fullProfileSql).toContain('create or replace function public.buddy_card_access_mode');
+    expect(fullProfileSql).toContain("returns text");
+    expect(fullProfileSql).toContain("set search_path = ''");
+    expect(fullProfileSql).toContain("then 'self'");
+    expect(fullProfileSql).toContain("then 'unavailable'");
+    expect(fullProfileSql).toContain("then 'buddy'");
+    expect(fullProfileSql).toContain("else 'public'");
+    expect(fullProfileSql).toContain('bb.blocker = auth.uid() and bb.blocked = p_target');
+    expect(fullProfileSql).toContain('bb.blocked = auth.uid() and bb.blocker = p_target');
+    expect(fullProfileSql).toContain(
+      'revoke execute on function public.buddy_card_access_mode(uuid) from public, anon',
+    );
+    expect(fullProfileSql).toContain(
+      'grant execute on function public.buddy_card_access_mode(uuid) to authenticated',
+    );
+
+    const mode = (
+      self: boolean,
+      exists: boolean,
+      linked: boolean,
+      blockedByViewer: boolean,
+      blockedByTarget: boolean,
+    ) => {
+      if (!exists) return 'unavailable';
+      if (self) return 'self';
+      if (blockedByViewer || blockedByTarget) return 'unavailable';
+      if (linked) return 'buddy';
+      return 'public';
+    };
+    expect(mode(true, true, true, true, true)).toBe('self');
+    expect(mode(false, true, true, false, false)).toBe('buddy');
+    expect(mode(false, true, false, false, false)).toBe('public');
+    expect(mode(false, true, true, true, false)).toBe('unavailable');
+    expect(mode(false, true, true, false, true)).toBe('unavailable');
+    expect(mode(false, true, false, true, false)).toBe('unavailable');
+    expect(mode(false, true, false, false, true)).toBe('unavailable');
+    expect(mode(false, false, false, false, false)).toBe('unavailable');
+  });
+
   test('PostgreSQL releases the full profile only to self or an accepted buddy pair', () => {
     expect(fullProfileSql).toContain('create or replace function public.buddy_full_profile');
     expect(fullProfileSql).toContain('security definer');
     expect(fullProfileSql).toContain("set search_path = ''");
     expect(fullProfileSql).toContain('auth.uid()');
-    expect(fullProfileSql).toContain('from public.buddy_links');
-    expect(fullProfileSql).toContain('not exists (');
-    expect(fullProfileSql).toContain('from public.buddy_blocks');
-    expect(fullProfileSql).toContain('bb.blocker = auth.uid() and bb.blocked = p.id');
-    expect(fullProfileSql).toContain('bb.blocked = auth.uid() and bb.blocker = p.id');
+    expect(fullProfileSql).toContain(
+      "public.buddy_card_access_mode(p_target) in ('self', 'buddy')",
+    );
     expect(fullProfileSql).toContain('revoke execute on function public.buddy_full_profile(uuid) from public, anon');
     expect(fullProfileSql).toContain('grant execute on function public.buddy_full_profile(uuid) to authenticated');
   });
 
-  test('the SQL keeps self access outside the linked-and-unblocked buddy branch', () => {
+  test('the full-profile function delegates to the same block-aware server mode', () => {
     expect(fullProfileSql).toMatch(
-      /p\.id = auth\.uid\(\)\s+or \(\s+exists \([\s\S]*?from public\.buddy_links[\s\S]*?and not exists \([\s\S]*?from public\.buddy_blocks/i,
+      /create or replace function public\.buddy_full_profile[\s\S]*?public\.buddy_card_access_mode\(p_target\) in \('self', 'buddy'\)/i,
     );
   });
 
@@ -170,6 +224,29 @@ describe('full Buddy profile privacy boundary', () => {
     expect(mockRpc).toHaveBeenCalledWith('buddy_full_profile', { p_target: targetId });
     expect(mockGetUser).toHaveBeenCalledTimes(2);
   });
+
+  test.each(['self', 'buddy', 'public', 'unavailable'] as const)(
+    'the access-mode RPC returns %s while bound to the initiating viewer',
+    async (mode) => {
+      const viewerId = '11111111-1111-4111-8111-111111111111';
+      const targetId = '22222222-2222-4222-8222-222222222222';
+      mockGetUser.mockResolvedValue(authUser(viewerId));
+      mockRpc.mockResolvedValue({ data: mode, error: null });
+
+      await expect(
+        relationship().getBuddyCardAccessModeAsOwner(viewerId, targetId),
+      ).resolves.toBe(mode);
+      expect(mockRpc).toHaveBeenCalledWith('buddy_card_access_mode', { p_target: targetId });
+      expect(mockGetUser).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  test('unavailable access renders no profile, retry, or Connect affordance', () => {
+    expect(screenSource).toContain("if (mode === 'unavailable')");
+    expect(screenSource).toContain("const confirmedMode = mode === 'public'");
+    expect(screenSource).toContain("This Buddy Card is unavailable.");
+    expect(screenSource).toContain("accessMode === 'public'");
+  });
 });
 
 describe('Buddy Card connection lifecycle', () => {
@@ -181,6 +258,8 @@ describe('Buddy Card connection lifecycle', () => {
 
     const completion = value.promise.then((next) => relationship().commitBuddyCardOptionalValue(
       viewerId,
+      'target-a',
+      () => 'target-a',
       () => true,
       setter,
       next,
@@ -189,6 +268,33 @@ describe('Buddy Card connection lifecycle', () => {
 
     await expect(completion).resolves.toBe(false);
     expect(setter).not.toHaveBeenCalled();
+  });
+
+  test('target replacement before focus cleanup blocks Connect, Block, Report, and optional commits', async () => {
+    const { BuddyCardLoadGuard } = require('./BuddyCardLoadGuard') as typeof import('./BuddyCardLoadGuard');
+    const guard = new BuddyCardLoadGuard();
+    const token = guard.bindViewer(guard.begin('target-a'), 'viewer-a')!;
+    let currentTarget = 'target-a';
+    const actionAllowed = () =>
+      guard.owns(token) && currentTarget === token.targetId;
+    const setter = jest.fn<(value: number) => void>();
+
+    currentTarget = 'target-b';
+    expect(actionAllowed()).toBe(false);
+    expect(actionAllowed()).toBe(false);
+    expect(actionAllowed()).toBe(false);
+    await expect(
+      relationship().commitBuddyCardOptionalValue(
+        'viewer-a',
+        'target-a',
+        () => currentTarget,
+        () => guard.owns(token),
+        setter,
+        7,
+      ),
+    ).resolves.toBe(false);
+    expect(setter).not.toHaveBeenCalled();
+    expect(mockGetUser).not.toHaveBeenCalled();
   });
 
   test('relationship lookup stays bound to the initiating viewer and target', async () => {

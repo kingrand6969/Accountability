@@ -32,13 +32,14 @@ import {
   type BuddyCardLoadToken,
 } from '../../buddy/BuddyCardLoadGuard';
 import {
-  areBuddiesAsOwner,
   assertBuddyCardViewer,
   blockBuddyAsOwner,
   commitBuddyCardOptionalValue,
   createBuddyCardConnectLock,
+  getBuddyCardAccessModeAsOwner,
   reportBuddyAsOwner,
   sendBuddyRequestAsOwner,
+  type BuddyCardAccessMode,
   type BuddyCardConnectToken,
 } from '../../buddy/buddyCardRelationship';
 import { supabase } from '../../lib/supabase';
@@ -63,7 +64,7 @@ export default function BuddyCardScreen() {
   const [boardRank, setBoardRank] = useState<BoardRank | null>(null);
   const [metrics, setMetrics] = useState<CardMetrics | null>(null);
   const [posts, setPosts] = useState<CardPost[] | null>(null);
-  const [isBuddy, setIsBuddy] = useState(false);
+  const [accessMode, setAccessMode] = useState<BuddyCardAccessMode | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -77,6 +78,17 @@ export default function BuddyCardScreen() {
   const connectTokenRef = useRef<BuddyCardConnectToken | null>(null);
   const moderationLockRef = useRef(createBuddyCardConnectLock());
   const moderationTokenRef = useRef<BuddyCardConnectToken | null>(null);
+  const latestTargetIdRef = useRef(id);
+  // Route params can change before the previous focus cleanup runs.
+  // eslint-disable-next-line react-hooks/refs
+  latestTargetIdRef.current = id;
+
+  function loadContextIsCurrent(token: BuddyCardLoadToken): boolean {
+    return (
+      latestTargetIdRef.current === token.targetId &&
+      loadGuardRef.current.owns(token)
+    );
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -96,7 +108,7 @@ export default function BuddyCardScreen() {
       setBoardRank(null);
       setMetrics(null);
       setPosts(null);
-      setIsBuddy(false);
+      setAccessMode(null);
       setSent(false);
       setSending(false);
       setCurrentUserId(null);
@@ -106,37 +118,43 @@ export default function BuddyCardScreen() {
       void supabase.auth
         .getUser()
         .then(({ data }) => {
-          if (!guard.isCurrentTarget(targetToken)) return;
+          if (
+            latestTargetIdRef.current !== targetToken.targetId ||
+            !guard.isCurrentTarget(targetToken)
+          ) return;
           const viewerId = data.user?.id ?? null;
           const token = guard.bindViewer(targetToken, viewerId);
           if (!token) return;
           activeToken = token;
           activeLoadTokenRef.current = token;
+          if (!loadContextIsCurrent(token)) return;
           setCurrentUserId(viewerId);
 
           const commit = <T,>(setter: (value: T) => void, value: T) => {
-            if (!guard.owns(token)) return;
+            if (!loadContextIsCurrent(token)) return;
             setter(value);
           };
           const commitOptional = <T,>(setter: (value: T) => void, value: T) =>
             viewerId
               ? commitBuddyCardOptionalValue(
                   viewerId,
-                  () => guard.owns(token),
+                  targetId,
+                  () => latestTargetIdRef.current,
+                  () => loadContextIsCurrent(token),
                   setter,
                   value,
                 )
               : Promise.resolve(false);
 
           const authResult = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!guard.owns(token)) return;
+            if (!loadContextIsCurrent(token)) return;
             if ((session?.user.id ?? null) === token.viewerId) return;
             setView(null);
             setStats(null);
             setBoardRank(null);
             setMetrics(null);
             setPosts(null);
-            setIsBuddy(false);
+            setAccessMode(null);
             setSent(false);
             setSending(false);
             setCurrentUserId(null);
@@ -152,48 +170,74 @@ export default function BuddyCardScreen() {
             moderationTokenRef.current = null;
             setAccountEpoch((value) => value + 1);
           });
-          if (!guard.owns(token)) {
+          if (!loadContextIsCurrent(token)) {
             authResult.data.subscription.unsubscribe();
             return;
           }
           authSubscription = authResult.data.subscription;
 
-          const ownerView = viewerId === targetId;
-          const relationship = viewerId && !ownerView
-            ? areBuddiesAsOwner(viewerId, targetId)
-            : Promise.resolve(false);
+          if (!viewerId) {
+            commit(setAccessMode, 'unavailable');
+            commit(setView, null);
+            commit(setLoading, false);
+            return;
+          }
 
-          void Promise.all([getBuddyCard(targetId), relationship])
-            .then(async ([publicView, buddy]) => {
-              const v = buddy && viewerId
+          void (async () => {
+            let restartRequested = false;
+            try {
+              const mode = await getBuddyCardAccessModeAsOwner(viewerId, targetId);
+              if (!loadContextIsCurrent(token)) return;
+              if (mode === 'unavailable') {
+                commit(setAccessMode, mode);
+                commit(setView, null);
+                commit(setPosts, []);
+                commit(setLoadError, null);
+                return;
+              }
+              const v = mode === 'self' || mode === 'buddy'
                 ? await getAuthorizedBuddyCard(targetId, viewerId)
-                : publicView;
-              if (viewerId) await assertBuddyCardViewer(viewerId);
-              if (!guard.owns(token)) return;
-              if (!v) throw new Error('This person is not available to this account.');
+                : await getBuddyCard(targetId);
+              const confirmedMode = mode === 'public'
+                ? await getBuddyCardAccessModeAsOwner(viewerId, targetId)
+                : mode;
+              await assertBuddyCardViewer(viewerId);
+              if (!loadContextIsCurrent(token)) return;
+              if (confirmedMode === 'unavailable' || !v || v.id !== targetId) {
+                commit(setAccessMode, 'unavailable');
+                commit(setView, null);
+                commit(setPosts, []);
+                commit(setLoadError, null);
+                return;
+              }
+              if (confirmedMode !== mode) {
+                restartRequested = true;
+                setReloadKey((value) => value + 1);
+                return;
+              }
               commit(setView, v);
-              commit(setIsBuddy, buddy);
+              commit(setAccessMode, mode);
               void getBuddyStats(targetId)
                 .then((nextStats) => commitOptional(setStats, nextStats))
                 .catch(() => {});
-              const fullView = ownerView || buddy;
+              const fullView = mode === 'self' || mode === 'buddy';
               const publicMetricsAllowed = Boolean(
-                v?.card.show_consistency ||
-                  v?.card.show_points ||
-                  v?.card.show_distance ||
-                  v?.card.show_challenge_wins,
+                v.card.show_consistency ||
+                  v.card.show_points ||
+                  v.card.show_distance ||
+                  v.card.show_challenge_wins,
               );
               if (fullView || publicMetricsAllowed) {
                 void getCardMetrics(targetId)
                   .then((nextMetrics) => commitOptional(setMetrics, nextMetrics))
                   .catch(() => {});
               }
-              if (fullView || v?.card.show_city_rank || v?.card.show_country_rank) {
+              if (fullView || v.card.show_city_rank || v.card.show_country_rank) {
                 void getBoardRank(targetId)
                   .then((nextBoardRank) => commitOptional(setBoardRank, nextBoardRank))
                   .catch(() => {});
               }
-              if (fullView || v?.card.show_posts) {
+              if (fullView || v.card.show_posts) {
                 void listCardPosts(targetId, fullView)
                   .then((nextPosts) => commitOptional(setPosts, nextPosts))
                   .catch(() => {
@@ -202,26 +246,40 @@ export default function BuddyCardScreen() {
               } else {
                 commit(setPosts, []);
               }
-            })
-            .catch((error) => {
-              if (!guard.owns(token)) return;
+            } catch (error) {
+              if (!loadContextIsCurrent(token)) return;
               if (/account changed/i.test(String((error as Error).message ?? error))) {
                 guard.cancel(token);
                 activeLoadTokenRef.current = null;
                 setAccountEpoch((value) => value + 1);
                 return;
               }
+              try {
+                await assertBuddyCardViewer(viewerId);
+              } catch {
+                return;
+              }
+              if (!loadContextIsCurrent(token)) return;
               commit(
                 setLoadError,
                 String((error as Error).message || 'Could not load Buddy Card.'),
               );
               commit(setView, null);
-            })
-            .finally(() => commit(setLoading, false));
+              commit(setAccessMode, null);
+            } finally {
+              if (restartRequested) return;
+              try {
+                await assertBuddyCardViewer(viewerId);
+              } catch {
+                return;
+              }
+              commit(setLoading, false);
+            }
+          })();
         })
         .catch((error) => {
           const token = guard.bindViewer(targetToken, null);
-          if (!token || !guard.owns(token)) return;
+          if (!token || !loadContextIsCurrent(token)) return;
           activeToken = token;
           activeLoadTokenRef.current = token;
           setLoadError(String((error as Error).message || 'Could not load Buddy Card.'));
@@ -244,22 +302,24 @@ export default function BuddyCardScreen() {
 
   async function onConnect() {
     const loadToken = activeLoadTokenRef.current;
-    if (!id || !loadToken?.viewerId || loadToken.viewerId === id) return;
-    if (!loadGuardRef.current.owns(loadToken)) return;
+    if (!loadToken?.viewerId || loadToken.viewerId === loadToken.targetId) return;
+    if (accessMode !== 'public' || view?.id !== loadToken.targetId) return;
+    if (!loadContextIsCurrent(loadToken)) return;
     const ownerId = loadToken.viewerId;
-    const targetId = id;
+    const targetId = loadToken.targetId;
+    const targetName = view.name;
     const connectToken = connectLockRef.current.tryAcquire(ownerId, targetId);
     if (!connectToken) return;
     connectTokenRef.current = connectToken;
     setSending(true);
     try {
       await sendBuddyRequestAsOwner(ownerId, targetId);
-      if (!loadGuardRef.current.owns(loadToken)) return;
+      if (!loadContextIsCurrent(loadToken)) return;
       if (!connectLockRef.current.owns(connectToken, ownerId, targetId)) return;
       setSent(true);
-      showToast(`Request sent to ${authorLabel(view?.name ?? null)}`);
+      showToast(`Request sent to ${authorLabel(targetName)}`);
     } catch (e) {
-      if (!loadGuardRef.current.owns(loadToken)) return;
+      if (!loadContextIsCurrent(loadToken)) return;
       if (!connectLockRef.current.owns(connectToken, ownerId, targetId)) return;
       if (/account changed/i.test(String((e as Error).message ?? e))) return;
       Alert.alert('Could not send', String((e as Error).message ?? e));
@@ -267,14 +327,15 @@ export default function BuddyCardScreen() {
       const ownsAction = connectLockRef.current.owns(connectToken, ownerId, targetId);
       connectLockRef.current.release(connectToken);
       if (connectTokenRef.current === connectToken) connectTokenRef.current = null;
-      if (ownsAction && loadGuardRef.current.owns(loadToken)) setSending(false);
+      if (ownsAction && loadContextIsCurrent(loadToken)) setSending(false);
     }
   }
 
   function captureModerationContext(): ModerationContext | null {
     const loadToken = activeLoadTokenRef.current;
     if (!id || !view || !loadToken?.viewerId || loadToken.viewerId === id) return null;
-    if (!loadGuardRef.current.owns(loadToken)) return null;
+    if (view.id !== id || loadToken.targetId !== id) return null;
+    if (!loadContextIsCurrent(loadToken)) return null;
     return {
       loadToken,
       ownerId: loadToken.viewerId,
@@ -289,7 +350,8 @@ export default function BuddyCardScreen() {
   ): boolean {
     return (
       activeLoadTokenRef.current === context.loadToken &&
-      loadGuardRef.current.owns(context.loadToken) &&
+      context.targetId === latestTargetIdRef.current &&
+      loadContextIsCurrent(context.loadToken) &&
       moderationLockRef.current.owns(actionToken, context.ownerId, context.targetId)
     );
   }
@@ -298,13 +360,33 @@ export default function BuddyCardScreen() {
     const context = captureModerationContext();
     if (!context) return;
     Alert.alert(authorLabel(context.name), undefined, [
-      { text: 'Block', style: 'destructive', onPress: () => confirmBlock(context) },
-      { text: 'Report', onPress: () => confirmReport(context) },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: () => {
+          void confirmBlock(context);
+        },
+      },
+      {
+        text: 'Report',
+        onPress: () => {
+          void confirmReport(context);
+        },
+      },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }
 
-  function confirmBlock(context: ModerationContext) {
+  async function confirmBlock(context: ModerationContext) {
+    if (context.targetId !== latestTargetIdRef.current) return;
+    if (!loadContextIsCurrent(context.loadToken)) return;
+    try {
+      await assertBuddyCardViewer(context.ownerId);
+    } catch {
+      return;
+    }
+    if (context.targetId !== latestTargetIdRef.current) return;
+    if (!loadContextIsCurrent(context.loadToken)) return;
     Alert.alert(
       `Block ${authorLabel(context.name)}?`,
       "They won't be able to message you and you won't see each other. You can undo this later.",
@@ -322,7 +404,8 @@ export default function BuddyCardScreen() {
   }
 
   async function runBlock(context: ModerationContext) {
-    if (!loadGuardRef.current.owns(context.loadToken)) return;
+    if (context.targetId !== latestTargetIdRef.current) return;
+    if (!loadContextIsCurrent(context.loadToken)) return;
     const actionToken = moderationLockRef.current.tryAcquire(context.ownerId, context.targetId);
     if (!actionToken) return;
     moderationTokenRef.current = actionToken;
@@ -345,7 +428,16 @@ export default function BuddyCardScreen() {
     }
   }
 
-  function confirmReport(context: ModerationContext) {
+  async function confirmReport(context: ModerationContext) {
+    if (context.targetId !== latestTargetIdRef.current) return;
+    if (!loadContextIsCurrent(context.loadToken)) return;
+    try {
+      await assertBuddyCardViewer(context.ownerId);
+    } catch {
+      return;
+    }
+    if (context.targetId !== latestTargetIdRef.current) return;
+    if (!loadContextIsCurrent(context.loadToken)) return;
     Alert.alert(
       `Report ${authorLabel(context.name)}?`,
       "We'll review this profile. Reporting also blocks them so they can't reach you.",
@@ -363,7 +455,8 @@ export default function BuddyCardScreen() {
   }
 
   async function runReport(context: ModerationContext) {
-    if (!loadGuardRef.current.owns(context.loadToken)) return;
+    if (context.targetId !== latestTargetIdRef.current) return;
+    if (!loadContextIsCurrent(context.loadToken)) return;
     const actionToken = moderationLockRef.current.tryAcquire(context.ownerId, context.targetId);
     if (!actionToken) return;
     moderationTokenRef.current = actionToken;
@@ -388,7 +481,7 @@ export default function BuddyCardScreen() {
     }
   }
 
-  if (loading) {
+  if (loading || (view != null && view.id !== id)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -405,7 +498,7 @@ export default function BuddyCardScreen() {
           color={colors.textFaint}
         />
         <Text style={styles.missing}>
-          {loadError ? 'Could not load Buddy Card' : "This person isn't available."}
+          {loadError ? 'Could not load Buddy Card' : 'This Buddy Card is unavailable.'}
         </Text>
         {loadError ? <Text style={styles.errorDetail}>{loadError}</Text> : null}
         {loadError ? (
@@ -423,7 +516,8 @@ export default function BuddyCardScreen() {
     );
   }
 
-  const ownerView = currentUserId === id;
+  const ownerView = accessMode === 'self' && currentUserId === id;
+  const isBuddy = accessMode === 'buddy';
   const fullBuddyView = isBuddy && !ownerView;
   const { headline, about } = cardText(view);
   const visibleAbout = ownerView || isBuddy ? view.bio : about;
@@ -488,7 +582,7 @@ export default function BuddyCardScreen() {
         )}
       </View>
 
-      {!ownerView && !isBuddy ? (
+      {accessMode === 'public' ? (
         <View style={styles.privacyRow}>
           <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
           <Text style={styles.privacyText}>
@@ -590,7 +684,7 @@ export default function BuddyCardScreen() {
             style={styles.connect}
           />
         </>
-      ) : !ownerView && !isBuddy ? (
+      ) : accessMode === 'public' ? (
         <>
           <Button
             title={sent ? 'Request sent' : `Connect with ${authorLabel(view.name)}`}

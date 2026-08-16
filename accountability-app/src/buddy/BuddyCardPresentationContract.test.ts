@@ -549,7 +549,7 @@ describe('PublicBuddyCardFace runtime wiring', () => {
     expect(screenSource).toContain('setMetrics(null)');
     expect(screenSource).toContain('setPosts(null)');
     expect(screenSource).toContain('guard.bindViewer(targetToken, viewerId)');
-    expect(screenSource).toContain('if (!guard.owns(token)) return');
+    expect(screenSource).toContain('if (!loadContextIsCurrent(token)) return');
     expect(screenSource).toContain('guard.cancel(activeToken ?? targetToken)');
     expect(screenSource).not.toMatch(/\.then\(set(?:View|Stats|BoardRank|Metrics|Posts|IsBuddy|Loading)/);
     expect(screenSource).not.toContain('catch(() => setPosts([]))');
@@ -560,7 +560,7 @@ describe('PublicBuddyCardFace runtime wiring', () => {
     const authEnd = screenSource.indexOf('authResult.data.subscription', authStart);
     const authChangeHandler = screenSource.slice(authStart, authEnd);
 
-    expect(authChangeHandler.indexOf('if (!guard.owns(token)) return')).toBeGreaterThanOrEqual(0);
+    expect(authChangeHandler.indexOf('if (!loadContextIsCurrent(token)) return')).toBeGreaterThanOrEqual(0);
     expect(authChangeHandler.indexOf('setView(null)')).toBeGreaterThanOrEqual(0);
     expect(authChangeHandler.indexOf('setLoading(true)')).toBeGreaterThanOrEqual(0);
     expect(authChangeHandler.indexOf('guard.cancel(token)')).toBeGreaterThan(
