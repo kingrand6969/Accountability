@@ -1,10 +1,13 @@
 import { supabase } from '../lib/supabase';
+import type { BuddyCardPaletteKey } from './palette';
 
 /** Default card background — brand blue. Users can replace it with a photo. */
 export const CARD_BLUE: [string, string] = ['#60a5fa', '#1d4ed8'];
 
 export type BuddyCard = {
   bg_url?: string | null; // custom background photo (else the blue gradient)
+  palette_key?: BuddyCardPaletteKey;
+  featured_medal_ids?: string[];
   /** Explicit owner opt-in for a photo-led public card. The media reference is
    * stored in the card JSON only after the owner enables this in the editor. */
   show_hero?: boolean;
