@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { BuddyCardPaletteKey } from './palette';
+import { pickBuddyCardEditorChanges } from './editorModel';
 
 /** Default card background — brand blue. Users can replace it with a photo. */
 export const CARD_BLUE: [string, string] = ['#60a5fa', '#1d4ed8'];
@@ -189,25 +190,62 @@ export async function getBuddyCards(ids: string[]): Promise<Map<string, BuddyCar
   return result;
 }
 
-export async function getMyBuddyCard(): Promise<BuddyCard> {
+export async function getMyBuddyCard(expectedOwnerId?: string): Promise<BuddyCard> {
   const uid = await me();
   if (!uid) return {};
+  if (expectedOwnerId && uid !== expectedOwnerId) {
+    throw new Error('Account changed. Review your Buddy Card and try again.');
+  }
+  const ownerId = expectedOwnerId ?? uid;
   const { data } = await supabase
     .from('profiles')
     .select('buddy_card')
-    .eq('id', uid)
+    .eq('id', ownerId)
     .maybeSingle();
   return ((data?.buddy_card ?? {}) as BuddyCard) || {};
 }
 
-export async function saveMyBuddyCard(card: BuddyCard): Promise<void> {
+const ACCOUNT_CHANGED = 'Account changed. Review your Buddy Card and try again.';
+
+async function assertExpectedOwner(expectedOwnerId: string): Promise<void> {
   const uid = await me();
-  if (!uid) throw new Error('Not signed in.');
-  const { error } = await supabase
+  if (!uid || uid !== expectedOwnerId) throw new Error(ACCOUNT_CHANGED);
+}
+
+/**
+ * Save only owner-editable Buddy Card fields. The current JSON is read again
+ * immediately before the update, so rank snapshots, legacy presentation data,
+ * privacy fields added by newer clients, and other unrelated keys are retained.
+ */
+export async function saveMyBuddyCard(card: BuddyCard, expectedOwnerId: string): Promise<void> {
+  await assertExpectedOwner(expectedOwnerId);
+
+  const { data: current, error: readError } = await supabase
     .from('profiles')
-    .update({ buddy_card: card })
-    .eq('id', uid);
+    .select('buddy_card')
+    .eq('id', expectedOwnerId)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!current) throw new Error('Buddy Card could not be saved for this account.');
+
+  // Close the gap between the authenticated read and mutation. If identity
+  // changes after this check, RLS and the expected-owner filter still fail
+  // closed rather than targeting the newly active account.
+  await assertExpectedOwner(expectedOwnerId);
+  const existing = ((current.buddy_card ?? {}) as BuddyCard) || {};
+  const next = { ...existing, ...pickBuddyCardEditorChanges(card) };
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    .update({ buddy_card: next })
+    .eq('id', expectedOwnerId)
+    .select('id')
+    .maybeSingle();
   if (error) throw error;
+  if (!updated?.id) throw new Error('Buddy Card could not be saved for this account.');
+
+  // A completed write is safe because it was bound to expectedOwnerId. Do not
+  // let a switched account receive the prior account's success UI, however.
+  await assertExpectedOwner(expectedOwnerId);
 }
 
 export type CardPost = {

@@ -571,8 +571,10 @@ describe('PublicBuddyCardFace runtime wiring', () => {
   it('loads and passes the same available owner data into the editor visitor preview', () => {
     const invocation = publicFaceInvocation(editorSource);
 
-    expect(editorSource).toContain('getBuddyStats(uid).then(setMyStats)');
-    expect(editorSource).toContain('getBoardRank(uid).then(setMyBoardRank)');
+    expect(editorSource).toContain('getBuddyStats(ownerId)');
+    expect(editorSource).toContain('getBoardRank(ownerId)');
+    expect(editorSource).toContain('setMyStats(stats)');
+    expect(editorSource).toContain('setMyBoardRank(boardRank)');
     expect(editorSource).toContain('setMyMemberSince(');
     expect(invocation).toContain('memberSince={myMemberSince}');
     expect(invocation).toContain('lastActive={myLastActive}');
