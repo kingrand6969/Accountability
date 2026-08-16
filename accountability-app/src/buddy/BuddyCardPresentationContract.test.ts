@@ -122,6 +122,49 @@ describe('BuddyCardFocus', () => {
     act(() => action.props.onPress());
     expect(renderer.root.findByProps({ testID: 'buddy-card-focus-copy' }).props.numberOfLines).toBe(3);
   });
+
+  it('reconciles expansion and measurement when the focus text is replaced', () => {
+    const renderer = render(createElement(BuddyCardFocus, {
+      text: 'The original long focus needs more than three rendered lines.',
+      palette,
+    }));
+    const staleMeasurer = renderer.root.findByProps({ testID: 'buddy-card-focus-measurer' });
+    const staleLayoutHandler = staleMeasurer.props.onTextLayout;
+
+    act(() => {
+      staleMeasurer.props.onTextLayout({ nativeEvent: { lines: [{}, {}, {}, {}] } });
+    });
+    act(() => interactiveByLabel(renderer, 'View full current focus').props.onPress());
+    expect(renderer.root.findByProps({ testID: 'buddy-card-focus-copy' }).props.numberOfLines).toBeUndefined();
+
+    act(() => {
+      renderer.update(createElement(BuddyCardFocus, { text: 'A new short focus', palette }));
+    });
+    expect(renderer.root.findByProps({ testID: 'buddy-card-focus-copy' }).props.numberOfLines).toBe(3);
+    expect(renderer.root.findAll((node) => node.props.accessibilityRole === 'button')).toHaveLength(0);
+
+    act(() => {
+      staleLayoutHandler({ nativeEvent: { lines: [{}, {}, {}, {}, {}] } });
+    });
+    expect(renderer.root.findAll((node) => node.props.accessibilityRole === 'button')).toHaveLength(0);
+
+    const currentMeasurer = renderer.root.findByProps({ testID: 'buddy-card-focus-measurer' });
+    act(() => {
+      currentMeasurer.props.onTextLayout({ nativeEvent: { lines: [{}, {}] } });
+    });
+    expect(renderer.root.findAll((node) => node.props.accessibilityRole === 'button')).toHaveLength(0);
+
+    act(() => {
+      renderer.update(createElement(BuddyCardFocus, { text: '   ', palette }));
+    });
+    expect(renderer.toJSON()).toBeNull();
+
+    act(() => {
+      renderer.update(createElement(BuddyCardFocus, { text: 'Another short focus', palette }));
+    });
+    expect(renderer.root.findByProps({ testID: 'buddy-card-focus-copy' }).props.numberOfLines).toBe(3);
+    expect(renderer.root.findAll((node) => node.props.accessibilityRole === 'button')).toHaveLength(0);
+  });
 });
 
 describe('BuddyCardAchievements', () => {

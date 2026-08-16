@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { font, spacing } from '../ui/theme';
@@ -11,9 +11,18 @@ export function BuddyCardFocus({
   text: string | null | undefined;
   palette: BuddyCardPaletteTokens;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [truncated, setTruncated] = useState(false);
   const copy = text?.trim();
+  const [expandedCopy, setExpandedCopy] = useState<string | null>(null);
+  const [measurement, setMeasurement] = useState<{
+    copy: string;
+    truncated: boolean;
+  } | null>(null);
+  const expanded = !!copy && expandedCopy === copy;
+  const truncated = !!copy && measurement?.copy === copy && measurement.truncated;
+
+  useEffect(() => {
+    setExpandedCopy(null);
+  }, [copy]);
 
   if (!copy) return null;
 
@@ -35,7 +44,14 @@ export function BuddyCardFocus({
         importantForAccessibility="no-hide-descendants"
         pointerEvents="none"
         style={[styles.copy, styles.measurer, { color: palette.text }]}
-        onTextLayout={(event) => setTruncated(event.nativeEvent.lines.length > 3)}
+        onTextLayout={(event) => {
+          const nextTruncated = event.nativeEvent.lines.length > 3;
+          setMeasurement((current) =>
+            current?.copy === copy && current.truncated === nextTruncated
+              ? current
+              : { copy, truncated: nextTruncated },
+          );
+        }}
       >
         {copy}
       </Text>
@@ -48,7 +64,7 @@ export function BuddyCardFocus({
       </Text>
       {truncated || expanded ? (
         <Pressable
-          onPress={() => setExpanded((value) => !value)}
+          onPress={() => setExpandedCopy(expanded ? null : copy)}
           accessibilityRole="button"
           accessibilityLabel={expanded ? 'Collapse current focus' : 'View full current focus'}
           accessibilityState={{ expanded }}
