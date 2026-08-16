@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View, useColorScheme } from 'react-native';
 
 import { RankBadge } from '../achievements/RankBadge';
+import { RANK_ORDER, type RankName } from '../achievements/rankAssets';
 import { authorLabel, timeAgo } from '../feed/format';
 import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
 import { CachedImage } from '../ui/CachedImage';
@@ -52,13 +53,16 @@ function BuddyCardIdentity({
 }: IdentityProps): React.JSX.Element {
   const displayName = authorLabel(name);
   const resolvedAvatar = useResolvedMediaUrl(avatar);
-  const rankName = card.rank_name || 'Rookie';
+  const rankName = RANK_ORDER.includes(card.rank_name as RankName)
+    ? (card.rank_name as RankName)
+    : null;
   const traits = card.show_traits ? card.traits?.filter(Boolean).slice(0, 3) ?? [] : [];
   const identityMeta = [
     card.show_area && area ? area : null,
     card.show_last_active && lastActive ? `Active ${timeAgo(lastActive)}` : null,
   ].filter((value): value is string => Boolean(value));
-  const showRankDetails = Boolean(card.show_rank || card.show_challenge_wins);
+  const showRank = Boolean(card.show_rank && rankName);
+  const showRankDetails = Boolean(showRank || card.show_challenge_wins);
 
   return (
     <View testID="buddy-card-identity" style={styles.identitySection}>
@@ -94,9 +98,15 @@ function BuddyCardIdentity({
 
         {showRankDetails ? (
           <View style={styles.rankDetails}>
-            {card.show_rank ? (
+            {showRank && rankName ? (
               <View testID="buddy-card-rank-inline" style={styles.rankInline}>
-                <RankBadge rank={rankName} size={32} animated={false} effects="none" />
+                <RankBadge
+                  rank={rankName}
+                  size={32}
+                  animated={false}
+                  effects="none"
+                  variant="crest"
+                />
                 <Text style={[styles.rankName, { color: palette.text }]}>{rankName}</Text>
               </View>
             ) : null}
@@ -104,7 +114,7 @@ function BuddyCardIdentity({
               <Text
                 style={[
                   styles.challengeWins,
-                  !card.show_rank && styles.challengeWinsWithoutRank,
+                  !showRank && styles.challengeWinsWithoutRank,
                   { color: palette.textMuted },
                 ]}
               >

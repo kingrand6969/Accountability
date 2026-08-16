@@ -406,10 +406,25 @@ describe('PublicBuddyCardFace clean composition', () => {
     expect(badge.props.rank).toBe('Mythical');
     expect(badge.props.size).toBeLessThanOrEqual(36);
     expect(badge.props.animated).toBe(false);
+    expect(badge.props.variant).toBe('crest');
     expect(row.findAllByType(Text).map((node) => node.props.children)).toEqual([
       'rank crest',
       'Mythical',
     ]);
+  });
+
+  it('does not invent a rank when the shared rank is missing or unknown', () => {
+    const missingRank = publicCard({
+      card: { ...completeCard, rank_name: undefined, show_challenge_wins: true },
+    });
+    const unknownRank = publicCard({
+      card: { ...completeCard, rank_name: 'Cosmic', show_challenge_wins: true },
+    });
+
+    expect(missingRank.root.findAllByProps({ testID: 'buddy-card-rank-inline' })).toHaveLength(0);
+    expect(unknownRank.root.findAllByProps({ testID: 'buddy-card-rank-inline' })).toHaveLength(0);
+    expect(renderedText(missingRank)).toContain('Challenges won · 7');
+    expect(renderedText(unknownRank)).toContain('Challenges won · 7');
   });
 
   it('keeps an independently shared challenge-win count aligned when rank is hidden', () => {
@@ -516,12 +531,28 @@ describe('PublicBuddyCardFace runtime wiring', () => {
   it('loads authorized public social data and passes all available visitor values', () => {
     const invocation = publicFaceInvocation(screenSource);
 
-    expect(screenSource).toContain('getBuddyStats(id).then(setStats)');
+    expect(screenSource).toMatch(
+      /getBuddyStats\(targetId\)\s*\.then\(\(nextStats\) => commit\(setStats, nextStats\)\)/,
+    );
     expect(screenSource).not.toMatch(/if \(buddy\) \{\s*getBuddyStats\(id\)/);
     expect(invocation).toContain('memberSince={memberSince}');
     expect(invocation).toContain('stats={stats}');
     expect(invocation).toContain('boardRank={boardRank}');
     expect(invocation).toContain('metrics={metrics}');
+  });
+
+  it('clears viewer-bound state and guards every asynchronous profile load', () => {
+    expect(screenSource).toContain('new BuddyCardLoadGuard()');
+    expect(screenSource).toContain('const targetToken = guard.begin(targetId)');
+    expect(screenSource).toContain('setStats(null)');
+    expect(screenSource).toContain('setBoardRank(null)');
+    expect(screenSource).toContain('setMetrics(null)');
+    expect(screenSource).toContain('setPosts(null)');
+    expect(screenSource).toContain('guard.bindViewer(targetToken, viewerId)');
+    expect(screenSource).toContain('if (!guard.owns(token)) return');
+    expect(screenSource).toContain('guard.cancel(activeToken ?? targetToken)');
+    expect(screenSource).not.toMatch(/\.then\(set(?:View|Stats|BoardRank|Metrics|Posts|IsBuddy|Loading)/);
+    expect(screenSource).not.toContain('catch(() => setPosts([]))');
   });
 
   it('loads and passes the same available owner data into the editor visitor preview', () => {

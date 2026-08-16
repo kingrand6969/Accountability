@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,7 +26,12 @@ import {
 } from '../../buddy/card';
 import { BuddyCardFace } from '../../buddy/BuddyCardFace';
 import { PublicBuddyCardFace } from '../../buddy/PublicBuddyCardFace';
+import {
+  BuddyCardLoadGuard,
+  type BuddyCardLoadToken,
+} from '../../buddy/BuddyCardLoadGuard';
 import { sendRequest, listBuddies, blockUser, reportUser } from '../../buddy/api';
+import { supabase } from '../../lib/supabase';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
@@ -44,36 +49,106 @@ export default function BuddyCardScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const loadGuardRef = useRef(new BuddyCardLoadGuard());
 
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
-      Promise.all([getBuddyCard(id), listBuddies()])
-        .then(([v, buddies]) => {
-          setView(v);
-          const buddy = buddies.some((b) => b.id === id);
-          setIsBuddy(buddy);
-          getBuddyStats(id).then(setStats).catch(() => {});
-          const publicMetricsAllowed = Boolean(
-            v?.card.show_consistency ||
-            v?.card.show_points ||
-            v?.card.show_distance ||
-            v?.card.show_challenge_wins,
-          );
-          if (buddy || publicMetricsAllowed) {
-            getCardMetrics(id).then(setMetrics).catch(() => {});
+      const targetId = id;
+      const guard = loadGuardRef.current;
+      const targetToken = guard.begin(targetId);
+      let activeToken: BuddyCardLoadToken | null = null;
+      let authSubscription: { unsubscribe: () => void } | null = null;
+
+      setView(null);
+      setStats(null);
+      setBoardRank(null);
+      setMetrics(null);
+      setPosts(null);
+      setIsBuddy(false);
+      setSent(false);
+      setLoading(true);
+
+      void supabase.auth
+        .getUser()
+        .then(({ data }) => {
+          if (!guard.isCurrentTarget(targetToken)) return;
+          const viewerId = data.user?.id ?? null;
+          const token = guard.bindViewer(targetToken, viewerId);
+          if (!token) return;
+          activeToken = token;
+
+          const commit = <T,>(setter: (value: T) => void, value: T) => {
+            if (!guard.owns(token)) return;
+            setter(value);
+          };
+
+          const authResult = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!guard.owns(token)) return;
+            if ((session?.user.id ?? null) === token.viewerId) return;
+            guard.cancel(token);
+            setView(null);
+            setStats(null);
+            setBoardRank(null);
+            setMetrics(null);
+            setPosts(null);
+            setIsBuddy(false);
+            setSent(false);
+            setLoading(true);
+          });
+          if (!guard.owns(token)) {
+            authResult.data.subscription.unsubscribe();
+            return;
           }
-          if (buddy || v?.card.show_city_rank || v?.card.show_country_rank) {
-            getBoardRank(id).then(setBoardRank).catch(() => {});
-          }
-          if (buddy || v?.card.show_posts) {
-            listCardPosts(id, buddy).then(setPosts).catch(() => setPosts([]));
-          } else {
-            setPosts([]);
-          }
+          authSubscription = authResult.data.subscription;
+
+          void Promise.all([getBuddyCard(targetId), listBuddies()])
+            .then(([v, buddies]) => {
+              if (!guard.owns(token)) return;
+              commit(setView, v);
+              const buddy = buddies.some((candidate) => candidate.id === targetId);
+              commit(setIsBuddy, buddy);
+              void getBuddyStats(targetId)
+                .then((nextStats) => commit(setStats, nextStats))
+                .catch(() => {});
+              const publicMetricsAllowed = Boolean(
+                v?.card.show_consistency ||
+                  v?.card.show_points ||
+                  v?.card.show_distance ||
+                  v?.card.show_challenge_wins,
+              );
+              if (buddy || publicMetricsAllowed) {
+                void getCardMetrics(targetId)
+                  .then((nextMetrics) => commit(setMetrics, nextMetrics))
+                  .catch(() => {});
+              }
+              if (buddy || v?.card.show_city_rank || v?.card.show_country_rank) {
+                void getBoardRank(targetId)
+                  .then((nextBoardRank) => commit(setBoardRank, nextBoardRank))
+                  .catch(() => {});
+              }
+              if (buddy || v?.card.show_posts) {
+                void listCardPosts(targetId, buddy)
+                  .then((nextPosts) => commit(setPosts, nextPosts))
+                  .catch(() => commit(setPosts, []));
+              } else {
+                commit(setPosts, []);
+              }
+            })
+            .catch(() => {})
+            .finally(() => commit(setLoading, false));
         })
-        .catch(() => {})
-        .finally(() => setLoading(false));
+        .catch(() => {
+          const token = guard.bindViewer(targetToken, null);
+          if (!token || !guard.owns(token)) return;
+          activeToken = token;
+          setLoading(false);
+        });
+
+      return () => {
+        authSubscription?.unsubscribe();
+        guard.cancel(activeToken ?? targetToken);
+      };
     }, [id]),
   );
 

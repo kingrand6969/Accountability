@@ -39,6 +39,7 @@ export function RankBadge({
   style,
   reducedMotion,
   effects = 'auto',
+  variant = 'nameplate',
   onPress,
 }: {
   rank: string;
@@ -49,11 +50,14 @@ export function RankBadge({
   reducedMotion?: boolean;
   /** `none` renders only the official artwork, without decorative effects. */
   effects?: 'auto' | 'none';
+  /** `crest` clips the official 3:1 artwork to its square left emblem. */
+  variant?: 'nameplate' | 'crest';
   onPress?: () => void;
 }) {
   const cfg = rankConfig(rank);
   const w = size * AR;
   const h = size;
+  const frameWidth = variant === 'crest' ? size : w;
 
   // 0 (Rookie) … 1 (Mythical) — drives how much the smoke grows.
   const tierIndex = Math.max(0, RANK_ORDER.indexOf(rank as never));
@@ -168,13 +172,18 @@ export function RankBadge({
   return (
     <Animated.View style={[{ transform: [{ scale: hoverScale }] }, style]}>
       <Pressable
+        testID="rank-badge-frame"
         onPress={onPress}
         onHoverIn={motion ? () => Animated.timing(hover, { toValue: 1, duration: 160, useNativeDriver: true }).start() : undefined}
         onHoverOut={motion ? () => Animated.timing(hover, { toValue: 0, duration: 220, useNativeDriver: true }).start() : undefined}
         disabled={!onPress}
         accessibilityRole={onPress ? 'button' : 'image'}
         accessibilityLabel={`Rank: ${rank}`}
-        style={{ width: w, height: h }}
+        style={{
+          width: frameWidth,
+          height: h,
+          ...(variant === 'crest' ? { overflow: 'hidden' as const } : null),
+        }}
       >
         {/* faint static base aura — a soft tinted cloud behind the badge.
             Skipped entirely at Rookie so the pill stays clean to its edges. */}
