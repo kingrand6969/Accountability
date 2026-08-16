@@ -37,6 +37,14 @@ const headlineConsentGate = `case when coalesce(p.buddy_card -> 'show_headline' 
 
 const stripPresentationAdditions = (viewSql: string) =>
   normalizeLineEndings(viewSql).replace(presentationAdditions, '');
+const remediationSql =
+  sql.match(
+    /with invalid_buddy_card_presentation as \([\s\S]*?update public\.profiles[\s\S]*?;/i,
+  )?.[0] ?? '';
+const presentationConstraintSql =
+  sql.match(
+    /add constraint profiles_buddy_card_presentation_check[\s\S]*?\) not valid;/i,
+  )?.[0] ?? '';
 
 describe('Buddy Card presentation migration', () => {
   test('replaces and validates a replay-safe presentation constraint', () => {
@@ -77,7 +85,58 @@ describe('Buddy Card presentation migration', () => {
 
     const unsafeLengthCheck =
       /jsonb_array_length\(buddy_card\s*->\s*'featured_medal_ids'\)[\s\S]*?jsonb_typeof\(buddy_card\s*->\s*'featured_medal_ids'\)\s*=\s*'array'/i;
-    expect(sql).not.toMatch(unsafeLengthCheck);
+    expect(presentationConstraintSql).not.toMatch(unsafeLengthCheck);
+  });
+
+  test('remediates existing invalid reserved keys after adding and before validating the constraint', () => {
+    const addConstraintAt = sql.search(
+      /add constraint profiles_buddy_card_presentation_check[\s\S]*?not valid/i,
+    );
+    const remediationAt = sql.indexOf(remediationSql);
+    const validateAt = sql.search(
+      /validate constraint profiles_buddy_card_presentation_check/i,
+    );
+
+    expect(remediationSql).not.toBe('');
+    expect(addConstraintAt).toBeGreaterThanOrEqual(0);
+    expect(remediationAt).toBeGreaterThan(addConstraintAt);
+    expect(validateAt).toBeGreaterThan(remediationAt);
+  });
+
+  test('removes explicit-null, non-string, and unapproved palettes while retaining valid palettes', () => {
+    expect(remediationSql).toMatch(
+      /buddy_card \? 'palette_key'\s+and not \(\s*jsonb_typeof\(buddy_card -> 'palette_key'\) = 'string'[\s\S]*?buddy_card ->> 'palette_key' in \([\s\S]*?'polar_blue'[\s\S]*?'victory_ember'[\s\S]*?'momentum_teal'[\s\S]*?'power_violet'[\s\S]*?\)\s*\) as remove_palette/i,
+    );
+    expect(remediationSql).toMatch(
+      /when r\.remove_palette and r\.remove_featured then\s+p\.buddy_card - 'palette_key' - 'featured_medal_ids'/i,
+    );
+    expect(remediationSql).toMatch(
+      /when r\.remove_palette then p\.buddy_card - 'palette_key'/i,
+    );
+  });
+
+  test('removes null, wrong-type, non-string, and oversized featured medal selections', () => {
+    expect(remediationSql).toMatch(
+      /buddy_card \? 'featured_medal_ids'\s+and not \(\s*case\s+when jsonb_typeof\(buddy_card -> 'featured_medal_ids'\) = 'array' then[\s\S]*?jsonb_array_length\(buddy_card -> 'featured_medal_ids'\) <= 4[\s\S]*?not jsonb_path_exists\([\s\S]*?type\(\) != "string"[\s\S]*?else false\s+end\s*\) as remove_featured/i,
+    );
+    expect(remediationSql).toMatch(
+      /when r\.remove_featured then p\.buddy_card - 'featured_medal_ids'/i,
+    );
+  });
+
+  test('bounds remediation to invalid reserved keys and preserves unrelated keys and valid values', () => {
+    expect(remediationSql).toMatch(
+      /where buddy_card \? 'palette_key'\s+or buddy_card \? 'featured_medal_ids'/i,
+    );
+    expect(remediationSql).toMatch(
+      /where p\.id = r\.id\s+and \(r\.remove_palette or r\.remove_featured\)/i,
+    );
+    expect(remediationSql).not.toMatch(/jsonb_build_object|jsonb_strip_nulls|\|\||'\{\}'::jsonb/i);
+
+    const removedKeys = [
+      ...remediationSql.matchAll(/p\.buddy_card\s*-\s*'([^']+)'/gi),
+    ].map((match) => match[1]);
+    expect(new Set(removedKeys)).toEqual(new Set(['palette_key', 'featured_medal_ids']));
   });
 
   test('recreates the public profile view with its security barrier and strict allowlist additions', () => {

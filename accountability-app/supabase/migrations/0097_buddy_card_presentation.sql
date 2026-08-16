@@ -33,6 +33,47 @@ alter table public.profiles
     )
   ) not valid;
 
+with invalid_buddy_card_presentation as (
+  select
+    id,
+    buddy_card ? 'palette_key'
+      and not (
+        jsonb_typeof(buddy_card -> 'palette_key') = 'string'
+        and buddy_card ->> 'palette_key' in (
+          'polar_blue',
+          'victory_ember',
+          'momentum_teal',
+          'power_violet'
+        )
+      ) as remove_palette,
+    buddy_card ? 'featured_medal_ids'
+      and not (
+        case
+          when jsonb_typeof(buddy_card -> 'featured_medal_ids') = 'array' then
+            jsonb_array_length(buddy_card -> 'featured_medal_ids') <= 4
+            and not jsonb_path_exists(
+              buddy_card -> 'featured_medal_ids',
+              '$[*] ? (@.type() != "string")'
+            )
+          else false
+        end
+      ) as remove_featured
+  from public.profiles
+  where buddy_card ? 'palette_key'
+    or buddy_card ? 'featured_medal_ids'
+)
+update public.profiles as p
+set buddy_card = case
+  when r.remove_palette and r.remove_featured then
+    p.buddy_card - 'palette_key' - 'featured_medal_ids'
+  when r.remove_palette then p.buddy_card - 'palette_key'
+  when r.remove_featured then p.buddy_card - 'featured_medal_ids'
+  else p.buddy_card
+end
+from invalid_buddy_card_presentation r
+where p.id = r.id
+  and (r.remove_palette or r.remove_featured);
+
 alter table public.profiles
   validate constraint profiles_buddy_card_presentation_check;
 
