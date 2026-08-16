@@ -454,22 +454,38 @@ export default function Feed() {
     online,
   });
 
+  function openOwnBuddyCard() {
+    const ownerId = currentUserIdRef.current;
+    if (!ownerId) return;
+    router.push({ pathname: '/buddy-card/[id]', params: { id: ownerId } } as never);
+  }
+
   const feedHeader = (
     <>
       <View style={styles.promptWrap}>
-        <Pressable
-          style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
-          onPress={() => router.push('/compose' as never)}
-          accessibilityRole="button"
-          accessibilityLabel="Share a win — create a post"
-        >
-          <Avatar
-            url={profileOwnerId === myId ? me.avatar : null}
-            name={profileOwnerId === myId ? me.name : null}
-            size={36}
-          />
-          <Text style={styles.promptText} numberOfLines={1}>Inspire us today!</Text>
-        </Pressable>
+        <View style={styles.promptRow}>
+          <Pressable
+            style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}
+            onPress={openOwnBuddyCard}
+            disabled={!myId}
+            accessibilityRole="button"
+            accessibilityLabel="View your Buddy Card"
+          >
+            <Avatar
+              url={profileOwnerId === myId ? me.avatar : null}
+              name={profileOwnerId === myId ? me.name : null}
+              size={36}
+            />
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.promptAction, pressed && styles.pressed]}
+            onPress={() => router.push('/compose' as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Share a win — create a post"
+          >
+            <Text style={styles.promptText} numberOfLines={1}>Inspire us today!</Text>
+          </Pressable>
+        </View>
         <View style={styles.composerDivider} />
         <View style={styles.quickShareRow}>
           <QuickShare icon="create-outline" label="Post" onPress={() => router.push('/compose' as never)} />
@@ -652,7 +668,9 @@ const styles = StyleSheet.create({
   sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
   sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
   promptWrap: { ...contentMax, width: '93%', alignSelf: 'center', marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.card, overflow: 'hidden', ...shadow.card },
-  promptRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md },
+  promptRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
+  avatarButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  promptAction: { minHeight: 48, flex: 1, justifyContent: 'center', paddingRight: spacing.md },
   promptText: { flex: 1, fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
   composerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: spacing.lg },
   quickShareRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center' },

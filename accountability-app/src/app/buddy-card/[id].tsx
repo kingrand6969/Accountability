@@ -12,6 +12,7 @@ import {
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
+  getAuthorizedBuddyCard,
   getBuddyCard,
   getBuddyStats,
   getBoardRank,
@@ -30,7 +31,14 @@ import {
   BuddyCardLoadGuard,
   type BuddyCardLoadToken,
 } from '../../buddy/BuddyCardLoadGuard';
-import { sendRequest, listBuddies, blockUser, reportUser } from '../../buddy/api';
+import {
+  areBuddiesAsOwner,
+  assertBuddyCardViewer,
+  createBuddyCardConnectLock,
+  sendBuddyRequestAsOwner,
+  type BuddyCardConnectToken,
+} from '../../buddy/buddyCardRelationship';
+import { blockUser, reportUser } from '../../buddy/api';
 import { supabase } from '../../lib/supabase';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
@@ -38,7 +46,8 @@ import { showToast } from '../../ui/Toast';
 import { colors, font, radius, shadow, spacing, contentMax } from '../../ui/theme';
 
 export default function BuddyCardScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
   const [view, setView] = useState<BuddyCardView | null>(null);
   const [stats, setStats] = useState<BuddyStats | null>(null);
@@ -47,9 +56,16 @@ export default function BuddyCardScreen() {
   const [posts, setPosts] = useState<CardPost[] | null>(null);
   const [isBuddy, setIsBuddy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [accountEpoch, setAccountEpoch] = useState(0);
   const loadGuardRef = useRef(new BuddyCardLoadGuard());
+  const activeLoadTokenRef = useRef<BuddyCardLoadToken | null>(null);
+  const connectLockRef = useRef(createBuddyCardConnectLock());
+  const connectTokenRef = useRef<BuddyCardConnectToken | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -59,6 +75,7 @@ export default function BuddyCardScreen() {
       const targetToken = guard.begin(targetId);
       let activeToken: BuddyCardLoadToken | null = null;
       let authSubscription: { unsubscribe: () => void } | null = null;
+      activeLoadTokenRef.current = null;
 
       setView(null);
       setStats(null);
@@ -67,6 +84,9 @@ export default function BuddyCardScreen() {
       setPosts(null);
       setIsBuddy(false);
       setSent(false);
+      setSending(false);
+      setCurrentUserId(null);
+      setLoadError(null);
       setLoading(true);
 
       void supabase.auth
@@ -77,6 +97,8 @@ export default function BuddyCardScreen() {
           const token = guard.bindViewer(targetToken, viewerId);
           if (!token) return;
           activeToken = token;
+          activeLoadTokenRef.current = token;
+          setCurrentUserId(viewerId);
 
           const commit = <T,>(setter: (value: T) => void, value: T) => {
             if (!guard.owns(token)) return;
@@ -93,8 +115,16 @@ export default function BuddyCardScreen() {
             setPosts(null);
             setIsBuddy(false);
             setSent(false);
+            setSending(false);
+            setCurrentUserId(null);
+            setLoadError(null);
             setLoading(true);
             guard.cancel(token);
+            activeLoadTokenRef.current = null;
+            const connectToken = connectTokenRef.current;
+            if (connectToken) connectLockRef.current.cancel(connectToken);
+            connectTokenRef.current = null;
+            setAccountEpoch((value) => value + 1);
           });
           if (!guard.owns(token)) {
             authResult.data.subscription.unsubscribe();
@@ -102,67 +132,111 @@ export default function BuddyCardScreen() {
           }
           authSubscription = authResult.data.subscription;
 
-          void Promise.all([getBuddyCard(targetId), listBuddies()])
-            .then(([v, buddies]) => {
+          const ownerView = viewerId === targetId;
+          const relationship = viewerId && !ownerView
+            ? areBuddiesAsOwner(viewerId, targetId)
+            : Promise.resolve(false);
+
+          void Promise.all([getBuddyCard(targetId), relationship])
+            .then(async ([publicView, buddy]) => {
+              const v = buddy && viewerId
+                ? await getAuthorizedBuddyCard(targetId, viewerId)
+                : publicView;
+              if (viewerId) await assertBuddyCardViewer(viewerId);
               if (!guard.owns(token)) return;
+              if (!v) throw new Error('This person is not available to this account.');
               commit(setView, v);
-              const buddy = buddies.some((candidate) => candidate.id === targetId);
               commit(setIsBuddy, buddy);
               void getBuddyStats(targetId)
                 .then((nextStats) => commit(setStats, nextStats))
                 .catch(() => {});
+              const fullView = ownerView || buddy;
               const publicMetricsAllowed = Boolean(
                 v?.card.show_consistency ||
                   v?.card.show_points ||
                   v?.card.show_distance ||
                   v?.card.show_challenge_wins,
               );
-              if (buddy || publicMetricsAllowed) {
+              if (fullView || publicMetricsAllowed) {
                 void getCardMetrics(targetId)
                   .then((nextMetrics) => commit(setMetrics, nextMetrics))
                   .catch(() => {});
               }
-              if (buddy || v?.card.show_city_rank || v?.card.show_country_rank) {
+              if (fullView || v?.card.show_city_rank || v?.card.show_country_rank) {
                 void getBoardRank(targetId)
                   .then((nextBoardRank) => commit(setBoardRank, nextBoardRank))
                   .catch(() => {});
               }
-              if (buddy || v?.card.show_posts) {
-                void listCardPosts(targetId, buddy)
+              if (fullView || v?.card.show_posts) {
+                void listCardPosts(targetId, fullView)
                   .then((nextPosts) => commit(setPosts, nextPosts))
                   .catch(() => commit(setPosts, []));
               } else {
                 commit(setPosts, []);
               }
             })
-            .catch(() => {})
+            .catch((error) => {
+              if (!guard.owns(token)) return;
+              if (/account changed/i.test(String((error as Error).message ?? error))) {
+                guard.cancel(token);
+                activeLoadTokenRef.current = null;
+                setAccountEpoch((value) => value + 1);
+                return;
+              }
+              commit(
+                setLoadError,
+                String((error as Error).message || 'Could not load Buddy Card.'),
+              );
+              commit(setView, null);
+            })
             .finally(() => commit(setLoading, false));
         })
-        .catch(() => {
+        .catch((error) => {
           const token = guard.bindViewer(targetToken, null);
           if (!token || !guard.owns(token)) return;
           activeToken = token;
+          activeLoadTokenRef.current = token;
+          setLoadError(String((error as Error).message || 'Could not load Buddy Card.'));
           setLoading(false);
         });
 
       return () => {
         authSubscription?.unsubscribe();
         guard.cancel(activeToken ?? targetToken);
+        if (activeLoadTokenRef.current === activeToken) activeLoadTokenRef.current = null;
+        const connectToken = connectTokenRef.current;
+        if (connectToken) connectLockRef.current.cancel(connectToken);
+        connectTokenRef.current = null;
       };
-    }, [id]),
+    }, [accountEpoch, id, reloadKey]),
   );
 
   async function onConnect() {
-    if (!id) return;
+    const loadToken = activeLoadTokenRef.current;
+    if (!id || !loadToken?.viewerId || loadToken.viewerId === id) return;
+    if (!loadGuardRef.current.owns(loadToken)) return;
+    const ownerId = loadToken.viewerId;
+    const targetId = id;
+    const connectToken = connectLockRef.current.tryAcquire(ownerId, targetId);
+    if (!connectToken) return;
+    connectTokenRef.current = connectToken;
     setSending(true);
     try {
-      await sendRequest(id);
+      await sendBuddyRequestAsOwner(ownerId, targetId);
+      if (!loadGuardRef.current.owns(loadToken)) return;
+      if (!connectLockRef.current.owns(connectToken, ownerId, targetId)) return;
       setSent(true);
       showToast(`Request sent to ${authorLabel(view?.name ?? null)}`);
     } catch (e) {
+      if (!loadGuardRef.current.owns(loadToken)) return;
+      if (!connectLockRef.current.owns(connectToken, ownerId, targetId)) return;
+      if (/account changed/i.test(String((e as Error).message ?? e))) return;
       Alert.alert('Could not send', String((e as Error).message ?? e));
     } finally {
-      setSending(false);
+      const ownsAction = connectLockRef.current.owns(connectToken, ownerId, targetId);
+      connectLockRef.current.release(connectToken);
+      if (connectTokenRef.current === connectToken) connectTokenRef.current = null;
+      if (ownsAction && loadGuardRef.current.owns(loadToken)) setSending(false);
     }
   }
 
@@ -228,19 +302,41 @@ export default function BuddyCardScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading Buddy Card...</Text>
       </View>
     );
   }
   if (!view) {
     return (
       <View style={styles.center}>
-        <Text style={styles.missing}>This person isn&apos;t available.</Text>
+        <Ionicons
+          name={loadError ? 'cloud-offline-outline' : 'person-circle-outline'}
+          size={42}
+          color={colors.textFaint}
+        />
+        <Text style={styles.missing}>
+          {loadError ? 'Could not load Buddy Card' : "This person isn't available."}
+        </Text>
+        {loadError ? <Text style={styles.errorDetail}>{loadError}</Text> : null}
+        {loadError ? (
+          <Pressable
+            onPress={() => setReloadKey((value) => value + 1)}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading Buddy Card"
+            style={({ pressed }) => [styles.retry, pressed && styles.retryPressed]}
+          >
+            <Ionicons name="refresh" size={18} color="#fff" />
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
 
+  const ownerView = currentUserId === id;
+  const fullBuddyView = isBuddy && !ownerView;
   const { headline, about } = cardText(view);
-  const visibleAbout = isBuddy ? view.bio : about;
+  const visibleAbout = ownerView || isBuddy ? view.bio : about;
   const memberSince = new Date(view.created_at).toLocaleDateString(undefined, {
     month: 'short',
     year: 'numeric',
@@ -250,20 +346,22 @@ export default function BuddyCardScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.scroll}>
       <Stack.Screen
         options={{
-          headerRight: () => (
-            <Pressable
-              onPress={openOptions}
-              hitSlop={12}
-              accessibilityLabel="More options"
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingHorizontal: 4 })}
-            >
-              <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
-            </Pressable>
-          ),
+          headerRight: ownerView
+            ? () => null
+            : () => (
+                <Pressable
+                  onPress={openOptions}
+                  hitSlop={12}
+                  accessibilityLabel="More options"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingHorizontal: 4 })}
+                >
+                  <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+                </Pressable>
+              ),
         }}
       />
       <View style={styles.card}>
-        {isBuddy ? (
+        {fullBuddyView ? (
           <BuddyCardFace
           name={view.name}
           area={view.area}
@@ -281,6 +379,7 @@ export default function BuddyCardScreen() {
           />
         ) : (
           <PublicBuddyCardFace
+            ownerView={ownerView}
             name={view.name}
             area={view.area}
             avatar={view.avatar}
@@ -298,7 +397,7 @@ export default function BuddyCardScreen() {
         )}
       </View>
 
-      {!isBuddy ? (
+      {!ownerView && !isBuddy ? (
         <View style={styles.privacyRow}>
           <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
           <Text style={styles.privacyText}>
@@ -315,14 +414,16 @@ export default function BuddyCardScreen() {
       ) : null}
 
       {/* Buddies see recent posts; non-buddies only see owner-selected public posts. */}
-      {isBuddy || view.card.show_posts ? (
+      {ownerView || isBuddy || view.card.show_posts ? (
         <View style={styles.aboutCard}>
-          <Text style={styles.aboutTitle}>{isBuddy ? 'Recent posts' : 'Shared publicly'}</Text>
+          <Text style={styles.aboutTitle}>
+            {ownerView || isBuddy ? 'Recent posts' : 'Shared publicly'}
+          </Text>
           {posts === null ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
           ) : posts.length === 0 ? (
             <Text style={styles.aboutText}>
-              {isBuddy ? 'No posts yet.' : 'No public Buddy Card posts selected.'}
+              {ownerView || isBuddy ? 'No posts yet.' : 'No public Buddy Card posts selected.'}
             </Text>
           ) : (
             <View style={{ gap: 4 }}>
@@ -331,7 +432,7 @@ export default function BuddyCardScreen() {
                   key={p.id}
                   onPress={() => router.push({ pathname: '/post/[id]', params: { id: p.id } })}
                   style={({ pressed }) => [
-                    isBuddy ? styles.postRow : styles.publicPostCard,
+                    ownerView || isBuddy ? styles.postRow : styles.publicPostCard,
                     pressed && { opacity: 0.75 },
                   ]}
                   accessibilityRole="button"
@@ -340,12 +441,12 @@ export default function BuddyCardScreen() {
                   {p.image_url && p.post_type !== 'video' ? (
                     <Image
                       source={{ uri: p.image_url }}
-                      style={isBuddy ? styles.postThumb : styles.publicPostImage}
+                      style={ownerView || isBuddy ? styles.postThumb : styles.publicPostImage}
                     />
                   ) : (
                     <View
                       style={[
-                        isBuddy ? styles.postThumb : styles.publicPostImage,
+                        ownerView || isBuddy ? styles.postThumb : styles.publicPostImage,
                         styles.postThumbFallback,
                       ]}
                     >
@@ -356,8 +457,8 @@ export default function BuddyCardScreen() {
                       />
                     </View>
                   )}
-                  <View style={isBuddy ? { flex: 1 } : styles.publicPostCopy}>
-                    {!isBuddy ? (
+                  <View style={ownerView || isBuddy ? { flex: 1 } : styles.publicPostCopy}>
+                    {!ownerView && !isBuddy ? (
                       <View style={styles.publicPostChip}>
                         <Ionicons name="globe-outline" size={12} color={colors.primary} />
                         <Text style={styles.publicPostChipText}>PUBLIC POST</Text>
@@ -372,13 +473,20 @@ export default function BuddyCardScreen() {
               ))}
             </View>
           )}
-          {!isBuddy && posts && posts.length > 0 ? (
+          {!ownerView && !isBuddy && posts && posts.length > 0 ? (
             <Text style={styles.postNote}>These posts were selected for the public Buddy Card.</Text>
           ) : null}
         </View>
       ) : null}
 
-      {isBuddy ? (
+      {ownerView ? (
+        <Button
+          title="Edit Buddy Card"
+          onPress={() => router.push('/buddy-card-edit' as never)}
+          icon={<Ionicons name="create-outline" size={18} color="#fff" />}
+          style={styles.connect}
+        />
+      ) : isBuddy ? (
         <>
           <View style={styles.buddyRow}>
             <Ionicons name="checkmark-circle" size={18} color={colors.success} />
@@ -391,7 +499,7 @@ export default function BuddyCardScreen() {
             style={styles.connect}
           />
         </>
-      ) : (
+      ) : !ownerView && !isBuddy ? (
         <>
           <Button
             title={sent ? 'Request sent' : `Connect with ${authorLabel(view.name)}`}
@@ -411,15 +519,43 @@ export default function BuddyCardScreen() {
             {authorLabel(view.name)} must approve before you can message or see buddy-only posts.
           </Text>
         </>
-      )}
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.surface },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  missing: { fontFamily: font.regular, color: colors.textMuted },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  missing: { fontFamily: font.bold, fontSize: 17, color: colors.text },
+  loadingText: { fontFamily: font.medium, fontSize: 14, color: colors.textMuted },
+  errorDetail: {
+    maxWidth: 320,
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  retry: {
+    minHeight: 48,
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+  },
+  retryPressed: { opacity: 0.75 },
+  retryText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
   scroll: { padding: spacing.lg, paddingBottom: 40, ...contentMax },
   card: {
     backgroundColor: colors.card,

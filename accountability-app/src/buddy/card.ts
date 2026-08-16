@@ -166,6 +166,40 @@ export async function getBuddyCard(id: string): Promise<BuddyCardView | null> {
   };
 }
 
+/**
+ * Loads the fuller profile shape through PostgreSQL's accepted-buddy boundary.
+ * The expected viewer is checked on both sides of the RPC so a response begun
+ * by one signed-in account cannot be consumed by another account after a
+ * switch. Non-buddy callers receive no row from the function.
+ */
+export async function getAuthorizedBuddyCard(
+  id: string,
+  expectedViewerId: string,
+): Promise<BuddyCardView | null> {
+  const viewerBefore = await me();
+  if (viewerBefore !== expectedViewerId) {
+    throw new Error('Account changed. Reopen this Buddy Card and try again.');
+  }
+  const { data, error } = await supabase.rpc('buddy_full_profile', { p_target: id });
+  if (error) throw error;
+  const viewerAfter = await me();
+  if (viewerAfter !== expectedViewerId) {
+    throw new Error('Account changed. Reopen this Buddy Card and try again.');
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.display_name ?? null,
+    avatar: row.avatar_url ?? null,
+    area: row.area ?? null,
+    bio: row.bio ?? null,
+    created_at: row.created_at,
+    last_active_at: row.last_active_at ?? null,
+    card: (row.buddy_card ?? {}) as BuddyCard,
+  };
+}
+
 /** One public-profile request for a Discover page; no per-card fan-out. */
 export async function getBuddyCards(ids: string[]): Promise<Map<string, BuddyCardView>> {
   const result = new Map<string, BuddyCardView>();
