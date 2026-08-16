@@ -35,6 +35,17 @@ const relationshipSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/buddy/buddyCardRelationship.ts'),
   'utf8',
 );
+const publicFaceSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/buddy/PublicBuddyCardFace.tsx'),
+  'utf8',
+);
+const socialProofMigrationPath = path.resolve(
+  process.cwd(),
+  'supabase/migrations/0100_buddy_card_social_proof.sql',
+);
+const socialProofSql = fs.existsSync(socialProofMigrationPath)
+  ? fs.readFileSync(socialProofMigrationPath, 'utf8')
+  : '';
 const fullProfileSql = fs.readFileSync(
   path.resolve(process.cwd(), 'supabase/migrations/0098_buddy_full_profile.sql'),
   'utf8',
@@ -125,7 +136,7 @@ describe('Buddy Card viewer state', () => {
 
   test('every deferred optional profile value uses the immutable load guard before state', () => {
     expect(screenSource).toContain('commitBuddyCardOptionalValue');
-    for (const setter of ['setStats', 'setMetrics', 'setBoardRank', 'setPosts']) {
+    for (const setter of ['setStats', 'setMetrics', 'setBoardRank', 'setPosts', 'setSocialProof']) {
       expect(screenSource).not.toMatch(new RegExp(`then\\(\\([^)]*\\) => commit\\(${setter}`));
       expect(screenSource).toContain(`commitOptional(${setter}`);
     }
@@ -159,6 +170,56 @@ describe('Buddy Card viewer state', () => {
 });
 
 describe('full Buddy profile privacy boundary', () => {
+  test('social proof RPC returns aggregate-only, viewer-bound, block-aware data', () => {
+    expect(socialProofSql).toContain(
+      'create or replace function public.buddy_card_social_proof',
+    );
+    expect(socialProofSql).toContain('p_expected_viewer uuid');
+    expect(socialProofSql).toContain('p_expected_viewer = auth.uid()');
+    expect(socialProofSql).toContain("public.buddy_card_access_mode(p_target) <> 'unavailable'");
+    expect(socialProofSql).toContain('from public.buddy_links');
+    expect(socialProofSql).toContain('intersect');
+    expect(socialProofSql).toContain('from public.buddy_blocks');
+    expect(socialProofSql).toContain('from public.group_members');
+    expect(socialProofSql).toContain('when p_expected_viewer = p_target');
+    expect(socialProofSql).toContain("set search_path = ''");
+    expect(socialProofSql).toContain(
+      'revoke execute on function public.buddy_card_social_proof(uuid, uuid) from public, anon',
+    );
+    expect(socialProofSql).toContain(
+      'grant execute on function public.buddy_card_social_proof(uuid, uuid) to authenticated',
+    );
+    expect(socialProofSql).not.toMatch(/returns table\s*\([^)]*(?:buddy_id|group_id)/i);
+  });
+
+  test('social proof reveals owner groups only to self and counts mutual accepted buddies', () => {
+    const returnsRow = (expectedViewer: string, authViewer: string, unavailable: boolean) =>
+      expectedViewer === authViewer && !unavailable;
+    const proof = (
+      self: boolean,
+      viewerBuddies: string[],
+      targetBuddies: string[],
+      blocked: Set<string>,
+      ownerGroups: number,
+    ) => ({
+      mutual: new Set(viewerBuddies.filter((id) => targetBuddies.includes(id) && !blocked.has(id))).size,
+      groups: self ? ownerGroups : null,
+    });
+
+    expect(proof(false, ['a', 'b'], ['b', 'c'], new Set(), 8)).toEqual({
+      mutual: 1,
+      groups: null,
+    });
+    expect(proof(false, ['a', 'b'], ['b', 'c'], new Set(['b']), 8)).toEqual({
+      mutual: 0,
+      groups: null,
+    });
+    expect(proof(true, [], [], new Set(), 8)).toEqual({ mutual: 0, groups: 8 });
+    expect(returnsRow('viewer-a', 'viewer-a', false)).toBe(true);
+    expect(returnsRow('viewer-a', 'viewer-b', false)).toBe(false);
+    expect(returnsRow('viewer-a', 'viewer-a', true)).toBe(false);
+  });
+
   test('server resolves self, buddy, public, and blocked/missing as unavailable without leaking why', () => {
     expect(fullProfileSql).toContain('create or replace function public.buddy_card_access_mode');
     expect(fullProfileSql).toContain("returns text");
@@ -266,6 +327,40 @@ describe('full Buddy profile privacy boundary', () => {
     },
   );
 
+  test('client social proof read passes immutable viewer and target with zero auth calls', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    mockRpc.mockResolvedValue({
+      data: [{ mutual_buddies_count: 0, groups_count: null }],
+      error: null,
+    });
+
+    const { getBuddyCardSocialProof } = require('./card') as typeof import('./card');
+    await expect(getBuddyCardSocialProof(viewerId, targetId)).resolves.toEqual({
+      mutualBuddiesCount: 0,
+      groupsCount: null,
+    });
+    expect(mockRpc).toHaveBeenCalledWith('buddy_card_social_proof', {
+      p_expected_viewer: viewerId,
+      p_target: targetId,
+    });
+    expect(mockGetUser).not.toHaveBeenCalled();
+  });
+
+  test('screen wires optional social proof without blocking the primary card', () => {
+    expect(screenSource).toContain('getBuddyCardSocialProof(viewerId, targetId)');
+    expect(screenSource).toContain('commitOptional(setSocialProof, nextSocialProof)');
+    expect(screenSource).toMatch(
+      /getBuddyCardSocialProof\(viewerId, targetId\)[\s\S]*?\.catch\(\(\) => \{\}\)/,
+    );
+    expect(screenSource).toContain(
+      'mutualBuddiesCount={ownerView ? null : socialProof?.mutualBuddiesCount ?? null}',
+    );
+    expect(screenSource).toContain('groupsCount={ownerView ? socialProof?.groupsCount ?? null : null}');
+    expect(publicFaceSource).toContain("{ label: 'Mutual', value: formatWholeNumber(mutualBuddiesCount) }");
+    expect(publicFaceSource).not.toContain("{ label: 'Mutual', value: EMPTY_VALUE }");
+  });
+
   test('unavailable access renders no profile, retry, or Connect affordance', () => {
     expect(screenSource).toContain("if (mode === 'unavailable')");
     expect(screenSource).toContain("const confirmedMode = mode === 'public'");
@@ -275,6 +370,34 @@ describe('full Buddy profile privacy boundary', () => {
 });
 
 describe('Buddy Card connection lifecycle', () => {
+  test('target or account replacement suppresses a deferred social-proof aggregate', () => {
+    const { BuddyCardLoadGuard } = require('./BuddyCardLoadGuard') as typeof import('./BuddyCardLoadGuard');
+    const guard = new BuddyCardLoadGuard();
+    const token = guard.bindViewer(guard.begin('target-a'), 'viewer-a')!;
+    const setter = jest.fn();
+    let currentTarget = 'target-a';
+
+    currentTarget = 'target-b';
+    expect(relationship().commitBuddyCardOptionalValue(
+      'target-a',
+      () => currentTarget,
+      () => guard.owns(token),
+      setter,
+      { mutualBuddiesCount: 2, groupsCount: null },
+    )).toBe(false);
+
+    currentTarget = 'target-a';
+    guard.cancel(token);
+    expect(relationship().commitBuddyCardOptionalValue(
+      'target-a',
+      () => currentTarget,
+      () => guard.owns(token),
+      setter,
+      { mutualBuddiesCount: 2, groupsCount: null },
+    )).toBe(false);
+    expect(setter).not.toHaveBeenCalled();
+  });
+
   test('replacement while an optional value is deferred applies no stale setter', async () => {
     const value = deferred<number>();
     const setter = jest.fn<(next: number) => void>();

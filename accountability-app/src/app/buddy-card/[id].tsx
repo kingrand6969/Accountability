@@ -14,6 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   getAuthorizedBuddyCard,
   getBuddyCard,
+  getBuddyCardSocialProof,
   getBuddyStats,
   getBoardRank,
   getCardMetrics,
@@ -21,6 +22,7 @@ import {
   listCardPosts,
   type BoardRank,
   type BuddyCardView,
+  type BuddyCardSocialProof,
   type BuddyStats,
   type CardMetrics,
   type CardPost,
@@ -64,6 +66,7 @@ export default function BuddyCardScreen() {
   const [boardRank, setBoardRank] = useState<BoardRank | null>(null);
   const [metrics, setMetrics] = useState<CardMetrics | null>(null);
   const [posts, setPosts] = useState<CardPost[] | null>(null);
+  const [socialProof, setSocialProof] = useState<BuddyCardSocialProof | null>(null);
   const [accessMode, setAccessMode] = useState<BuddyCardAccessMode | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,6 +111,7 @@ export default function BuddyCardScreen() {
       setBoardRank(null);
       setMetrics(null);
       setPosts(null);
+      setSocialProof(null);
       setAccessMode(null);
       setSent(false);
       setSending(false);
@@ -152,6 +156,7 @@ export default function BuddyCardScreen() {
             setBoardRank(null);
             setMetrics(null);
             setPosts(null);
+            setSocialProof(null);
             setAccessMode(null);
             setSent(false);
             setSending(false);
@@ -214,6 +219,11 @@ export default function BuddyCardScreen() {
               }
               commit(setView, v);
               commit(setAccessMode, mode);
+              if (mode !== 'buddy') {
+                void getBuddyCardSocialProof(viewerId, targetId)
+                  .then((nextSocialProof) => commitOptional(setSocialProof, nextSocialProof))
+                  .catch(() => {});
+              }
               void getBuddyStats(targetId)
                 .then((nextStats) => commitOptional(setStats, nextStats))
                 .catch(() => {});
@@ -561,6 +571,8 @@ export default function BuddyCardScreen() {
             stats={stats}
             boardRank={boardRank}
             metrics={metrics}
+            mutualBuddiesCount={ownerView ? null : socialProof?.mutualBuddiesCount ?? null}
+            groupsCount={ownerView ? socialProof?.groupsCount ?? null : null}
             onPressMedals={() =>
               router.push({ pathname: '/buddy-medals/[id]', params: { id: id! } } as never)
             }

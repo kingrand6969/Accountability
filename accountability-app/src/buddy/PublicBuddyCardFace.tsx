@@ -190,23 +190,32 @@ function BuddyCardRankings({
 function BuddyCardSocialProof({
   stats,
   ownerView,
+  mutualBuddiesCount,
   groupsCount,
   palette,
 }: {
   stats: BuddyStats | null;
   ownerView: boolean;
+  mutualBuddiesCount: number | null;
   groupsCount: number | null;
   palette: BuddyCardPalette;
 }): React.JSX.Element | null {
-  if (!stats && (!ownerView || groupsCount == null)) return null;
-
   const items = [
-    { label: 'Cheers', value: formatWholeNumber(stats?.cheers) },
-    { label: 'Buddies', value: formatWholeNumber(stats?.buddies) },
-    ownerView
-      ? { label: 'Groups', value: formatWholeNumber(groupsCount) }
-      : { label: 'Mutual', value: EMPTY_VALUE },
+    ...(stats
+      ? [
+          { label: 'Cheers', value: formatWholeNumber(stats.cheers) },
+          { label: 'Buddies', value: formatWholeNumber(stats.buddies) },
+        ]
+      : []),
+    ...(ownerView
+      ? groupsCount == null
+        ? []
+        : [{ label: 'Groups', value: formatWholeNumber(groupsCount) }]
+      : mutualBuddiesCount == null
+        ? []
+        : [{ label: 'Mutual', value: formatWholeNumber(mutualBuddiesCount) }]),
   ];
+  if (items.length === 0) return null;
 
   return (
     <View
@@ -300,6 +309,7 @@ export function PublicBuddyCardFace({
   boardRank = null,
   metrics,
   ownerView = false,
+  mutualBuddiesCount = null,
   groupsCount = null,
   onPressMedals,
 }: {
@@ -314,6 +324,7 @@ export function PublicBuddyCardFace({
   boardRank?: BoardRank | null;
   metrics: CardMetrics | null;
   ownerView?: boolean;
+  mutualBuddiesCount?: number | null;
   groupsCount?: number | null;
   onPressMedals?: () => void;
 }) {
@@ -351,6 +362,7 @@ export function PublicBuddyCardFace({
         <BuddyCardSocialProof
           stats={stats}
           ownerView={ownerView}
+          mutualBuddiesCount={mutualBuddiesCount}
           groupsCount={groupsCount}
           palette={palette}
         />

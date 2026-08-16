@@ -40,6 +40,29 @@ export type BuddyCard = {
 
 export type BuddyStats = { buddies: number; km: number; stars: number; cheers: number };
 
+export type BuddyCardSocialProof = {
+  mutualBuddiesCount: number;
+  groupsCount: number | null;
+};
+
+/** Aggregate-only social proof. PostgreSQL binds the expected viewer to auth.uid(). */
+export async function getBuddyCardSocialProof(
+  expectedViewerId: string,
+  targetId: string,
+): Promise<BuddyCardSocialProof | null> {
+  const { data, error } = await supabase.rpc('buddy_card_social_proof', {
+    p_expected_viewer: expectedViewerId,
+    p_target: targetId,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return {
+    mutualBuddiesCount: Number(row.mutual_buddies_count ?? 0),
+    groupsCount: row.groups_count == null ? null : Number(row.groups_count),
+  };
+}
+
 /** A member's public performance line — the five Compete metrics, all-time,
  *  plus where they place among their own buddies by consistency. */
 export type CardMetrics = {

@@ -329,6 +329,7 @@ describe('PublicBuddyCardFace clean composition', () => {
       metrics,
       boardRank,
       stats,
+      mutualBuddiesCount: 0,
       onPressMedals: jest.fn(),
       ...overrides,
     }));
@@ -472,6 +473,7 @@ describe('PublicBuddyCardFace clean composition', () => {
     const ownerCopy = renderedText(publicCard({ ownerView: true, groupsCount: 6 }));
 
     expect(visitorCopy).toContain('Mutual');
+    expect(visitorCopy).toContain('0');
     expect(visitorCopy).not.toContain('Groups');
     expect(visitorCopy).not.toContain('99');
     expect(ownerCopy).toContain('Groups');
@@ -504,6 +506,7 @@ describe('PublicBuddyCardFace clean composition', () => {
       metrics: null,
       stats: null,
       boardRank: null,
+      mutualBuddiesCount: null,
       groupsCount: null,
     });
 
