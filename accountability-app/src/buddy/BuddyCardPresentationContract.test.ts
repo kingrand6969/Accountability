@@ -468,6 +468,32 @@ describe('PublicBuddyCardFace clean composition', () => {
     expect(renderedText(buddiesRankingOnly)).toEqual(expect.arrayContaining(['Buddies', '#3']));
   });
 
+  it('renders country and city ranking consent independently', () => {
+    const countryOnly = renderedText(publicCard({
+      card: {
+        ...completeCard,
+        show_country_rank: true,
+        show_city_rank: false,
+        show_consistency: false,
+        show_points: false,
+      },
+    }));
+    expect(countryOnly).toContain('Country');
+    expect(countryOnly).not.toContain('City');
+
+    const cityOnly = renderedText(publicCard({
+      card: {
+        ...completeCard,
+        show_country_rank: false,
+        show_city_rank: true,
+        show_consistency: false,
+        show_points: false,
+      },
+    }));
+    expect(cityOnly).toContain('City');
+    expect(cityOnly).not.toContain('Country');
+  });
+
   it('uses Mutual for another viewer and Groups for the owner', () => {
     const visitorCopy = renderedText(publicCard({ ownerView: false }));
     const ownerCopy = renderedText(publicCard({ ownerView: true, groupsCount: 6 }));

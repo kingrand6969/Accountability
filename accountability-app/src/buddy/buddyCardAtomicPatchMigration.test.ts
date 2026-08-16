@@ -28,6 +28,7 @@ describe('atomic Buddy Card patch migration', () => {
 
   test('keeps editor and rank keys isolated with explicit allowlists and rejects disallowed keys', () => {
     expect(migration).toMatch(/p_patch_kind = 'editor'[\s\S]*'palette_key'[\s\S]*'featured_medal_ids'[\s\S]*'headline'[\s\S]*'show_posts'/i);
+    expect(migration).toMatch(/p_patch_kind = 'editor'[\s\S]*'show_city_rank'[\s\S]*'show_country_rank'/i);
     expect(migration).toMatch(/p_patch_kind = 'rank'[\s\S]*'rank_name'[\s\S]*'medals'[\s\S]*'medals_list'/i);
     expect(migration).toMatch(/jsonb_object_keys\(p_patch\)[\s\S]*raise exception 'Buddy Card patch contains disallowed keys'/i);
     expect(migration).toMatch(/jsonb_typeof\(p_patch\) is distinct from 'object'/i);

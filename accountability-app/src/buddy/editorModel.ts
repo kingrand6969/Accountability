@@ -32,6 +32,26 @@ export type BuddyCardEditorPatch = Partial<Pick<BuddyCard, EditorKey>> & {
   mode: 'custom';
 };
 
+export type BuddyCardRankingConsentKey = 'show_country_rank' | 'show_city_rank';
+
+/** Legacy cards may not contain ranking consent fields. Treat absence and all
+ * non-true values as an explicit opt-out before building the editor baseline. */
+export function normalizeBuddyCardEditorDraft(card: BuddyCard): BuddyCard {
+  return {
+    ...card,
+    show_country_rank: card.show_country_rank === true,
+    show_city_rank: card.show_city_rank === true,
+  };
+}
+
+export function setBuddyCardRankingConsent(
+  card: BuddyCard,
+  key: BuddyCardRankingConsentKey,
+  value: boolean,
+): BuddyCard {
+  return { ...card, [key]: value };
+}
+
 function validPaletteKey(value: unknown): BuddyCardPaletteKey {
   return BUDDY_CARD_PALETTE_KEYS.includes(value as BuddyCardPaletteKey)
     ? (value as BuddyCardPaletteKey)
@@ -52,10 +72,11 @@ export function buildBuddyCardEditorPatch(
   card: BuddyCard,
   earnedIds: readonly string[],
 ): BuddyCardEditorPatch {
+  const normalizedCard = normalizeBuddyCardEditorDraft(card);
   return {
-    ...pickBuddyCardEditorChanges(card),
-    palette_key: validPaletteKey(card.palette_key),
-    featured_medal_ids: normalizeFeaturedMedalIds(card.featured_medal_ids, earnedIds),
+    ...pickBuddyCardEditorChanges(normalizedCard),
+    palette_key: validPaletteKey(normalizedCard.palette_key),
+    featured_medal_ids: normalizeFeaturedMedalIds(normalizedCard.featured_medal_ids, earnedIds),
     mode: 'custom',
   };
 }

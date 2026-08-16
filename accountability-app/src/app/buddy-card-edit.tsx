@@ -36,6 +36,8 @@ import {
   createSynchronousSubmitLock,
   loadBuddyCardEditorData,
   moveFeaturedMedal,
+  normalizeBuddyCardEditorDraft,
+  setBuddyCardRankingConsent,
   shouldPreventBuddyCardEditorExit,
   toggleFeaturedMedal,
   type BuddyCardEditorLoadToken,
@@ -172,13 +174,13 @@ export default function BuddyCardEdit() {
       )
         ? (storedCard.palette_key as BuddyCardPaletteKey)
         : 'polar_blue';
-      const normalizedDraft: BuddyCard = {
+      const normalizedDraft = normalizeBuddyCardEditorDraft({
         ...storedCard,
         palette_key: resolvedPalette,
         featured_medal_ids: selected,
-      };
+      });
 
-      setCard(storedCard);
+      setCard(normalizedDraft);
       setPaletteKey(resolvedPalette);
       setFeaturedMedalIds(selected);
       setBaselineFingerprint(buddyCardEditorFingerprint(normalizedDraft));
@@ -477,6 +479,8 @@ export default function BuddyCardEdit() {
       <PrivacyToggle label="Show points" value={card.show_points === true} onChange={(value) => setCard((current) => ({ ...current, show_points: value }))} palette={editorPalette} />
       <PrivacyToggle label="Show distance" value={card.show_distance === true} onChange={(value) => setCard((current) => ({ ...current, show_distance: value }))} palette={editorPalette} />
       <PrivacyToggle label="Show challenge wins" value={card.show_challenge_wins === true} onChange={(value) => setCard((current) => ({ ...current, show_challenge_wins: value }))} palette={editorPalette} />
+      <PrivacyToggle label="Share country ranking" value={card.show_country_rank === true} onChange={(value) => setCard((current) => setBuddyCardRankingConsent(current, 'show_country_rank', value))} palette={editorPalette} />
+      <PrivacyToggle label="Share city ranking" value={card.show_city_rank === true} onChange={(value) => setCard((current) => setBuddyCardRankingConsent(current, 'show_city_rank', value))} palette={editorPalette} />
       <PrivacyToggle label="Show selected public posts" value={card.show_posts === true} onChange={(value) => setCard((current) => ({ ...current, show_posts: value }))} palette={editorPalette} />
 
       <Text style={[styles.label, { color: editorPalette.text }]}>Your accountability style</Text>
@@ -555,9 +559,12 @@ function PrivacyToggle({
     <View style={[styles.toggleRow, { borderBottomColor: palette.border }]}>
       <Text style={[styles.toggleLabel, { color: palette.text }]}>{label}</Text>
       <Switch
+        style={styles.toggleSwitch}
         value={value}
         onValueChange={onChange}
+        accessibilityRole="switch"
         accessibilityLabel={label}
+        accessibilityState={{ checked: value }}
         trackColor={{ false: palette.border, true: palette.accentSecondary }}
         thumbColor={value ? palette.accent : palette.surface}
       />
@@ -592,6 +599,7 @@ const styles = StyleSheet.create({
   multiline: { minHeight: 90, textAlignVertical: 'top' },
   toggleRow: { minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   toggleLabel: { flex: 1, fontFamily: font.semibold, fontSize: 13.5, paddingVertical: spacing.sm },
+  toggleSwitch: { minWidth: 48, minHeight: 48, alignSelf: 'center' },
   traitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4 },
   trait: { minHeight: 48, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
   traitText: { fontFamily: font.semibold, fontSize: 12.5 },

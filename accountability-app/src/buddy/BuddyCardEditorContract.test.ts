@@ -92,6 +92,17 @@ describe('Buddy Card editor presentation controls', () => {
     expect(editorSource).toContain('getRank({ expectedOwnerId: ownerId, snapshot: false })');
     expect(editorSource).toContain('loadBuddyCardEditorData(ownerId');
   });
+
+  test('offers independent accessible country and city ranking consent controls in the live preview draft', () => {
+    expect(editorSource).toContain('label="Share country ranking"');
+    expect(editorSource).toContain('label="Share city ranking"');
+    expect(editorSource).toContain("setBuddyCardRankingConsent(current, 'show_country_rank', value)");
+    expect(editorSource).toContain("setBuddyCardRankingConsent(current, 'show_city_rank', value)");
+    expect(editorSource).toContain('accessibilityState={{ checked: value }}');
+    expect(editorSource).toContain('style={styles.toggleSwitch}');
+    expect(editorSource).toContain('toggleSwitch: { minWidth: 48, minHeight: 48');
+    expect(editorSource).toContain('card={previewCard}');
+  });
 });
 
 describe('Buddy Card editor model', () => {
@@ -178,6 +189,49 @@ describe('Buddy Card editor model', () => {
     expect(shouldPreventBuddyCardEditorExit('saved', 'saved', false)).toBe(false);
     expect(shouldPreventBuddyCardEditorExit('saved', 'changed', false)).toBe(true);
     expect(shouldPreventBuddyCardEditorExit('saved', 'changed', true)).toBe(false);
+  });
+
+  test('legacy ranking consent defaults false and country/city toggle without hidden coupling', () => {
+    const {
+      buddyCardEditorFingerprint,
+      normalizeBuddyCardEditorDraft,
+      setBuddyCardRankingConsent,
+    } = model();
+    const legacy = normalizeBuddyCardEditorDraft({ headline: 'Run' });
+    expect(legacy).toMatchObject({ show_country_rank: false, show_city_rank: false });
+
+    const country = setBuddyCardRankingConsent(legacy, 'show_country_rank', true);
+    expect(country).toMatchObject({ show_country_rank: true, show_city_rank: false });
+    const city = setBuddyCardRankingConsent(country, 'show_city_rank', true);
+    expect(city).toMatchObject({ show_country_rank: true, show_city_rank: true });
+    const countryOff = setBuddyCardRankingConsent(city, 'show_country_rank', false);
+    expect(countryOff).toMatchObject({ show_country_rank: false, show_city_rank: true });
+
+    const baseline = buddyCardEditorFingerprint(legacy);
+    expect(buddyCardEditorFingerprint(country)).not.toBe(baseline);
+    expect(buddyCardEditorFingerprint(normalizeBuddyCardEditorDraft(country))).toBe(
+      buddyCardEditorFingerprint(country),
+    );
+  });
+
+  test('ranking consent persists in the editor-owned patch and becomes pristine after save', () => {
+    const {
+      buddyCardEditorFingerprint,
+      buildBuddyCardEditorPatch,
+      normalizeBuddyCardEditorDraft,
+      setBuddyCardRankingConsent,
+      shouldPreventBuddyCardEditorExit,
+    } = model();
+    const baselineCard = normalizeBuddyCardEditorDraft({ palette_key: 'polar_blue' });
+    const baseline = buddyCardEditorFingerprint(baselineCard);
+    const changed = setBuddyCardRankingConsent(baselineCard, 'show_city_rank', true);
+    const changedFingerprint = buddyCardEditorFingerprint(changed);
+    expect(shouldPreventBuddyCardEditorExit(baseline, changedFingerprint, false)).toBe(true);
+
+    const saved = buildBuddyCardEditorPatch(changed, []);
+    expect(saved).toMatchObject({ show_country_rank: false, show_city_rank: true });
+    const savedFingerprint = buddyCardEditorFingerprint(saved);
+    expect(shouldPreventBuddyCardEditorExit(savedFingerprint, savedFingerprint, false)).toBe(false);
   });
 
   test('generation guard rejects stale and unmounted async completions', () => {
@@ -282,6 +336,8 @@ describe('expected-owner Buddy Card save', () => {
         palette_key: 'momentum_teal',
         featured_medal_ids: ['streak'],
         headline: 'New focus',
+        show_country_rank: true,
+        show_city_rank: false,
         rank_name: 'forged',
         private_future_key: 'blocked',
       } as never),
@@ -294,6 +350,8 @@ describe('expected-owner Buddy Card save', () => {
         palette_key: 'momentum_teal',
         featured_medal_ids: ['streak'],
         headline: 'New focus',
+        show_country_rank: true,
+        show_city_rank: false,
       },
       p_patch_kind: 'editor',
     });
