@@ -33,11 +33,19 @@ as $$
     and auth.uid() is not null
     and (
       p.id = auth.uid()
-      or exists (
-        select 1
-        from public.buddy_links bl
-        where (bl.user_a = auth.uid() and bl.user_b = p.id)
-           or (bl.user_b = auth.uid() and bl.user_a = p.id)
+      or (
+        exists (
+          select 1
+          from public.buddy_links bl
+          where (bl.user_a = auth.uid() and bl.user_b = p.id)
+             or (bl.user_b = auth.uid() and bl.user_a = p.id)
+        )
+        and not exists (
+          select 1
+          from public.buddy_blocks bb
+          where (bb.blocker = auth.uid() and bb.blocked = p.id)
+             or (bb.blocked = auth.uid() and bb.blocker = p.id)
+        )
       )
     );
 $$;
@@ -46,6 +54,6 @@ revoke execute on function public.buddy_full_profile(uuid) from public, anon;
 grant execute on function public.buddy_full_profile(uuid) to authenticated;
 
 comment on function public.buddy_full_profile(uuid) is
-  'Returns full Buddy Card profile fields only to the owner or an accepted buddy; public visitors must use public_profiles.';
+  'Returns full Buddy Card profile fields only to the owner or an accepted, unblocked buddy; public visitors must use public_profiles.';
 
 notify pgrst, 'reload schema';

@@ -86,16 +86,61 @@ describe('Buddy Card viewer state', () => {
     expect(screenSource).toContain('setReloadKey((value) => value + 1)');
     expect(screenSource).toContain('setAccountEpoch((value) => value + 1)');
   });
+
+  test('moderation confirmations capture immutable viewer/target context and guard every side effect', () => {
+    expect(screenSource).toContain('captureModerationContext()');
+    expect(screenSource).toContain('confirmBlock(context)');
+    expect(screenSource).toContain('confirmReport(context)');
+    expect(screenSource).toContain('moderationLockRef.current.tryAcquire(context.ownerId, context.targetId)');
+    expect(screenSource).toContain('blockBuddyAsOwner(context.ownerId, context.targetId)');
+    expect(screenSource).toContain('reportBuddyAsOwner(context.ownerId, context.targetId');
+    expect(screenSource).toContain('moderationContextIsCurrent(context, actionToken)');
+    expect(screenSource).toContain('style={({ pressed }) => [styles.optionAction');
+    expect(screenSource).toContain('optionAction: { minWidth: 48, minHeight: 48');
+  });
+
+  test('every deferred optional profile value revalidates auth before state', () => {
+    expect(screenSource).toContain('commitBuddyCardOptionalValue');
+    for (const setter of ['setStats', 'setMetrics', 'setBoardRank', 'setPosts']) {
+      expect(screenSource).not.toMatch(new RegExp(`then\\(\\([^)]*\\) => commit\\(${setter}`));
+      expect(screenSource).toContain(`commitOptional(${setter}`);
+    }
+  });
+
+  test('feed account cleanup cannot erase the next account ref after render', () => {
+    expect(feedSource).toContain('currentUserIdRef.current = myId');
+    expect(feedSource).toMatch(/return \(\) => \{\s*currentUserIdRef\.current = null;[\s\S]*?\}, \[\]\);/);
+  });
 });
 
 describe('full Buddy profile privacy boundary', () => {
   test('PostgreSQL releases the full profile only to self or an accepted buddy pair', () => {
     expect(fullProfileSql).toContain('create or replace function public.buddy_full_profile');
     expect(fullProfileSql).toContain('security definer');
+    expect(fullProfileSql).toContain("set search_path = ''");
     expect(fullProfileSql).toContain('auth.uid()');
     expect(fullProfileSql).toContain('from public.buddy_links');
+    expect(fullProfileSql).toContain('not exists (');
+    expect(fullProfileSql).toContain('from public.buddy_blocks');
+    expect(fullProfileSql).toContain('bb.blocker = auth.uid() and bb.blocked = p.id');
+    expect(fullProfileSql).toContain('bb.blocked = auth.uid() and bb.blocker = p.id');
     expect(fullProfileSql).toContain('revoke execute on function public.buddy_full_profile(uuid) from public, anon');
     expect(fullProfileSql).toContain('grant execute on function public.buddy_full_profile(uuid) to authenticated');
+  });
+
+  test('the SQL keeps self access outside the linked-and-unblocked buddy branch', () => {
+    expect(fullProfileSql).toMatch(
+      /p\.id = auth\.uid\(\)\s+or \(\s+exists \([\s\S]*?from public\.buddy_links[\s\S]*?and not exists \([\s\S]*?from public\.buddy_blocks/i,
+    );
+  });
+
+  test('a linked profile becomes unreadable when either user blocks the other', () => {
+    const canReadFullProfile = (self: boolean, linked: boolean, blocked: boolean) =>
+      self || (linked && !blocked);
+
+    expect(canReadFullProfile(false, true, false)).toBe(true);
+    expect(canReadFullProfile(false, true, true)).toBe(false);
+    expect(canReadFullProfile(true, true, true)).toBe(true);
   });
 
   test('the client loader is owner-bound before and after the authorized RPC', async () => {
@@ -128,6 +173,24 @@ describe('full Buddy profile privacy boundary', () => {
 });
 
 describe('Buddy Card connection lifecycle', () => {
+  test('replacement while an optional value is deferred applies no stale setter', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const value = deferred<number>();
+    const setter = jest.fn<(next: number) => void>();
+    mockGetUser.mockResolvedValue(authUser('33333333-3333-4333-8333-333333333333'));
+
+    const completion = value.promise.then((next) => relationship().commitBuddyCardOptionalValue(
+      viewerId,
+      () => true,
+      setter,
+      next,
+    )).catch(() => false);
+    value.resolve(7);
+
+    await expect(completion).resolves.toBe(false);
+    expect(setter).not.toHaveBeenCalled();
+  });
+
   test('relationship lookup stays bound to the initiating viewer and target', async () => {
     const viewerId = '11111111-1111-4111-8111-111111111111';
     const targetId = '22222222-2222-4222-8222-222222222222';
@@ -228,5 +291,83 @@ describe('Buddy Card connection lifecycle', () => {
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
     )).rejects.toThrow(/account changed/i);
+  });
+
+  test('block/report mutations reject self and bind the initiating owner in payloads', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    const insert = jest.fn<(...args: unknown[]) => Promise<any>>().mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue(authUser(viewerId));
+    mockFrom.mockReturnValue({ insert });
+
+    await relationship().blockBuddyAsOwner(viewerId, targetId);
+    expect(insert).toHaveBeenCalledWith({ blocker: viewerId, blocked: targetId });
+
+    insert.mockClear();
+    await relationship().reportBuddyAsOwner(viewerId, targetId, 'Profile report');
+    expect(insert).toHaveBeenCalledWith({
+      reporter: viewerId,
+      reported: targetId,
+      reason: 'Profile report',
+    });
+
+    jest.clearAllMocks();
+    await expect(relationship().blockBuddyAsOwner('same', 'same')).rejects.toThrow(/yourself/i);
+    await expect(relationship().reportBuddyAsOwner('same', 'same', 'reason')).rejects.toThrow(/yourself/i);
+    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('block/report reject an account mismatch before database access', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    mockGetUser.mockResolvedValue(authUser('33333333-3333-4333-8333-333333333333'));
+
+    await expect(relationship().blockBuddyAsOwner(viewerId, targetId)).rejects.toThrow(
+      /account changed/i,
+    );
+    await expect(
+      relationship().reportBuddyAsOwner(viewerId, targetId, 'Profile report'),
+    ).rejects.toThrow(/account changed/i);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('account change while a confirmation is open performs no mutation', async () => {
+    const { BuddyCardLoadGuard } = require('./BuddyCardLoadGuard') as typeof import('./BuddyCardLoadGuard');
+    const guard = new BuddyCardLoadGuard();
+    const captured = guard.bindViewer(guard.begin('target-a'), 'viewer-a')!;
+    const confirm = () => guard.owns(captured);
+
+    guard.bindViewer(guard.begin('target-a'), 'viewer-b');
+    expect(confirm()).toBe(false);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('pending moderation cancelled by cleanup has no toast or back and duplicate success backs once', async () => {
+    const lock = relationship().createBuddyCardConnectLock();
+    const pending = deferred<void>();
+    const toast = jest.fn();
+    const back = jest.fn();
+    const stale = lock.tryAcquire('viewer', 'target-a')!;
+    const staleCompletion = pending.promise.then(() => {
+      if (!lock.owns(stale, 'viewer', 'target-a')) return;
+      toast();
+      back();
+    });
+    lock.cancel(stale);
+    pending.resolve();
+    await staleCompletion;
+    expect(toast).not.toHaveBeenCalled();
+    expect(back).not.toHaveBeenCalled();
+
+    const current = lock.tryAcquire('viewer', 'target-a')!;
+    const finish = () => {
+      if (!lock.owns(current, 'viewer', 'target-a')) return;
+      lock.release(current);
+      back();
+    };
+    finish();
+    finish();
+    expect(back).toHaveBeenCalledTimes(1);
   });
 });

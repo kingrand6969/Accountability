@@ -532,7 +532,7 @@ describe('PublicBuddyCardFace runtime wiring', () => {
     const invocation = publicFaceInvocation(screenSource);
 
     expect(screenSource).toMatch(
-      /getBuddyStats\(targetId\)\s*\.then\(\(nextStats\) => commit\(setStats, nextStats\)\)/,
+      /getBuddyStats\(targetId\)\s*\.then\(\(nextStats\) => commitOptional\(setStats, nextStats\)\)/,
     );
     expect(screenSource).not.toMatch(/if \(buddy\) \{\s*getBuddyStats\(id\)/);
     expect(invocation).toContain('memberSince={memberSince}');

@@ -145,7 +145,7 @@ export default function Feed() {
       if (pendingCreateAction.current) clearTimeout(pendingCreateAction.current);
       pendingCreateAction.current = null;
     };
-  }, [myId]);
+  }, []);
 
   useEffect(() => {
     const generation = ++profileGeneration.current;

@@ -34,16 +34,25 @@ import {
 import {
   areBuddiesAsOwner,
   assertBuddyCardViewer,
+  blockBuddyAsOwner,
+  commitBuddyCardOptionalValue,
   createBuddyCardConnectLock,
+  reportBuddyAsOwner,
   sendBuddyRequestAsOwner,
   type BuddyCardConnectToken,
 } from '../../buddy/buddyCardRelationship';
-import { blockUser, reportUser } from '../../buddy/api';
 import { supabase } from '../../lib/supabase';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
 import { colors, font, radius, shadow, spacing, contentMax } from '../../ui/theme';
+
+type ModerationContext = Readonly<{
+  loadToken: BuddyCardLoadToken;
+  ownerId: string;
+  targetId: string;
+  name: string | null;
+}>;
 
 export default function BuddyCardScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
@@ -66,10 +75,15 @@ export default function BuddyCardScreen() {
   const activeLoadTokenRef = useRef<BuddyCardLoadToken | null>(null);
   const connectLockRef = useRef(createBuddyCardConnectLock());
   const connectTokenRef = useRef<BuddyCardConnectToken | null>(null);
+  const moderationLockRef = useRef(createBuddyCardConnectLock());
+  const moderationTokenRef = useRef<BuddyCardConnectToken | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
+      // These counters intentionally restart this focused load after retry or account replacement.
+      void accountEpoch;
+      void reloadKey;
       const targetId = id;
       const guard = loadGuardRef.current;
       const targetToken = guard.begin(targetId);
@@ -104,6 +118,15 @@ export default function BuddyCardScreen() {
             if (!guard.owns(token)) return;
             setter(value);
           };
+          const commitOptional = <T,>(setter: (value: T) => void, value: T) =>
+            viewerId
+              ? commitBuddyCardOptionalValue(
+                  viewerId,
+                  () => guard.owns(token),
+                  setter,
+                  value,
+                )
+              : Promise.resolve(false);
 
           const authResult = supabase.auth.onAuthStateChange((_event, session) => {
             if (!guard.owns(token)) return;
@@ -124,6 +147,9 @@ export default function BuddyCardScreen() {
             const connectToken = connectTokenRef.current;
             if (connectToken) connectLockRef.current.cancel(connectToken);
             connectTokenRef.current = null;
+            const moderationToken = moderationTokenRef.current;
+            if (moderationToken) moderationLockRef.current.cancel(moderationToken);
+            moderationTokenRef.current = null;
             setAccountEpoch((value) => value + 1);
           });
           if (!guard.owns(token)) {
@@ -148,7 +174,7 @@ export default function BuddyCardScreen() {
               commit(setView, v);
               commit(setIsBuddy, buddy);
               void getBuddyStats(targetId)
-                .then((nextStats) => commit(setStats, nextStats))
+                .then((nextStats) => commitOptional(setStats, nextStats))
                 .catch(() => {});
               const fullView = ownerView || buddy;
               const publicMetricsAllowed = Boolean(
@@ -159,18 +185,20 @@ export default function BuddyCardScreen() {
               );
               if (fullView || publicMetricsAllowed) {
                 void getCardMetrics(targetId)
-                  .then((nextMetrics) => commit(setMetrics, nextMetrics))
+                  .then((nextMetrics) => commitOptional(setMetrics, nextMetrics))
                   .catch(() => {});
               }
               if (fullView || v?.card.show_city_rank || v?.card.show_country_rank) {
                 void getBoardRank(targetId)
-                  .then((nextBoardRank) => commit(setBoardRank, nextBoardRank))
+                  .then((nextBoardRank) => commitOptional(setBoardRank, nextBoardRank))
                   .catch(() => {});
               }
               if (fullView || v?.card.show_posts) {
                 void listCardPosts(targetId, fullView)
-                  .then((nextPosts) => commit(setPosts, nextPosts))
-                  .catch(() => commit(setPosts, []));
+                  .then((nextPosts) => commitOptional(setPosts, nextPosts))
+                  .catch(() => {
+                    void commitOptional(setPosts, []);
+                  });
               } else {
                 commit(setPosts, []);
               }
@@ -207,6 +235,9 @@ export default function BuddyCardScreen() {
         const connectToken = connectTokenRef.current;
         if (connectToken) connectLockRef.current.cancel(connectToken);
         connectTokenRef.current = null;
+        const moderationToken = moderationTokenRef.current;
+        if (moderationToken) moderationLockRef.current.cancel(moderationToken);
+        moderationTokenRef.current = null;
       };
     }, [accountEpoch, id, reloadKey]),
   );
@@ -240,62 +271,121 @@ export default function BuddyCardScreen() {
     }
   }
 
+  function captureModerationContext(): ModerationContext | null {
+    const loadToken = activeLoadTokenRef.current;
+    if (!id || !view || !loadToken?.viewerId || loadToken.viewerId === id) return null;
+    if (!loadGuardRef.current.owns(loadToken)) return null;
+    return {
+      loadToken,
+      ownerId: loadToken.viewerId,
+      targetId: id,
+      name: view.name,
+    };
+  }
+
+  function moderationContextIsCurrent(
+    context: ModerationContext,
+    actionToken: BuddyCardConnectToken,
+  ): boolean {
+    return (
+      activeLoadTokenRef.current === context.loadToken &&
+      loadGuardRef.current.owns(context.loadToken) &&
+      moderationLockRef.current.owns(actionToken, context.ownerId, context.targetId)
+    );
+  }
+
   function openOptions() {
-    if (!id || !view) return;
-    Alert.alert(authorLabel(view.name), undefined, [
-      { text: 'Block', style: 'destructive', onPress: confirmBlock },
-      { text: 'Report', onPress: confirmReport },
+    const context = captureModerationContext();
+    if (!context) return;
+    Alert.alert(authorLabel(context.name), undefined, [
+      { text: 'Block', style: 'destructive', onPress: () => confirmBlock(context) },
+      { text: 'Report', onPress: () => confirmReport(context) },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }
 
-  function confirmBlock() {
-    if (!id || !view) return;
+  function confirmBlock(context: ModerationContext) {
     Alert.alert(
-      `Block ${authorLabel(view.name)}?`,
+      `Block ${authorLabel(context.name)}?`,
       "They won't be able to message you and you won't see each other. You can undo this later.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Block',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await blockUser(id);
-              showToast('Blocked');
-              router.back();
-            } catch (e) {
-              Alert.alert('Could not block', String((e as Error).message ?? e));
-            }
+          onPress: () => {
+            void runBlock(context);
           },
         },
       ],
     );
   }
 
-  function confirmReport() {
-    if (!id || !view) return;
+  async function runBlock(context: ModerationContext) {
+    if (!loadGuardRef.current.owns(context.loadToken)) return;
+    const actionToken = moderationLockRef.current.tryAcquire(context.ownerId, context.targetId);
+    if (!actionToken) return;
+    moderationTokenRef.current = actionToken;
+    try {
+      await blockBuddyAsOwner(context.ownerId, context.targetId);
+      if (!moderationContextIsCurrent(context, actionToken)) return;
+      await assertBuddyCardViewer(context.ownerId);
+      if (!moderationContextIsCurrent(context, actionToken)) return;
+      showToast('Blocked');
+      moderationLockRef.current.release(actionToken);
+      if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
+      router.back();
+    } catch (e) {
+      if (!moderationContextIsCurrent(context, actionToken)) return;
+      if (/account changed/i.test(String((e as Error).message ?? e))) return;
+      Alert.alert('Could not block', String((e as Error).message ?? e));
+    } finally {
+      moderationLockRef.current.release(actionToken);
+      if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
+    }
+  }
+
+  function confirmReport(context: ModerationContext) {
     Alert.alert(
-      `Report ${authorLabel(view.name)}?`,
+      `Report ${authorLabel(context.name)}?`,
       "We'll review this profile. Reporting also blocks them so they can't reach you.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Report & block',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await reportUser(id, 'Reported from profile');
-              await blockUser(id).catch(() => {});
-              showToast('Reported - thank you');
-              router.back();
-            } catch (e) {
-              Alert.alert('Could not report', String((e as Error).message ?? e));
-            }
+          onPress: () => {
+            void runReport(context);
           },
         },
       ],
     );
+  }
+
+  async function runReport(context: ModerationContext) {
+    if (!loadGuardRef.current.owns(context.loadToken)) return;
+    const actionToken = moderationLockRef.current.tryAcquire(context.ownerId, context.targetId);
+    if (!actionToken) return;
+    moderationTokenRef.current = actionToken;
+    try {
+      await reportBuddyAsOwner(context.ownerId, context.targetId, 'Reported from profile');
+      if (!moderationContextIsCurrent(context, actionToken)) return;
+      await blockBuddyAsOwner(context.ownerId, context.targetId);
+      if (!moderationContextIsCurrent(context, actionToken)) return;
+      await assertBuddyCardViewer(context.ownerId);
+      if (!moderationContextIsCurrent(context, actionToken)) return;
+      showToast('Reported - thank you');
+      moderationLockRef.current.release(actionToken);
+      if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
+      router.back();
+    } catch (e) {
+      if (!moderationContextIsCurrent(context, actionToken)) return;
+      if (/account changed/i.test(String((e as Error).message ?? e))) return;
+      Alert.alert('Could not report', String((e as Error).message ?? e));
+    } finally {
+      moderationLockRef.current.release(actionToken);
+      if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
+    }
   }
 
   if (loading) {
@@ -350,10 +440,11 @@ export default function BuddyCardScreen() {
             ? () => null
             : () => (
                 <Pressable
-                  onPress={openOptions}
-                  hitSlop={12}
-                  accessibilityLabel="More options"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingHorizontal: 4 })}
+                      onPress={openOptions}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="More options"
+                      style={({ pressed }) => [styles.optionAction, pressed && { opacity: 0.6 }]}
                 >
                   <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
                 </Pressable>
@@ -556,6 +647,7 @@ const styles = StyleSheet.create({
   },
   retryPressed: { opacity: 0.75 },
   retryText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  optionAction: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: 40, ...contentMax },
   card: {
     backgroundColor: colors.card,

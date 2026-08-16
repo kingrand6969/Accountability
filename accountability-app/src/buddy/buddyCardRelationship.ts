@@ -25,6 +25,22 @@ export async function assertBuddyCardViewer(expectedViewerId: string): Promise<v
   if (data.user?.id !== expectedViewerId) throw new Error(ACCOUNT_CHANGED);
 }
 
+export async function commitBuddyCardOptionalValue<T>(
+  expectedViewerId: string,
+  isCurrent: () => boolean,
+  setter: (value: T) => void,
+  value: T,
+): Promise<boolean> {
+  try {
+    await assertBuddyCardViewer(expectedViewerId);
+  } catch {
+    return false;
+  }
+  if (!isCurrent()) return false;
+  setter(value);
+  return true;
+}
+
 /**
  * Checks the relationship for one immutable viewer/target pair. RLS remains
  * authoritative; the before/after auth checks only prevent a screen started by
@@ -68,6 +84,41 @@ export async function sendBuddyRequestAsOwner(
     .from('buddy_requests')
     .insert({ from_user: expectedOwnerId, to_user: targetId });
   if (error && error.code !== '23505') throw error;
+  await assertBuddyCardViewer(expectedOwnerId);
+}
+
+function assertNotSelf(expectedOwnerId: string, targetId: string): void {
+  if (expectedOwnerId === targetId) throw new Error('You cannot act on yourself.');
+}
+
+export async function blockBuddyAsOwner(
+  expectedOwnerId: string,
+  targetId: string,
+): Promise<void> {
+  assertNotSelf(expectedOwnerId, targetId);
+  assertUuid(expectedOwnerId);
+  assertUuid(targetId);
+  await assertBuddyCardViewer(expectedOwnerId);
+  const { error } = await supabase
+    .from('buddy_blocks')
+    .insert({ blocker: expectedOwnerId, blocked: targetId });
+  if (error && error.code !== '23505') throw error;
+  await assertBuddyCardViewer(expectedOwnerId);
+}
+
+export async function reportBuddyAsOwner(
+  expectedOwnerId: string,
+  targetId: string,
+  reason: string,
+): Promise<void> {
+  assertNotSelf(expectedOwnerId, targetId);
+  assertUuid(expectedOwnerId);
+  assertUuid(targetId);
+  await assertBuddyCardViewer(expectedOwnerId);
+  const { error } = await supabase
+    .from('buddy_reports')
+    .insert({ reporter: expectedOwnerId, reported: targetId, reason });
+  if (error) throw error;
   await assertBuddyCardViewer(expectedOwnerId);
 }
 
