@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const mockGetUser = jest.fn<() => Promise<any>>();
 const mockFrom = jest.fn<(...args: unknown[]) => any>();
+const mockRpc = jest.fn<(...args: unknown[]) => Promise<any>>();
 
 jest.mock('../lib/supabase', () => ({
   supabase: {
     auth: { getUser: () => mockGetUser() },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 jest.mock('../home/api', () => ({ getHomeStats: jest.fn() }));
@@ -37,61 +39,39 @@ describe('rank snapshot ownership', () => {
     await expect(
       snapshotRankToCardForOwner('owner-a', 'Elite', 1, [{ id: 'streak', tier: 0 }]),
     ).rejects.toThrow('Account changed. Rank was not saved.');
-    expect(mockFrom).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
-  test('account switch while the fresh card read is pending never starts a write', async () => {
-    const pendingRead = deferred<{ data: { buddy_card: Record<string, unknown> }; error: null }>();
+  test('account switch while the atomic RPC is pending cannot show stale success', async () => {
+    const pendingWrite = deferred<{ data: Record<string, unknown>; error: null }>();
     mockGetUser
       .mockResolvedValueOnce(authUser('owner-a'))
       .mockResolvedValueOnce(authUser('owner-b'));
-    const read = {
-      select: jest.fn(() => read),
-      eq: jest.fn(() => read),
-      maybeSingle: jest.fn(() => pendingRead.promise),
-    };
-    mockFrom.mockReturnValue(read);
+    mockRpc.mockReturnValue(pendingWrite.promise);
 
     const saving = snapshotRankToCardForOwner('owner-a', 'Elite', 1, [{ id: 'streak', tier: 0 }]);
-    pendingRead.resolve({ data: { buddy_card: { palette_key: 'power_violet' } }, error: null });
+    await Promise.resolve();
+    pendingWrite.resolve({ data: { palette_key: 'power_violet' }, error: null });
     await expect(saving).rejects.toThrow('Account changed. Rank was not saved.');
-    expect(mockFrom).toHaveBeenCalledTimes(1);
-    expect(read.eq).toHaveBeenCalledWith('id', 'owner-a');
+    expect(mockRpc).toHaveBeenCalledWith('patch_my_buddy_card', {
+      p_expected_owner: 'owner-a',
+      p_patch: {
+        rank_name: 'Elite',
+        medals: 1,
+        medals_list: [{ id: 'streak', tier: 0 }],
+      },
+      p_patch_kind: 'rank',
+    });
   });
 
-  test('after validation the mutation remains scoped to owner A and stale success is rejected', async () => {
+  test('RPC/RLS rejection fails closed without a fallback whole-JSON write', async () => {
     mockGetUser
-      .mockResolvedValueOnce(authUser('owner-a'))
-      .mockResolvedValueOnce(authUser('owner-a'))
-      .mockResolvedValueOnce(authUser('owner-b'));
-    const read = {
-      select: jest.fn(() => read),
-      eq: jest.fn(() => read),
-      maybeSingle: jest.fn(async () => ({
-        data: { buddy_card: { palette_key: 'power_violet', private_future_key: true } },
-        error: null,
-      })),
-    };
-    const writes: unknown[] = [];
-    const update = {
-      update: jest.fn((value: unknown) => { writes.push(value); return update; }),
-      eq: jest.fn(() => update),
-      select: jest.fn(() => update),
-      maybeSingle: jest.fn(async () => ({ data: { id: 'owner-a' }, error: null })),
-    };
-    mockFrom.mockReturnValueOnce(read).mockReturnValueOnce(update);
+      .mockResolvedValue(authUser('owner-a'));
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'owner mismatch' } });
 
     await expect(
       snapshotRankToCardForOwner('owner-a', 'Elite', 1, [{ id: 'streak', tier: 0 }]),
-    ).rejects.toThrow('Account changed. Rank was not saved.');
-    expect(update.eq).toHaveBeenCalledWith('id', 'owner-a');
-    expect(update.eq).not.toHaveBeenCalledWith('id', 'owner-b');
-    expect(writes).toEqual([{ buddy_card: {
-      palette_key: 'power_violet',
-      private_future_key: true,
-      rank_name: 'Elite',
-      medals: 1,
-      medals_list: [{ id: 'streak', tier: 0 }],
-    } }]);
+    ).rejects.toThrow('owner mismatch');
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 });

@@ -271,6 +271,7 @@ describe('Buddy Card presentation migration', () => {
     expect(grants.map((grant) => grant.trim())).toEqual([
       'grant select on public.public_profiles to authenticated;',
       'grant execute on function public.member_card_stats(uuid) to authenticated;',
+      'grant execute on function public.patch_my_buddy_card(uuid, jsonb, text) to authenticated;',
     ]);
     expect(sql).not.toMatch(/\bcascade\b/i);
   });

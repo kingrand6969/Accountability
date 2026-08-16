@@ -154,32 +154,13 @@ export async function snapshotRankToCardForOwner(
   medalList: MedalTier[],
 ): Promise<void> {
   await assertRankOwner(expectedOwnerId);
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('buddy_card')
-    .eq('id', expectedOwnerId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error('Rank could not be saved for this account.');
-  const card = (data?.buddy_card ?? {}) as Record<string, unknown>;
-  const listJson = JSON.stringify(medalList);
-  if (
-    card.rank_name === rankName &&
-    card.medals === medals &&
-    JSON.stringify(card.medals_list ?? []) === listJson
-  ) {
-    await assertRankOwner(expectedOwnerId);
-    return;
-  }
-  await assertRankOwner(expectedOwnerId);
-  const { data: updated, error: updateError } = await supabase
-    .from('profiles')
-    .update({ buddy_card: { ...card, rank_name: rankName, medals, medals_list: medalList } })
-    .eq('id', expectedOwnerId)
-    .select('id')
-    .maybeSingle();
-  if (updateError) throw updateError;
-  if (!updated || updated.id !== expectedOwnerId) {
+  const { data: updated, error } = await supabase.rpc('patch_my_buddy_card', {
+    p_expected_owner: expectedOwnerId,
+    p_patch: { rank_name: rankName, medals, medals_list: medalList },
+    p_patch_kind: 'rank',
+  });
+  if (error) throw new Error(error.message ?? 'Rank could not be saved.');
+  if (!updated || typeof updated !== 'object' || Array.isArray(updated)) {
     throw new Error('Rank could not be saved for this account.');
   }
   await assertRankOwner(expectedOwnerId);

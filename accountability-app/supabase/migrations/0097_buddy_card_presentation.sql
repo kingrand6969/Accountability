@@ -309,3 +309,185 @@ grant execute on function public.member_card_stats(uuid) to authenticated;
 
 comment on function public.member_card_stats(uuid) is
   'Returns owner metrics to self and only explicitly opted-in Buddy Card metrics to other authenticated users.';
+
+-- Merge a bounded Buddy Card patch inside one PostgreSQL statement. This
+-- prevents the editor and the rank refresher from overwriting keys committed
+-- by one another between a client-side read and write.
+create or replace function public.patch_my_buddy_card(
+  p_expected_owner uuid,
+  p_patch jsonb,
+  p_patch_kind text
+)
+returns jsonb
+language plpgsql
+volatile
+security invoker
+set search_path = ''
+as $$
+declare
+  v_patch jsonb := p_patch;
+  v_allowed text[];
+  v_boolean_keys constant text[] := array[
+    'show_headline', 'show_traits', 'show_rank', 'show_medals', 'show_area',
+    'show_bio', 'show_last_active', 'show_consistency', 'show_points',
+    'show_distance', 'show_challenge_wins', 'show_city_rank',
+    'show_country_rank', 'show_posts'
+  ];
+  v_result jsonb;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required' using errcode = '28000';
+  end if;
+  if p_expected_owner is null or auth.uid() <> p_expected_owner then
+    raise exception 'Account changed. Buddy Card was not saved.' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_patch) is distinct from 'object' then
+    raise exception 'Buddy Card patch must be a JSON object' using errcode = '22023';
+  end if;
+
+  if p_patch_kind = 'editor' then
+    v_allowed := array[
+      'palette_key', 'featured_medal_ids', 'mode', 'headline', 'about', 'traits',
+      'show_headline', 'show_traits', 'show_rank', 'show_medals', 'show_area',
+      'show_bio', 'show_last_active', 'show_consistency', 'show_points',
+      'show_distance', 'show_challenge_wins', 'show_city_rank',
+      'show_country_rank', 'show_posts'
+    ];
+  elsif p_patch_kind = 'rank' then
+    v_allowed := array['rank_name', 'medals', 'medals_list'];
+  else
+    raise exception 'Unknown Buddy Card patch kind' using errcode = '22023';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_object_keys(p_patch) as supplied(key)
+    where not (supplied.key = any(v_allowed))
+  ) then
+    raise exception 'Buddy Card patch contains disallowed keys' using errcode = '22023';
+  end if;
+
+  if p_patch_kind = 'editor' then
+    if exists (
+      select 1
+      from jsonb_each(p_patch) as supplied(key, value)
+      where supplied.key = any(v_boolean_keys)
+        and jsonb_typeof(supplied.value) <> 'boolean'
+    ) then
+      raise exception 'Buddy Card visibility values must be booleans' using errcode = '22023';
+    end if;
+    if p_patch ? 'palette_key' and (
+      jsonb_typeof(p_patch -> 'palette_key') <> 'string'
+      or p_patch ->> 'palette_key' not in (
+        'polar_blue', 'victory_ember', 'momentum_teal', 'power_violet'
+      )
+    ) then
+      raise exception 'Invalid Buddy Card palette' using errcode = '22023';
+    end if;
+    if p_patch ? 'mode' and (
+      jsonb_typeof(p_patch -> 'mode') <> 'string'
+      or p_patch ->> 'mode' not in ('profile', 'custom')
+    ) then
+      raise exception 'Invalid Buddy Card mode' using errcode = '22023';
+    end if;
+    if exists (
+      select 1
+      from jsonb_each(p_patch) as supplied(key, value)
+      where supplied.key = any(array['headline', 'about'])
+        and jsonb_typeof(supplied.value) <> 'string'
+    ) then
+      raise exception 'Buddy Card text values must be strings' using errcode = '22023';
+    end if;
+    if p_patch ? 'headline' and length(p_patch ->> 'headline') > 90 then
+      raise exception 'Buddy Card headline is too long' using errcode = '22023';
+    end if;
+    if p_patch ? 'about' and length(p_patch ->> 'about') > 400 then
+      raise exception 'Buddy Card About text is too long' using errcode = '22023';
+    end if;
+    if p_patch ? 'featured_medal_ids' then
+      if jsonb_typeof(p_patch -> 'featured_medal_ids') <> 'array' then
+        raise exception 'Invalid featured medals' using errcode = '22023';
+      end if;
+      if jsonb_array_length(p_patch -> 'featured_medal_ids') > 4
+        or jsonb_path_exists(
+          p_patch -> 'featured_medal_ids',
+          '$[*] ? (@.type() != "string")'
+        )
+      then
+        raise exception 'Invalid featured medals' using errcode = '22023';
+      end if;
+    end if;
+    if p_patch ? 'traits' then
+      if jsonb_typeof(p_patch -> 'traits') <> 'array' then
+        raise exception 'Invalid Buddy Card traits' using errcode = '22023';
+      end if;
+      if jsonb_array_length(p_patch -> 'traits') > 3
+        or jsonb_path_exists(p_patch -> 'traits', '$[*] ? (@.type() != "string")')
+      then
+        raise exception 'Invalid Buddy Card traits' using errcode = '22023';
+      end if;
+    end if;
+  else
+    if p_patch ? 'rank_name' and jsonb_typeof(p_patch -> 'rank_name') <> 'string' then
+      raise exception 'Invalid rank name' using errcode = '22023';
+    end if;
+    if p_patch ? 'medals' then
+      if jsonb_typeof(p_patch -> 'medals') <> 'number' then
+        raise exception 'Invalid medal count' using errcode = '22023';
+      end if;
+      if (p_patch ->> 'medals')::numeric < 0
+        or trunc((p_patch ->> 'medals')::numeric) <> (p_patch ->> 'medals')::numeric
+      then
+        raise exception 'Invalid medal count' using errcode = '22023';
+      end if;
+    end if;
+    if p_patch ? 'medals_list' then
+      if jsonb_typeof(p_patch -> 'medals_list') <> 'array' then
+        raise exception 'Invalid medal list' using errcode = '22023';
+      end if;
+      if jsonb_array_length(p_patch -> 'medals_list') > 256 then
+        raise exception 'Invalid medal list' using errcode = '22023';
+      end if;
+      if exists (
+        select 1
+        from jsonb_array_elements(p_patch -> 'medals_list') as medal(value)
+        where jsonb_typeof(medal.value) <> 'object'
+          or jsonb_typeof(medal.value -> 'id') <> 'string'
+          or jsonb_typeof(medal.value -> 'tier') <> 'number'
+      ) then
+        raise exception 'Invalid medal list entry' using errcode = '22023';
+      end if;
+      if exists (
+        select 1
+        from jsonb_array_elements(p_patch -> 'medals_list') as medal(value)
+        where (medal.value ->> 'tier')::numeric < 0
+          or trunc((medal.value ->> 'tier')::numeric) <> (medal.value ->> 'tier')::numeric
+      ) then
+        raise exception 'Invalid medal list entry' using errcode = '22023';
+      end if;
+    end if;
+  end if;
+
+  update public.profiles as p
+  set buddy_card = (
+    case
+      when jsonb_typeof(p.buddy_card) = 'object' then p.buddy_card
+      else '{}'::jsonb
+    end
+  ) || v_patch
+  where p.id = p_expected_owner
+    and p.id = auth.uid()
+  returning p.buddy_card into v_result;
+
+  if not found then
+    raise exception 'Buddy Card could not be saved for this account' using errcode = '42501';
+  end if;
+  return v_result;
+end;
+$$;
+
+revoke execute on function public.patch_my_buddy_card(uuid, jsonb, text) from public, anon;
+grant execute on function public.patch_my_buddy_card(uuid, jsonb, text) to authenticated;
+
+comment on function public.patch_my_buddy_card(uuid, jsonb, text) is
+  'Atomically merges an allowlisted editor or rank patch into the authenticated owner Buddy Card.';

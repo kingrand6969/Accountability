@@ -5,11 +5,13 @@ import path from 'node:path';
 
 const mockGetUser = jest.fn<(...args: unknown[]) => Promise<any>>();
 const mockFrom = jest.fn<(...args: unknown[]) => any>();
+const mockRpc = jest.fn<(...args: unknown[]) => Promise<any>>();
 
 jest.mock('../lib/supabase', () => ({
   supabase: {
     auth: { getUser: (...args: unknown[]) => mockGetUser(...args) },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -74,8 +76,11 @@ describe('Buddy Card editor presentation controls', () => {
   test('has synchronous duplicate-submit, stale-generation, unmount, and dirty navigation guards', () => {
     expect(editorSource).toContain('savingRef.current');
     expect(editorSource).toContain('if (!savingRef.current.tryAcquire()) return');
-    expect(editorSource).toContain('generationRef.current');
-    expect(editorSource).toContain('mountedRef.current');
+    expect(editorSource).toContain('createBuddyCardEditorLoadLifecycle');
+    expect(editorSource).toContain('lifecycleRef.current.isCurrent');
+    expect(editorSource).toContain("transition.action === 'reload'");
+    expect(editorSource).toContain("completion === 'account-changed'");
+    expect(editorSource).toContain('setLoadError(ACCOUNT_CHANGED)');
     expect(editorSource).toContain('authAfterFailure.user?.id === expectedOwnerId');
     expect(editorSource).toContain('usePreventRemove');
     expect(editorSource).toContain('Discard unsaved Buddy Card changes?');
@@ -187,6 +192,41 @@ describe('Buddy Card editor model', () => {
     expect(guard.isCurrent(second)).toBe(false);
   });
 
+  test('an auth event while initial auth is pending cancels the old generation and reloads the event owner', async () => {
+    const { createBuddyCardEditorLoadLifecycle } = model();
+    const lifecycle = createBuddyCardEditorLoadLifecycle();
+    lifecycle.mount();
+    const initial = lifecycle.begin();
+    const pendingInitialAuth = deferred<string>();
+    const lateInitialBind = pendingInitialAuth.promise.then((ownerId) => (
+      lifecycle.bindOwner(initial, ownerId)
+    ));
+
+    const transition = lifecycle.authEvent('owner-b');
+    expect(transition.action).toBe('reload');
+    pendingInitialAuth.resolve('owner-a');
+    await expect(lateInitialBind).resolves.toBe(false);
+    expect(lifecycle.bindOwner(transition.token, 'owner-b')).toBe(true);
+    expect(lifecycle.complete(transition.token, 'owner-b')).toBe('current');
+  });
+
+  test('final auth mismatch terminates the active load and StrictMode remount rejects old work', () => {
+    const { createBuddyCardEditorLoadLifecycle } = model();
+    const lifecycle = createBuddyCardEditorLoadLifecycle();
+    lifecycle.mount();
+    const first = lifecycle.begin();
+    expect(lifecycle.bindOwner(first, 'owner-a')).toBe(true);
+    expect(lifecycle.complete(first, 'owner-b')).toBe('account-changed');
+    expect(lifecycle.isCurrent(first)).toBe(false);
+
+    lifecycle.unmount();
+    expect(lifecycle.authEvent('owner-b').action).toBe('ignore');
+    lifecycle.mount();
+    const remounted = lifecycle.begin();
+    expect(lifecycle.bindOwner(first, 'owner-a')).toBe(false);
+    expect(lifecycle.bindOwner(remounted, 'owner-b')).toBe(true);
+  });
+
   test('one optional preview failure does not reject required editor data', async () => {
     const { loadBuddyCardEditorData } = model();
     const result = await loadBuddyCardEditorData('owner-a', {
@@ -230,116 +270,51 @@ describe('expected-owner Buddy Card save', () => {
     await expect(saveMyBuddyCard({ palette_key: 'polar_blue' }, 'owner-a')).rejects.toThrow(
       'Account changed. Review your Buddy Card and try again.',
     );
-    expect(mockFrom).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
-  test('rechecks identity after fresh read and never starts a write for the switched account', async () => {
-    mockGetUser
-      .mockResolvedValueOnce(authUser('owner-a'))
-      .mockResolvedValueOnce(authUser('owner-b'));
-    const read = {
-      select: jest.fn(() => read),
-      eq: jest.fn(() => read),
-      maybeSingle: jest.fn(async () => ({ data: { buddy_card: { keep: 'yes' } }, error: null })),
-    };
-    mockFrom.mockReturnValue(read);
-
-    await expect(saveMyBuddyCard({ palette_key: 'power_violet' }, 'owner-a')).rejects.toThrow(
-      'Account changed. Review your Buddy Card and try again.',
-    );
-    expect(mockFrom).toHaveBeenCalledTimes(1);
-    expect(read.eq).toHaveBeenCalledWith('id', 'owner-a');
-  });
-
-  test('merges an editor patch into fresh JSON, binds update to expected owner, and preserves unrelated fields', async () => {
+  test('sends only editor-owned fields to the expected-owner atomic patch RPC', async () => {
     mockGetUser.mockResolvedValue(authUser('owner-a'));
-    const writes: unknown[] = [];
-    const read = {
-      select: jest.fn(() => read),
-      eq: jest.fn(() => read),
-      maybeSingle: jest.fn(async () => ({
-        data: {
-          buddy_card: {
-            rank_name: 'Mythical',
-            hero_url: 'legacy',
-            show_bio: true,
-            private_future_key: { nested: true },
-            palette_key: 'polar_blue',
-          },
-        },
-        error: null,
-      })),
-    };
-    const update = {
-      update: jest.fn((value: unknown) => {
-        writes.push(value);
-        return update;
-      }),
-      eq: jest.fn(() => update),
-      select: jest.fn(() => update),
-      maybeSingle: jest.fn(async () => ({ data: { id: 'owner-a' }, error: null })),
-    };
-    mockFrom.mockReturnValueOnce(read).mockReturnValueOnce(update);
+    mockRpc.mockResolvedValue({ data: { palette_key: 'momentum_teal' }, error: null });
 
     await saveMyBuddyCard(
-      {
+      ({
+        palette_key: 'momentum_teal',
+        featured_medal_ids: ['streak'],
+        headline: 'New focus',
+        rank_name: 'forged',
+        private_future_key: 'blocked',
+      } as never),
+      'owner-a',
+    );
+
+    expect(mockRpc).toHaveBeenCalledWith('patch_my_buddy_card', {
+      p_expected_owner: 'owner-a',
+      p_patch: {
         palette_key: 'momentum_teal',
         featured_medal_ids: ['streak'],
         headline: 'New focus',
       },
-      'owner-a',
-    );
-
-    expect(update.eq).toHaveBeenCalledWith('id', 'owner-a');
-    expect(writes).toEqual([
-      {
-        buddy_card: {
-          rank_name: 'Mythical',
-          hero_url: 'legacy',
-          show_bio: true,
-          private_future_key: { nested: true },
-          palette_key: 'momentum_teal',
-          featured_medal_ids: ['streak'],
-          headline: 'New focus',
-        },
-      },
-    ]);
+      p_patch_kind: 'editor',
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 
-  test('fails closed when RLS cannot return the expected owner and when account changes after write', async () => {
+  test('fails closed on RPC/RLS rejection and when account changes after the atomic write', async () => {
     mockGetUser
       .mockResolvedValueOnce(authUser('owner-a'))
-      .mockResolvedValueOnce(authUser('owner-a'))
       .mockResolvedValueOnce(authUser('owner-b'));
-    const read = {
-      select: jest.fn(() => read),
-      eq: jest.fn(() => read),
-      maybeSingle: jest.fn(async () => ({ data: { buddy_card: {} }, error: null })),
-    };
-    const update = {
-      update: jest.fn(() => update),
-      eq: jest.fn(() => update),
-      select: jest.fn(() => update),
-      maybeSingle: jest.fn(async () => ({ data: { id: 'owner-a' }, error: null })),
-    };
-    mockFrom.mockReturnValueOnce(read).mockReturnValueOnce(update);
+    mockRpc.mockResolvedValue({ data: { palette_key: 'polar_blue' }, error: null });
 
     await expect(saveMyBuddyCard({ palette_key: 'polar_blue' }, 'owner-a')).rejects.toThrow(
       'Account changed. Review your Buddy Card and try again.',
     );
-    expect(update.eq).toHaveBeenCalledWith('id', 'owner-a');
 
     jest.clearAllMocks();
     mockGetUser.mockResolvedValue(authUser('owner-a'));
-    const blockedUpdate = {
-      update: jest.fn(() => blockedUpdate),
-      eq: jest.fn(() => blockedUpdate),
-      select: jest.fn(() => blockedUpdate),
-      maybeSingle: jest.fn(async () => ({ data: null, error: null })),
-    };
-    mockFrom.mockReturnValueOnce(read).mockReturnValueOnce(blockedUpdate);
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'RLS denied' } });
     await expect(saveMyBuddyCard({ palette_key: 'polar_blue' }, 'owner-a')).rejects.toThrow(
-      'Buddy Card could not be saved for this account.',
+      'RLS denied',
     );
   });
 

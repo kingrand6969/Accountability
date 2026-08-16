@@ -32,11 +32,13 @@ import {
 import {
   buddyCardEditorFingerprint,
   buildBuddyCardEditorPatch,
+  createBuddyCardEditorLoadLifecycle,
   createSynchronousSubmitLock,
   loadBuddyCardEditorData,
   moveFeaturedMedal,
   shouldPreventBuddyCardEditorExit,
   toggleFeaturedMedal,
+  type BuddyCardEditorLoadToken,
 } from '../buddy/editorModel';
 import { MAX_FEATURED_MEDALS, normalizeFeaturedMedalIds } from '../buddy/featuredMedals';
 import {
@@ -80,9 +82,7 @@ export default function BuddyCardEdit() {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const editorPalette = resolveBuddyCardPalette('polar_blue', scheme);
 
-  const mountedRef = useRef(true);
-  const generationRef = useRef(0);
-  const expectedOwnerRef = useRef<string | null>(null);
+  const lifecycleRef = useRef(createBuddyCardEditorLoadLifecycle());
   const savingRef = useRef(createSynchronousSubmitLock());
 
   const [reloadKey, setReloadKey] = useState(0);
@@ -133,15 +133,14 @@ export default function BuddyCardEdit() {
     );
   });
 
-  const load = useCallback(async (generation: number) => {
+  const load = useCallback(async (token: BuddyCardEditorLoadToken) => {
     setLoading(true);
     setLoadError(null);
     try {
       const { data: authAtStart } = await supabase.auth.getUser();
       const ownerId = authAtStart.user?.id ?? null;
       if (!ownerId) throw new Error('Sign in to edit your Buddy Card.');
-
-      expectedOwnerRef.current = ownerId;
+      if (!lifecycleRef.current.bindOwner(token, ownerId)) return;
       const {
         card: storedCard,
         profile,
@@ -158,11 +157,11 @@ export default function BuddyCardEdit() {
         boardRank: getBoardRank,
       });
       const { data: authAtEnd } = await supabase.auth.getUser();
-      if (
-        !mountedRef.current ||
-        generation !== generationRef.current ||
-        authAtEnd.user?.id !== ownerId
-      ) {
+      const completion = lifecycleRef.current.complete(token, authAtEnd.user?.id ?? null);
+      if (completion === 'stale') return;
+      if (completion === 'account-changed') {
+        setLoadError(ACCOUNT_CHANGED);
+        setLoading(false);
         return;
       }
 
@@ -203,33 +202,36 @@ export default function BuddyCardEdit() {
       setMyBoardRank(boardRank);
       setLoading(false);
     } catch (error) {
-      if (!mountedRef.current || generation !== generationRef.current) return;
+      if (!lifecycleRef.current.isCurrent(token)) return;
       setLoadError(String((error as Error).message ?? error));
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    mountedRef.current = true;
-    const generation = ++generationRef.current;
-    void load(generation);
+    const lifecycle = lifecycleRef.current;
+    lifecycle.mount();
+    const token = lifecycle.begin();
+    void load(token);
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      const expectedOwner = expectedOwnerRef.current;
-      if (!expectedOwner || session?.user.id === expectedOwner) return;
-      generationRef.current += 1;
-      expectedOwnerRef.current = null;
+      const transition = lifecycle.authEvent(session?.user.id ?? null);
+      if (transition.action === 'ignore') return;
       savingRef.current.release();
       setSaving(false);
       setBaselineFingerprint(null);
       setCard({});
       setFeaturedMedalIds([]);
-      setLoadError(ACCOUNT_CHANGED);
-      setLoading(false);
+      if (transition.action === 'reload') {
+        setLoadError(null);
+        setLoading(true);
+        void load(transition.token);
+      } else {
+        setLoadError('Sign in to edit your Buddy Card.');
+        setLoading(false);
+      }
     });
     return () => {
-      mountedRef.current = false;
-      generationRef.current += 1;
-      expectedOwnerRef.current = null;
+      lifecycle.unmount();
       data.subscription.unsubscribe();
     };
   }, [load, reloadKey]);
@@ -256,7 +258,7 @@ export default function BuddyCardEdit() {
 
   async function onSave() {
     if (!savingRef.current.tryAcquire()) return;
-    const expectedOwnerId = expectedOwnerRef.current;
+    const expectedOwnerId = lifecycleRef.current.expectedOwner();
     if (!expectedOwnerId) {
       savingRef.current.release();
       Alert.alert('Could not save', ACCOUNT_CHANGED);
@@ -264,14 +266,13 @@ export default function BuddyCardEdit() {
     }
 
     setSaving(true);
-    const generation = generationRef.current;
+    const token = lifecycleRef.current.currentToken();
     try {
       const toSave = buildBuddyCardEditorPatch(draftCard, earnedIds);
       await saveMyBuddyCard(toSave, expectedOwnerId);
       if (
-        !mountedRef.current ||
-        generation !== generationRef.current ||
-        expectedOwnerRef.current !== expectedOwnerId
+        !lifecycleRef.current.isCurrent(token) ||
+        lifecycleRef.current.expectedOwner() !== expectedOwnerId
       ) {
         return;
       }
@@ -284,20 +285,19 @@ export default function BuddyCardEdit() {
       setSaving(false);
       savingRef.current.release();
       requestAnimationFrame(() => {
-        if (mountedRef.current && generation === generationRef.current) router.back();
+        if (lifecycleRef.current.isCurrent(token)) router.back();
       });
     } catch (error) {
       const { data: authAfterFailure } = await supabase.auth.getUser();
       if (
-        mountedRef.current &&
-        generation === generationRef.current &&
-        expectedOwnerRef.current === expectedOwnerId &&
+        lifecycleRef.current.isCurrent(token) &&
+        lifecycleRef.current.expectedOwner() === expectedOwnerId &&
         authAfterFailure.user?.id === expectedOwnerId
       ) {
         Alert.alert('Could not save', String((error as Error).message ?? error));
       }
     } finally {
-      if (mountedRef.current && generation === generationRef.current) {
+      if (lifecycleRef.current.isCurrent(token)) {
         savingRef.current.release();
         setSaving(false);
       }

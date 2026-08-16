@@ -212,39 +212,24 @@ async function assertExpectedOwner(expectedOwnerId: string): Promise<void> {
   if (!uid || uid !== expectedOwnerId) throw new Error(ACCOUNT_CHANGED);
 }
 
-/**
- * Save only owner-editable Buddy Card fields. The current JSON is read again
- * immediately before the update, so rank snapshots, legacy presentation data,
- * privacy fields added by newer clients, and other unrelated keys are retained.
- */
+/** Save only owner-editable Buddy Card fields through the atomic server patch.
+ * Rank snapshots, legacy data, privacy fields, and concurrent changes retain
+ * their unrelated JSON keys. */
 export async function saveMyBuddyCard(card: BuddyCard, expectedOwnerId: string): Promise<void> {
   await assertExpectedOwner(expectedOwnerId);
+  const patch = pickBuddyCardEditorChanges(card);
+  const { data: updated, error } = await supabase.rpc('patch_my_buddy_card', {
+    p_expected_owner: expectedOwnerId,
+    p_patch: patch,
+    p_patch_kind: 'editor',
+  });
+  if (error) throw new Error(error.message ?? 'Buddy Card could not be saved.');
+  if (!updated || typeof updated !== 'object' || Array.isArray(updated)) {
+    throw new Error('Buddy Card could not be saved for this account.');
+  }
 
-  const { data: current, error: readError } = await supabase
-    .from('profiles')
-    .select('buddy_card')
-    .eq('id', expectedOwnerId)
-    .maybeSingle();
-  if (readError) throw readError;
-  if (!current) throw new Error('Buddy Card could not be saved for this account.');
-
-  // Close the gap between the authenticated read and mutation. If identity
-  // changes after this check, RLS and the expected-owner filter still fail
-  // closed rather than targeting the newly active account.
-  await assertExpectedOwner(expectedOwnerId);
-  const existing = ((current.buddy_card ?? {}) as BuddyCard) || {};
-  const next = { ...existing, ...pickBuddyCardEditorChanges(card) };
-  const { data: updated, error } = await supabase
-    .from('profiles')
-    .update({ buddy_card: next })
-    .eq('id', expectedOwnerId)
-    .select('id')
-    .maybeSingle();
-  if (error) throw error;
-  if (!updated?.id) throw new Error('Buddy Card could not be saved for this account.');
-
-  // A completed write is safe because it was bound to expectedOwnerId. Do not
-  // let a switched account receive the prior account's success UI, however.
+  // The RPC binds the update to auth.uid() and expectedOwnerId. A final auth
+  // check prevents the newly active account from seeing stale success UI.
   await assertExpectedOwner(expectedOwnerId);
 }
 

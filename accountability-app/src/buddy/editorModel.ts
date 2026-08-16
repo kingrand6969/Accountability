@@ -123,6 +123,73 @@ export function createEditorGenerationGuard() {
   };
 }
 
+export type BuddyCardEditorLoadToken = Readonly<{ generation: number }>;
+type BuddyCardEditorAuthTransition =
+  | { action: 'ignore' }
+  | { action: 'error'; token: BuddyCardEditorLoadToken }
+  | { action: 'reload'; token: BuddyCardEditorLoadToken };
+
+/** Coordinates auth resolution, auth events, retries, and StrictMode effect
+ * replays. An auth event always invalidates an unbound load, so its late
+ * getUser result can neither bind stale ownership nor strand the loading UI. */
+export function createBuddyCardEditorLoadLifecycle() {
+  let mounted = false;
+  let generation = 0;
+  let ownerId: string | null = null;
+
+  const token = (): BuddyCardEditorLoadToken => Object.freeze({ generation });
+  const isCurrent = (candidate: BuddyCardEditorLoadToken) => (
+    mounted && candidate.generation === generation
+  );
+
+  return {
+    mount() {
+      mounted = true;
+    },
+    begin() {
+      ownerId = null;
+      generation += 1;
+      return token();
+    },
+    currentToken() {
+      return token();
+    },
+    expectedOwner() {
+      return ownerId;
+    },
+    isCurrent,
+    bindOwner(candidate: BuddyCardEditorLoadToken, candidateOwnerId: string) {
+      if (!isCurrent(candidate)) return false;
+      ownerId = candidateOwnerId;
+      return true;
+    },
+    complete(candidate: BuddyCardEditorLoadToken, actualOwnerId: string | null) {
+      if (!isCurrent(candidate)) return 'stale' as const;
+      if (!ownerId || ownerId !== actualOwnerId) {
+        ownerId = null;
+        generation += 1;
+        return 'account-changed' as const;
+      }
+      return 'current' as const;
+    },
+    authEvent(eventOwnerId: string | null): BuddyCardEditorAuthTransition {
+      if (!mounted) return { action: 'ignore' };
+      if (ownerId && eventOwnerId === ownerId) return { action: 'ignore' };
+      ownerId = null;
+      generation += 1;
+      const nextToken = token();
+      return eventOwnerId
+        ? { action: 'reload', token: nextToken }
+        : { action: 'error', token: nextToken };
+    },
+    unmount() {
+      mounted = false;
+      ownerId = null;
+      generation += 1;
+    },
+  };
+}
+
 export function createSynchronousSubmitLock() {
   let locked = false;
   return {
