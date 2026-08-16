@@ -555,6 +555,19 @@ describe('PublicBuddyCardFace runtime wiring', () => {
     expect(screenSource).not.toContain('catch(() => setPosts([]))');
   });
 
+  it('clears an account-changed view while its viewer token still owns the target', () => {
+    const authStart = screenSource.indexOf('supabase.auth.onAuthStateChange');
+    const authEnd = screenSource.indexOf('authResult.data.subscription', authStart);
+    const authChangeHandler = screenSource.slice(authStart, authEnd);
+
+    expect(authChangeHandler.indexOf('if (!guard.owns(token)) return')).toBeGreaterThanOrEqual(0);
+    expect(authChangeHandler.indexOf('setView(null)')).toBeGreaterThanOrEqual(0);
+    expect(authChangeHandler.indexOf('setLoading(true)')).toBeGreaterThanOrEqual(0);
+    expect(authChangeHandler.indexOf('guard.cancel(token)')).toBeGreaterThan(
+      authChangeHandler.indexOf('setLoading(true)'),
+    );
+  });
+
   it('loads and passes the same available owner data into the editor visitor preview', () => {
     const invocation = publicFaceInvocation(editorSource);
 

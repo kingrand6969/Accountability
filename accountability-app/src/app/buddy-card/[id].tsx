@@ -86,7 +86,6 @@ export default function BuddyCardScreen() {
           const authResult = supabase.auth.onAuthStateChange((_event, session) => {
             if (!guard.owns(token)) return;
             if ((session?.user.id ?? null) === token.viewerId) return;
-            guard.cancel(token);
             setView(null);
             setStats(null);
             setBoardRank(null);
@@ -95,6 +94,7 @@ export default function BuddyCardScreen() {
             setIsBuddy(false);
             setSent(false);
             setLoading(true);
+            guard.cancel(token);
           });
           if (!guard.owns(token)) {
             authResult.data.subscription.unsubscribe();
