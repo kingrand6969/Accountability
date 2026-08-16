@@ -313,21 +313,26 @@ export async function listCompletedChallengesForMember(
 }
 
 export async function listChallenges(): Promise<ChallengeCard[]> {
-  const uid = await me();
   const refreshed = await supabase.rpc('refresh_official_challenges');
   if (refreshed.error) throw refreshed.error;
-  const [{ data: rows, error }, joinedRes] = await Promise.all([
-    supabase
-      .from('challenges')
-      .select('id,creator_id,title,metric,starts_at,ends_at,created_at,is_official,cadence,difficulty,target,rest_day_tokens, challenge_participants(count)')
-      .order('ends_at', { ascending: true })
-      .limit(100),
-    uid
-      ? supabase.from('challenge_participants').select('challenge_id').eq('user_id', uid)
-      : Promise.resolve({ data: [] as { challenge_id: string }[] }),
-  ]);
+  const { data: rows, error } = await supabase
+    .from('challenges')
+    .select('id,creator_id,title,metric,starts_at,ends_at,created_at,is_official,cadence,difficulty,target,rest_day_tokens')
+    .order('ends_at', { ascending: true })
+    .limit(100);
   if (error) throw error;
-  const joined = new Set((joinedRes.data ?? []).map((r: any) => r.challenge_id));
+  if (!rows?.length) return [];
+  const { data: summaries, error: summaryError } = await supabase.rpc(
+    'challenge_participation_summary',
+    { p_challenges: rows.map((row: any) => row.id) },
+  );
+  if (summaryError) throw summaryError;
+  const participation = new Map<string, { participants: number; joined: boolean }>(
+    (summaries ?? []).map((row: any) => [
+      row.challenge_id,
+      { participants: Number(row.participant_count ?? 0), joined: !!row.joined },
+    ]),
+  );
   return (rows ?? []).map((c: any) => ({
     id: c.id,
     creator_id: c.creator_id,
@@ -341,30 +346,25 @@ export async function listChallenges(): Promise<ChallengeCard[]> {
     difficulty: c.difficulty ?? null,
     target: c.target == null ? null : Number(c.target),
     rest_day_tokens: Number(c.rest_day_tokens ?? 0),
-    participants: c.challenge_participants?.[0]?.count ?? 0,
-    joined: joined.has(c.id),
+    participants: participation.get(c.id)?.participants ?? 0,
+    joined: participation.get(c.id)?.joined ?? false,
   }));
 }
 
 export async function getChallenge(id: string): Promise<ChallengeCard | null> {
-  const uid = await me();
   const { data, error } = await supabase
     .from('challenges')
-    .select('id,creator_id,title,metric,starts_at,ends_at,created_at,is_official,cadence,difficulty,target,rest_day_tokens, challenge_participants(count)')
+    .select('id,creator_id,title,metric,starts_at,ends_at,created_at,is_official,cadence,difficulty,target,rest_day_tokens')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  let joined = false;
-  if (uid) {
-    const { data: mine } = await supabase
-      .from('challenge_participants')
-      .select('user_id')
-      .eq('challenge_id', id)
-      .eq('user_id', uid)
-      .maybeSingle();
-    joined = !!mine;
-  }
+  const { data: summaries, error: summaryError } = await supabase.rpc(
+    'challenge_participation_summary',
+    { p_challenges: [id] },
+  );
+  if (summaryError) throw summaryError;
+  const summary = summaries?.[0];
   return {
     id: data.id,
     creator_id: data.creator_id,
@@ -378,8 +378,8 @@ export async function getChallenge(id: string): Promise<ChallengeCard | null> {
     difficulty: (data as any).difficulty ?? null,
     target: (data as any).target == null ? null : Number((data as any).target),
     rest_day_tokens: Number((data as any).rest_day_tokens ?? 0),
-    participants: (data as any).challenge_participants?.[0]?.count ?? 0,
-    joined,
+    participants: Number(summary?.participant_count ?? 0),
+    joined: !!summary?.joined,
   };
 }
 
@@ -412,22 +412,19 @@ export async function createChallenge(input: {
     throw error;
   }
   // creator auto-joins their own challenge
-  await supabase.from('challenge_participants').insert({ challenge_id: data.id, user_id: uid });
+  await joinChallenge(data.id);
   return data.id;
 }
 
 export async function joinChallenge(id: string): Promise<void> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in');
-  const { error } = await supabase
-    .from('challenge_participants')
-    .insert({
-      challenge_id: id,
-      user_id: uid,
-      timezone_offset: new Date().getTimezoneOffset(),
-    });
-  // 23505 = unique-violation (already joined) — treat as a no-op
-  if (error && error.code !== '23505') throw error;
+  const { error } = await supabase.rpc('join_challenge', {
+    p_challenge: id,
+    p_timezone_offset: new Date().getTimezoneOffset(),
+  });
+  // The server makes repeated enrollment requests a successful no-op.
+  if (error) throw error;
 }
 
 export async function leaveChallenge(id: string): Promise<void> {
