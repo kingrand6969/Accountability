@@ -7,29 +7,32 @@ alter table public.profiles
 alter table public.profiles
   add constraint profiles_buddy_card_presentation_check
   check (
-    (
-      not (buddy_card ? 'palette_key')
-      or (
-        jsonb_typeof(buddy_card -> 'palette_key') = 'string'
-        and buddy_card ->> 'palette_key' in (
-          'polar_blue',
-          'victory_ember',
-          'momentum_teal',
-          'power_violet'
+    jsonb_typeof(buddy_card) is distinct from 'object'
+    or (
+      (
+        not (buddy_card ? 'palette_key')
+        or (
+          jsonb_typeof(buddy_card -> 'palette_key') = 'string'
+          and buddy_card ->> 'palette_key' in (
+            'polar_blue',
+            'victory_ember',
+            'momentum_teal',
+            'power_violet'
+          )
         )
       )
-    )
-    and (
-      not (buddy_card ? 'featured_medal_ids')
-      or case
-        when jsonb_typeof(buddy_card -> 'featured_medal_ids') = 'array' then
-          jsonb_array_length(buddy_card -> 'featured_medal_ids') <= 4
-          and not jsonb_path_exists(
-            buddy_card -> 'featured_medal_ids',
-            '$[*] ? (@.type() != "string")'
-          )
-        else false
-      end
+      and (
+        not (buddy_card ? 'featured_medal_ids')
+        or case
+          when jsonb_typeof(buddy_card -> 'featured_medal_ids') = 'array' then
+            jsonb_array_length(buddy_card -> 'featured_medal_ids') <= 4
+            and not jsonb_path_exists(
+              buddy_card -> 'featured_medal_ids',
+              '$[*] ? (@.type() != "string")'
+            )
+          else false
+        end
+      )
     )
   ) not valid;
 
@@ -59,8 +62,11 @@ with invalid_buddy_card_presentation as (
         end
       ) as remove_featured
   from public.profiles
-  where buddy_card ? 'palette_key'
-    or buddy_card ? 'featured_medal_ids'
+  where jsonb_typeof(buddy_card) = 'object'
+    and (
+      buddy_card ? 'palette_key'
+      or buddy_card ? 'featured_medal_ids'
+    )
 )
 update public.profiles as p
 set buddy_card = case

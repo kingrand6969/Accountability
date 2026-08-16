@@ -46,6 +46,37 @@ const presentationConstraintSql =
     /add constraint profiles_buddy_card_presentation_check[\s\S]*?\) not valid;/i,
   )?.[0] ?? '';
 
+const presentationPalettes = new Set([
+  'polar_blue',
+  'victory_ember',
+  'momentum_teal',
+  'power_violet',
+]);
+
+const remediatePresentationModel = (buddyCard: unknown): unknown => {
+  if (buddyCard === null || typeof buddyCard !== 'object' || Array.isArray(buddyCard)) {
+    return buddyCard;
+  }
+
+  const repaired = { ...(buddyCard as Record<string, unknown>) };
+  if (
+    Object.hasOwn(repaired, 'palette_key') &&
+    (typeof repaired.palette_key !== 'string' || !presentationPalettes.has(repaired.palette_key))
+  ) {
+    delete repaired.palette_key;
+  }
+  if (
+    Object.hasOwn(repaired, 'featured_medal_ids') &&
+    (!Array.isArray(repaired.featured_medal_ids) ||
+      repaired.featured_medal_ids.length > 4 ||
+      repaired.featured_medal_ids.some((value) => typeof value !== 'string'))
+  ) {
+    delete repaired.featured_medal_ids;
+  }
+
+  return repaired;
+};
+
 describe('Buddy Card presentation migration', () => {
   test('replaces and validates a replay-safe presentation constraint', () => {
     expect(sql).toMatch(
@@ -126,9 +157,6 @@ describe('Buddy Card presentation migration', () => {
 
   test('bounds remediation to invalid reserved keys and preserves unrelated keys and valid values', () => {
     expect(remediationSql).toMatch(
-      /where buddy_card \? 'palette_key'\s+or buddy_card \? 'featured_medal_ids'/i,
-    );
-    expect(remediationSql).toMatch(
       /where p\.id = r\.id\s+and \(r\.remove_palette or r\.remove_featured\)/i,
     );
     expect(remediationSql).not.toMatch(/jsonb_build_object|jsonb_strip_nulls|\|\||'\{\}'::jsonb/i);
@@ -137,6 +165,41 @@ describe('Buddy Card presentation migration', () => {
       ...remediationSql.matchAll(/p\.buddy_card\s*-\s*'([^']+)'/gi),
     ].map((match) => match[1]);
     expect(new Set(removedKeys)).toEqual(new Set(['palette_key', 'featured_medal_ids']));
+  });
+
+  test('validates and remediates reserved keys only for top-level JSON objects', () => {
+    expect(presentationConstraintSql).toMatch(
+      /jsonb_typeof\(buddy_card\) is distinct from 'object'\s+or\s+\(/i,
+    );
+    expect(remediationSql).toMatch(
+      /where jsonb_typeof\(buddy_card\) = 'object'\s+and \(\s*buddy_card \? 'palette_key'\s+or buddy_card \? 'featured_medal_ids'\s*\)/i,
+    );
+  });
+
+  test('preserves legacy containers but repairs malformed reserved keys on objects', () => {
+    const legacyArray = ['featured_medal_ids', 'legacy'];
+    expect(remediatePresentationModel(legacyArray)).toBe(legacyArray);
+    expect(remediatePresentationModel(null)).toBeNull();
+    expect(remediatePresentationModel('featured_medal_ids')).toBe('featured_medal_ids');
+
+    expect(
+      remediatePresentationModel({
+        palette_key: null,
+        featured_medal_ids: ['earned-medal', 42],
+        legacy: { untouched: true },
+      }),
+    ).toEqual({ legacy: { untouched: true } });
+    expect(
+      remediatePresentationModel({
+        palette_key: 'momentum_teal',
+        featured_medal_ids: ['earned-medal'],
+        legacy: true,
+      }),
+    ).toEqual({
+      palette_key: 'momentum_teal',
+      featured_medal_ids: ['earned-medal'],
+      legacy: true,
+    });
   });
 
   test('recreates the public profile view with its security barrier and strict allowlist additions', () => {
