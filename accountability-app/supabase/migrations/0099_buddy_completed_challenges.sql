@@ -8,6 +8,9 @@ drop policy if exists "Participants read own rows" on public.challenge_participa
 create policy "Participants read own rows" on public.challenge_participants
   for select using (auth.uid() = user_id);
 
+create index if not exists challenge_participants_user_challenge_idx
+  on public.challenge_participants (user_id, challenge_id);
+
 -- Enrollment is server-owned so a client cannot backdate joined_at or join a
 -- challenge after its database-time window has closed.
 drop policy if exists "Join a challenge" on public.challenge_participants;
@@ -216,18 +219,32 @@ grant execute on function public.join_challenge(uuid, integer) to authenticated;
 comment on function public.join_challenge(uuid, integer) is
   'Replay-safe enrollment using database time and a server-owned joined_at, limited to the active challenge window.';
 
-create or replace function public.buddy_completed_challenges(p_target uuid)
+drop function if exists public.buddy_completed_challenges(uuid);
+
+create or replace function public.buddy_completed_challenges(
+  p_target uuid,
+  p_expected_viewer uuid
+)
 returns table(
   id uuid,
   title text,
   metric text,
   ends_at timestamptz
 )
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
+begin
+  if auth.uid() is null
+    or p_expected_viewer is null
+    or p_expected_viewer <> auth.uid()
+  then
+    raise exception 'Account changed. Reopen this Buddy Card and try again.' using errcode = '42501';
+  end if;
+
+  return query
   with access as (
     select public.buddy_card_access_mode(p_target) as mode
   )
@@ -255,12 +272,13 @@ as $$
     )
   order by c.ends_at desc
   limit 100;
+end;
 $$;
 
-revoke execute on function public.buddy_completed_challenges(uuid) from public, anon;
-grant execute on function public.buddy_completed_challenges(uuid) to authenticated;
+revoke execute on function public.buddy_completed_challenges(uuid, uuid) from public, anon;
+grant execute on function public.buddy_completed_challenges(uuid, uuid) to authenticated;
 
-comment on function public.buddy_completed_challenges(uuid) is
+comment on function public.buddy_completed_challenges(uuid, uuid) is
   'Returns ended challenges retained on the target participant record only when the caller may open that target Buddy Card achievement gallery.';
 
 notify pgrst, 'reload schema';

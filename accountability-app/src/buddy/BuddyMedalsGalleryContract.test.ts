@@ -19,12 +19,6 @@ import { listCompletedChallengesForMember } from '../compete/api';
 
 const viewerId = '11111111-1111-4111-8111-111111111111';
 const targetId = '22222222-2222-4222-8222-222222222222';
-const otherViewerId = '33333333-3333-4333-8333-333333333333';
-
-const authUser = (id: string | null) => ({
-  data: { user: id ? { id } : null },
-  error: null,
-});
 
 const gallerySource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/buddy-medals/[id].tsx'),
@@ -85,6 +79,17 @@ describe('complete Medals and Challenges gallery contract', () => {
     expect(gallerySource).toContain('guard.cancel');
   });
 
+  test('owns viewer identity once at screen level and suppresses stale auth-event results', () => {
+    expect(gallerySource.match(/supabase\.auth\s*\.getUser\(\)/g)).toHaveLength(1);
+    expect(gallerySource).toContain('supabase.auth.onAuthStateChange');
+    expect(gallerySource).toContain('guard.cancel(token)');
+    expect(gallerySource).toContain('if (!loadIsCurrent(token)) return');
+    expect(gallerySource).toContain('listCompletedChallengesForMember(targetId, viewerId)');
+    expect(gallerySource).toContain(
+      'listCompletedChallengesForMember(token.targetId, token.viewerId)',
+    );
+  });
+
   test('settles a setup failure even if authentication was already bound', () => {
     expect(gallerySource).toContain(
       'activeToken && loadIsCurrent(activeToken)',
@@ -106,8 +111,10 @@ describe('complete Medals and Challenges gallery contract', () => {
 describe('completed-challenge server boundary', () => {
   test('authorizes with the block-aware Buddy Card mode and the public medal consent gate', () => {
     expect(completedChallengeSql).toContain(
-      'create or replace function public.buddy_completed_challenges(p_target uuid)',
+      'create or replace function public.buddy_completed_challenges(',
     );
+    expect(completedChallengeSql).toContain('p_expected_viewer uuid');
+    expect(completedChallengeSql).toContain('p_expected_viewer <> auth.uid()');
     expect(completedChallengeSql).toContain('security definer');
     expect(completedChallengeSql).toContain("set search_path = ''");
     expect(completedChallengeSql).toContain('public.buddy_card_access_mode(p_target)');
@@ -115,10 +122,10 @@ describe('completed-challenge server boundary', () => {
     expect(completedChallengeSql).toContain("access.mode = 'public'");
     expect(completedChallengeSql).toContain("p.buddy_card -> 'show_medals' = 'true'::jsonb");
     expect(completedChallengeSql).toContain(
-      'revoke execute on function public.buddy_completed_challenges(uuid) from public, anon',
+      'revoke execute on function public.buddy_completed_challenges(uuid, uuid) from public, anon',
     );
     expect(completedChallengeSql).toContain(
-      'grant execute on function public.buddy_completed_challenges(uuid) to authenticated',
+      'grant execute on function public.buddy_completed_challenges(uuid, uuid) to authenticated',
     );
   });
 
@@ -129,12 +136,20 @@ describe('completed-challenge server boundary', () => {
     expect(completedChallengeSql).toContain('order by c.ends_at desc');
     expect(completedChallengeSql).not.toMatch(/winner|rank\s*=\s*1/i);
   });
+
+  test('indexes the completed-history target filter replay-safely', () => {
+    expect(completedChallengeSql).toContain(
+      'create index if not exists challenge_participants_user_challenge_idx',
+    );
+    expect(completedChallengeSql).toMatch(
+      /challenge_participants_user_challenge_idx\s+on public\.challenge_participants \(user_id, challenge_id\)/,
+    );
+  });
 });
 
 describe('listCompletedChallengesForMember', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetUser.mockResolvedValue(authUser(viewerId));
   });
 
   test('loads the server-authorized completed set without a client table query', async () => {
@@ -170,29 +185,19 @@ describe('listCompletedChallengesForMember', () => {
         endsAt: '2026-07-01T00:00:00.000Z',
       },
     ]);
-    expect(mockRpc).toHaveBeenCalledWith('buddy_completed_challenges', { p_target: targetId });
+    expect(mockRpc).toHaveBeenCalledWith('buddy_completed_challenges', {
+      p_target: targetId,
+      p_expected_viewer: viewerId,
+    });
     expect(mockFrom).not.toHaveBeenCalled();
-    expect(mockGetUser).toHaveBeenCalledTimes(2);
+    expect(mockGetUser).not.toHaveBeenCalled();
   });
 
-  test('rejects before querying when the active account is not the initiating viewer', async () => {
-    mockGetUser.mockResolvedValue(authUser(otherViewerId));
-
-    await expect(listCompletedChallengesForMember(targetId, viewerId)).rejects.toThrow(
-      /account changed/i,
-    );
+  test('fails closed for missing target or viewer context without a network auth read', async () => {
+    await expect(listCompletedChallengesForMember('', viewerId)).rejects.toThrow(/target/i);
+    await expect(listCompletedChallengesForMember(targetId, '')).rejects.toThrow(/viewer/i);
     expect(mockRpc).not.toHaveBeenCalled();
-  });
-
-  test('rejects a stale response when the account changes while it is loading', async () => {
-    mockGetUser
-      .mockResolvedValueOnce(authUser(viewerId))
-      .mockResolvedValueOnce(authUser(otherViewerId));
-    mockRpc.mockResolvedValue({ data: [], error: null });
-
-    await expect(listCompletedChallengesForMember(targetId, viewerId)).rejects.toThrow(
-      /account changed/i,
-    );
+    expect(mockGetUser).not.toHaveBeenCalled();
   });
 
   test('surfaces the server error and preserves an authorized empty result', async () => {

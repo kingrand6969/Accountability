@@ -111,13 +111,8 @@ async function me(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
-async function assertChallengeViewer(expectedViewerId: string): Promise<void> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  if (data.user?.id !== expectedViewerId) {
-    throw new Error('Account changed. Reopen this Buddy Card and try again.');
-  }
-}
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // ─── Location (opt-in) ───────────────────────────────────────────────────────
 
@@ -291,19 +286,21 @@ export async function getBuddyStandings(metric: Metric, period: Period): Promise
 /**
  * Ended challenges retained on a member's participant record. PostgreSQL
  * applies the same block-aware Buddy Card access mode used by the profile
- * screen, including the public `show_medals` consent gate. The before/after
- * identity checks keep a response owned by the account that started it.
+ * screen, including the public `show_medals` consent gate. The screen owns one
+ * viewer identity read plus its auth subscription/load guard; PostgreSQL binds
+ * that expected viewer to auth.uid() without extra client auth round trips.
  */
 export async function listCompletedChallengesForMember(
   userId: string,
   expectedViewerId: string,
 ): Promise<CompletedChallenge[]> {
-  await assertChallengeViewer(expectedViewerId);
+  if (!UUID_RE.test(userId)) throw new Error('Invalid challenge-history target.');
+  if (!UUID_RE.test(expectedViewerId)) throw new Error('Invalid challenge-history viewer.');
   const { data, error } = await supabase.rpc('buddy_completed_challenges', {
     p_target: userId,
+    p_expected_viewer: expectedViewerId,
   });
   if (error) throw error;
-  await assertChallengeViewer(expectedViewerId);
   return (data ?? []).map((row: any) => ({
     id: row.id,
     title: row.title,
