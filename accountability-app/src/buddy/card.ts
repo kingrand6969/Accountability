@@ -168,24 +168,14 @@ export async function getBuddyCard(id: string): Promise<BuddyCardView | null> {
 
 /**
  * Loads the fuller profile shape through PostgreSQL's accepted-buddy boundary.
- * The expected viewer is checked on both sides of the RPC so a response begun
- * by one signed-in account cannot be consumed by another account after a
- * switch. Non-buddy callers receive no row from the function.
+ * PostgreSQL authorizes this RPC against the active auth identity. The screen
+ * separately binds the response to its immutable viewer/target load token so
+ * account or route replacement cannot commit a stale response. Non-buddy
+ * callers receive no row from the function.
  */
-export async function getAuthorizedBuddyCard(
-  id: string,
-  expectedViewerId: string,
-): Promise<BuddyCardView | null> {
-  const viewerBefore = await me();
-  if (viewerBefore !== expectedViewerId) {
-    throw new Error('Account changed. Reopen this Buddy Card and try again.');
-  }
+export async function getAuthorizedBuddyCard(id: string): Promise<BuddyCardView | null> {
   const { data, error } = await supabase.rpc('buddy_full_profile', { p_target: id });
   if (error) throw error;
-  const viewerAfter = await me();
-  if (viewerAfter !== expectedViewerId) {
-    throw new Error('Account changed. Reopen this Buddy Card and try again.');
-  }
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;
   return {

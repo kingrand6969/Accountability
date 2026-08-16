@@ -27,6 +27,14 @@ const feedSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/(app)/index.tsx'),
   'utf8',
 );
+const cardSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/buddy/card.ts'),
+  'utf8',
+);
+const relationshipSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/buddy/buddyCardRelationship.ts'),
+  'utf8',
+);
 const fullProfileSql = fs.readFileSync(
   path.resolve(process.cwd(), 'supabase/migrations/0098_buddy_full_profile.sql'),
   'utf8',
@@ -70,8 +78,8 @@ describe('Buddy Card viewer state', () => {
     expect(screenSource).toContain('<BuddyCardFace');
     expect(screenSource).toContain('<PublicBuddyCardFace');
     expect(screenSource).toContain('ownerView={ownerView}');
-    expect(screenSource).toContain('getAuthorizedBuddyCard(targetId, viewerId)');
-    expect(screenSource).toContain('getBuddyCardAccessModeAsOwner(viewerId, targetId)');
+    expect(screenSource).toContain('getAuthorizedBuddyCard(targetId)');
+    expect(screenSource).toContain('getBuddyCardAccessMode(targetId)');
     expect(screenSource).not.toContain('areBuddiesAsOwner(viewerId, targetId)');
   });
 
@@ -115,12 +123,33 @@ describe('Buddy Card viewer state', () => {
     expect(screenSource).toContain('optionAction: { minWidth: 48, minHeight: 48');
   });
 
-  test('every deferred optional profile value revalidates auth before state', () => {
+  test('every deferred optional profile value uses the immutable load guard before state', () => {
     expect(screenSource).toContain('commitBuddyCardOptionalValue');
     for (const setter of ['setStats', 'setMetrics', 'setBoardRank', 'setPosts']) {
       expect(screenSource).not.toMatch(new RegExp(`then\\(\\([^)]*\\) => commit\\(${setter}`));
       expect(screenSource).toContain(`commitOptional(${setter}`);
     }
+  });
+
+  test('a full primary and optional load performs exactly one client auth read', () => {
+    expect(screenSource.match(/supabase\.auth\s*\.getUser\(\)/g)).toHaveLength(1);
+    expect(cardSource.match(/export async function getAuthorizedBuddyCard[\s\S]*?^}/m)?.[0])
+      .not.toContain('await me()');
+    expect(relationshipSource.match(/export async function getBuddyCardAccessMode[\s\S]*?^}/m)?.[0])
+      .not.toContain('assertBuddyCardViewer');
+    expect(relationshipSource.match(/export (?:async )?function commitBuddyCardOptionalValue[\s\S]*?^}/m)?.[0])
+      .not.toContain('assertBuddyCardViewer');
+  });
+
+  test('initial auth and primary read failures settle to visible retry instead of a spinner', () => {
+    expect(screenSource).toContain('.then(({ data, error }) =>');
+    expect(screenSource).toContain('if (error) throw error;');
+    expect(screenSource).toMatch(
+      /\.catch\(\(error\) => \{[\s\S]*?setLoadError\([\s\S]*?setLoading\(false\)/,
+    );
+    expect(screenSource).toMatch(
+      /finally \{\s*if \(restartRequested\) return;\s*commit\(setLoading, false\);\s*}/,
+    );
   });
 
   test('feed account cleanup cannot erase the next account ref after render', () => {
@@ -197,10 +226,8 @@ describe('full Buddy profile privacy boundary', () => {
     expect(canReadFullProfile(true, true, true)).toBe(true);
   });
 
-  test('the client loader is owner-bound before and after the authorized RPC', async () => {
-    const viewerId = '11111111-1111-4111-8111-111111111111';
+  test('the full-profile read relies on the auth-bound server RPC without extra auth round trips', async () => {
     const targetId = '22222222-2222-4222-8222-222222222222';
-    mockGetUser.mockResolvedValue(authUser(viewerId));
     mockRpc.mockResolvedValue({
       data: [{
         id: targetId,
@@ -216,28 +243,26 @@ describe('full Buddy profile privacy boundary', () => {
     });
 
     const { getAuthorizedBuddyCard } = require('./card') as typeof import('./card');
-    await expect(getAuthorizedBuddyCard(targetId, viewerId)).resolves.toMatchObject({
+    await expect(getAuthorizedBuddyCard(targetId)).resolves.toMatchObject({
       id: targetId,
       bio: 'Full buddy bio',
       card: { headline: 'Private buddy focus' },
     });
     expect(mockRpc).toHaveBeenCalledWith('buddy_full_profile', { p_target: targetId });
-    expect(mockGetUser).toHaveBeenCalledTimes(2);
+    expect(mockGetUser).not.toHaveBeenCalled();
   });
 
   test.each(['self', 'buddy', 'public', 'unavailable'] as const)(
-    'the access-mode RPC returns %s while bound to the initiating viewer',
+    'the auth-bound access-mode RPC returns %s without an extra client auth read',
     async (mode) => {
-      const viewerId = '11111111-1111-4111-8111-111111111111';
       const targetId = '22222222-2222-4222-8222-222222222222';
-      mockGetUser.mockResolvedValue(authUser(viewerId));
       mockRpc.mockResolvedValue({ data: mode, error: null });
 
       await expect(
-        relationship().getBuddyCardAccessModeAsOwner(viewerId, targetId),
+        relationship().getBuddyCardAccessMode(targetId),
       ).resolves.toBe(mode);
       expect(mockRpc).toHaveBeenCalledWith('buddy_card_access_mode', { p_target: targetId });
-      expect(mockGetUser).toHaveBeenCalledTimes(2);
+      expect(mockGetUser).not.toHaveBeenCalled();
     },
   );
 
@@ -251,19 +276,18 @@ describe('full Buddy profile privacy boundary', () => {
 
 describe('Buddy Card connection lifecycle', () => {
   test('replacement while an optional value is deferred applies no stale setter', async () => {
-    const viewerId = '11111111-1111-4111-8111-111111111111';
     const value = deferred<number>();
     const setter = jest.fn<(next: number) => void>();
-    mockGetUser.mockResolvedValue(authUser('33333333-3333-4333-8333-333333333333'));
+    let current = true;
 
     const completion = value.promise.then((next) => relationship().commitBuddyCardOptionalValue(
-      viewerId,
       'target-a',
       () => 'target-a',
-      () => true,
+      () => current,
       setter,
       next,
-    )).catch(() => false);
+    ));
+    current = false;
     value.resolve(7);
 
     await expect(completion).resolves.toBe(false);
@@ -283,16 +307,15 @@ describe('Buddy Card connection lifecycle', () => {
     expect(actionAllowed()).toBe(false);
     expect(actionAllowed()).toBe(false);
     expect(actionAllowed()).toBe(false);
-    await expect(
+    expect(
       relationship().commitBuddyCardOptionalValue(
-        'viewer-a',
         'target-a',
         () => currentTarget,
         () => guard.owns(token),
         setter,
         7,
       ),
-    ).resolves.toBe(false);
+    ).toBe(false);
     expect(setter).not.toHaveBeenCalled();
     expect(mockGetUser).not.toHaveBeenCalled();
   });

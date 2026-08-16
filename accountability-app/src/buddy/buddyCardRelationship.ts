@@ -26,35 +26,24 @@ export async function assertBuddyCardViewer(expectedViewerId: string): Promise<v
   if (data.user?.id !== expectedViewerId) throw new Error(ACCOUNT_CHANGED);
 }
 
-export async function commitBuddyCardOptionalValue<T>(
-  expectedViewerId: string,
+/** Commits an optional read only while its viewer/target load token still owns the screen. */
+export function commitBuddyCardOptionalValue<T>(
   expectedTargetId: string,
   currentTargetId: () => string | undefined,
   isCurrent: () => boolean,
   setter: (value: T) => void,
   value: T,
-): Promise<boolean> {
-  if (!isCurrent() || currentTargetId() !== expectedTargetId) return false;
-  try {
-    await assertBuddyCardViewer(expectedViewerId);
-  } catch {
-    return false;
-  }
+): boolean {
   if (!isCurrent() || currentTargetId() !== expectedTargetId) return false;
   setter(value);
   return true;
 }
 
-export async function getBuddyCardAccessModeAsOwner(
-  expectedViewerId: string,
-  targetId: string,
-): Promise<BuddyCardAccessMode> {
-  assertUuid(expectedViewerId);
+/** PostgreSQL resolves this against auth.uid(); the caller guards response ownership. */
+export async function getBuddyCardAccessMode(targetId: string): Promise<BuddyCardAccessMode> {
   assertUuid(targetId);
-  await assertBuddyCardViewer(expectedViewerId);
   const { data, error } = await supabase.rpc('buddy_card_access_mode', { p_target: targetId });
   if (error) throw error;
-  await assertBuddyCardViewer(expectedViewerId);
   if (data === 'self' || data === 'buddy' || data === 'public' || data === 'unavailable') {
     return data;
   }

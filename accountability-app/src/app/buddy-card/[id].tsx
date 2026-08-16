@@ -36,7 +36,7 @@ import {
   blockBuddyAsOwner,
   commitBuddyCardOptionalValue,
   createBuddyCardConnectLock,
-  getBuddyCardAccessModeAsOwner,
+  getBuddyCardAccessMode,
   reportBuddyAsOwner,
   sendBuddyRequestAsOwner,
   type BuddyCardAccessMode,
@@ -117,7 +117,8 @@ export default function BuddyCardScreen() {
 
       void supabase.auth
         .getUser()
-        .then(({ data }) => {
+        .then(({ data, error }) => {
+          if (error) throw error;
           if (
             latestTargetIdRef.current !== targetToken.targetId ||
             !guard.isCurrentTarget(targetToken)
@@ -135,16 +136,13 @@ export default function BuddyCardScreen() {
             setter(value);
           };
           const commitOptional = <T,>(setter: (value: T) => void, value: T) =>
-            viewerId
-              ? commitBuddyCardOptionalValue(
-                  viewerId,
-                  targetId,
-                  () => latestTargetIdRef.current,
-                  () => loadContextIsCurrent(token),
-                  setter,
-                  value,
-                )
-              : Promise.resolve(false);
+            commitBuddyCardOptionalValue(
+              targetId,
+              () => latestTargetIdRef.current,
+              () => loadContextIsCurrent(token),
+              setter,
+              value,
+            );
 
           const authResult = supabase.auth.onAuthStateChange((_event, session) => {
             if (!loadContextIsCurrent(token)) return;
@@ -186,7 +184,7 @@ export default function BuddyCardScreen() {
           void (async () => {
             let restartRequested = false;
             try {
-              const mode = await getBuddyCardAccessModeAsOwner(viewerId, targetId);
+              const mode = await getBuddyCardAccessMode(targetId);
               if (!loadContextIsCurrent(token)) return;
               if (mode === 'unavailable') {
                 commit(setAccessMode, mode);
@@ -196,12 +194,11 @@ export default function BuddyCardScreen() {
                 return;
               }
               const v = mode === 'self' || mode === 'buddy'
-                ? await getAuthorizedBuddyCard(targetId, viewerId)
+                ? await getAuthorizedBuddyCard(targetId)
                 : await getBuddyCard(targetId);
               const confirmedMode = mode === 'public'
-                ? await getBuddyCardAccessModeAsOwner(viewerId, targetId)
+                ? await getBuddyCardAccessMode(targetId)
                 : mode;
-              await assertBuddyCardViewer(viewerId);
               if (!loadContextIsCurrent(token)) return;
               if (confirmedMode === 'unavailable' || !v || v.id !== targetId) {
                 commit(setAccessMode, 'unavailable');
@@ -254,12 +251,6 @@ export default function BuddyCardScreen() {
                 setAccountEpoch((value) => value + 1);
                 return;
               }
-              try {
-                await assertBuddyCardViewer(viewerId);
-              } catch {
-                return;
-              }
-              if (!loadContextIsCurrent(token)) return;
               commit(
                 setLoadError,
                 String((error as Error).message || 'Could not load Buddy Card.'),
@@ -268,11 +259,6 @@ export default function BuddyCardScreen() {
               commit(setAccessMode, null);
             } finally {
               if (restartRequested) return;
-              try {
-                await assertBuddyCardViewer(viewerId);
-              } catch {
-                return;
-              }
               commit(setLoading, false);
             }
           })();
