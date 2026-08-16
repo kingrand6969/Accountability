@@ -90,6 +90,13 @@ export type Challenge = {
 
 export type ChallengeCard = Challenge & { participants: number; joined: boolean };
 
+export type CompletedChallenge = {
+  id: string;
+  title: string;
+  metric: Metric;
+  endsAt: string;
+};
+
 export type BuddyLocation = {
   user_id: string;
   name: string | null;
@@ -102,6 +109,14 @@ export type BuddyLocation = {
 async function me(): Promise<string | null> {
   const { data } = await supabase.auth.getUser();
   return data.user?.id ?? null;
+}
+
+async function assertChallengeViewer(expectedViewerId: string): Promise<void> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  if (data.user?.id !== expectedViewerId) {
+    throw new Error('Account changed. Reopen this Buddy Card and try again.');
+  }
 }
 
 // ─── Location (opt-in) ───────────────────────────────────────────────────────
@@ -272,6 +287,30 @@ export async function getBuddyStandings(metric: Metric, period: Period): Promise
 }
 
 // ─── Challenges ──────────────────────────────────────────────────────────────
+
+/**
+ * Ended challenges retained on a member's participant record. PostgreSQL
+ * applies the same block-aware Buddy Card access mode used by the profile
+ * screen, including the public `show_medals` consent gate. The before/after
+ * identity checks keep a response owned by the account that started it.
+ */
+export async function listCompletedChallengesForMember(
+  userId: string,
+  expectedViewerId: string,
+): Promise<CompletedChallenge[]> {
+  await assertChallengeViewer(expectedViewerId);
+  const { data, error } = await supabase.rpc('buddy_completed_challenges', {
+    p_target: userId,
+  });
+  if (error) throw error;
+  await assertChallengeViewer(expectedViewerId);
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    title: row.title,
+    metric: row.metric as Metric,
+    endsAt: row.ends_at,
+  }));
+}
 
 export async function listChallenges(): Promise<ChallengeCard[]> {
   const uid = await me();

@@ -160,7 +160,7 @@ function RootNavigator() {
         <Stack.Screen name="buddy-map" options={{ headerShown: true, title: 'Buddy Location' }} />
         <Stack.Screen name="buddy-chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
         <Stack.Screen name="buddy-card/[id]" options={{ headerShown: true, title: 'Buddy' }} />
-        <Stack.Screen name="buddy-medals/[id]" options={{ headerShown: true, title: 'Medals' }} />
+        <Stack.Screen name="buddy-medals/[id]" options={{ headerShown: true, title: 'Medals and Challenges' }} />
         <Stack.Screen name="invite-card" options={{ headerShown: true, title: 'Invite friends' }} />
         <Stack.Screen
           name="buddy-card-edit"
