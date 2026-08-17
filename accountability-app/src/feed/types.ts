@@ -7,8 +7,7 @@ export type PostType =
   | 'workout'
   | 'milestone'
   | 'event'
-  | 'memory'
-  | 'savings';
+  | 'memory';
 
 export type FeedPost = {
   id: string;

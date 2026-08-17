@@ -224,6 +224,7 @@ export function ImmersivePost({
   supporterCount,
   supporterNames,
   supporterAvatars,
+  mediaActive = false,
   onBack,
   onOptions,
   onEncourage,
@@ -236,6 +237,7 @@ export function ImmersivePost({
   supporterCount: number;
   supporterNames: string;
   supporterAvatars: { id: string; name: string | null; avatar_url: string | null }[];
+  mediaActive?: boolean;
   onBack(): void;
   onOptions(): void;
   onEncourage(): void;
@@ -266,15 +268,10 @@ export function ImmersivePost({
                 { transform: [{ scale: Math.max(1, height / Math.max(width * (16 / 9), 1)) }] },
               ]}
             >
-              <PostVideo url={post.image_url} detail />
+              <PostVideo url={post.image_url} detail active={mediaActive} />
             </View>
           ) : (
-            <View
-              style={[
-                styles.photoFill,
-                { transform: [{ scale: Math.max(1, height / Math.max(width * 1.25, 1)) }] },
-              ]}
-            >
+            <View style={styles.photoContain}>
               <PostImage url={post.image_url} immersive />
             </View>
           )
@@ -342,7 +339,7 @@ export function ImmersivePost({
           style={({ pressed }) => [styles.encouragementCard, pressed && styles.pressed]}
           onPress={onOpenEncouragement}
           accessibilityRole="button"
-          accessibilityLabel={`${supporterCount} supporters. Open encouragement.`}
+          accessibilityLabel={`${supporterCount} supporters. Open Cheers.`}
         >
           <View style={styles.faces}>
             {supporterAvatars.slice(0, 3).map((person, index) => (
@@ -366,7 +363,7 @@ export function ImmersivePost({
         </Pressable>
 
         <View style={styles.actionBar}>
-          <Action icon={post.liked_by_me ? 'flame' : 'flame-outline'} label="Encourage this post" shortLabel="Encourage" active={post.liked_by_me} onPress={onEncourage} />
+          <Action icon={post.liked_by_me ? 'flame' : 'flame-outline'} label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
           <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
         </View>
@@ -404,6 +401,7 @@ function Action({ icon, label, shortLabel, active = false, onPress }: { icon: ke
 const styles = StyleSheet.create({
   hero: { width: '100%', backgroundColor: colors.navy, overflow: 'hidden' },
   photoFill: { width: '100%', alignSelf: 'center' },
+  photoContain: { position: 'absolute', inset: 0, justifyContent: 'center' },
   mediaUnavailable: { flex: 1, minHeight: 720, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.navy },
   mediaUnavailableText: { color: 'rgba(255,255,255,.8)', fontFamily: font.medium },
   topControls: { position: 'absolute', top: spacing.xxl, left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between', zIndex: 3 },

@@ -6,6 +6,7 @@ import {
   executeShareHandoff,
   isSafeResolvedPostId,
   navigateBackSafely,
+  returnFromPost,
   resolveColdLink,
 } from './routeAccessContract';
 import * as routeAccessContract from './routeAccessContract';
@@ -42,8 +43,42 @@ describe('cold-link route access contract', () => {
     },
   );
 
+  test('dismisses the Post modal without rebuilding the mounted Feed route', () => {
+    const router = {
+      canGoBack: jest.fn(() => true),
+      back: jest.fn(),
+      replace: jest.fn(),
+      dismiss: jest.fn(),
+      canDismiss: jest.fn(() => true),
+      dismissAll: jest.fn(),
+    };
+
+    expect(returnFromPost(router)).toBe('feed');
+    expect(router.back).not.toHaveBeenCalled();
+    expect(router.dismissAll).not.toHaveBeenCalled();
+    expect(router.dismiss).toHaveBeenCalledTimes(1);
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  test('replaces a cold-linked post with Feed when there is no prior route', () => {
+    const router = {
+      canGoBack: jest.fn(() => false),
+      back: jest.fn(),
+      replace: jest.fn(),
+      dismiss: jest.fn(),
+      canDismiss: jest.fn(() => false),
+      dismissAll: jest.fn(),
+    };
+
+    expect(returnFromPost(router)).toBe('feed');
+    expect(router.back).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith('/(app)');
+    expect(router.dismissAll).not.toHaveBeenCalled();
+    expect(router.dismiss).not.toHaveBeenCalled();
+  });
+
   test('keeps the canonical encouragement query handoff and safe post fallback', () => {
-    const postSource = routeSource('post/[id].tsx');
+    const postSource = routeSource('(app)/post/[id].tsx');
 
     expect(postSource).toContain(
       "useLocalSearchParams<{ id: string; encouragement?: string }>()",
@@ -52,8 +87,9 @@ describe('cold-link route access contract', () => {
       "useState(encouragement === '1')",
     );
     expect(postSource).toContain('visible={encouragementOpen}');
-    expect(postSource).toContain("if (router.canGoBack()) router.back()");
-    expect(postSource).toContain("else router.replace('/')");
+    expect(postSource).toContain('navigateBackSafely(router)');
+    expect(postSource).not.toContain('returnFromPost(router)');
+    expect(postSource).toContain("BackHandler.addEventListener('hardwareBackPress'");
   });
 
   test.each([
@@ -89,14 +125,14 @@ describe('cold-link route access contract', () => {
     expect(statusBarStyleForPath?.('/body')).toBe('dark');
   });
 
-  test.each(['/body', '/journey-path', '/business'] as const)(
+  test.each(['/body', '/journey-path'] as const)(
     'requires authentication and resume for signed-out protected route %s',
     (path) => {
       expect(resolveColdLink(path, 'signed-out')).toBe('authenticate-and-resume');
     },
   );
 
-  test.each(['/body', '/journey-path', '/business'] as const)(
+  test.each(['/body', '/journey-path'] as const)(
     'opens signed-in protected route %s',
     (path) => {
       expect(resolveColdLink(path, 'signed-in')).toBe('open-protected');

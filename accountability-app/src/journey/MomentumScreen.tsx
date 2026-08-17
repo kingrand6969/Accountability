@@ -25,7 +25,6 @@ import { JourneyEncouragementBar } from './JourneyEncouragementBar';
 
 const PILLARS = [
   { key: 'body', label: 'Body', icon: 'walk-outline' as const, color: '#9ED438' },
-  { key: 'money', label: 'Money', icon: 'cash-outline' as const, color: '#48D6E8' },
   { key: 'focus', label: 'Focus', icon: 'radio-button-on-outline' as const, color: '#7F8EFF' },
   { key: 'people', label: 'People', icon: 'people-outline' as const, color: '#D6DC3E' },
 ] as const;
@@ -131,11 +130,9 @@ export default function MomentumScreen() {
                         router.push(
                           (pillar.key === 'body'
                             ? '/body'
-                            : pillar.key === 'money'
-                              ? '/finance'
-                              : pillar.key === 'focus'
-                                ? '/today'
-                                : '/messages') as never,
+                            : pillar.key === 'focus'
+                              ? '/today'
+                              : '/messages') as never,
                         )
                       }
                       accessibilityRole="button"
@@ -169,7 +166,7 @@ export default function MomentumScreen() {
                   <Pressable
                     key={pillar.key}
                     style={({ pressed }) => [styles.pillar, pos, { borderColor: pillar.color }, pressed && styles.pressed]}
-                    onPress={() => router.push((pillar.key === 'body' ? '/body' : pillar.key === 'money' ? '/finance' : pillar.key === 'focus' ? '/today' : '/messages') as never)}
+                    onPress={() => router.push((pillar.key === 'body' ? '/body' : pillar.key === 'focus' ? '/today' : '/messages') as never)}
                     accessibilityRole="button"
                     accessibilityLabel={pillar.total > 0 ? `${pillar.label} completion ${pillar.score} percent this week` : `${pillar.label}, no data this week`}
                   >

@@ -17,6 +17,7 @@
     },
     "preview": {
       "environment": "preview",
+      "developmentClient": false,
       "distribution": "internal",
       "channel": "preview",
       "env": {

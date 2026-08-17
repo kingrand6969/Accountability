@@ -4,31 +4,43 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { colors, radius } from '../ui/theme';
 import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
 
-export function PostVideo({ url, detail = false }: { url: string; detail?: boolean }) {
-  const resolvedUrl = useResolvedMediaUrl(url);
-  const player = useVideoPlayer(resolvedUrl ?? null, (instance) => {
+export function PostVideo({
+  url,
+  detail = false,
+  active = false,
+}: {
+  url: string;
+  detail?: boolean;
+  active?: boolean;
+}) {
+  const resolvedUrl = useResolvedMediaUrl(active ? url : null);
+  return (
+    <View style={[styles.frame, detail && styles.detailFrame]}>
+      {active && resolvedUrl ? (
+        <ActivePostVideo url={resolvedUrl} />
+      ) : (
+        <View style={styles.placeholder} accessibilityLabel="Video paused while off screen" />
+      )}
+    </View>
+  );
+}
+
+function ActivePostVideo({ url }: { url: string }) {
+  const player = useVideoPlayer(url, (instance) => {
     instance.loop = false;
     instance.muted = false;
   });
 
-  useEffect(() => {
-    if (!resolvedUrl) player.pause();
-  }, [player, resolvedUrl]);
+  useEffect(() => () => player.pause(), [player]);
 
   return (
-    <View style={[styles.frame, detail && styles.detailFrame]}>
-      {resolvedUrl ? (
-        <VideoView
-          player={player}
-          style={styles.video}
-          nativeControls
-          contentFit="contain"
-          accessibilityLabel="Post video. Tap play to watch."
-        />
-      ) : (
-        <View style={styles.placeholder} accessibilityLabel="Private video unavailable" />
-      )}
-    </View>
+    <VideoView
+      player={player}
+      style={styles.video}
+      nativeControls
+      contentFit="contain"
+      accessibilityLabel="Post video. Tap play to watch."
+    />
   );
 }
 

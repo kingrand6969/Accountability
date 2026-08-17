@@ -3,7 +3,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { Alert, Text, TextInput } from 'react-native';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { resolveColdLink } from './routeAccessContract';
 
@@ -18,6 +18,8 @@ const mockRouter = {
 };
 const mockListStoryGroups = jest.fn<() => Promise<unknown[]>>();
 const mockDeleteStory = jest.fn<(id: string) => Promise<void>>();
+const mockReportStory = jest.fn<(id: string) => Promise<void>>();
+const mockMarkStoryViewed = jest.fn<(id: string) => Promise<void>>(async () => {});
 const mockListNotifications = jest.fn<() => Promise<unknown[]>>();
 const mockMarkAllRead = jest.fn<(ownerId: string) => Promise<void>>();
 const mockGetPost = jest.fn<() => Promise<unknown>>();
@@ -50,11 +52,13 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('../stories/api', () => ({
   listStoryGroups: () => mockListStoryGroups(),
   deleteStory: (id: string) => mockDeleteStory(id),
+  reportStory: (id: string) => mockReportStory(id),
+  markStoryViewed: (id: string) => mockMarkStoryViewed(id),
 }));
 jest.mock('../notify/api', () => ({
   listNotifications: () => mockListNotifications(),
   markAllRead: (ownerId: string) => mockMarkAllRead(ownerId),
-  notificationLine: (item: { actor_name: string }) => `${item.actor_name} encouraged you`,
+  notificationLine: (item: { actor_name: string }) => `${item.actor_name} cheered you`,
 }));
 jest.mock('../feed/api', () => ({
   getPost: () => mockGetPost(),
@@ -174,6 +178,7 @@ beforeEach(() => {
   mockRouter.canGoBack.mockReturnValue(false);
   mockListStoryGroups.mockResolvedValue([]);
   mockDeleteStory.mockResolvedValue(undefined);
+  mockReportStory.mockResolvedValue(undefined);
   mockListNotifications.mockResolvedValue([]);
   mockMarkAllRead.mockResolvedValue(undefined);
   mockGetPost.mockResolvedValue(null);
@@ -198,6 +203,7 @@ describe('Group 3 manifest generated from the Expo app tree', () => {
   const actual = discoverAppRoutes(path.resolve(__dirname, '../app'));
   const byRoute = new Map(actual.map((entry) => [entry.route, entry]));
   const required = new Map<string, string[]>([
+    ['/discover', []],
     ['/groups', []],
     ['/group/:id', ['id']],
     ['/group-new', []],
@@ -211,6 +217,13 @@ describe('Group 3 manifest generated from the Expo app tree', () => {
     ['/win-card', []],
     ['/share/:id', ['id']],
   ]);
+
+  test('Menu exposes separate Buddies and Discover destinations', () => {
+    const menuSource = readFileSync(path.resolve(__dirname, '../app/menu.tsx'), 'utf8');
+    expect(menuSource).toContain("title: 'Buddies'");
+    expect(menuSource).toContain("title: 'Discover'");
+    expect(menuSource).toContain("route: '/discover'");
+  });
 
   test('contains every required Group 3 route with its actual dynamic parameters', () => {
     const missing = [...required.keys()].filter((route) => !byRoute.has(route));
@@ -293,6 +306,33 @@ describe('story behavioral safety', () => {
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Delete this story' })).toHaveLength(0);
   });
 
+  test('reporting survives StrictMode effect replay while true unmount suppresses stale confirmation', async () => {
+    mockListStoryGroups.mockResolvedValue([
+      { user_id: 'restored-user', name: 'Kin', avatar: null, isMe: false, stories: [story] },
+    ]);
+    let confirmation: { text?: string; onPress?: () => void | Promise<void> }[] | undefined;
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      confirmation = buttons;
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = render(React.createElement(React.StrictMode, null, React.createElement(StoryViewer)));
+    });
+    await flush();
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Report this story' }).props.onPress());
+    const confirm = confirmation?.find((button) => button.text === 'Report');
+    expect(confirm?.onPress).toBeDefined();
+    await act(async () => { await confirm?.onPress?.(); });
+    expect(mockReportStory).toHaveBeenCalledTimes(1);
+
+    mockReportStory.mockClear();
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Report this story' }).props.onPress());
+    const staleConfirm = confirmation?.find((button) => button.text === 'Report');
+    act(() => renderer.unmount());
+    await act(async () => { await staleConfirm?.onPress?.(); });
+    expect(mockReportStory).not.toHaveBeenCalled();
+  });
+
   test('owner confirmation deletes exactly the currently displayed story', async () => {
     mockStoryUserId = 'owner-a';
     const ownedStory = { ...story, id: 'owned-story', user_id: 'owner-a' };
@@ -368,7 +408,7 @@ describe('notification behavioral safety', () => {
     });
     await flush();
     expect(mockMarkAllRead).toHaveBeenCalledWith('owner-a');
-    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya encouraged you' });
+    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya cheered you' });
     await act(async () => row.props.onPress());
     await flush();
     expect(Alert.alert).toHaveBeenCalledWith(
@@ -387,7 +427,7 @@ describe('notification behavioral safety', () => {
       renderer = render(React.createElement(Notifications));
     });
     await flush();
-    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya encouraged you' });
+    const row = renderer.root.findByProps({ accessibilityLabel: 'Maya cheered you' });
     act(() => {
       void row.props.onPress();
     });

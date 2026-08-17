@@ -115,9 +115,10 @@ export async function getGroupGatekey(groupId: string): Promise<string | null> {
   return (data as string | null) ?? null;
 }
 
-export async function joinGroup(groupId: string): Promise<void> {
+export async function joinGroup(groupId: string, expectedOwner?: string): Promise<void> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in.');
+  if (expectedOwner && uid !== expectedOwner) throw new Error('Account changed. Try again.');
   const { error } = await supabase
     .from('group_members')
     .insert({ group_id: groupId, user_id: uid });

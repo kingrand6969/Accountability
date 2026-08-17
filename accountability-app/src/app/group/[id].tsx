@@ -26,6 +26,7 @@ import { useAuth } from '../../auth/AuthProvider';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { PostImage } from '../../feed/PostImage';
 import { PostVideo } from '../../feed/PostVideo';
+import { useActiveVideoList } from '../../feed/useActiveVideoList';
 import { shareInviteText } from '../../social/invite';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel, taggedLabel } from '../../feed/format';
@@ -55,6 +56,7 @@ export default function GroupDetail() {
   const [joining, setJoining] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [keyInput, setKeyInput] = useState('');
+  const [screenFocused, setScreenFocused] = useState(false);
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
 
@@ -130,8 +132,10 @@ export default function GroupDetail() {
 
   useFocusEffect(
     useCallback(() => {
+      setScreenFocused(true);
       void load();
       return () => {
+        setScreenFocused(false);
         loadGeneration.current += 1;
         lifecycleGeneration.current += 1;
         likesInFlight.current.clear();
@@ -146,6 +150,13 @@ export default function GroupDetail() {
     setRefreshing(true);
     await load();
   }
+
+  const videoPlayback = useActiveVideoList({
+    posts: group?.is_member ? posts : [],
+    scopeKey: viewKey,
+    focused: screenFocused,
+    blocked: loading || refreshing || posting || joining || leaving,
+  });
 
   async function onJoin() {
     const requestOwner = myId;
@@ -421,8 +432,10 @@ export default function GroupDetail() {
   return (
     <View style={styles.screen}>
       <FlatList
-        data={group.is_member ? posts : []}
-        keyExtractor={(p) => p.id}
+        data={videoPlayback.rows}
+        keyExtractor={(row) => row.post.id}
+        viewabilityConfig={videoPlayback.viewabilityConfig}
+        onViewableItemsChanged={videoPlayback.onViewableItemsChanged}
         contentContainerStyle={styles.list}
         ListHeaderComponent={header}
         refreshControl={
@@ -451,7 +464,9 @@ export default function GroupDetail() {
             />
           )
         }
-        renderItem={({ item }) => (
+        renderItem={({ item: row }) => {
+          const item = row.post;
+          return (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Avatar url={item.author_avatar} name={item.author_name} size={40} />
@@ -499,7 +514,7 @@ export default function GroupDetail() {
                   accessibilityLabel="Open post"
                 >
                   {item.post_type === 'video' ? (
-                    <PostVideo url={item.image_url} />
+                    <PostVideo url={item.image_url} active={videoPlayback.activeVideoId === row.post.id} />
                   ) : (
                     <PostImage url={item.image_url} capTall />
                   )}
@@ -512,7 +527,7 @@ export default function GroupDetail() {
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 onPress={() => onToggleLike(item)}
                 hitSlop={8}
-                accessibilityLabel={item.liked_by_me ? 'Remove encouragement' : 'Encourage'}
+                accessibilityLabel={item.liked_by_me ? 'Remove Cheer' : 'Cheer'}
               >
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}
@@ -534,7 +549,8 @@ export default function GroupDetail() {
               </Pressable>
             </View>
           </View>
-        )}
+          );
+        }}
       />
     </View>
   );

@@ -26,7 +26,7 @@ const migration = readFileSync(
   require.resolve('../../supabase/migrations/0096_ai_moderation_quarantine.sql'),
   'utf8',
 );
-const postDetailSource = readFileSync(require.resolve('../app/post/[id]'), 'utf8');
+const postDetailSource = readFileSync(require.resolve('../app/(app)/post/[id]'), 'utf8');
 const storyViewerSource = readFileSync(require.resolve('../app/story/[userId]'), 'utf8');
 
 beforeEach(() => {

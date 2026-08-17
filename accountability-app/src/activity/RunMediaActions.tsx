@@ -19,6 +19,7 @@ type DestinationState = {
 
 export type RunMediaActionsProps = {
   onDestination(destination: RunMediaDestination): Promise<void>;
+  onShareAchievement(): void;
   disabled?: boolean;
   activityQueued?: boolean;
   feedDisabledReason?: string;
@@ -52,13 +53,6 @@ const actions: readonly {
     successLabel: 'Share sheet closed',
     icon: 'share-social-outline',
   },
-  {
-    destination: 'feed',
-    label: 'Post to Feed',
-    progressLabel: 'Posting to Feed…',
-    successLabel: 'Posted to Feed',
-    icon: 'newspaper-outline',
-  },
 ];
 
 const initialState = (): Record<RunMediaDestination, DestinationState> => ({
@@ -84,6 +78,7 @@ export function runMediaErrorMessage(error: unknown): string {
 
 export function RunMediaActions({
   onDestination,
+  onShareAchievement,
   disabled = false,
   activityQueued = false,
   feedDisabledReason,
@@ -118,6 +113,24 @@ export function RunMediaActions({
   return (
     <View style={styles.container} accessibilityLabel="Run image destinations">
       <View style={styles.grid}>
+        <View style={styles.cell}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.action,
+              styles.feedAction,
+              (disabled || working) && styles.disabled,
+              pressed && !disabled && !working && styles.pressed,
+            ]}
+            onPress={onShareAchievement}
+            disabled={disabled || working}
+            accessibilityRole="button"
+            accessibilityLabel="Share achievement"
+            accessibilityState={{ disabled: disabled || working }}
+          >
+            <Ionicons name="trophy-outline" size={18} color="#101319" />
+            <Text style={[styles.actionText, styles.feedActionText]}>Share achievement</Text>
+          </Pressable>
+        </View>
         {actions.map((action) => {
           const state = states[action.destination];
           const feedDisabled = action.destination === 'feed' && feedReason !== null;

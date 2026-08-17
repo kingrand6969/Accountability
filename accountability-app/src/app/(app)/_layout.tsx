@@ -134,7 +134,7 @@ export default function AppLayout() {
     <>
       <StatusBar style={statusBarStyleForPath(pathname)} />
       <Tabs
-      // custom quiet bar — guarantees the approved five destinations and spacing
+      // custom quiet bar — guarantees the approved four destinations and spacing
       tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
         headerShown: true,
@@ -172,14 +172,6 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="finance"
-        options={{
-          title: 'Finance',
-          tabBarIcon: tabIcon('wallet', 'wallet-outline'),
-          headerShown: false, // glass hero runs edge-to-edge
-        }}
-      />
-      <Tabs.Screen
         name="activity"
         options={{
           title: 'Journey',
@@ -203,6 +195,17 @@ export default function AppLayout() {
           title: 'Messages',
           tabBarIcon: (p) => <MessagesTabIcon {...p} unread={unreadMessages} />,
           headerShown: true,
+        }}
+      />
+      {/* Post details stay inside the mounted app navigator on Android. */}
+      <Tabs.Screen
+        name="post/[id]"
+        options={{
+          href: null,
+          tabBarItemStyle: { display: 'none' },
+          tabBarStyle: { display: 'none' },
+          headerShown: true,
+          title: 'Post',
         }}
       />
       {/* notifications live in the Feed header now — keep the route reachable */}

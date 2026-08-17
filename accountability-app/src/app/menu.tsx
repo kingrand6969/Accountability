@@ -1,4 +1,4 @@
-import { useCallback, useState, type ComponentProps } from 'react';
+import { useCallback, useRef, useState, type ComponentProps } from 'react';
 import {
   Image,
   Pressable,
@@ -15,30 +15,41 @@ import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
 import { getRank } from '../achievements/api';
 import { RankBadge } from '../achievements/RankBadge';
+import { useAuth } from '../auth/AuthProvider';
 import { colors, font, radius, shadow, spacing, contentMax } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+type GridItem = {
+  icon: IoniconName;
+  tint: string;
+  title: string;
+  route?: string;
+  action?: 'owner-buddy-card';
+};
 
-const GRID: { icon: IoniconName; tint: string; title: string; route: string }[] = [
+const GRID: GridItem[] = [
   { icon: 'podium-outline', tint: '#1d4ed8', title: 'Leaderboards & Wins', route: '/compete' },
   { icon: 'today-outline', tint: '#0284c7', title: 'Planner', route: '/today' },
   { icon: 'people-outline', tint: '#2563eb', title: 'Groups', route: '/groups' },
   { icon: 'storefront-outline', tint: '#0d9488', title: 'Pages', route: '/pages' },
   { icon: 'images-outline', tint: '#0ea5e9', title: 'Memories', route: '/memories' },
   { icon: 'person-add-outline', tint: '#db2777', title: 'Buddies', route: '/buddy' },
-  { icon: 'color-palette-outline', tint: '#7c3aed', title: 'My buddy card', route: '/buddy-card-edit' },
+  { icon: 'compass-outline', tint: '#2563eb', title: 'Discover', route: '/discover' },
+  { icon: 'color-palette-outline', tint: '#7c3aed', title: 'My buddy card', action: 'owner-buddy-card' },
   { icon: 'stats-chart-outline', tint: '#ea580c', title: 'Progress', route: '/insights' },
   { icon: 'book-outline', tint: '#0d9488', title: 'Daily Reads', route: '/books' },
   { icon: 'barbell-outline', tint: '#7c3aed', title: 'Exercises', route: '/gym' },
   { icon: 'nutrition-outline', tint: '#16a34a', title: 'Diet', route: '/diet' },
-  { icon: 'wallet-outline', tint: '#dc2626', title: 'Finance', route: '/finance' },
-  { icon: 'briefcase-outline', tint: '#b45309', title: 'Business', route: '/business' },
   { icon: 'walk-outline', tint: '#ea580c', title: 'Activity', route: '/run' },
   { icon: 'star-outline', tint: '#7c3aed', title: 'Go Pro', route: '/paywall' },
 ];
 
 export default function Menu() {
   const router = useRouter();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerIdRef = useRef(ownerId);
+  currentOwnerIdRef.current = ownerId;
   const [name, setName] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
@@ -64,6 +75,12 @@ export default function Menu() {
         .catch(() => {});
     }, []),
   );
+
+  function openOwnBuddyCard() {
+    const ownerId = currentOwnerIdRef.current;
+    if (!ownerId) return;
+    router.push({ pathname: '/buddy-card/[id]', params: { id: ownerId } } as never);
+  }
 
   const shortcuts = [
     ...myPages.map((p) => ({
@@ -186,7 +203,10 @@ export default function Menu() {
           <Pressable
             key={item.title}
             style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-            onPress={() => router.push(item.route as never)}
+            onPress={item.action === 'owner-buddy-card'
+              ? openOwnBuddyCard
+              : () => item.route && router.push(item.route as never)}
+            disabled={item.action === 'owner-buddy-card' && !ownerId}
             accessibilityRole="button"
             accessibilityLabel={item.title}
           >

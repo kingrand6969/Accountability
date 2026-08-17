@@ -14,10 +14,7 @@ describe('protected Group 3 route intent validation', () => {
     ['/notifications', '/notifications'],
     ['/search', '/search'],
     ['/compose?event=1&text=Show%20up', '/compose?event=1&text=Show+up'],
-    [
-      '/win-card?amount=%2450&buddyName=Maya',
-      '/win-card?amount=%2450&buddyName=Maya',
-    ],
+      ['/win-card?buddyName=Maya', '/win-card?buddyName=Maya'],
     [
       'accountabilityapp://story/restored_user-2026',
       '/story/restored_user-2026',
@@ -42,7 +39,8 @@ describe('protected Group 3 route intent validation', () => {
     '/compose?event=0',
     '/compose?event=1&event=1',
     '/compose?text=%0Ainjected',
-    '/win-card?buddyName=a%0D%0Ab',
+        '/win-card?buddyName=a%0D%0Ab',
+        '/win-card?amount=%2450',
     '/groups#fragment',
     'https://evil.example/story/restored-user',
     'javascript:alert(1)',

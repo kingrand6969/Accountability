@@ -206,11 +206,11 @@ describe('AccountAbility shared primitives', () => {
     const sheetRenderer = render(
       createElement(
         RoundedBottomSheetSurface,
-        { accessibilityLabel: 'Encouragement' },
+        { accessibilityLabel: 'Cheers' },
         createElement(Text, null, 'Sheet'),
       ),
     );
-    const sheet = findDeepestByLabel(sheetRenderer, 'Encouragement');
+    const sheet = findDeepestByLabel(sheetRenderer, 'Cheers');
     expect(sheet.props.accessibilityRole).toBe('summary');
     expect(sheet.props.accessibilityViewIsModal).toBe(true);
     expect(sheet.props.style).toEqual(

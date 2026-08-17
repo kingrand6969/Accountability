@@ -37,7 +37,7 @@ import { resolveAddRouteSeed, type AddRouteSeed } from '../navigation/scheduleRo
 import type { TimelineType } from '../timeline/types';
 
 // Add is for scheduling reminders only — events, meetings, errands, grocery.
-// Workouts/meals/money live in their own trackers (Track tab).
+// Workouts and meals live in their dedicated trackers.
 const TYPE_OPTIONS: { value: TimelineType; label: string }[] = [
   { value: 'event', label: 'Event' },
   { value: 'task', label: 'Task' },

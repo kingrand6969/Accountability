@@ -5,7 +5,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { getHomeStats, type HomeStats } from './api';
-import { formatAmount } from '../money/categories';
 import { colors, font, radius, spacing } from '../ui/theme';
 
 export function HomeHeader() {
@@ -93,10 +92,6 @@ export function HomeHeader() {
             <View style={styles.weekStat}>
               <Ionicons name="walk-outline" size={15} color="#fff" />
               <Text style={styles.weekStatText}>{stats.weekActivities}</Text>
-            </View>
-            <View style={styles.weekStat}>
-              <Ionicons name="cash-outline" size={15} color="#fff" />
-              <Text style={styles.weekStatText}>{formatAmount(stats.weekSpend)}</Text>
             </View>
             <Ionicons name="chevron-forward" size={14} color="#dbeafe" />
           </BlurView>

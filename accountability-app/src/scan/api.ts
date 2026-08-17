@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '../lib/supabase';
 
-export type ScanKind = 'food' | 'receipt';
+export type ScanKind = 'food';
 
 export type FoodItem = {
   name: string;
@@ -13,25 +13,15 @@ export type FoodItem = {
   fat: number;
 };
 export type FoodScan = { items: FoodItem[]; note?: string };
-export type ReceiptScan = {
-  merchant: string | null;
-  date: string | null;
-  total: number | null;
-  currency: string | null;
-  category: string;
-  note?: string;
-};
-
-export type Quota = { limit: number; food_used: number; receipt_used: number };
+export type Quota = { limit: number; food_used: number };
 
 /** How many scans this member has left this month (display only — the server
  *  enforces the real cap). */
 export async function getScanQuota(): Promise<Quota> {
   const { data, error } = await supabase.rpc('my_scan_quota');
-  if (error || !data) return { limit: 20, food_used: 0, receipt_used: 0 };
-  return data as Quota;
+  if (error || !data) return { limit: 20, food_used: 0 };
+  return { limit: Number(data.limit ?? 20), food_used: Number(data.food_used ?? 0) };
 }
-
 /**
  * Camera or library → a small base64 JPEG. Downscaling to 768px happens ON THE
  * DEVICE: it keeps each scan to a fraction of a cent and the upload quick,
@@ -87,13 +77,4 @@ export async function scanFood(fromCamera = true): Promise<{ scan: FoodScan; use
     used: out.used,
     limit: out.limit,
   };
-}
-
-/** Photograph a receipt → merchant, date, total, suggested category. */
-export async function scanReceipt(fromCamera = true): Promise<{ scan: ReceiptScan; used: number; limit: number } | null> {
-  const b64 = await pickImage(fromCamera);
-  if (!b64) return null;
-  const out = await callScan('receipt', b64);
-  const r = (out.result ?? {}) as ReceiptScan;
-  return { scan: r, used: out.used, limit: out.limit };
 }

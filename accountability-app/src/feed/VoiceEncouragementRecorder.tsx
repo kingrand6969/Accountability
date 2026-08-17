@@ -172,8 +172,8 @@ export function recorderCompletionBelongsToView(
 
 export function recorderPermissionMessage(state: 'denied' | 'blocked') {
   return state === 'blocked'
-    ? 'Microphone access is blocked. Enable it in device settings, or write a text encouragement instead.'
-    : 'Microphone access was not allowed. You can write a text encouragement instead.';
+    ? 'Microphone access is blocked. Enable it in device settings, or write a text Cheer instead.'
+    : 'Microphone access was not allowed. You can write a text Cheer instead.';
 }
 
 export function recorderPermissionState(
@@ -435,7 +435,7 @@ export function VoiceEncouragementRecorder({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Voice encouragement</Text>
+              <Text style={styles.title}>Voice Cheer</Text>
               <Text style={styles.subtitle}>A natural, private message · up to 10 seconds</Text>
             </View>
             <Pressable style={styles.iconButton} onPress={onClose} accessibilityLabel="Close recorder">

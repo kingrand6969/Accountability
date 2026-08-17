@@ -43,41 +43,25 @@ function pngDimensions(filePath: string) {
   };
 }
 
-describe('AccountAbility brand geometry contract', () => {
+describe('Accountability Unbroken A brand geometry contract', () => {
   it('defines the approved canvas, colors, and wordmark capitalization', () => {
-    expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 88');
+    expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 96');
     expect(BRAND_GEOMETRY.colors).toEqual({
       cobalt: '#155EEF',
       navy: '#081A3A',
+      cyan: '#20C7D9',
       cream: '#F7F4EC',
     });
-    expect(BRAND_WORDMARK).toBe('AccountAbility');
+    expect(BRAND_WORDMARK).toBe('Accountability');
   });
 
-  it('contains exactly two heads and two asymmetric open-centre ribbons', () => {
-    expect(BRAND_GEOMETRY.heads).toHaveLength(2);
-    expect(BRAND_GEOMETRY.ribbons).toHaveLength(2);
-    expect({
-      heads: BRAND_GEOMETRY.heads,
-      ribbons: BRAND_GEOMETRY.ribbons,
-    }).toMatchInlineSnapshot(`
+  it('contains one Unbroken A silhouette and one rising motivation accent', () => {
+    expect(BRAND_GEOMETRY).not.toHaveProperty('heads');
+    expect(BRAND_GEOMETRY).not.toHaveProperty('ribbons');
+    expect(BRAND_GEOMETRY.mark).toMatchInlineSnapshot(`
       {
-        "heads": [
-          {
-            "cx": 27,
-            "cy": 15,
-            "r": 10,
-          },
-          {
-            "cx": 69,
-            "cy": 15,
-            "r": 10,
-          },
-        ],
-        "ribbons": [
-          "M5 78 20 33c2-7 11-10 17-5l22 22-14 17-13-15-10 30H9c-3 0-5-2-4-4Z",
-          "m91 78-15-45c-2-7-11-10-17-5L37 50l14 17 13-15 10 30h13c3 0 5-2 4-4Z",
-        ],
+        "accentPath": "M31 62 58 40 62 49 36 66Z",
+        "primaryPath": "M6 86 36 13Q39 5 47 5t11 8l32 73H68L61 68H31L24 86H6Zm32-35h16L46 30l-8 21Z",
       }
     `);
   });
@@ -97,9 +81,7 @@ describe('AccountAbility brand geometry contract', () => {
   it('exposes deeply immutable geometry', () => {
     expect(Object.isFrozen(BRAND_GEOMETRY)).toBe(true);
     expect(Object.isFrozen(BRAND_GEOMETRY.colors)).toBe(true);
-    expect(Object.isFrozen(BRAND_GEOMETRY.heads)).toBe(true);
-    expect(Object.isFrozen(BRAND_GEOMETRY.heads[0])).toBe(true);
-    expect(Object.isFrozen(BRAND_GEOMETRY.ribbons)).toBe(true);
+    expect(Object.isFrozen(BRAND_GEOMETRY.mark)).toBe(true);
     (BRAND_GEOMETRY.colors as { cobalt: string }).cobalt = '#000000';
     expect(BRAND_GEOMETRY.colors.cobalt).toBe('#155EEF');
   });
@@ -111,9 +93,10 @@ describe('AccountAbility brand geometry contract', () => {
     for (const duplicatedLiteral of [
       '#155EEF',
       '#081A3A',
+      '#20C7D9',
       '#F7F4EC',
-      'M5 78 20 33',
-      'm91 78-15-45',
+      'M6 86 36 13',
+      'M31 62 58 40',
     ]) {
       expect(generator).not.toContain(duplicatedLiteral);
     }

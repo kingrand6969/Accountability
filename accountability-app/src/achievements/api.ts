@@ -35,7 +35,6 @@ export async function getMetrics(): Promise<Metrics> {
     activeDays: Number(card.consistency ?? 0),
     challengeWins: Number(card.chwin ?? 0),
     memories: counts.memories,
-    goalsHit: counts.goals_hit,
     totalHours: act.hours,
     places: counts.places,
     invitesAccepted: invites,
@@ -56,13 +55,12 @@ type MetricCounts = {
   likes: number;
   groups: number;
   messages: number;
-  goals_hit: number;
   profile_fields: number;
 };
 
 const ZERO_COUNTS: MetricCounts = {
   workouts: 0, challenges: 0, memories: 0, places: 0, posts: 0,
-  likes: 0, groups: 0, messages: 0, goals_hit: 0, profile_fields: 0,
+  likes: 0, groups: 0, messages: 0, profile_fields: 0,
 };
 
 /** Every medal/mission tally in ONE round trip (my_metric_counts RPC) —
@@ -106,12 +104,27 @@ export async function getMissionStates(): Promise<MissionState[]> {
  *  points = medal tiers + completed missions. */
 export type MedalTier = { id: string; tier: number };
 
-export async function getRank(): Promise<{
+export type GetRankOptions = {
+  /** Bind rank computation to the account that initiated the containing view. */
+  expectedOwnerId?: string;
+  /** Editors use a read-only rank so rendering a preview can never mutate data. */
+  snapshot?: boolean;
+};
+
+const RANK_ACCOUNT_CHANGED = 'Account changed. Rank was not saved.';
+
+async function assertRankOwner(expectedOwnerId: string): Promise<void> {
+  if ((await me()) !== expectedOwnerId) throw new Error(RANK_ACCOUNT_CHANGED);
+}
+
+export async function getRank(options: GetRankOptions = {}): Promise<{
   name: string;
   points: number;
   earned: number;
   medalList: MedalTier[];
 }> {
+  const ownerId = options.expectedOwnerId ?? await me();
+  if (options.expectedOwnerId) await assertRankOwner(options.expectedOwnerId);
   const [m, progress] = await Promise.all([getMetrics(), getMissionProgress()]);
   const medalStates = MEDALS.map((def) => medalState(def, m[def.metric]));
   const points = flexPoints(medalStates) + missionPoints(buildMissionStates(m, progress));
@@ -124,33 +137,31 @@ export async function getRank(): Promise<{
   const name = rankFor(points).name;
   // Keep the buddy card's badge + medals current for visitors (these can only be
   // computed with the owner's own data, so we snapshot them here).
-  snapshotRankToCard(name, earned, medalList).catch(() => {});
+  if (ownerId && options.snapshot !== false) {
+    snapshotRankToCardForOwner(ownerId, name, earned, medalList).catch(() => {});
+  }
   return { name, points, earned, medalList };
 }
 
 /** Persist the owner's current rank + medals onto their buddy card so visitors
  *  always see an up-to-date badge and medal shelf. No-op when nothing changed. */
-async function snapshotRankToCard(
+export async function snapshotRankToCardForOwner(
+  expectedOwnerId: string,
   rankName: string,
   medals: number,
   medalList: MedalTier[],
 ): Promise<void> {
-  const uid = await me();
-  if (!uid) return;
-  const { data } = await supabase.from('profiles').select('buddy_card').eq('id', uid).maybeSingle();
-  const card = (data?.buddy_card ?? {}) as Record<string, unknown>;
-  const listJson = JSON.stringify(medalList);
-  if (
-    card.rank_name === rankName &&
-    card.medals === medals &&
-    JSON.stringify(card.medals_list ?? []) === listJson
-  ) {
-    return;
+  await assertRankOwner(expectedOwnerId);
+  const { data: updated, error } = await supabase.rpc('patch_my_buddy_card', {
+    p_expected_owner: expectedOwnerId,
+    p_patch: { rank_name: rankName, medals, medals_list: medalList },
+    p_patch_kind: 'rank',
+  });
+  if (error) throw new Error(error.message ?? 'Rank could not be saved.');
+  if (!updated || typeof updated !== 'object' || Array.isArray(updated)) {
+    throw new Error('Rank could not be saved for this account.');
   }
-  await supabase
-    .from('profiles')
-    .update({ buddy_card: { ...card, rank_name: rankName, medals, medals_list: medalList } })
-    .eq('id', uid);
+  await assertRankOwner(expectedOwnerId);
 }
 
 /** Post the member's rank to the feed (buddies see it) and count the flex. */

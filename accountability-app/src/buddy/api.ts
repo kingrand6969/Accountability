@@ -117,9 +117,10 @@ export async function searchBuddies(query: string): Promise<Candidate[]> {
   return ((data ?? []) as Candidate[]).filter((c) => !exclude.has(c.id));
 }
 
-export async function sendRequest(toUser: string): Promise<void> {
+export async function sendRequest(toUser: string, expectedOwner?: string): Promise<void> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in.');
+  if (expectedOwner && uid !== expectedOwner) throw new Error('Account changed. Try again.');
   const { error } = await supabase
     .from('buddy_requests')
     .insert({ from_user: uid, to_user: toUser });

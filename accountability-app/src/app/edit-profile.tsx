@@ -344,7 +344,7 @@ export default function Profile() {
     // two-step confirm — this is permanent and irreversible
     Alert.alert(
       'Delete your account?',
-      'This permanently erases your profile, posts, activity, money, buddies and everything else. Your chats stay with your buddies as "Deleted Account." This cannot be undone.',
+      'This permanently erases your profile, posts, activity, buddies and everything else. Your chats stay with your buddies as "Deleted Account." This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel', onPress: resetDeletionAttempt },
         {

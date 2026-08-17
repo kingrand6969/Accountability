@@ -76,6 +76,13 @@ import {
 } from './beauty/BeautyEditor';
 import type { BeautyCaptureSource } from './beauty/cameraMode';
 import { DEFAULT_BEAUTY } from './beauty/types';
+import { addStoryIdempotent } from '../stories/api';
+import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
+import {
+  retainAchievementStoryOperation,
+  type AchievementCompletion,
+  type AchievementStoryOperation,
+} from '../entry/achievementCompletion';
 
 const LIME = '#c6f24e';
 
@@ -88,6 +95,8 @@ export type FinishedRun = {
   elapsed: number;
   points: Pt[];
   title: string;
+  // A saved run may still be queued locally, so there is no truthful resulting
+  // server streak yet. The completion remains a run until sync establishes it.
 };
 
 type Mode = 'map' | 'photo';
@@ -179,6 +188,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const [mediaFit, setMediaFit] = useState<RunMediaFit>('cover');
   const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
   const [activeDestination, setActiveDestination] = useState<RunMediaDestination | null>(null);
+  const [sharePromptVisible, setSharePromptVisible] = useState(true);
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
   const [beautyStage, setBeautyStage] = useState<'camera' | 'editor' | null>(
     null,
@@ -215,6 +225,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     });
   }
   const feedOperation = useRef<FeedOperationContext<RunFeedOperationMetadata> | null>(null);
+  const storyOperation = useRef<AchievementStoryOperation | null>(null);
   const hasPersistentDestination = useRef(false);
   const editorLifecycleActive = useRef(true);
   const onCloseRef = useRef(onClose);
@@ -399,7 +410,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
   const caption =
     `🏃 ${run.title} · ${formatKm(run.distance)} km in ${formatDurationLong(run.elapsed)} ` +
-    `· ${formatPace(run.distance, run.elapsed)} /km`;
+      `· ${formatPace(run.distance, run.elapsed)} /km`;
+  const completionPayload: AchievementCompletion = {
+    kind: 'run',
+    sourceId: run.activityId ?? `${run.ownerId}:${run.elapsed}:${run.distance}`,
+    text: caption,
+    mediaUri: stagedMedia.current?.uri ?? null,
+  };
 
   function invalidateStagedBeautyExport(): void {
     beautyExportController.current!.invalidate();
@@ -739,6 +756,41 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     if (!ran) throw new Error('Another run-image action is already in progress.');
   }
 
+  async function onStoryDestination(): Promise<void> {
+    const ran = await shareOperationGate.run(async () => {
+      const boundary = ownerBoundary();
+      boundary.assertOwned();
+      setActiveDestination('share');
+      try {
+        if (Platform.OS === 'web') {
+          throw new Error('Adding a run card to My Day is available on your phone.');
+        }
+        const item = await currentRunMedia();
+        boundary.assertOwned();
+        const base64 = await new File(item.uri).base64();
+        boundary.assertOwned();
+        const operation = (storyOperation.current = retainAchievementStoryOperation(
+          storyOperation.current,
+          { ...completionPayload, mediaUri: item.uri },
+          createRunMediaOperationId,
+        ));
+        await boundary.runSideEffect(() => addStoryIdempotent({
+          expectedOwnerId: run.ownerId!,
+          operationId: operation.operationId,
+          base64,
+          ext: 'jpg',
+          caption,
+        }));
+        boundary.assertOwned();
+        hasPersistentDestination.current = true;
+        await closeEditor();
+      } finally {
+        setActiveDestination(null);
+      }
+    });
+    if (!ran) throw new Error('Another run-image action is already in progress.');
+  }
+
   if (!ownerMatches) {
     return (
       <View
@@ -973,9 +1025,19 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
 
       <RunMediaActions
         onDestination={onDestination}
+        onShareAchievement={() => setSharePromptVisible(true)}
         disabled={busy}
         activityQueued={activityQueued}
         feedDisabledReason={feedDisabledReason}
+      />
+      <AchievementSharePrompt
+        visible={sharePromptVisible}
+        payloadKey={`${completionPayload.kind}:${completionPayload.sourceId}`}
+        feedDisabledReason={feedDisabledReason}
+        onFeed={() => onDestination('feed')}
+        onStory={onStoryDestination}
+        onPrivate={() => closeEditor()}
+        onClose={() => setSharePromptVisible(false)}
       />
     </View>
   );

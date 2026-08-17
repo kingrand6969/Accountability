@@ -13,7 +13,7 @@ import type { TimelineItem } from '../timeline/types';
 
 const ZERO: Metrics = {
   streak: 0, totalKm: 0, workouts: 0, challenges: 0, buddies: 0, activities: 0,
-  longestKm: 0, activeDays: 0, challengeWins: 0, memories: 0, goalsHit: 0,
+  longestKm: 0, activeDays: 0, challengeWins: 0, memories: 0,
   totalHours: 0, places: 0, invitesAccepted: 0, postsShared: 0, likesGiven: 0,
   groupsJoined: 0, buddyMessages: 0, profileFields: 0,
 };
@@ -21,7 +21,6 @@ const ZERO: Metrics = {
 const FILTERS = [
   { key: 'all', label: 'All', icon: 'infinite-outline' as const, color: '#155EEF' },
   { key: 'body', label: 'Body', icon: 'walk-outline' as const, color: '#74A62C' },
-  { key: 'money', label: 'Money', icon: 'cash-outline' as const, color: '#437CCC' },
   { key: 'focus', label: 'Focus', icon: 'radio-button-on-outline' as const, color: '#B17A31' },
   { key: 'people', label: 'People', icon: 'people-outline' as const, color: '#7D6E9D' },
 ] as const;

@@ -4,9 +4,7 @@ import { join } from 'node:path';
 import {
   deriveFeedCardPresentation,
   deriveFeedViewState,
-  deriveMyDayValues,
   feedRowsBelongToView,
-  restoreFeedSession,
   scheduleIdentityBoundAction,
 } from './SocialModeSelector';
 import type { FeedPost } from './types';
@@ -21,11 +19,44 @@ function source(name: string) {
 }
 const brandHeaderSource = source('SocialBrandHeader.tsx');
 const modeSelectorSource = source('SocialModeSelector.tsx');
-const myDaySource = source('MyDayRail.tsx');
 const proofCardSource = source('FeedProofCard.tsx');
 const headlineSource = source('ProofHeadlineOverlay.tsx');
 const metricSource = source('RunRouteMetricOverlay.tsx');
 const storyRailSource = source('../stories/StoryRail.tsx');
+const memorySource = source('../memories/SaveToMemories.tsx');
+
+function jsxCalls(componentSource: string, componentName: string): string[] {
+  return [
+    ...componentSource.matchAll(
+      new RegExp(`<${componentName}\\b[\\s\\S]*?\\/>`, 'g'),
+    ),
+  ].map(([call]) => call);
+}
+
+function callWith(calls: string[], marker: string): string {
+  return calls.find((call) => call.includes(marker)) ?? '';
+}
+
+function styleBlock(componentSource: string, styleName: string): string {
+  const match = componentSource.match(
+    new RegExp(`(?:^|\\n)\\s*${styleName}:\\s*\\{([\\s\\S]*?)\\n\\s*\\},`),
+  );
+  return match?.[1] ?? '';
+}
+
+function hasBooleanProp(openingTag: string, prop: string): boolean {
+  return new RegExp(`\\b${prop}(?=\\s|\\/?>)`).test(openingTag);
+}
+
+function sourceSection(
+  componentSource: string,
+  startMarker: string,
+  endMarker: string,
+): string {
+  const start = componentSource.indexOf(startMarker);
+  const end = componentSource.indexOf(endMarker, start + startMarker.length);
+  return start >= 0 && end > start ? componentSource.slice(start, end) : '';
+}
 
 describe('Group 3 social Feed contract', () => {
   test('preserves cursor pagination and request-generation guards', () => {
@@ -33,29 +64,38 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('const generation = ++loadGeneration.current');
     expect(feedSource).toContain('if (generation !== loadGeneration.current) return');
     expect(feedSource).toContain(
-      'const page = await listFeed(oldest, undefined, undefined, feedMode)',
+      'const page = await listPersonalFeed(myId, oldest)',
     );
     expect(feedSource).toContain('if (page.length < FEED_PAGE_SIZE) setEndReached(true)');
     expect(feedSource).toContain(
-      'if (loadingMore || endReached || loading || posts.length === 0) return',
+      'if (!myId || loadingMore || endReached || loading || posts.length === 0) return',
     );
     expect(feedSource).toContain('setLoadingMore(false)');
   });
 
-  test('preserves Buddies and Discover as modes of the same Feed screen', () => {
-    expect(feedSource).toContain("type FeedMode");
-    expect(feedSource).toContain("const [feedMode, setFeedMode] = useState<FeedMode>('buddies')");
-    expect(modeSelectorSource).toContain("(['buddies', 'discover'] as const)");
-    expect(feedSource).toContain('<DiscoverExperience />');
+  test('presents one unified Feed without the oversized Buddies and Discover selector', () => {
+    expect(feedSource).not.toContain('SocialModeSelector,');
+    expect(feedSource).not.toContain('DiscoverExperience');
+    expect(feedSource).not.toContain('feedMode');
+    expect(feedSource).not.toContain('dataMode');
+    expect(modeSelectorSource).not.toContain("(['buddies', 'discover'] as const)");
+  });
+
+  test('preserves suggested metadata and labels only suggested Feed rows', () => {
+    expect(feedSource).toContain('useState<UnifiedFeedPost[]>([])');
+    expect(feedSource).toContain('post={item}');
+    expect(proofCardSource).toContain("post.suggested ? 'Suggested for you' : null");
+    expect(proofCardSource).toContain('accessibilityLabel="Suggested for you"');
+    expect(proofCardSource).toContain('{suggestionLabel ? (');
+    expect(proofCardSource).not.toContain('<Text style={styles.suggested}>Suggested for you</Text>');
   });
 
   test('preserves composer, story, post-detail, and encouragement-preview handoffs', () => {
     expect(feedSource).toContain("router.push('/compose' as never)");
     expect(feedSource).toContain("router.push('/compose?photo=1' as never)");
     expect(feedSource).toContain("router.push('/win-card' as never)");
-    expect(feedSource).toContain('<MyDayRail values={myDayValues} />');
     expect(feedSource).toContain('<StoryRail');
-    expect(feedSource).toContain('ref={storyRailRef}');
+    expect(feedSource).toContain('ref={attachStoryRail}');
     expect(feedSource).toContain("pathname: '/post/[id]'");
     expect(feedSource).toContain('listEncouragementPreviews(page.map((post) => post.id))');
     expect(feedSource).toContain("encouragement: '1'");
@@ -64,24 +104,20 @@ describe('Group 3 social Feed contract', () => {
   test('uses the approved Group 3 Feed presentation contracts', () => {
     expect(feedSource).toContain("from '../../feed/SocialBrandHeader'");
     expect(feedSource).toContain("from '../../feed/SocialModeSelector'");
-    expect(feedSource).toContain("from '../../feed/MyDayRail'");
     expect(feedSource).toContain("from '../../feed/FeedProofCard'");
     expect(feedSource).toContain('<SocialBrandHeader');
-    expect(feedSource).toContain('<SocialModeSelector');
-    expect(feedSource).toContain('<MyDayRail');
+    expect(feedSource).not.toContain('<SocialModeSelector');
     expect(feedSource).toContain('<FeedProofCard');
   });
 
-  test('renders the exact compact social header and selected cobalt selector', () => {
+  test('renders the exact compact social header without a segmented selector', () => {
     expect(brandHeaderSource).toContain('<BrandMark');
     expect(brandHeaderSource).toContain('AccountAbility');
     expect(brandHeaderSource).toContain('accessibilityLabel="Search"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Create"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Notifications"');
     expect(brandHeaderSource).toContain('minWidth: 44');
-    expect(modeSelectorSource).toContain("(['buddies', 'discover'] as const)");
-    expect(modeSelectorSource).toContain('accessibilityState={{ selected: mode === value }}');
-    expect(modeSelectorSource).toContain('backgroundColor: colors.primary');
+    expect(modeSelectorSource).not.toContain('accessibilityRole="tablist"');
   });
 
   test('keeps the social brand mark accessible without large-text wordmark clipping', () => {
@@ -91,15 +127,6 @@ describe('Group 3 social Feed contract', () => {
     expect(brandHeaderSource).toContain('accessibilityLabel="AccountAbility"');
     expect(brandHeaderSource).toContain('minWidth: 44');
     expect(brandHeaderSource).toContain('minHeight: 44');
-  });
-
-  test('keeps a deterministic four-tile My Day model without fabricated metrics', () => {
-    expect(myDaySource).toContain("key: 'move'");
-    expect(myDaySource).toContain("key: 'fuel'");
-    expect(myDaySource).toContain("key: 'mind'");
-    expect(myDaySource).toContain("key: 'connect'");
-    expect(myDaySource).toContain("value.value ?? 'Not set'");
-    expect(myDaySource).not.toContain('<StoryRail');
   });
 
   test('uses approved proof typography, metrics, actions, and supporter summary', () => {
@@ -121,10 +148,89 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain("'I showed up today.'");
   });
 
-  test('preserves one FlatList and an honest Buddies offset contract', () => {
+  test('uses icon-only Feed actions with visible counts and an icon-only memory affordance', () => {
+    const actions = jsxCalls(proofCardSource, 'Action');
+    const cheerAction = callWith(actions, 'onPress={onToggleLike}');
+    const commentAction = callWith(actions, 'onPress={onOpen}');
+    const shareAction = callWith(actions, 'onPress={onShare}');
+    expect(cheerAction).toMatch(/\bicon=["']clap["']/);
+    expect(cheerAction).toMatch(/\bcount=\{post\.like_count\}/);
+    expect(cheerAction).not.toMatch(/\blabel=\{`Cheer/);
+    expect(commentAction).toMatch(/\bicon=["']chatbubble-outline["']/);
+    expect(commentAction).toMatch(/\bcount=\{post\.comment_count\}/);
+    expect(commentAction).not.toMatch(/\blabel=\{`Comment/);
+    expect(shareAction).toMatch(/\bicon=["']paper-plane-outline["']/);
+    for (const action of [cheerAction, commentAction, shareAction]) {
+      expect(action).toMatch(/\baccessibilityLabel=/);
+    }
+
+    const memoryAction = jsxCalls(proofCardSource, 'SaveToMemories')[0] ?? '';
+    expect(memoryAction).toMatch(/\burl=\{post\.image_url\}/);
+    expect(hasBooleanProp(memoryAction, 'inline')).toBe(true);
+    expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(true);
+    const actionStyle = styleBlock(proofCardSource, 'action');
+    expect(actionStyle).toMatch(/\bflex:\s*1\b/);
+    expect(actionStyle).toMatch(/\bminWidth:\s*48\b/);
+    expect(actionStyle).toMatch(/\bminHeight:\s*48\b/);
+
+    const actionComponent = sourceSection(
+      proofCardSource,
+      'function Action(',
+      'const styles = StyleSheet.create',
+    );
+    expect(actionComponent).toContain('accessibilityState={active === undefined ? undefined : { selected: active }}');
+    expect(actionComponent).toMatch(
+      /Boolean\(active\)\s*\?\s*colors\.primary\s*:\s*colors\.textMuted/,
+    );
+  });
+
+  test.each([
+    ['Cheer', 'onPress={onToggleLike}', 'like_count'],
+    ['Comment', 'onPress={onOpen}', 'comment_count'],
+  ])('%s accessibility omits a numeric zero count', (_name, marker, countName) => {
+    const action = callWith(jsxCalls(proofCardSource, 'Action'), marker);
+    expect(action).toMatch(
+      new RegExp(
+        `accessibilityLabel=\\{[\\s\\S]*post\\.${countName}\\s*>\\s*0`,
+      ),
+    );
+  });
+
+  test('keeps the memory control accessible, stateful, and label-free in icon-only mode', () => {
+    const memoryComponent = sourceSection(
+      memorySource,
+      'export function SaveToMemories(',
+      'const styles = StyleSheet.create',
+    );
+    expect(memoryComponent).toMatch(/\baccessibilityLabel=/);
+    expect(memoryComponent).toMatch(
+      /accessibilityState=\{\{\s*disabled:\s*busy\s*\|\|\s*saved,\s*busy\s*\}\}/,
+    );
+    expect(memoryComponent).toMatch(/inline\s*&&\s*!iconOnly\s*\?/);
+  });
+
+  test.each([
+    [
+      'icon-only Memories uses the album glyph at 21',
+      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*name=\{saved\s*\?\s*['"]albums['"]\s*:\s*['"]albums-outline['"]\}[\s\S]*size=\{21\}/,
+    ],
+    [
+      'legacy Memories retains the bookmark glyph at 17',
+      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*:[\s\S]*name=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\}[\s\S]*size=\{17\}/,
+    ],
+  ])('%s', (_name, contract) => {
+    const memoryComponent = sourceSection(
+      memorySource,
+      'export function SaveToMemories(',
+      'const styles = StyleSheet.create',
+    );
+    expect(memoryComponent).toMatch(contract);
+  });
+
+  test('preserves one FlatList and an honest unified Feed offset contract', () => {
     expect(feedSource.match(/<FlatList(?=\s)/g)).toHaveLength(1);
-    expect(feedSource).toContain('const buddiesOffset = useRef(0)');
-    expect(feedSource).toContain('buddiesOffset.current = event.nativeEvent.contentOffset.y');
+    expect(feedSource).toContain('const feedOffset = useRef(0)');
+    expect(feedSource).toContain('feedOffset.current = event.nativeEvent.contentOffset.y');
     expect(feedSource).toContain('scrollToOffset');
     expect(feedSource).not.toContain('modeOffsets');
   });
@@ -133,7 +239,7 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('ListHeaderComponent={feedHeader}');
     expect(feedSource).not.toContain('return false ?');
     expect(feedSource).toContain('const feedHeader = (');
-    expect(feedSource).toContain('<MyDayRail');
+    expect(feedSource).toContain('<StoryRail');
   });
 
   test('keeps previews best-effort, suppresses Pro ads, and separates error from empty', () => {
@@ -150,7 +256,6 @@ describe('Group 3 social Feed contract', () => {
       feedSource,
       brandHeaderSource,
       modeSelectorSource,
-      myDaySource,
       proofCardSource,
       headlineSource,
       metricSource,
@@ -168,38 +273,13 @@ describe('Group 3 social Feed contract', () => {
     expect(deriveFeedViewState({ loading: false, loadingMore: false, postCount: 0, error: null, online: false })).toBe('offline-uncached');
   });
 
-  test('restores only safe Feed session values', () => {
-    expect(restoreFeedSession({ mode: 'discover', buddiesOffset: 172.5 })).toEqual({
-      mode: 'discover',
-      buddiesOffset: 172.5,
-    });
-    expect(restoreFeedSession({ mode: 'invalid', buddiesOffset: -9 })).toEqual({
-      mode: 'buddies',
-      buddiesOffset: 0,
-    });
-    expect(feedSource).toContain('pendingBuddiesOffset.current = saved.buddiesOffset');
+  test('restores only a safe unified Feed offset', () => {
+    expect(feedSource).toContain('pendingFeedOffset.current = savedOffset');
+    expect(feedSource).toContain("typeof parsed.feedOffset === 'number'");
     expect(feedSource).toContain('onContentSizeChange={() =>');
-    expect(feedSource).toContain('explicit offset persistence is deferred to Task 3.3');
+    expect(feedSource).not.toContain('explicit offset persistence is deferred to Task 3.3');
     expect(feedSource).not.toContain('feed-cache');
     expect(feedSource).not.toContain('JSON.stringify(page)');
-  });
-
-  test('derives honest My Day values only from authorized inputs', () => {
-    const run = {
-      id: 'run-1',
-      user_id: 'me',
-      post_type: 'run',
-      image_url: 'authorized-image',
-      share_data: { verified: true, distance_m: 5200 },
-    } as unknown as FeedPost;
-    const values = deriveMyDayValues([run], 'me', 3);
-    expect(values.move).toEqual({ value: '5.20 km', image: 'authorized-image' });
-    expect(values.connect.value).toBe('3 encouraged');
-    expect(values.fuel).toEqual({ value: null, image: null });
-    expect(deriveMyDayValues([run], 'someone-else', 0).move).toEqual({
-      value: null,
-      image: null,
-    });
   });
 
   test('derives truthful ownership, audience, and redaction labels', () => {
@@ -220,22 +300,50 @@ describe('Group 3 social Feed contract', () => {
     });
   });
 
-  test('keeps the story controller mounted outside the closing create modal', () => {
+  test('keeps the visible story rail in the Feed header and picker ref available', () => {
     expect(feedSource).toContain('<StoryRail');
-    expect(feedSource).toContain('ref={storyRailRef}');
-    expect(feedSource).toContain('controllerOnly');
-    expect(feedSource.indexOf('</Modal>')).toBeLessThan(feedSource.lastIndexOf('<StoryRail'));
-    expect(feedSource).toContain('storyRailRef.current?.openPicker()');
-    expect(storyRailSource).toContain('if (controllerOnly) return;');
-    expect(storyRailSource).toContain('if (controllerOnly) {');
+    expect(feedSource).toContain('ref={attachStoryRail}');
+    expect(feedSource).not.toContain('controllerOnly');
+    expect(feedSource.indexOf('<StoryRail', feedSource.indexOf('const feedHeader'))).toBeGreaterThan(-1);
+    expect(feedSource).toContain('storyPickerQueue.request()');
+    expect(feedSource).toContain('ref={attachStoryRail}');
+    expect(feedSource).toContain('storyPickerQueue.reset()');
+    expect(storyRailSource).not.toContain('controllerOnly');
+  });
+
+  test('opens Feed photos in a contained local overlay that closes without navigation', () => {
+    expect(proofCardSource).toContain('onOpenMedia ?? onOpen');
+    expect(feedSource).toContain('onOpenMedia=');
+    expect(feedSource).toContain('visible={previewPhoto !== null}');
+    expect(feedSource).toContain('onRequestClose={() => setPreviewPhoto(null)}');
+    expect(feedSource).toContain('<PostImage url={previewPhoto} immersive />');
+  });
+
+  test('bounds Feed rendering and activates media from stable viewability callbacks', () => {
+    expect(feedSource).toContain('itemVisiblePercentThreshold: 65');
+    expect(feedSource).toContain('minimumViewTime: 180');
+    expect(feedSource).toContain('initialNumToRender={4}');
+    expect(feedSource).toContain('maxToRenderPerBatch={4}');
+    expect(feedSource).toContain('updateCellsBatchingPeriod={50}');
+    expect(feedSource).toContain('windowSize={7}');
+    expect(feedSource).toContain("removeClippedSubviews={Platform.OS === 'android'}");
+    expect(feedSource).toContain('onViewableItemsChanged={onViewableItemsChanged}');
+    expect(feedSource).toContain('mediaActive={activeVideoId === item.id}');
+    expect(proofCardSource).toContain('<PostVideo url={post.image_url} active={mediaActive} />');
+  });
+
+  test('isolates picker queue cleanup to the account that created it', () => {
+    expect(feedSource).toContain('useMemo(() => createStoryPickerQueue(myId), [myId])');
+    expect(feedSource).toContain('storyPickerQueue.reset()');
+    expect(feedSource).toContain('}, [storyPickerQueue]);');
+    expect(feedSource).not.toContain('useRef(createStoryPickerQueue())');
   });
 
   test('never exposes rows across logout or account transitions', () => {
-    expect(feedRowsBelongToView('user-a', 'user-a', 'buddies', 'buddies')).toBe(true);
-    expect(feedRowsBelongToView('user-a', null, 'buddies', 'buddies')).toBe(false);
-    expect(feedRowsBelongToView('user-a', 'user-b', 'buddies', 'buddies')).toBe(false);
-    expect(feedRowsBelongToView(null, 'user-b', 'buddies', 'buddies')).toBe(false);
-    expect(feedRowsBelongToView('user-a', 'user-a', 'discover', 'buddies')).toBe(false);
+    expect(feedRowsBelongToView('user-a', 'user-a')).toBe(true);
+    expect(feedRowsBelongToView('user-a', null)).toBe(false);
+    expect(feedRowsBelongToView('user-a', 'user-b')).toBe(false);
+    expect(feedRowsBelongToView(null, 'user-b')).toBe(false);
     expect(feedSource).toContain('setDataOwnerId(null)');
     expect(feedSource).toContain('setPosts([])');
     expect(feedSource).toContain('setEncouragementPreviews(new Map())');
@@ -250,13 +358,22 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('if (reconnected && restored && myId) void load()');
   });
 
+  test('loads once after restoration without refreshing on every Feed focus', () => {
+    expect(feedSource).toMatch(
+      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*setLoading\(true\);\s*void load\(\);\s*\}\s*\}, \[load, restored\]\);/,
+    );
+    const focusBlock = feedSource.match(/useFocusEffect\([\s\S]*?\n\s*\);/)?.[0] ?? '';
+    expect(focusBlock).not.toContain('void load()');
+    expect(focusBlock).not.toContain('setLoading(true)');
+  });
+
   test('clears pending offset only after a real list scroll call', () => {
     const scrollIndex = feedSource.indexOf('list.scrollToOffset({ offset, animated: false })');
-    const clearIndex = feedSource.indexOf('pendingBuddiesOffset.current = null', scrollIndex);
+    const clearIndex = feedSource.indexOf('pendingFeedOffset.current = null', scrollIndex);
     expect(scrollIndex).toBeGreaterThan(-1);
     expect(clearIndex).toBeGreaterThan(scrollIndex);
     expect(feedSource).toContain('!feedListRef.current');
-    expect(feedSource).not.toContain('onLayout={restorePendingBuddiesOffset}');
+    expect(feedSource).not.toContain('onLayout={restorePendingFeedOffset}');
     expect(feedSource).toContain('listContentReady.current = false');
   });
 
@@ -275,7 +392,7 @@ describe('Group 3 social Feed contract', () => {
   test('tears down story editor state across logout and account switch', () => {
     expect(feedSource).toContain('{myId ? (');
     expect(feedSource).toContain('key={myId}');
-    expect(feedSource).toContain('controllerOnly');
+    expect(feedSource).not.toContain('controllerOnly');
     expect(feedSource).toContain("disabled={item.kind === 'story' && !myId}");
   });
 

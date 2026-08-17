@@ -1,4 +1,4 @@
-import { useCallback, useState, type ComponentProps } from 'react';
+import { useCallback, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,44 +9,94 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { getItem, updateItemChecklist } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
 import { EmptyState } from '../../ui/EmptyState';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
 import type { ChecklistItem, TimelineItem } from '../../timeline/types';
+import { becameCompleteChecklist } from '../../timeline/completion';
+import { createChecklistPersistence } from '../../timeline/checklistPersistence';
+import { createItemDetailGeneration } from '../../timeline/itemDetailGeneration';
+import { useAuth } from '../../auth/AuthProvider';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { session } = useAuth();
   const [item, setItem] = useState<TimelineItem | null>(null);
   const [list, setList] = useState<ChecklistItem[]>([]);
   const [newText, setNewText] = useState('');
   const [loading, setLoading] = useState(true);
+  const persistenceRef = useRef<ReturnType<typeof createChecklistPersistence> | null>(null);
+  const generationRef = useRef(createItemDetailGeneration());
 
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
+      const identity = `${session?.user.id ?? 'signed-out'}:${id}`;
+      const token = generationRef.current.begin(identity);
+      let active = true;
+      let installedController: ReturnType<typeof createChecklistPersistence> | null = null;
+      persistenceRef.current?.dispose();
+      persistenceRef.current = null;
+      setLoading(true);
       getItem(id)
         .then((it) => {
+          if (!active || !generationRef.current.isCurrent(token, identity)) return;
           setItem(it);
-          setList(it?.checklist ?? []);
+          const initial = it?.checklist ?? [];
+          setList(initial);
+          installedController = it ? createChecklistPersistence(
+            initial,
+            (next) => updateItemChecklist(it.id, next),
+            {
+              onLatestSuccess: (_revision, previous, next) => {
+                if (!active || !generationRef.current.isCurrent(token, identity)) return;
+                if (it.type === 'workout' && becameCompleteChecklist(previous, next)) {
+                  router.push({
+                    pathname: '/win-card',
+                    params: {
+                      achievementKind: 'workout',
+                      achievementSourceId: it.id,
+                      achievementTitle: it.title,
+                      autoPrompt: '1',
+                    },
+                  } as never);
+                }
+              },
+              onLatestFailure: (_revision, committed, error) => {
+                if (!active || !generationRef.current.isCurrent(token, identity)) return;
+                setList([...committed]);
+                Alert.alert('Could not save', String((error as Error).message ?? error));
+              },
+            },
+          ) : null;
+          persistenceRef.current = installedController;
         })
-        .catch((e) => Alert.alert('Could not load', String((e as Error).message ?? e)))
-        .finally(() => setLoading(false));
-    }, [id]),
+        .catch((e) => {
+          if (active && generationRef.current.isCurrent(token, identity)) {
+            Alert.alert('Could not load', String((e as Error).message ?? e));
+          }
+        })
+        .finally(() => {
+          if (active && generationRef.current.isCurrent(token, identity)) setLoading(false);
+        });
+      return () => {
+        active = false;
+        generationRef.current.invalidate();
+        installedController?.dispose();
+        if (persistenceRef.current === installedController) persistenceRef.current = null;
+      };
+    }, [id, router, session?.user.id]),
   );
 
-  async function persist(next: ChecklistItem[]) {
+  function persist(next: ChecklistItem[]) {
     setList(next);
-    if (!id) return;
-    try {
-      await updateItemChecklist(id, next);
-    } catch (e) {
-      Alert.alert('Could not save', String((e as Error).message ?? e));
-    }
+    void persistenceRef.current?.submit(next).catch(() => undefined);
   }
 
   function toggle(i: number) {

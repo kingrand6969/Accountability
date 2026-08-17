@@ -3,7 +3,7 @@ import { toLocalDateString, toIsoFromLocal } from '../timeline/datetime';
 
 export const PROMISE_DEFINITIONS = [
   { id: 'body-run', type: 'activity', title: 'Morning run 3.2 km', time: '07:15' },
-  { id: 'money-save', type: 'task', title: 'Save $50', time: '09:30' },
+  { id: 'body-strength', type: 'workout', title: 'Strength workout', time: '09:30' },
   { id: 'focus-work', type: 'task', title: '90 min deep work', time: '13:00' },
   { id: 'people-call', type: 'task', title: 'Call someone I care about', time: '18:00' },
 ] as const satisfies readonly {

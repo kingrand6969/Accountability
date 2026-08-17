@@ -30,8 +30,6 @@ function item(
 describe('Journey real-data summaries', () => {
   const proofCases: [TimelineType, boolean][] = [
     ['activity', true],
-    ['expense', true],
-    ['income', true],
     ['grocery', false],
     ['meal', true],
     ['task', false],
@@ -60,7 +58,7 @@ describe('Journey real-data summaries', () => {
     const items = [
       item('run', 'activity', '2026-07-27T10:00:00Z'),
       item('workout', 'workout', '2026-07-28T10:00:00Z', [{ text: 'set', done: false }]),
-      item('saving', 'income', '2026-07-28T11:00:00Z', [{ text: 'save', done: true }]),
+      item('appointment', 'event', '2026-07-28T11:00:00Z', [{ text: 'attend', done: true }]),
     ];
     expect(timelinePillar(items[0].type)).toBe('body');
     expect(pillarCompletion(items, 'body')).toEqual({ total: 2, complete: 1, score: 50 });
