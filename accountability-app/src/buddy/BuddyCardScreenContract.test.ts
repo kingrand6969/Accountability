@@ -29,6 +29,10 @@ const feedSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/(app)/index.tsx'),
   'utf8',
 );
+const menuSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/app/menu.tsx'),
+  'utf8',
+);
 const cardSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/buddy/card.ts'),
   'utf8',
@@ -245,6 +249,19 @@ describe('Buddy Card viewer state', () => {
     expect(feedSource).toContain("pathname: '/buddy-card/[id]'");
     expect(feedSource).toContain('params: { id: ownerId }');
     expect(feedSource).toContain('avatarButton: { minWidth: 48, minHeight: 48');
+  });
+
+  test('the menu opens only the latest signed-in owner Buddy Card and never the editor', () => {
+    expect(menuSource).toContain("action: 'owner-buddy-card'");
+    expect(menuSource).not.toContain("title: 'My buddy card', route: '/buddy-card-edit'");
+    expect(menuSource).toContain('const { session } = useAuth()');
+    expect(menuSource).toContain('const ownerId = session?.user.id ?? null');
+    expect(menuSource).toContain('currentOwnerIdRef.current = ownerId');
+    expect(menuSource).toMatch(
+      /function openOwnBuddyCard\(\)[\s\S]*?const ownerId = currentOwnerIdRef\.current;[\s\S]*?if \(!ownerId\) return;[\s\S]*?pathname: '\/buddy-card\/\[id\]'[\s\S]*?params: \{ id: ownerId \}/,
+    );
+    expect(menuSource).toContain("item.action === 'owner-buddy-card'");
+    expect(menuSource).toContain("disabled={item.action === 'owner-buddy-card' && !ownerId}");
   });
 
   test('screen exposes truthful error and retry UI and restarts after account changes', () => {
