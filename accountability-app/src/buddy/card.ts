@@ -323,13 +323,14 @@ export async function listCardPosts(userId: string, isBuddy: boolean): Promise<C
   return (data ?? []) as CardPost[];
 }
 
-/** Selects profile text within the caller's already-established access boundary. */
+/** Grants full profile text only to server-resolved self and accepted-buddy access modes. */
 export function hasFullBuddyCardTextAccess(
   accessMode: BuddyCardAccessMode | null,
 ): boolean {
   return accessMode === 'self' || accessMode === 'buddy';
 }
 
+/** Selects profile text within the caller's already-established access boundary. */
 export function cardText(
   view: BuddyCardView,
   fullAccess = false,
