@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 export const CHALLENGE_LOCKDOWN_GATE = 'challenge_participant_privacy_v1';
+export const CHALLENGE_LOCKDOWN_FINALIZER =
+  'public.finalize_challenge_participant_privacy_lockdown';
 export const MAX_EVIDENCE_AGE_MS = 24 * 60 * 60 * 1000;
 
 const meaningfulText = (value, minimumLength) =>
@@ -50,6 +52,9 @@ async function main() {
 
   console.log(
     `READY: ${CHALLENGE_LOCKDOWN_GATE} has reviewed, current evidence of zero active legacy clients.`,
+  );
+  console.log(
+    `NEXT: a trusted operator may invoke ${CHALLENGE_LOCKDOWN_FINALIZER} with the exact reviewed report fields.`,
   );
 }
 

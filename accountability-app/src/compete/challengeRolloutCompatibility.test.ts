@@ -94,32 +94,80 @@ describe('gated participant privacy contract stage', () => {
     expect(expandSql).toContain("'challenge_participant_privacy_v1', false");
   });
 
-  test('hard-stops automated lockdown before a declared, evidenced adoption gate', () => {
-    expect(contractSql).toContain("gate_key = 'challenge_participant_privacy_v1'");
-    expect(contractSql).toContain('enabled = true');
-    expect(contractSql).toContain("enabled_at >= now() - interval '24 hours'");
-    expect(contractSql).toContain("enabled_at <= now() + interval '5 minutes'");
-    expect(contractSql).toContain('length(trim(evidence)) >= 16');
-    expect(contractSql).toContain('raise exception');
-    expect(contractSql).toContain('LOCKDOWN BLOCKED');
-    expect(contractSql.indexOf('LOCKDOWN BLOCKED')).toBeLessThan(
-      contractSql.indexOf('drop policy if exists "Participants are public"'),
+  test('installs a finalizer without changing compatibility during normal migration apply', () => {
+    expect(contractSql).toContain(
+      'create or replace function public.finalize_challenge_participant_privacy_lockdown',
+    );
+    const withoutFinalizer = contractSql.replace(
+      /create or replace function public\.finalize_challenge_participant_privacy_lockdown[\s\S]*?\$\$;/,
+      '',
+    );
+    expect(withoutFinalizer).not.toContain(
+      'drop policy if exists "Participants are public" on public.challenge_participants',
+    );
+    expect(withoutFinalizer).not.toContain(
+      'revoke insert on table public.challenge_participants from public, anon, authenticated',
+    );
+    expect(withoutFinalizer).not.toContain(
+      'revoke insert on table public.challenges from public, anon, authenticated',
+    );
+    expect(contractSql).not.toContain('LOCKDOWN BLOCKED');
+  });
+
+  test('validates fresh named zero-legacy evidence before acquiring the atomic lock', () => {
+    const finalizer = contractSql.match(
+      /create or replace function public\.finalize_challenge_participant_privacy_lockdown[\s\S]*?\$\$;/,
+    )?.[0] ?? '';
+    expect(finalizer).toContain("p_gate <> 'challenge_participant_privacy_v1'");
+    expect(finalizer).toContain("p_decision <> 'APPROVED'");
+    expect(finalizer).toContain('p_active_legacy_clients <> 0');
+    expect(finalizer).toContain("p_observed_at < now() - interval '24 hours'");
+    expect(finalizer).toContain("p_observed_at > now() + interval '5 minutes'");
+    expect(finalizer).toMatch(/length\(trim\(p_reviewer\)\)\s*<\s*3/);
+    expect(finalizer).toMatch(/length\(trim\(p_evidence\)\)\s*<\s*16/);
+    expect(finalizer).toContain("set search_path = ''");
+    expect(finalizer).toContain('security definer');
+    expect(finalizer.indexOf('p_active_legacy_clients <> 0')).toBeLessThan(
+      finalizer.indexOf('for update'),
+    );
+    expect(finalizer.indexOf("p_observed_at < now() - interval '24 hours'")).toBeLessThan(
+      finalizer.indexOf('for update'),
     );
   });
 
-  test('applies the least-privilege policy only after the gate and disables legacy writes', () => {
-    expect(contractSql).toContain(
+  test('applies least privilege only inside the finalizer and records one completion', () => {
+    const finalizer = contractSql.match(
+      /create or replace function public\.finalize_challenge_participant_privacy_lockdown[\s\S]*?\$\$;/,
+    )?.[0] ?? '';
+    expect(finalizer).toContain(
       'create policy "Participants read own rows" on public.challenge_participants',
     );
-    expect(contractSql).toMatch(/for select\s+using \(auth\.uid\(\) = user_id\)/);
-    expect(contractSql).toContain(
+    expect(finalizer).toMatch(/for select\s+using \(auth\.uid\(\) = user_id\)/);
+    expect(finalizer).toContain(
       'revoke insert on table public.challenge_participants from public, anon, authenticated',
     );
-    expect(contractSql).toContain(
+    expect(finalizer).toContain(
       'revoke insert on table public.challenges from public, anon, authenticated',
     );
-    expect(contractSql).toContain(
+    expect(finalizer).toContain(
       'drop policy if exists "Join an active challenge" on public.challenge_participants',
+    );
+    expect(finalizer).toContain('select completed_at');
+    expect(finalizer).toContain('for update');
+    expect(finalizer).toMatch(/if v_completed_at is not null then\s+return false/);
+    expect(finalizer).toContain('completed_at = now()');
+    expect(finalizer).toContain('return true');
+  });
+
+  test('exposes the finalizer only to trusted operator roles', () => {
+    expect(contractSql).toContain(
+      'revoke execute on function public.finalize_challenge_participant_privacy_lockdown',
+    );
+    expect(contractSql).toContain('from public, anon, authenticated');
+    expect(contractSql).toContain('to service_role, postgres');
+    expect(contractSql).toContain("notify pgrst, 'reload schema'");
+    expect(contractSql).toContain(
+      'revoke all on table public.challenge_participant_lockdown_readiness from service_role',
     );
   });
 });
@@ -132,6 +180,7 @@ describe('checked adoption evidence', () => {
     expect(rolloutTool).toContain('MAX_EVIDENCE_AGE_MS');
     expect(rolloutTool).toContain('reviewer');
     expect(rolloutTool).toContain('evidence');
+    expect(rolloutTool).toContain('finalize_challenge_participant_privacy_lockdown');
   });
 
   test('ships a deliberately unusable template and an explicit operational contract', () => {
@@ -143,5 +192,9 @@ describe('checked adoption evidence', () => {
     expect(rolloutDoc).toContain('zero active legacy clients');
     expect(rolloutDoc).toContain('0101_challenge_participant_privacy_lockdown.sql');
     expect(rolloutDoc).toContain('challenge_participant_lockdown_readiness');
+    expect(rolloutDoc).toContain('Normal migration application and fresh database reset succeed');
+    expect(rolloutDoc).toContain(
+      'select public.finalize_challenge_participant_privacy_lockdown',
+    );
   });
 });

@@ -39,26 +39,37 @@ unusable (`PENDING` with no client count), so a missing or guessed report fails.
 
 ## Stage B: explicit privacy lockdown
 
+Migration `0101_challenge_participant_privacy_lockdown.sql` only installs the
+trusted finalizer. Normal migration application and fresh database reset succeed
+without changing Stage A participant policies or grants. Merely applying every
+migration never performs the privacy lockdown.
+
 After the checker succeeds and the report is independently reviewed, a database
-operator records the same evidence in the server-only gate:
+operator using `postgres` (or a backend holding the `service_role`, never a mobile
+client) invokes the finalizer with the exact reviewed report fields:
 
 ```sql
-update public.challenge_participant_lockdown_readiness
-set enabled = true,
-    evidence = '<reviewed report identifier and immutable evidence reference>',
-    enabled_at = now()
-where gate_key = 'challenge_participant_privacy_v1';
+select public.finalize_challenge_participant_privacy_lockdown(
+  p_gate => 'challenge_participant_privacy_v1',
+  p_decision => 'APPROVED',
+  p_active_legacy_clients => 0,
+  p_observed_at => timestamptz '<UTC timestamp from the reviewed report>',
+  p_minimum_version => '<fully adopted RPC-capable version>',
+  p_reviewer => '<named reviewer>',
+  p_evidence => '<reviewed report identifier and immutable evidence reference>'
+);
 ```
 
-Then rerun the normal migration application. Migration
-`0101_challenge_participant_privacy_lockdown.sql` checks the gate before changing
-anything. With the default closed gate it raises `LOCKDOWN BLOCKED`, preventing
-automated migration apply from accidentally removing legacy access. Once open,
-the database gate expires after 24 hours; rerun the adoption review rather than
-reusing stale approval. It makes participant reads self-only and removes direct challenge/participant
-insert access; aggregate counts and authorized completed history remain available
-only through the narrow RPCs.
+The function rejects stale, future, unnamed, unapproved, or non-zero-legacy
+evidence before acquiring its lock, so an invalid call changes nothing. A valid
+call acquires transaction and row locks, atomically makes participant reads
+self-only, revokes direct challenge/participant inserts, and records the reviewed
+evidence and completion time in `challenge_participant_lockdown_readiness`.
+The first successful call returns `true`; later valid replays return `false`
+without changing the original completion record.
+Aggregate counts and authorized completed history remain available through the
+narrow RPCs.
 
 The unavoidable operational step is proving zero active legacy clients. If that
 cannot be proved, keep Stage A and its explicitly documented privacy limitation;
-do not enable the gate.
+do not invoke the finalizer.
