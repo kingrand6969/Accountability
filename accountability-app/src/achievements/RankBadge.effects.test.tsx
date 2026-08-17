@@ -49,6 +49,7 @@ describe('RankBadge effect modes', () => {
       variant: 'crest',
     } as React.ComponentProps<typeof RankBadge>);
     const frame = renderer.root.findByProps({ testID: 'rank-badge-frame' });
+    const mask = renderer.root.findByProps({ testID: 'rank-badge-crest-mask' });
     const artwork = renderer.root.findByProps({ testID: 'rank-badge-artwork' });
 
     expect(StyleSheet.flatten(frame.props.style)).toEqual(expect.objectContaining({
@@ -62,6 +63,12 @@ describe('RankBadge effect modes', () => {
       height: 32,
       left: -8,
       right: undefined,
+    }));
+    expect(StyleSheet.flatten(mask.props.style)).toEqual(expect.objectContaining({
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      overflow: 'hidden',
     }));
     expect(frame.props.accessibilityRole).toBe('image');
     expect(frame.props.accessibilityLabel).toBe('Rank: Mythical');

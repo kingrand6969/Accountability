@@ -232,20 +232,38 @@ export function RankBadge({
         })}
 
         {/* the exact badge artwork — never altered */}
-        <Animated.Image
-          testID="rank-badge-artwork"
-          source={cfg.image}
-          resizeMode="contain"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              width: w,
-              height: h,
-              opacity: showEffects && cfg.flicker ? flick : 1,
-              ...(variant === 'crest' ? { left: -size * 0.25, right: undefined } : null),
-            },
-          ]}
-        />
+        <View
+          testID={variant === 'crest' ? 'rank-badge-crest-mask' : undefined}
+          pointerEvents="none"
+          style={
+            variant === 'crest'
+              ? {
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: size,
+                  height: size,
+                  borderRadius: size / 2,
+                  overflow: 'hidden',
+                }
+              : StyleSheet.absoluteFill
+          }
+        >
+          <Animated.Image
+            testID="rank-badge-artwork"
+            source={cfg.image}
+            resizeMode="contain"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                width: w,
+                height: h,
+                opacity: showEffects && cfg.flicker ? flick : 1,
+                ...(variant === 'crest' ? { left: -size * 0.25, right: undefined } : null),
+              },
+            ]}
+          />
+        </View>
 
         {/* shine sweep, clipped to the plate */}
         {motion ? (
