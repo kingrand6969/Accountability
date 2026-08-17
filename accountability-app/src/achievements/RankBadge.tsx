@@ -58,6 +58,16 @@ export function RankBadge({
   const w = size * AR;
   const h = size;
   const frameWidth = variant === 'crest' ? size : w;
+  const artworkGeometry = variant === 'crest'
+    ? {
+        width: w * 1.7,
+        height: h * 1.7,
+        left: -size * 0.85,
+        top: -size * 0.32,
+        right: undefined,
+        bottom: undefined,
+      }
+    : { width: w, height: h };
 
   // 0 (Rookie) … 1 (Mythical) — drives how much the smoke grows.
   const tierIndex = Math.max(0, RANK_ORDER.indexOf(rank as never));
@@ -256,10 +266,8 @@ export function RankBadge({
             style={[
               StyleSheet.absoluteFill,
               {
-                width: w,
-                height: h,
+                ...artworkGeometry,
                 opacity: showEffects && cfg.flicker ? flick : 1,
-                ...(variant === 'crest' ? { left: -size * 0.25, right: undefined } : null),
               },
             ]}
           />
