@@ -182,7 +182,9 @@ export function RankBadge({
         style={{
           width: frameWidth,
           height: h,
-          ...(variant === 'crest' ? { overflow: 'hidden' as const } : null),
+          ...(variant === 'crest'
+            ? { overflow: 'hidden' as const, borderRadius: size / 2 }
+            : null),
         }}
       >
         {/* faint static base aura — a soft tinted cloud behind the badge.

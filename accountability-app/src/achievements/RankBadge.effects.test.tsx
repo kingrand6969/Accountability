@@ -55,6 +55,7 @@ describe('RankBadge effect modes', () => {
       width: 32,
       height: 32,
       overflow: 'hidden',
+      borderRadius: 16,
     }));
     expect(StyleSheet.flatten(artwork.props.style)).toEqual(expect.objectContaining({
       width: 96,
