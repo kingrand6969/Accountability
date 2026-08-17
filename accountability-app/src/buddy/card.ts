@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { BuddyCardPaletteKey } from './palette';
+import type { BuddyCardAccessMode } from './buddyCardRelationship';
 import { pickBuddyCardEditorChanges } from './editorModel';
 
 /** Default card background — brand blue. Users can replace it with a photo. */
@@ -323,6 +324,12 @@ export async function listCardPosts(userId: string, isBuddy: boolean): Promise<C
 }
 
 /** Selects profile text within the caller's already-established access boundary. */
+export function hasFullBuddyCardTextAccess(
+  accessMode: BuddyCardAccessMode | null,
+): boolean {
+  return accessMode === 'self' || accessMode === 'buddy';
+}
+
 export function cardText(
   view: BuddyCardView,
   fullAccess = false,

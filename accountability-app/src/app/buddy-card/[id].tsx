@@ -20,6 +20,7 @@ import {
   getBoardRank,
   getCardMetrics,
   cardText,
+  hasFullBuddyCardTextAccess,
   listCardPosts,
   type BoardRank,
   type BuddyCardView,
@@ -521,7 +522,7 @@ export default function BuddyCardScreen() {
   const ownerView = accessMode === 'self' && currentUserId === id;
   const isBuddy = accessMode === 'buddy';
   const fullBuddyView = isBuddy && !ownerView;
-  const fullTextAccess = ownerView || isBuddy;
+  const fullTextAccess = hasFullBuddyCardTextAccess(accessMode);
   const { headline, about: visibleAbout } = cardText(view, fullTextAccess);
   const memberSince = new Date(view.created_at).toLocaleDateString(undefined, {
     month: 'short',

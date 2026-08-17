@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BuddyCardView } from './card';
+import type { BuddyCardAccessMode } from './buddyCardRelationship';
 
 const mockGetUser = jest.fn<(...args: unknown[]) => Promise<any>>();
 const mockFrom = jest.fn<(...args: unknown[]) => any>();
@@ -57,13 +58,8 @@ function publicFaceInvocation(source: string) {
   return source.slice(start, source.indexOf('/>', start));
 }
 
-function selectCardText(view: BuddyCardView, fullAccess: boolean) {
-  const { cardText } = require('./card') as typeof import('./card');
-  const selector = cardText as unknown as (
-    value: BuddyCardView,
-    canReadPrivateText?: boolean,
-  ) => ReturnType<typeof cardText>;
-  return selector(view, fullAccess);
+function card(): typeof import('./card') {
+  return require('./card');
 }
 
 function authUser(id: string | null) {
@@ -123,8 +119,8 @@ describe('Buddy Card viewer state', () => {
       },
     };
     expect([
-      selectCardText(view, true),
-      selectCardText(view, false),
+      card().cardText(view, true),
+      card().cardText(view, false),
     ]).toEqual([
       { headline: 'Morning 10K', about: 'Runner and lifter' },
       { headline: null, about: null },
@@ -148,16 +144,81 @@ describe('Buddy Card viewer state', () => {
       },
     };
 
-    expect(selectCardText(view, false)).toEqual({
+    expect(card().cardText(view, false)).toEqual({
       headline: 'Shared morning training',
       about: 'Shared public card biography',
     });
   });
 
-  test('screen passes owner-or-buddy text access into the card text selector', () => {
-    expect(screenSource).toMatch(
-      /const\s+([A-Za-z_$][\w$]*)\s*=\s*ownerView\s*\|\|\s*isBuddy\s*;?[\s\S]*?cardText\(\s*view\s*,\s*\1\s*\)/,
+  test('full-access text falls back to trimmed card About when profile bio is blank', () => {
+    const view: BuddyCardView = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'Blank Bio Buddy',
+      avatar: null,
+      area: null,
+      bio: '   ',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: { about: ' Card fallback About ', show_bio: false },
+    };
+
+    expect(card().cardText(view, true).about).toBe('Card fallback About');
+  });
+
+  test.each([undefined, '   '])(
+    'public text with consent and %p card About never falls back to private profile bio',
+    (about) => {
+      const view: BuddyCardView = {
+        id: '44444444-4444-4444-8444-444444444444',
+        name: 'Private Bio Buddy',
+        avatar: null,
+        area: null,
+        bio: 'Private profile biography',
+        created_at: '2026-01-01T00:00:00.000Z',
+        last_active_at: null,
+        card: { about, show_bio: true },
+      };
+
+      expect(card().cardText(view, false).about).toBeNull();
+    },
+  );
+
+  test('one-argument cardText remains public-safe by default', () => {
+    const view: BuddyCardView = {
+      id: '55555555-5555-4555-8555-555555555555',
+      name: 'Default Privacy Buddy',
+      avatar: null,
+      area: null,
+      bio: 'Private profile biography',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: {
+        headline: 'Private unless consented',
+        about: 'Private card About unless consented',
+        show_headline: false,
+        show_bio: false,
+      },
+    };
+
+    expect(card().cardText(view)).toEqual({ headline: null, about: null });
+  });
+
+  test.each<[BuddyCardAccessMode | null, boolean]>([
+    ['self', true],
+    ['buddy', true],
+    ['public', false],
+    ['unavailable', false],
+    [null, false],
+  ])('access mode %p grants full profile text: %p', (mode, expected) => {
+    expect(card().hasFullBuddyCardTextAccess(mode)).toBe(expected);
+  });
+
+  test('screen uses the tested access-mode boundary for card text', () => {
+    expect(screenSource).toContain('hasFullBuddyCardTextAccess');
+    expect(screenSource).toContain(
+      'const fullTextAccess = hasFullBuddyCardTextAccess(accessMode);',
     );
+    expect(screenSource).toContain('cardText(view, fullTextAccess)');
   });
 
   test('buddy receives the full profile branch while a non-buddy receives only the public branch', () => {
