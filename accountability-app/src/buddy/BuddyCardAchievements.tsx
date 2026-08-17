@@ -22,10 +22,7 @@ export function BuddyCardAchievements({
   palette: BuddyCardPaletteTokens;
   onPress: () => void;
 }) {
-  if (!card.show_medals) return null;
-
-  const all = allMedalsFromCard(card);
-  if (all.length === 0) return null;
+  const all = card.show_medals ? allMedalsFromCard(card) : [];
 
   const featuredIds = normalizeFeaturedMedalIds(
     card.featured_medal_ids,
@@ -35,7 +32,10 @@ export function BuddyCardAchievements({
   const featured = featuredIds.map((id) => byId.get(id)).filter(isMedalState);
 
   return (
-    <View style={[styles.root, { borderBottomColor: palette.border }]}>
+    <View
+      testID="buddy-card-achievements"
+      style={[styles.root, { borderBottomColor: palette.border }]}
+    >
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -61,7 +61,9 @@ export function BuddyCardAchievements({
             </Pressable>
           ))}
         </View>
-      ) : null}
+      ) : (
+        <Text style={[styles.empty, { color: palette.textMuted }]}>No earned medals shared yet</Text>
+      )}
     </View>
   );
 }
@@ -89,6 +91,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingBottom: spacing.sm,
+  },
+  empty: {
+    paddingBottom: spacing.sm,
+    fontFamily: font.regular,
+    fontSize: 12,
   },
   medalFrame: {
     width: 62,

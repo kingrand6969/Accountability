@@ -63,7 +63,6 @@ function BuddyCardIdentity({
     card.show_last_active && lastActive ? `Active ${timeAgo(lastActive)}` : null,
   ].filter((value): value is string => Boolean(value));
   const showRank = Boolean(card.show_rank && rankName);
-  const showRankDetails = Boolean(showRank || card.show_challenge_wins);
 
   return (
     <View testID="buddy-card-identity" style={styles.identitySection}>
@@ -97,33 +96,31 @@ function BuddyCardIdentity({
           Member since {memberSince}
         </Text>
 
-        {showRankDetails ? (
-          <View style={styles.rankDetails}>
-            {showRank && rankName ? (
-              <View testID="buddy-card-rank-inline" style={styles.rankInline}>
-                <RankBadge
-                  rank={rankName}
-                  size={32}
-                  animated={false}
-                  effects="none"
-                  variant="crest"
-                />
-                <Text style={[styles.rankName, { color: palette.text }]}>{rankName}</Text>
-              </View>
-            ) : null}
-            {card.show_challenge_wins ? (
-              <Text
-                style={[
-                  styles.challengeWins,
-                  !showRank && styles.challengeWinsWithoutRank,
-                  { color: palette.textMuted },
-                ]}
-              >
-                Challenges won · {metrics?.chwin == null ? EMPTY_VALUE : Math.round(metrics.chwin)}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
+        <View style={styles.rankDetails}>
+          {showRank && rankName ? (
+            <View testID="buddy-card-rank-inline" style={styles.rankInline}>
+              <RankBadge
+                rank={rankName}
+                size={32}
+                animated={false}
+                effects="none"
+                variant="crest"
+              />
+              <Text style={[styles.rankName, { color: palette.text }]}>{rankName}</Text>
+            </View>
+          ) : null}
+          <Text
+            style={[
+              styles.challengeWins,
+              !showRank && styles.challengeWinsWithoutRank,
+              { color: palette.textMuted },
+            ]}
+          >
+            Challenges won · {card.show_challenge_wins && metrics?.chwin != null
+              ? Math.round(metrics.chwin)
+              : EMPTY_VALUE}
+          </Text>
+        </View>
       </View>
 
       {traits.length > 0 ? (
@@ -164,17 +161,23 @@ function BuddyCardRankings({
   palette: BuddyCardPalette;
 }): React.JSX.Element | null {
   const items = [
-    card.show_country_rank
-      ? { label: 'Country', value: formatRank(boardRank?.countryRank) }
-      : null,
-    card.show_city_rank ? { label: 'City', value: formatRank(boardRank?.cityRank) } : null,
-    card.show_consistency ? { label: 'Buddies', value: formatRank(metrics?.buddiesRank) } : null,
-    card.show_points
-      ? { label: 'Points', value: formatWholeNumber(metrics?.points) }
-      : null,
-  ].filter((item): item is { label: string; value: string } => item !== null);
-
-  if (items.length === 0) return null;
+    {
+      label: 'Country',
+      value: card.show_country_rank ? formatRank(boardRank?.countryRank) : EMPTY_VALUE,
+    },
+    {
+      label: 'City',
+      value: card.show_city_rank ? formatRank(boardRank?.cityRank) : EMPTY_VALUE,
+    },
+    {
+      label: 'Buddies',
+      value: card.show_consistency ? formatRank(metrics?.buddiesRank) : EMPTY_VALUE,
+    },
+    {
+      label: 'Points',
+      value: card.show_points ? formatWholeNumber(metrics?.points) : EMPTY_VALUE,
+    },
+  ];
 
   return (
     <View
@@ -334,6 +337,20 @@ export function PublicBuddyCardFace({
 }) {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const palette = resolveBuddyCardPalette(card.palette_key, scheme);
+  const presentedCard: BuddyCard = ownerView
+    ? {
+        ...card,
+        show_area: true,
+        show_rank: true,
+        show_medals: true,
+        show_challenge_wins: true,
+        show_country_rank: true,
+        show_city_rank: true,
+        show_consistency: true,
+        show_points: true,
+        show_distance: true,
+      }
+    : card;
 
   return (
     <View
@@ -356,13 +373,22 @@ export function PublicBuddyCardFace({
           avatar={avatar}
           memberSince={memberSince}
           lastActive={lastActive}
-          card={card}
+          card={presentedCard}
           metrics={metrics}
           palette={palette}
         />
         <BuddyCardFocus text={headline} palette={palette} />
-        <BuddyCardRankings card={card} boardRank={boardRank} metrics={metrics} palette={palette} />
-        <BuddyCardAchievements card={card} palette={palette} onPress={onPressMedals ?? NOOP} />
+        <BuddyCardRankings
+          card={presentedCard}
+          boardRank={boardRank}
+          metrics={metrics}
+          palette={palette}
+        />
+        <BuddyCardAchievements
+          card={presentedCard}
+          palette={palette}
+          onPress={onPressMedals ?? NOOP}
+        />
         <BuddyCardSocialProof
           stats={stats}
           ownerView={ownerView}
@@ -370,7 +396,7 @@ export function PublicBuddyCardFace({
           groupsCount={groupsCount}
           palette={palette}
         />
-        <BuddyCardFitnessMetrics card={card} metrics={metrics} palette={palette} />
+        <BuddyCardFitnessMetrics card={presentedCard} metrics={metrics} palette={palette} />
       </View>
     </View>
   );
