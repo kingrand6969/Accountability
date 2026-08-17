@@ -38,7 +38,7 @@ describe('story playback lifecycle', () => {
   });
 
   test('can start paused without creating a timer', () => {
-    const schedule = jest.fn(() => 1 as ReturnType<typeof setTimeout>);
+    const schedule = jest.fn(() => 1);
     const lifecycle = createStoryPlaybackLifecycle({
       advance: jest.fn(),
       initialPlayable: false,

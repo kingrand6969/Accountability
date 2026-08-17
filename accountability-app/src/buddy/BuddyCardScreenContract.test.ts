@@ -1,0 +1,811 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- relationship API loads after the Supabase mock */
+import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { BuddyCardView } from './card';
+import type { BuddyCardAccessMode } from './buddyCardRelationship';
+
+const mockGetUser = jest.fn<(...args: unknown[]) => Promise<any>>();
+const mockFrom = jest.fn<(...args: unknown[]) => any>();
+const mockRpc = jest.fn<(...args: unknown[]) => Promise<any>>();
+
+jest.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: { getUser: (...args: unknown[]) => mockGetUser(...args) },
+    from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
+  },
+}));
+
+function relationship(): typeof import('./buddyCardRelationship') {
+  return require('./buddyCardRelationship');
+}
+
+const screenSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/app/buddy-card/[id].tsx'),
+  'utf8',
+);
+const feedSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/app/(app)/index.tsx'),
+  'utf8',
+);
+const menuSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/app/menu.tsx'),
+  'utf8',
+);
+const cardSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/buddy/card.ts'),
+  'utf8',
+);
+const relationshipSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/buddy/buddyCardRelationship.ts'),
+  'utf8',
+);
+const publicFaceSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/buddy/PublicBuddyCardFace.tsx'),
+  'utf8',
+);
+const socialProofMigrationPath = path.resolve(
+  process.cwd(),
+  'supabase/migrations/0107_buddy_card_social_proof.sql',
+);
+const socialProofSql = fs.existsSync(socialProofMigrationPath)
+  ? fs.readFileSync(socialProofMigrationPath, 'utf8')
+  : '';
+const fullProfileSql = fs.readFileSync(
+  path.resolve(process.cwd(), 'supabase/migrations/0105_buddy_full_profile.sql'),
+  'utf8',
+);
+
+function publicFaceInvocation(source: string) {
+  const start = source.indexOf('<PublicBuddyCardFace');
+  return source.slice(start, source.indexOf('/>', start));
+}
+
+function card(): typeof import('./card') {
+  return require('./card');
+}
+
+function authUser(id: string | null) {
+  return { data: { user: id ? { id } : null } };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe('Buddy Card viewer state', () => {
+  test('owner, buddy, and public modes are mutually exclusive', () => {
+    const { buddyCardViewerMode } = relationship();
+    expect(buddyCardViewerMode('owner', 'owner', true)).toBe('owner');
+    expect(buddyCardViewerMode('viewer', 'owner', true)).toBe('buddy');
+    expect(buddyCardViewerMode('viewer', 'owner', false)).toBe('public');
+    expect(buddyCardViewerMode(null, 'owner', true)).toBe('public');
+  });
+
+  test('owner card keeps owner display, About wiring, and no Connect-to-self path', () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+    const { buddyCardViewerMode, createBuddyCardConnectLock } = relationship();
+
+    expect(buddyCardViewerMode(ownerId, ownerId, false)).toBe('owner');
+    expect(createBuddyCardConnectLock().tryAcquire(ownerId, ownerId)).toBeNull();
+    expect(screenSource).toContain("const ownerView = accessMode === 'self' && currentUserId === id");
+    expect(publicFaceInvocation(screenSource)).toContain('ownerView={ownerView}');
+    expect(screenSource).toContain('visibleAbout');
+    expect(screenSource).toMatch(/<Text[^>]*>\{visibleAbout\}<\/Text>/);
+    expect(screenSource).toContain("router.push('/buddy-card-edit' as never)");
+    expect(screenSource).toContain('!ownerView && !isBuddy');
+    expect(screenSource).toContain('headerRight: ownerView');
+  });
+
+  test('text selection gives full-access viewers profile text without exposing it publicly', () => {
+    const view: BuddyCardView = {
+      id: '11111111-1111-4111-8111-111111111111',
+      name: 'Kin Grand',
+      avatar: null,
+      area: 'Perth, Australia',
+      bio: ' Runner and lifter ',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: {
+        headline: ' Morning 10K ',
+        about: ' Public card about ',
+        show_headline: false,
+        show_bio: false,
+      },
+    };
+    expect([
+      card().cardText(view, true),
+      card().cardText(view, false),
+    ]).toEqual([
+      { headline: 'Morning 10K', about: 'Runner and lifter' },
+      { headline: null, about: null },
+    ]);
+  });
+
+  test('public text selection returns only consented trimmed card text', () => {
+    const view: BuddyCardView = {
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'Public Buddy',
+      avatar: null,
+      area: 'Perth, Australia',
+      bio: 'Private profile biography',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: {
+        headline: ' Shared morning training ',
+        about: ' Shared public card biography ',
+        show_headline: true,
+        show_bio: true,
+      },
+    };
+
+    expect(card().cardText(view, false)).toEqual({
+      headline: 'Shared morning training',
+      about: 'Shared public card biography',
+    });
+  });
+
+  test('full-access text falls back to trimmed card About when profile bio is blank', () => {
+    const view: BuddyCardView = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'Blank Bio Buddy',
+      avatar: null,
+      area: null,
+      bio: '   ',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: { about: ' Card fallback About ', show_bio: false },
+    };
+
+    expect(card().cardText(view, true).about).toBe('Card fallback About');
+  });
+
+  test.each([undefined, '   '])(
+    'public text with consent and %p card About never falls back to private profile bio',
+    (about) => {
+      const view: BuddyCardView = {
+        id: '44444444-4444-4444-8444-444444444444',
+        name: 'Private Bio Buddy',
+        avatar: null,
+        area: null,
+        bio: 'Private profile biography',
+        created_at: '2026-01-01T00:00:00.000Z',
+        last_active_at: null,
+        card: { about, show_bio: true },
+      };
+
+      expect(card().cardText(view, false).about).toBeNull();
+    },
+  );
+
+  test('one-argument cardText remains public-safe by default', () => {
+    const view: BuddyCardView = {
+      id: '55555555-5555-4555-8555-555555555555',
+      name: 'Default Privacy Buddy',
+      avatar: null,
+      area: null,
+      bio: 'Private profile biography',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: {
+        headline: 'Private unless consented',
+        about: 'Private card About unless consented',
+        show_headline: false,
+        show_bio: false,
+      },
+    };
+
+    expect(card().cardText(view)).toEqual({ headline: null, about: null });
+  });
+
+  test.each<[BuddyCardAccessMode | null, boolean]>([
+    ['self', true],
+    ['buddy', true],
+    ['public', false],
+    ['unavailable', false],
+    [null, false],
+  ])('access mode %p grants full profile text: %p', (mode, expected) => {
+    expect(card().hasFullBuddyCardTextAccess(mode)).toBe(expected);
+  });
+
+  test('screen uses the tested access-mode boundary for card text', () => {
+    expect(screenSource).toContain('hasFullBuddyCardTextAccess');
+    expect(screenSource).toContain(
+      'const fullTextAccess = hasFullBuddyCardTextAccess(accessMode);',
+    );
+    expect(screenSource).toContain('cardText(view, fullTextAccess)');
+  });
+
+  test('buddy receives the full profile branch while a non-buddy receives only the public branch', () => {
+    expect(screenSource).toContain('const fullBuddyView = isBuddy && !ownerView');
+    expect(screenSource).toContain('fullBuddyView ? (');
+    expect(screenSource).toContain('<BuddyCardFace');
+    expect(screenSource).toContain('<PublicBuddyCardFace');
+    expect(screenSource).toContain('ownerView={ownerView}');
+    expect(screenSource).toContain('getAuthorizedBuddyCard(targetId)');
+    expect(screenSource).toContain('getBuddyCardAccessMode(targetId)');
+    expect(screenSource).not.toContain('areBuddiesAsOwner(viewerId, targetId)');
+  });
+
+  test('render and action guards synchronously follow the latest route target', () => {
+    expect(screenSource).toContain('latestTargetIdRef.current = id');
+    expect(screenSource).toContain('latestTargetIdRef.current === token.targetId');
+    expect(screenSource).toContain('loadContextIsCurrent(loadToken)');
+    expect(screenSource).toContain('view.id !== id');
+    expect(screenSource).toContain('context.targetId !== latestTargetIdRef.current');
+  });
+
+  test('the signed-in feed avatar is a separate 48-point route to the owner Buddy Card', () => {
+    expect(feedSource).toContain('accessibilityLabel="View your Buddy Card"');
+    expect(feedSource).toContain("pathname: '/buddy-card/[id]'");
+    expect(feedSource).toContain('params: { id: ownerId }');
+    expect(feedSource).toContain('avatarButton: { minWidth: 48, minHeight: 48');
+  });
+
+  test('the menu opens only the latest signed-in owner Buddy Card and never the editor', () => {
+    expect(menuSource).toContain("action: 'owner-buddy-card'");
+    expect(menuSource).not.toContain("title: 'My buddy card', route: '/buddy-card-edit'");
+    expect(menuSource).toContain('const { session } = useAuth()');
+    expect(menuSource).toContain('const ownerId = session?.user.id ?? null');
+    expect(menuSource).toContain('currentOwnerIdRef.current = ownerId');
+    expect(menuSource).toMatch(
+      /function openOwnBuddyCard\(\)[\s\S]*?const ownerId = currentOwnerIdRef\.current;[\s\S]*?if \(!ownerId\) return;[\s\S]*?pathname: '\/buddy-card\/\[id\]'[\s\S]*?params: \{ id: ownerId \}/,
+    );
+    expect(menuSource).toContain("item.action === 'owner-buddy-card'");
+    expect(menuSource).toContain("disabled={item.action === 'owner-buddy-card' && !ownerId}");
+  });
+
+  test('screen exposes truthful error and retry UI and restarts after account changes', () => {
+    expect(screenSource).toContain('Could not load Buddy Card');
+    expect(screenSource).toContain('accessibilityLabel="Retry loading Buddy Card"');
+    expect(screenSource).toContain('setReloadKey((value) => value + 1)');
+    expect(screenSource).toContain('setAccountEpoch((value) => value + 1)');
+  });
+
+  test('moderation confirmations capture immutable viewer/target context and guard every side effect', () => {
+    expect(screenSource).toContain('captureModerationContext()');
+    expect(screenSource).toContain('confirmBlock(context)');
+    expect(screenSource).toContain('confirmReport(context)');
+    expect(screenSource).toMatch(
+      /async function confirmBlock[\s\S]*?await assertBuddyCardViewer\(context\.ownerId\)/,
+    );
+    expect(screenSource).toMatch(
+      /async function confirmReport[\s\S]*?await assertBuddyCardViewer\(context\.ownerId\)/,
+    );
+    expect(screenSource).toContain('moderationLockRef.current.tryAcquire(context.ownerId, context.targetId)');
+    expect(screenSource).toContain('blockBuddyAsOwner(context.ownerId, context.targetId)');
+    expect(screenSource).toContain('reportBuddyAsOwner(context.ownerId, context.targetId');
+    expect(screenSource).toContain('moderationContextIsCurrent(context, actionToken)');
+    expect(screenSource).toContain('style={({ pressed }) => [styles.optionAction');
+    expect(screenSource).toContain('optionAction: { minWidth: 48, minHeight: 48');
+  });
+
+  test('every deferred optional profile value uses the immutable load guard before state', () => {
+    expect(screenSource).toContain('commitBuddyCardOptionalValue');
+    for (const setter of ['setStats', 'setMetrics', 'setBoardRank', 'setPosts', 'setSocialProof']) {
+      expect(screenSource).not.toMatch(new RegExp(`then\\(\\([^)]*\\) => commit\\(${setter}`));
+      expect(screenSource).toContain(`commitOptional(${setter}`);
+    }
+  });
+
+  test('a full primary and optional load performs exactly one client auth read', () => {
+    expect(screenSource.match(/supabase\.auth\s*\.getUser\(\)/g)).toHaveLength(1);
+    expect(cardSource.match(/export async function getAuthorizedBuddyCard[\s\S]*?^}/m)?.[0])
+      .not.toContain('await me()');
+    expect(relationshipSource.match(/export async function getBuddyCardAccessMode[\s\S]*?^}/m)?.[0])
+      .not.toContain('assertBuddyCardViewer');
+    expect(relationshipSource.match(/export (?:async )?function commitBuddyCardOptionalValue[\s\S]*?^}/m)?.[0])
+      .not.toContain('assertBuddyCardViewer');
+  });
+
+  test('owner view repairs a missing RPC avatar through an owner-scoped read', () => {
+    expect(screenSource).toContain('getOwnBuddyCardAvatar');
+    expect(screenSource).toMatch(
+      /mode === 'self' && v && !v\.avatar[\s\S]*?getOwnBuddyCardAvatar\(targetId\)/,
+    );
+    expect(screenSource).toMatch(
+      /getOwnBuddyCardAvatar\(targetId\)[\s\S]*?loadContextIsCurrent\(token\)[\s\S]*?avatar:/,
+    );
+    expect(cardSource.match(/export async function getOwnBuddyCardAvatar[\s\S]*?^}/m)?.[0])
+      .not.toContain('auth.getUser');
+  });
+
+  test('initial auth and primary read failures settle to visible retry instead of a spinner', () => {
+    expect(screenSource).toContain('.then(({ data, error }) =>');
+    expect(screenSource).toContain('if (error) throw error;');
+    expect(screenSource).toMatch(
+      /\.catch\(\(error\) => \{[\s\S]*?setLoadError\([\s\S]*?setLoading\(false\)/,
+    );
+    expect(screenSource).toMatch(
+      /finally \{\s*if \(restartRequested\) return;\s*commit\(setLoading, false\);\s*}/,
+    );
+  });
+
+  test('feed account cleanup cannot erase the next account ref after render', () => {
+    expect(feedSource).toContain('currentUserIdRef.current = myId');
+    expect(feedSource).toMatch(/return \(\) => \{\s*currentUserIdRef\.current = null;[\s\S]*?\}, \[\]\);/);
+  });
+});
+
+describe('full Buddy profile privacy boundary', () => {
+  test('social proof RPC returns aggregate-only, viewer-bound, block-aware data', () => {
+    expect(socialProofSql).toContain(
+      'create or replace function public.buddy_card_social_proof',
+    );
+    expect(socialProofSql).toContain('p_expected_viewer uuid');
+    expect(socialProofSql).toContain('p_expected_viewer = auth.uid()');
+    expect(socialProofSql).toContain("public.buddy_card_access_mode(p_target) <> 'unavailable'");
+    expect(socialProofSql).toContain('from public.buddy_links');
+    expect(socialProofSql).toContain('intersect');
+    expect(socialProofSql).toContain('from public.buddy_blocks');
+    expect(socialProofSql).toContain('from public.group_members');
+    expect(socialProofSql).toContain('when p_expected_viewer = p_target');
+    expect(socialProofSql).toContain("set search_path = ''");
+    expect(socialProofSql).toContain(
+      'revoke execute on function public.buddy_card_social_proof(uuid, uuid) from public, anon',
+    );
+    expect(socialProofSql).toContain(
+      'grant execute on function public.buddy_card_social_proof(uuid, uuid) to authenticated',
+    );
+    expect(socialProofSql).not.toMatch(/returns table\s*\([^)]*(?:buddy_id|group_id)/i);
+  });
+
+  test('social proof reveals owner groups only to self and counts mutual accepted buddies', () => {
+    const returnsRow = (expectedViewer: string, authViewer: string, unavailable: boolean) =>
+      expectedViewer === authViewer && !unavailable;
+    const proof = (
+      self: boolean,
+      viewerBuddies: string[],
+      targetBuddies: string[],
+      blocked: Set<string>,
+      ownerGroups: number,
+    ) => ({
+      mutual: new Set(viewerBuddies.filter((id) => targetBuddies.includes(id) && !blocked.has(id))).size,
+      groups: self ? ownerGroups : null,
+    });
+
+    expect(proof(false, ['a', 'b'], ['b', 'c'], new Set(), 8)).toEqual({
+      mutual: 1,
+      groups: null,
+    });
+    expect(proof(false, ['a', 'b'], ['b', 'c'], new Set(['b']), 8)).toEqual({
+      mutual: 0,
+      groups: null,
+    });
+    expect(proof(true, [], [], new Set(), 8)).toEqual({ mutual: 0, groups: 8 });
+    expect(returnsRow('viewer-a', 'viewer-a', false)).toBe(true);
+    expect(returnsRow('viewer-a', 'viewer-b', false)).toBe(false);
+    expect(returnsRow('viewer-a', 'viewer-a', true)).toBe(false);
+  });
+
+  test('server resolves self, buddy, public, and blocked/missing as unavailable without leaking why', () => {
+    expect(fullProfileSql).toContain('create or replace function public.buddy_card_access_mode');
+    expect(fullProfileSql).toContain("returns text");
+    expect(fullProfileSql).toContain("set search_path = ''");
+    expect(fullProfileSql).toContain("then 'self'");
+    expect(fullProfileSql).toContain("then 'unavailable'");
+    expect(fullProfileSql).toContain("then 'buddy'");
+    expect(fullProfileSql).toContain("else 'public'");
+    expect(fullProfileSql).toContain('bb.blocker = auth.uid() and bb.blocked = p_target');
+    expect(fullProfileSql).toContain('bb.blocked = auth.uid() and bb.blocker = p_target');
+    expect(fullProfileSql).toContain(
+      'revoke execute on function public.buddy_card_access_mode(uuid) from public, anon',
+    );
+    expect(fullProfileSql).toContain(
+      'grant execute on function public.buddy_card_access_mode(uuid) to authenticated',
+    );
+
+    const mode = (
+      self: boolean,
+      exists: boolean,
+      linked: boolean,
+      blockedByViewer: boolean,
+      blockedByTarget: boolean,
+    ) => {
+      if (!exists) return 'unavailable';
+      if (self) return 'self';
+      if (blockedByViewer || blockedByTarget) return 'unavailable';
+      if (linked) return 'buddy';
+      return 'public';
+    };
+    expect(mode(true, true, true, true, true)).toBe('self');
+    expect(mode(false, true, true, false, false)).toBe('buddy');
+    expect(mode(false, true, false, false, false)).toBe('public');
+    expect(mode(false, true, true, true, false)).toBe('unavailable');
+    expect(mode(false, true, true, false, true)).toBe('unavailable');
+    expect(mode(false, true, false, true, false)).toBe('unavailable');
+    expect(mode(false, true, false, false, true)).toBe('unavailable');
+    expect(mode(false, false, false, false, false)).toBe('unavailable');
+  });
+
+  test('PostgreSQL releases the full profile only to self or an accepted buddy pair', () => {
+    expect(fullProfileSql).toContain('create or replace function public.buddy_full_profile');
+    expect(fullProfileSql).toContain('security definer');
+    expect(fullProfileSql).toContain("set search_path = ''");
+    expect(fullProfileSql).toContain('auth.uid()');
+    expect(fullProfileSql).toContain(
+      "public.buddy_card_access_mode(p_target) in ('self', 'buddy')",
+    );
+    expect(fullProfileSql).toContain('revoke execute on function public.buddy_full_profile(uuid) from public, anon');
+    expect(fullProfileSql).toContain('grant execute on function public.buddy_full_profile(uuid) to authenticated');
+  });
+
+  test('the full-profile function delegates to the same block-aware server mode', () => {
+    expect(fullProfileSql).toMatch(
+      /create or replace function public\.buddy_full_profile[\s\S]*?public\.buddy_card_access_mode\(p_target\) in \('self', 'buddy'\)/i,
+    );
+  });
+
+  test('a linked profile becomes unreadable when either user blocks the other', () => {
+    const canReadFullProfile = (self: boolean, linked: boolean, blocked: boolean) =>
+      self || (linked && !blocked);
+
+    expect(canReadFullProfile(false, true, false)).toBe(true);
+    expect(canReadFullProfile(false, true, true)).toBe(false);
+    expect(canReadFullProfile(true, true, true)).toBe(true);
+  });
+
+  test('the full-profile read relies on the auth-bound server RPC without extra auth round trips', async () => {
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    mockRpc.mockResolvedValue({
+      data: [{
+        id: targetId,
+        display_name: 'Training buddy',
+        avatar_url: null,
+        area: 'Perth',
+        bio: 'Full buddy bio',
+        created_at: '2026-01-01T00:00:00.000Z',
+        last_active_at: null,
+        buddy_card: { headline: 'Private buddy focus' },
+      }],
+      error: null,
+    });
+
+    const { getAuthorizedBuddyCard } = require('./card') as typeof import('./card');
+    await expect(getAuthorizedBuddyCard(targetId)).resolves.toMatchObject({
+      id: targetId,
+      bio: 'Full buddy bio',
+      card: { headline: 'Private buddy focus' },
+    });
+    expect(mockRpc).toHaveBeenCalledWith('buddy_full_profile', { p_target: targetId });
+    expect(mockGetUser).not.toHaveBeenCalled();
+  });
+
+  test('the owner avatar fallback is scoped to the expected profile without another auth read', async () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+    const maybeSingle = jest.fn(async () => ({
+      data: { avatar_url: 'avatars/owner.jpg' },
+      error: null,
+    }));
+    const eq = jest.fn(() => ({ maybeSingle }));
+    const select = jest.fn(() => ({ eq }));
+    mockFrom.mockReturnValue({ select });
+
+    const { getOwnBuddyCardAvatar } = require('./card') as typeof import('./card');
+    await expect(getOwnBuddyCardAvatar(ownerId)).resolves.toBe('avatars/owner.jpg');
+
+    expect(mockFrom).toHaveBeenCalledWith('profiles');
+    expect(select).toHaveBeenCalledWith('avatar_url');
+    expect(eq).toHaveBeenCalledWith('id', ownerId);
+    expect(mockGetUser).not.toHaveBeenCalled();
+  });
+
+  test.each(['self', 'buddy', 'public', 'unavailable'] as const)(
+    'the auth-bound access-mode RPC returns %s without an extra client auth read',
+    async (mode) => {
+      const targetId = '22222222-2222-4222-8222-222222222222';
+      mockRpc.mockResolvedValue({ data: mode, error: null });
+
+      await expect(
+        relationship().getBuddyCardAccessMode(targetId),
+      ).resolves.toBe(mode);
+      expect(mockRpc).toHaveBeenCalledWith('buddy_card_access_mode', { p_target: targetId });
+      expect(mockGetUser).not.toHaveBeenCalled();
+    },
+  );
+
+  test('client social proof read passes immutable viewer and target with zero auth calls', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    mockRpc.mockResolvedValue({
+      data: [{ mutual_buddies_count: 0, groups_count: null }],
+      error: null,
+    });
+
+    const { getBuddyCardSocialProof } = require('./card') as typeof import('./card');
+    await expect(getBuddyCardSocialProof(viewerId, targetId)).resolves.toEqual({
+      mutualBuddiesCount: 0,
+      groupsCount: null,
+    });
+    expect(mockRpc).toHaveBeenCalledWith('buddy_card_social_proof', {
+      p_expected_viewer: viewerId,
+      p_target: targetId,
+    });
+    expect(mockGetUser).not.toHaveBeenCalled();
+  });
+
+  test('screen wires optional social proof without blocking the primary card', () => {
+    expect(screenSource).toContain('getBuddyCardSocialProof(viewerId, targetId)');
+    expect(screenSource).toContain('commitOptional(setSocialProof, nextSocialProof)');
+    expect(screenSource).toMatch(
+      /getBuddyCardSocialProof\(viewerId, targetId\)[\s\S]*?\.catch\(\(\) => \{\}\)/,
+    );
+    expect(screenSource).toContain(
+      'mutualBuddiesCount={ownerView ? null : socialProof?.mutualBuddiesCount ?? null}',
+    );
+    expect(screenSource).toContain('groupsCount={ownerView ? socialProof?.groupsCount ?? null : null}');
+    expect(publicFaceSource).toContain("{ label: 'Mutual', value: formatWholeNumber(mutualBuddiesCount) }");
+    expect(publicFaceSource).not.toContain("{ label: 'Mutual', value: EMPTY_VALUE }");
+  });
+
+  test('unavailable access renders no profile, retry, or Connect affordance', () => {
+    expect(screenSource).toContain("if (mode === 'unavailable')");
+    expect(screenSource).toContain("const confirmedMode = mode === 'public'");
+    expect(screenSource).toContain("This Buddy Card is unavailable.");
+    expect(screenSource).toContain("accessMode === 'public'");
+  });
+});
+
+describe('Buddy Card connection lifecycle', () => {
+  test('target or account replacement suppresses a deferred social-proof aggregate', () => {
+    const { BuddyCardLoadGuard } = require('./BuddyCardLoadGuard') as typeof import('./BuddyCardLoadGuard');
+    const guard = new BuddyCardLoadGuard();
+    const token = guard.bindViewer(guard.begin('target-a'), 'viewer-a')!;
+    const setter = jest.fn();
+    let currentTarget = 'target-a';
+
+    currentTarget = 'target-b';
+    expect(relationship().commitBuddyCardOptionalValue(
+      'target-a',
+      () => currentTarget,
+      () => guard.owns(token),
+      setter,
+      { mutualBuddiesCount: 2, groupsCount: null },
+    )).toBe(false);
+
+    currentTarget = 'target-a';
+    guard.cancel(token);
+    expect(relationship().commitBuddyCardOptionalValue(
+      'target-a',
+      () => currentTarget,
+      () => guard.owns(token),
+      setter,
+      { mutualBuddiesCount: 2, groupsCount: null },
+    )).toBe(false);
+    expect(setter).not.toHaveBeenCalled();
+  });
+
+  test('replacement while an optional value is deferred applies no stale setter', async () => {
+    const value = deferred<number>();
+    const setter = jest.fn<(next: number) => void>();
+    let current = true;
+
+    const completion = value.promise.then((next) => relationship().commitBuddyCardOptionalValue(
+      'target-a',
+      () => 'target-a',
+      () => current,
+      setter,
+      next,
+    ));
+    current = false;
+    value.resolve(7);
+
+    await expect(completion).resolves.toBe(false);
+    expect(setter).not.toHaveBeenCalled();
+  });
+
+  test('target replacement before focus cleanup blocks Connect, Block, Report, and optional commits', async () => {
+    const { BuddyCardLoadGuard } = require('./BuddyCardLoadGuard') as typeof import('./BuddyCardLoadGuard');
+    const guard = new BuddyCardLoadGuard();
+    const token = guard.bindViewer(guard.begin('target-a'), 'viewer-a')!;
+    let currentTarget = 'target-a';
+    const actionAllowed = () =>
+      guard.owns(token) && currentTarget === token.targetId;
+    const setter = jest.fn<(value: number) => void>();
+
+    currentTarget = 'target-b';
+    expect(actionAllowed()).toBe(false);
+    expect(actionAllowed()).toBe(false);
+    expect(actionAllowed()).toBe(false);
+    expect(
+      relationship().commitBuddyCardOptionalValue(
+        'target-a',
+        () => currentTarget,
+        () => guard.owns(token),
+        setter,
+        7,
+      ),
+    ).toBe(false);
+    expect(setter).not.toHaveBeenCalled();
+    expect(mockGetUser).not.toHaveBeenCalled();
+  });
+
+  test('relationship lookup stays bound to the initiating viewer and target', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    const limit = jest.fn<(...args: unknown[]) => Promise<any>>()
+      .mockResolvedValue({ data: [{ user_a: viewerId }], error: null });
+    const or = jest.fn<(...args: unknown[]) => any>().mockReturnValue({ limit });
+    const select = jest.fn<(...args: unknown[]) => any>().mockReturnValue({ or });
+    mockFrom.mockReturnValue({ select });
+    mockGetUser.mockResolvedValue(authUser(viewerId));
+
+    await expect(relationship().areBuddiesAsOwner(viewerId, targetId)).resolves.toBe(true);
+    expect(mockFrom).toHaveBeenCalledWith('buddy_links');
+    expect(or).toHaveBeenCalledWith(
+      `and(user_a.eq.${viewerId},user_b.eq.${targetId}),` +
+      `and(user_a.eq.${targetId},user_b.eq.${viewerId})`,
+    );
+    expect(mockGetUser).toHaveBeenCalledTimes(2);
+  });
+
+  test('account replacement during relationship lookup rejects the stale relationship', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    const limit = jest.fn<(...args: unknown[]) => Promise<any>>()
+      .mockResolvedValue({ data: [{ user_a: viewerId }], error: null });
+    const or = jest.fn<(...args: unknown[]) => any>().mockReturnValue({ limit });
+    const select = jest.fn<(...args: unknown[]) => any>().mockReturnValue({ or });
+    mockFrom.mockReturnValue({ select });
+    mockGetUser
+      .mockResolvedValueOnce(authUser(viewerId))
+      .mockResolvedValueOnce(authUser('33333333-3333-4333-8333-333333333333'));
+
+    await expect(relationship().areBuddiesAsOwner(viewerId, targetId))
+      .rejects.toThrow(/account changed/i);
+  });
+
+  test('a synchronous lock closes same-tick duplicate Connect taps', async () => {
+    const { createBuddyCardConnectLock } = relationship();
+    const lock = createBuddyCardConnectLock();
+    const pending = deferred<void>();
+    let calls = 0;
+
+    const connect = () => {
+      const token = lock.tryAcquire('viewer', 'target');
+      if (!token) return Promise.resolve();
+      calls += 1;
+      return pending.promise.finally(() => lock.release(token));
+    };
+
+    const first = connect();
+    const second = connect();
+    expect(calls).toBe(1);
+    pending.resolve();
+    await Promise.all([first, second]);
+  });
+
+  test('a stale completion cannot release a newer target action', () => {
+    const { createBuddyCardConnectLock } = relationship();
+    const lock = createBuddyCardConnectLock();
+    const stale = lock.tryAcquire('viewer', 'target-a')!;
+    lock.cancel(stale);
+    const current = lock.tryAcquire('viewer', 'target-b')!;
+    lock.release(stale);
+    expect(lock.owns(current, 'viewer', 'target-b')).toBe(true);
+  });
+
+  test('self requests stop before authentication or database access', async () => {
+    const { sendBuddyRequestAsOwner } = relationship();
+    await expect(sendBuddyRequestAsOwner('same', 'same')).rejects.toThrow(/yourself/i);
+    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('request insertion is bound to immutable initiating owner and target', async () => {
+    const insert = jest.fn<(...args: unknown[]) => Promise<any>>().mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue(authUser('11111111-1111-4111-8111-111111111111'));
+    mockFrom.mockReturnValue({ insert });
+
+    await relationship().sendBuddyRequestAsOwner(
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    );
+
+    expect(mockFrom).toHaveBeenCalledWith('buddy_requests');
+    expect(insert).toHaveBeenCalledWith({
+      from_user: '11111111-1111-4111-8111-111111111111',
+      to_user: '22222222-2222-4222-8222-222222222222',
+    });
+  });
+
+  test('an account change after the insert rejects stale success', async () => {
+    const insert = jest.fn<(...args: unknown[]) => Promise<any>>().mockResolvedValue({ error: null });
+    mockGetUser
+      .mockResolvedValueOnce(authUser('11111111-1111-4111-8111-111111111111'))
+      .mockResolvedValueOnce(authUser('33333333-3333-4333-8333-333333333333'));
+    mockFrom.mockReturnValue({ insert });
+
+    await expect(relationship().sendBuddyRequestAsOwner(
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    )).rejects.toThrow(/account changed/i);
+  });
+
+  test('block/report mutations reject self and bind the initiating owner in payloads', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    const insert = jest.fn<(...args: unknown[]) => Promise<any>>().mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue(authUser(viewerId));
+    mockFrom.mockReturnValue({ insert });
+
+    await relationship().blockBuddyAsOwner(viewerId, targetId);
+    expect(insert).toHaveBeenCalledWith({ blocker: viewerId, blocked: targetId });
+
+    insert.mockClear();
+    await relationship().reportBuddyAsOwner(viewerId, targetId, 'Profile report');
+    expect(insert).toHaveBeenCalledWith({
+      reporter: viewerId,
+      reported: targetId,
+      reason: 'Profile report',
+    });
+
+    jest.clearAllMocks();
+    await expect(relationship().blockBuddyAsOwner('same', 'same')).rejects.toThrow(/yourself/i);
+    await expect(relationship().reportBuddyAsOwner('same', 'same', 'reason')).rejects.toThrow(/yourself/i);
+    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('block/report reject an account mismatch before database access', async () => {
+    const viewerId = '11111111-1111-4111-8111-111111111111';
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    mockGetUser.mockResolvedValue(authUser('33333333-3333-4333-8333-333333333333'));
+
+    await expect(relationship().blockBuddyAsOwner(viewerId, targetId)).rejects.toThrow(
+      /account changed/i,
+    );
+    await expect(
+      relationship().reportBuddyAsOwner(viewerId, targetId, 'Profile report'),
+    ).rejects.toThrow(/account changed/i);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('account change while a confirmation is open performs no mutation', async () => {
+    const { BuddyCardLoadGuard } = require('./BuddyCardLoadGuard') as typeof import('./BuddyCardLoadGuard');
+    const guard = new BuddyCardLoadGuard();
+    const captured = guard.bindViewer(guard.begin('target-a'), 'viewer-a')!;
+    const confirm = () => guard.owns(captured);
+
+    guard.bindViewer(guard.begin('target-a'), 'viewer-b');
+    expect(confirm()).toBe(false);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('pending moderation cancelled by cleanup has no toast or back and duplicate success backs once', async () => {
+    const lock = relationship().createBuddyCardConnectLock();
+    const pending = deferred<void>();
+    const toast = jest.fn();
+    const back = jest.fn();
+    const stale = lock.tryAcquire('viewer', 'target-a')!;
+    const staleCompletion = pending.promise.then(() => {
+      if (!lock.owns(stale, 'viewer', 'target-a')) return;
+      toast();
+      back();
+    });
+    lock.cancel(stale);
+    pending.resolve();
+    await staleCompletion;
+    expect(toast).not.toHaveBeenCalled();
+    expect(back).not.toHaveBeenCalled();
+
+    const current = lock.tryAcquire('viewer', 'target-a')!;
+    const finish = () => {
+      if (!lock.owns(current, 'viewer', 'target-a')) return;
+      lock.release(current);
+      back();
+    };
+    finish();
+    finish();
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+});

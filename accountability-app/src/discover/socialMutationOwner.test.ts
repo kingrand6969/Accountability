@@ -3,10 +3,15 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const mockGetUser = jest.fn<() => Promise<{ data: { user: { id: string } | null } }>>();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn<(
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: null; error: Error | null }>>();
 jest.mock('../lib/supabase', () => ({
   supabase: {
     auth: { getUser: () => mockGetUser() },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (name: string, args: Record<string, unknown>) => mockRpc(name, args),
   },
 }));
 jest.mock('../profiles/publicProfiles', () => ({ getPublicProfiles: jest.fn() }));
@@ -39,11 +44,21 @@ describe.each(mutationCases)('%s mutation ownership', (_label, mutate, table) =>
     pending.resolve({ data: { user: { id: 'owner-b' } } });
     await expect(mutation).rejects.toThrow('Account changed');
     expect(mockFrom).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   test('writes using the validated initiating owner', async () => {
     const inserts: unknown[] = [];
     mockGetUser.mockResolvedValueOnce({ data: { user: { id: 'owner-a' } } });
+    if (table === 'challenge_participants') {
+      mockRpc.mockResolvedValueOnce({ data: null, error: null });
+      await expect(mutate('owner-a')).resolves.toBeUndefined();
+      expect(mockRpc).toHaveBeenCalledWith('join_challenge', expect.objectContaining({
+        p_expected_owner: 'owner-a',
+      }));
+      expect(mockFrom).not.toHaveBeenCalled();
+      return;
+    }
     mockFrom.mockReturnValueOnce({
       insert: jest.fn((value: unknown) => {
         inserts.push(value);

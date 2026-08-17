@@ -1,4 +1,4 @@
-type TimerHandle = ReturnType<typeof setTimeout>;
+type TimerHandle = unknown;
 
 type StoryPlaybackOptions = {
   durationMs?: number;
@@ -29,7 +29,9 @@ export function createStoryPlaybackLifecycle(options: StoryPlaybackOptions) {
   const durationMs = options.durationMs ?? 6000;
   const now = options.now ?? Date.now;
   const schedule = options.schedule ?? ((run, delay) => setTimeout(run, delay));
-  const cancel = options.cancel ?? clearTimeout;
+  const cancel = options.cancel ?? ((timer: TimerHandle) => {
+    clearTimeout(timer as ReturnType<typeof setTimeout>);
+  });
   let generation = 0;
   let attachmentGeneration = 0;
   let attached = true;

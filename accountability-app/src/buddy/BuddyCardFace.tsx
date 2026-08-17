@@ -16,7 +16,7 @@ import { authorLabel, timeAgo } from '../feed/format';
 import { font, radius } from '../ui/theme';
 
 /** Rebuild displayable medal states from a card's snapshot (id + tier). */
-export function medalsFromCard(card: BuddyCard): MedalState[] {
+export function allMedalsFromCard(card: BuddyCard): MedalState[] {
   return (card.medals_list ?? [])
     .map((m) => {
       const def = MEDALS.find((d) => d.id === m.id);
@@ -26,6 +26,9 @@ export function medalsFromCard(card: BuddyCard): MedalState[] {
     })
     .filter((s): s is MedalState => s !== null);
 }
+
+/** @deprecated Use allMedalsFromCard for the complete earned-medal snapshot. */
+export const medalsFromCard = allMedalsFromCard;
 
 /**
  * The buddy card — a blue card with white content, in two responsive shapes:

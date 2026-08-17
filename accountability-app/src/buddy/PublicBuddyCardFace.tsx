@@ -1,14 +1,19 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet, Text, View, useColorScheme } from 'react-native';
+
 import { RankBadge } from '../achievements/RankBadge';
-import { Medal } from '../achievements/Medal';
-import { medalsFromCard } from './BuddyCardFace';
-import type { BuddyCard, CardMetrics } from './card';
+import { RANK_ORDER, type RankName } from '../achievements/rankAssets';
 import { authorLabel, timeAgo } from '../feed/format';
-import { CachedImage } from '../ui/CachedImage';
 import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
-import { font, radius, spacing } from '../ui/theme';
+import { CachedImage } from '../ui/CachedImage';
+import { font, radius, shadow, spacing } from '../ui/theme';
+import { BuddyCardAchievements } from './BuddyCardAchievements';
+import { BuddyCardFocus } from './BuddyCardFocus';
+import type { BoardRank, BuddyCard, BuddyStats, CardMetrics } from './card';
+import {
+  resolveBuddyCardPalette,
+  type BuddyCardPaletteTokens as BuddyCardPalette,
+} from './palette';
 import { presentationTraitName } from './presentation';
 
 const TRAIT_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -23,14 +28,324 @@ const TRAIT_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   'Daily check-ins': 'chatbubble-ellipses-outline',
 };
 
+const NOOP = () => undefined;
+const EMPTY_VALUE = '—';
+
+type IdentityProps = {
+  name: string | null;
+  area: string | null;
+  avatar: string | null;
+  memberSince: string;
+  lastActive: string | null;
+  card: BuddyCard;
+  metrics: CardMetrics | null;
+  palette: BuddyCardPalette;
+};
+
+function BuddyCardIdentity({
+  name,
+  area,
+  avatar,
+  memberSince,
+  lastActive,
+  card,
+  metrics,
+  palette,
+}: IdentityProps): React.JSX.Element {
+  const displayName = authorLabel(name);
+  const resolvedAvatar = useResolvedMediaUrl(avatar);
+  const rankName = RANK_ORDER.includes(card.rank_name as RankName)
+    ? (card.rank_name as RankName)
+    : null;
+  const traits = card.show_traits ? card.traits?.filter(Boolean).slice(0, 3) ?? [] : [];
+  const identityMeta = [
+    card.show_area && area ? area : null,
+    card.show_last_active && lastActive ? `Active ${timeAgo(lastActive)}` : null,
+  ].filter((value): value is string => Boolean(value));
+  const showRank = Boolean(card.show_rank && rankName);
+
+  return (
+    <View testID="buddy-card-identity" style={styles.identitySection}>
+      <View style={[styles.avatarRing, { borderColor: palette.accent }]}>
+        {resolvedAvatar ? (
+          <CachedImage
+            uri={resolvedAvatar}
+            style={styles.avatar}
+            contentFit="cover"
+            accessibilityLabel={`${displayName}'s profile photo`}
+          />
+        ) : (
+          <View
+            style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.surfaceTint }]}
+          >
+            <Ionicons name="person" size={32} color={palette.accent} />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.identityCopy}>
+        <Text style={[styles.name, { color: palette.text }]} numberOfLines={2}>
+          {displayName}
+        </Text>
+        {identityMeta.length > 0 ? (
+          <Text style={[styles.identityMeta, { color: palette.textMuted }]} numberOfLines={2}>
+            {identityMeta.join(' · ')}
+          </Text>
+        ) : null}
+        <Text style={[styles.memberSince, { color: palette.textMuted }]}>
+          Member since {memberSince}
+        </Text>
+
+        <View style={styles.rankDetails}>
+          {showRank && rankName ? (
+            <View testID="buddy-card-rank-inline" style={styles.rankInline}>
+              <RankBadge
+                rank={rankName}
+                size={32}
+                animated={false}
+                effects="none"
+                variant="crest"
+              />
+              <Text style={[styles.rankName, { color: palette.text }]}>{rankName}</Text>
+            </View>
+          ) : null}
+          <Text
+            style={[
+              styles.challengeWins,
+              !showRank && styles.challengeWinsWithoutRank,
+              { color: palette.textMuted },
+            ]}
+          >
+            Challenges won · {card.show_challenge_wins && metrics?.chwin != null
+              ? Math.round(metrics.chwin)
+              : EMPTY_VALUE}
+          </Text>
+        </View>
+      </View>
+
+      {traits.length > 0 ? (
+        <View style={styles.traitRow}>
+          {traits.map((trait) => {
+            const label = presentationTraitName(trait);
+            return (
+              <View
+                key={trait}
+                style={[styles.trait, { backgroundColor: palette.surface, borderColor: palette.border }]}
+              >
+                <Ionicons
+                  name={TRAIT_ICONS[label] ?? 'checkmark-circle-outline'}
+                  size={14}
+                  color={palette.accent}
+                />
+                <Text style={[styles.traitText, { color: palette.text }]} numberOfLines={1}>
+                  {label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function BuddyCardRankings({
+  card,
+  boardRank,
+  metrics,
+  palette,
+}: {
+  card: BuddyCard;
+  boardRank: BoardRank | null;
+  metrics: CardMetrics | null;
+  palette: BuddyCardPalette;
+}): React.JSX.Element | null {
+  const items = [
+    {
+      label: 'Country',
+      value: card.show_country_rank ? formatRank(boardRank?.countryRank) : EMPTY_VALUE,
+    },
+    {
+      label: 'City',
+      value: card.show_city_rank ? formatRank(boardRank?.cityRank) : EMPTY_VALUE,
+    },
+    {
+      label: 'Buddies',
+      value: card.show_consistency ? formatRank(metrics?.buddiesRank) : EMPTY_VALUE,
+    },
+    {
+      label: 'Points',
+      value: card.show_points ? formatWholeNumber(metrics?.points) : EMPTY_VALUE,
+    },
+  ];
+
+  return (
+    <View
+      testID="buddy-card-rankings"
+      style={[styles.section, { borderBottomColor: palette.border }]}
+    >
+      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Rankings</Text>
+      <View testID="buddy-card-ranking-row" style={styles.rankingRow}>
+        {items.map((item) => (
+          <Metric
+            key={item.label}
+            {...item}
+            palette={palette}
+            layout="ranking"
+            accessibilityLabel={`${item.label === 'Points' ? 'Points' : `${item.label} ranking`}, ${
+              item.value === EMPTY_VALUE ? 'unavailable' : item.value
+            }`}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function BuddyCardSocialProof({
+  stats,
+  ownerView,
+  mutualBuddiesCount,
+  groupsCount,
+  palette,
+}: {
+  stats: BuddyStats | null;
+  ownerView: boolean;
+  mutualBuddiesCount: number | null;
+  groupsCount: number | null;
+  palette: BuddyCardPalette;
+}): React.JSX.Element | null {
+  const items = [
+    { label: 'Cheers', value: formatWholeNumber(stats?.cheers) },
+    { label: 'Buddies', value: formatWholeNumber(stats?.buddies) },
+    ...(ownerView
+      ? groupsCount == null
+        ? []
+        : [{ label: 'Groups', value: formatWholeNumber(groupsCount) }]
+      : mutualBuddiesCount == null || mutualBuddiesCount <= 0
+        ? []
+        : [{ label: 'Mutual', value: formatWholeNumber(mutualBuddiesCount) }]),
+  ];
+
+  return (
+    <View
+      testID="buddy-card-social-proof"
+      style={[styles.section, { borderBottomColor: palette.border }]}
+    >
+      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Social</Text>
+      <View style={styles.metricGrid}>
+        {items.map((item) => (
+          <Metric key={item.label} {...item} palette={palette} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function BuddyCardFitnessMetrics({
+  card,
+  metrics,
+  palette,
+}: {
+  card: BuddyCard;
+  metrics: CardMetrics | null;
+  palette: BuddyCardPalette;
+}): React.JSX.Element | null {
+  if (!metrics) return null;
+
+  const items = [
+    card.show_consistency && metrics.consistency != null
+      ? { label: 'Consistency', value: `${Math.round(metrics.consistency)}%` }
+      : null,
+    card.show_points && metrics.points != null
+      ? { label: 'Points', value: formatWholeNumber(metrics.points) }
+      : null,
+    card.show_distance && metrics.avgkm != null
+      ? { label: 'Avg km/day', value: `${metrics.avgkm.toFixed(2)} km` }
+      : null,
+    card.show_distance && metrics.distance != null
+      ? { label: 'Distance', value: `${metrics.distance.toFixed(1)} km` }
+      : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
+
+  if (items.length === 0) return null;
+
+  return (
+    <View testID="buddy-card-fitness" style={styles.lastSection}>
+      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Fitness</Text>
+      <View style={styles.metricGrid}>
+        {items.map((item) => (
+          <Metric key={item.label} {...item} palette={palette} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  palette,
+  layout = 'wrapping',
+  accessibilityLabel,
+}: {
+  label: string;
+  value: string;
+  palette: BuddyCardPalette;
+  layout?: 'ranking' | 'wrapping';
+  accessibilityLabel?: string;
+}) {
+  const groupedForAccessibility = accessibilityLabel !== undefined;
+
+  return (
+    <View
+      accessible={groupedForAccessibility ? true : undefined}
+      accessibilityLabel={accessibilityLabel}
+      style={[
+        styles.metric,
+        layout === 'ranking' ? styles.rankingMetric : styles.wrappingMetric,
+      ]}
+    >
+      <Text
+        accessible={groupedForAccessibility ? false : undefined}
+        style={[styles.metricValue, { color: palette.text }]}
+      >
+        {value}
+      </Text>
+      <Text
+        accessible={groupedForAccessibility ? false : undefined}
+        style={[styles.metricLabel, { color: palette.textMuted }]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function formatRank(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value) || value <= 0) return EMPTY_VALUE;
+  const rounded = Math.round(value);
+  return rounded < 1 ? EMPTY_VALUE : `#${rounded}`;
+}
+
+function formatWholeNumber(value: number | null | undefined) {
+  return value == null ? EMPTY_VALUE : Math.round(value).toLocaleString('en-US');
+}
+
 export function PublicBuddyCardFace({
   name,
   area,
   avatar,
-  lastActive,
+  memberSince = EMPTY_VALUE,
+  lastActive = null,
   headline,
   card,
+  stats = null,
+  boardRank = null,
   metrics,
+  ownerView = false,
+  mutualBuddiesCount = null,
+  groupsCount = null,
   onPressMedals,
 }: {
   name: string | null;
@@ -40,166 +355,230 @@ export function PublicBuddyCardFace({
   lastActive?: string | null;
   headline: string | null;
   card: BuddyCard;
+  stats?: BuddyStats | null;
+  boardRank?: BoardRank | null;
   metrics: CardMetrics | null;
+  ownerView?: boolean;
+  mutualBuddiesCount?: number | null;
+  groupsCount?: number | null;
   onPressMedals?: () => void;
 }) {
-  const displayName = authorLabel(name);
-  const resolvedHero = useResolvedMediaUrl(card.show_hero ? card.hero_url ?? null : null);
-  const resolvedAvatar = useResolvedMediaUrl(avatar);
-  const traits = card.show_traits ? card.traits?.filter(Boolean).slice(0, 3) ?? [] : [];
-  const medals = card.show_medals ? medalsFromCard(card).slice(0, 3) : [];
-  const stats = [
-    card.show_consistency && metrics?.consistency != null
-      ? { icon: 'repeat-outline' as const, value: `${Math.round(metrics.consistency)}%`, label: 'Consistency' }
-      : null,
-    card.show_points && metrics?.points != null
-      ? { icon: 'sparkles-outline' as const, value: String(Math.round(metrics.points)), label: 'Points' }
-      : null,
-    card.show_distance && metrics?.distance != null
-      ? { icon: 'map-outline' as const, value: `${metrics.distance.toFixed(1)} km`, label: 'Distance' }
-      : null,
-    card.show_challenge_wins && metrics?.chwin != null
-      ? { icon: 'trophy-outline' as const, value: String(Math.round(metrics.chwin)), label: 'Challenge wins' }
-      : null,
-  ].filter((item): item is NonNullable<typeof item> => item !== null);
+  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const palette = resolveBuddyCardPalette(card.palette_key, scheme);
+  const presentedCard: BuddyCard = ownerView
+    ? {
+        ...card,
+        show_area: true,
+        show_rank: true,
+        show_medals: true,
+        show_challenge_wins: true,
+        show_country_rank: true,
+        show_city_rank: true,
+        show_consistency: true,
+        show_points: true,
+        show_distance: true,
+      }
+    : card;
 
   return (
-    <View style={styles.frame}>
-      {resolvedHero ? (
-        <CachedImage uri={resolvedHero} style={StyleSheet.absoluteFill} contentFit="cover" />
-      ) : (
-        <LinearGradient
-          colors={['#155EEF', '#0B3DAE', '#081A3A']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
-      <LinearGradient
-        colors={['rgba(8,26,58,0.05)', 'rgba(8,26,58,0.88)']}
-        style={StyleSheet.absoluteFill}
+    <View
+      testID="public-buddy-card"
+      style={[styles.frame, { backgroundColor: palette.surface, borderColor: palette.border }]}
+    >
+      <View
+        pointerEvents="none"
+        style={[styles.atmosphere, { backgroundColor: palette.surfaceTint }]}
       />
-
-      <View style={styles.spacer} />
+      <View
+        testID="buddy-card-accent"
+        pointerEvents="none"
+        style={[styles.accent, { backgroundColor: palette.accent }]}
+      />
       <View style={styles.content}>
-        <View style={styles.identityRow}>
-          <View style={styles.avatarRing}>
-            {resolvedAvatar ? (
-              <CachedImage
-                uri={resolvedAvatar}
-                style={styles.avatar}
-                contentFit="cover"
-                accessibilityLabel={`${displayName}'s profile photo`}
-              />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Ionicons name="person" size={30} color="#155EEF" />
-              </View>
-            )}
-          </View>
-          <View style={styles.identityCopy}>
-            <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
-            {card.show_area && area ? (
-              <View style={styles.metaRow}>
-                <Ionicons name="location-outline" size={14} color="#E8EEFA" />
-                <Text style={styles.metaText} numberOfLines={1}>{area}</Text>
-              </View>
-            ) : null}
-            {card.show_last_active && lastActive ? (
-              <Text style={styles.metaText}>Active {timeAgo(lastActive)}</Text>
-            ) : null}
-          </View>
-          {card.show_rank && card.rank_name ? (
-            <RankBadge rank={card.rank_name} size={40} animated={false} />
-          ) : null}
-        </View>
-
-        {headline ? <Text style={styles.headline}>{headline}</Text> : null}
-        {traits.length ? (
-          <View style={styles.traitRow}>
-            {traits.map((trait) => {
-              const label = presentationTraitName(trait);
-              return (
-                <View key={trait} style={styles.trait}>
-                  <Ionicons name={TRAIT_ICONS[label] ?? 'checkmark-circle-outline'} size={14} color="#123B79" />
-                  <Text style={styles.traitText} numberOfLines={1}>{label}</Text>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
-
-        {stats.length ? (
-          <View style={styles.statRow}>
-            {stats.map((stat) => (
-              <View key={stat.label} style={styles.stat}>
-                <Ionicons name={stat.icon} size={18} color="#BFD4FF" />
-                <Text style={styles.statValue}>{stat.value}</Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {medals.length ? (
-          <Pressable
-            onPress={onPressMedals}
-            disabled={!onPressMedals}
-            accessibilityRole={onPressMedals ? 'button' : undefined}
-            accessibilityLabel="View all public achievements"
-            style={({ pressed }) => [styles.achievements, pressed && styles.pressed]}
-          >
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Top achievements</Text>
-              {onPressMedals ? (
-                <View style={styles.viewAll}>
-                  <Text style={styles.viewAllText}>View all</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#BFD4FF" />
-                </View>
-              ) : null}
-            </View>
-            <View style={styles.medalRow}>
-              {medals.map((medal) => (
-                <View key={medal.def.id} style={styles.medalItem}>
-                  <Medal state={medal} size={58} animate={false} />
-                  <Text style={styles.medalName} numberOfLines={1}>{medal.tierName}</Text>
-                </View>
-              ))}
-            </View>
-          </Pressable>
-        ) : null}
+        <BuddyCardIdentity
+          name={name}
+          area={area}
+          avatar={avatar}
+          memberSince={memberSince}
+          lastActive={lastActive}
+          card={presentedCard}
+          metrics={metrics}
+          palette={palette}
+        />
+        <BuddyCardFocus text={headline} palette={palette} />
+        <BuddyCardRankings
+          card={presentedCard}
+          boardRank={boardRank}
+          metrics={metrics}
+          palette={palette}
+        />
+        <BuddyCardAchievements
+          card={presentedCard}
+          palette={palette}
+          onPress={onPressMedals ?? NOOP}
+        />
+        <BuddyCardSocialProof
+          stats={stats}
+          ownerView={ownerView}
+          mutualBuddiesCount={mutualBuddiesCount}
+          groupsCount={groupsCount}
+          palette={palette}
+        />
+        <BuddyCardFitnessMetrics card={presentedCard} metrics={metrics} palette={palette} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  frame: { minHeight: 520, borderRadius: radius.xl, overflow: 'hidden', backgroundColor: '#081A3A' },
-  spacer: { flex: 1, minHeight: 200 },
-  content: { padding: spacing.lg, gap: spacing.md },
-  identityRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatarRing: { width: 68, height: 68, borderRadius: 34, padding: 3, backgroundColor: '#fff' },
-  avatar: { width: 62, height: 62, borderRadius: 31 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF4FF' },
-  identityCopy: { flex: 1, minWidth: 0, gap: 3 },
-  name: { color: '#fff', fontFamily: font.bold, fontSize: 23, letterSpacing: -0.4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { color: '#E8EEFA', fontFamily: font.medium, fontSize: 12 },
-  headline: { color: '#fff', fontFamily: font.bold, fontSize: 23, lineHeight: 29 },
-  traitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  trait: { minHeight: 36, paddingHorizontal: 10, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.94)' },
-  traitText: { color: '#123B79', fontFamily: font.bold, fontSize: 11.5 },
-  statRow: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: radius.lg, overflow: 'hidden' },
-  stat: { width: '50%', minHeight: 74, padding: 10, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.18)' },
-  statValue: { marginTop: 3, color: '#fff', fontFamily: font.bold, fontSize: 17 },
-  statLabel: { color: '#DCE7FA', fontFamily: font.medium, fontSize: 10.5 },
-  achievements: { minHeight: 120, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: radius.lg, backgroundColor: 'rgba(8,26,58,0.44)' },
-  sectionHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
-  viewAll: { minHeight: 44, minWidth: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 2 },
-  viewAllText: { color: '#BFD4FF', fontFamily: font.bold, fontSize: 12 },
-  medalRow: { flexDirection: 'row', gap: 8 },
-  medalItem: { flex: 1, minWidth: 0, alignItems: 'center' },
-  medalName: { color: '#fff', fontFamily: font.bold, fontSize: 10.5, marginTop: 2 },
-  pressed: { opacity: 0.76 },
+  frame: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.xl,
+    ...shadow.card,
+  },
+  atmosphere: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 132,
+  },
+  accent: {
+    height: 4,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+  },
+  identitySection: {
+    paddingVertical: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  avatarRing: {
+    width: 78,
+    height: 78,
+    padding: 3,
+    borderWidth: 2,
+    borderRadius: 39,
+  },
+  avatar: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+  },
+  avatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identityCopy: {
+    flex: 1,
+    minWidth: 180,
+  },
+  name: {
+    fontFamily: font.extrabold,
+    fontSize: 23,
+    lineHeight: 28,
+    letterSpacing: -0.45,
+  },
+  identityMeta: {
+    marginTop: 3,
+    fontFamily: font.medium,
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  memberSince: {
+    marginTop: 2,
+    fontFamily: font.medium,
+    fontSize: 11.5,
+    lineHeight: 17,
+  },
+  rankDetails: {
+    marginTop: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  rankInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  rankName: {
+    fontFamily: font.extrabold,
+    fontSize: 17,
+  },
+  challengeWins: {
+    marginTop: 2,
+    marginLeft: 104,
+    fontFamily: font.semibold,
+    fontSize: 11.5,
+  },
+  challengeWinsWithoutRank: {
+    marginLeft: 0,
+  },
+  traitRow: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  trait: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  traitText: {
+    fontFamily: font.semibold,
+    fontSize: 11.5,
+  },
+  section: {
+    paddingVertical: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  lastSection: {
+    paddingVertical: spacing.lg,
+  },
+  sectionLabel: {
+    marginBottom: spacing.md,
+    fontFamily: font.extrabold,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  metricGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: spacing.md,
+  },
+  rankingRow: {
+    flexDirection: 'row',
+  },
+  metric: {
+    paddingRight: spacing.sm,
+  },
+  wrappingMetric: {
+    width: '25%',
+    minWidth: 72,
+  },
+  rankingMetric: {
+    flex: 1,
+    minWidth: 0,
+  },
+  metricValue: {
+    fontFamily: font.extrabold,
+    fontSize: 16,
+    lineHeight: 21,
+  },
+  metricLabel: {
+    marginTop: 2,
+    fontFamily: font.medium,
+    fontSize: 10.5,
+    lineHeight: 15,
+  },
 });

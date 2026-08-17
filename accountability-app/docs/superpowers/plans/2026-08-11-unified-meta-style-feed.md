@@ -72,7 +72,7 @@ test('uses score only inside a source tier and applies deterministic id ties', (
 
 - [ ] **Step 2: Run the test and record RED**
 
-Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedRanking.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedRanking.test.ts`
 Expected: FAIL because `unifiedFeedRanking` does not exist.
 
 - [ ] **Step 3: Implement the pure deterministic policy**
@@ -129,7 +129,7 @@ export function interleaveUnifiedFeed(input: {
 
 - [ ] **Step 4: Run focused tests and commit**
 
-Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedRanking.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedRanking.test.ts`
 Expected: PASS.
 
 ```powershell
@@ -167,7 +167,7 @@ test('defines an authenticated security-invoker unified Feed RPC', () => {
 
 - [ ] **Step 2: Run the contract and record RED**
 
-Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedMigration.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedMigration.test.ts`
 Expected: FAIL because migration 0101 is absent.
 
 - [ ] **Step 3: Implement one bounded SQL function**
@@ -226,7 +226,7 @@ Extend the test to resolve the real table/function names from migration history 
 
 - [ ] **Step 5: Run database contracts and commit**
 
-Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedMigration.test.ts src/feed/followedIndexMigration.test.ts src/database/financeRemovalMigration.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedMigration.test.ts src/feed/followedIndexMigration.test.ts src/database/financeRemovalMigration.test.ts`
 Expected: PASS.
 
 ```powershell
@@ -268,7 +268,7 @@ test('keeps the previous page when refresh fails', () => {
 
 - [ ] **Step 2: Run and record RED**
 
-Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedApi.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/unifiedFeedApi.test.ts`
 Expected: FAIL because the client still calls `personal_feed_post_ids` and lacks Feed metadata.
 
 - [ ] **Step 3: Replace the personal-mode branch**
@@ -294,7 +294,7 @@ Preserve the existing group/page branches and enrichment for likes, author profi
 
 - [ ] **Step 4: Run Feed API tests and commit**
 
-Run: `npm.cmd test -- --runInBand src/feed/api.test.ts src/feed/unifiedFeedApi.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/api.test.ts src/feed/unifiedFeedApi.test.ts`
 Expected: PASS.
 
 ```powershell
@@ -328,7 +328,7 @@ test('suggested rows disclose why they appear', () => {
 
 - [ ] **Step 2: Run and record RED**
 
-Run: `npm.cmd test -- --runInBand src/feed/socialScreenContract.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/socialScreenContract.test.ts`
 Expected: FAIL because the switch and embedded Discover experience remain.
 
 - [ ] **Step 3: Simplify Feed state to one timeline**
@@ -351,7 +351,7 @@ Keep reusable session/view-state helpers in `SocialModeSelector.tsx` only if sti
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `npm.cmd test -- --runInBand src/feed/socialScreenContract.test.ts src/feed/videoPolicy.test.ts src/feed/PostVideo.test.tsx`  
+Run: `npm.cmd test -- --runInBand src/feed/socialScreenContract.test.ts src/feed/videoPolicy.test.ts src/feed/PostVideo.test.tsx`
 Expected: PASS.
 
 ```powershell
@@ -386,7 +386,7 @@ test('Discover hub contains people, groups and pages sections', () => {
 
 - [ ] **Step 2: Run and record RED**
 
-Run: `npm.cmd test -- --runInBand src/discover/DiscoverHub.test.ts src/navigation/socialUtilityRouteContract.test.ts`  
+Run: `npm.cmd test -- --runInBand src/discover/DiscoverHub.test.ts src/navigation/socialUtilityRouteContract.test.ts`
 Expected: FAIL because `/discover` and the hub do not exist.
 
 - [ ] **Step 3: Build a focused Discover route using existing APIs**
@@ -405,7 +405,7 @@ Add `{ icon: 'compass-outline', tint: colors.primary, title: 'Discover', route: 
 
 - [ ] **Step 5: Verify and commit**
 
-Run: `npm.cmd test -- --runInBand src/discover src/navigation/socialUtilityRouteContract.test.ts`  
+Run: `npm.cmd test -- --runInBand src/discover src/navigation/socialUtilityRouteContract.test.ts`
 Expected: PASS.
 
 ```powershell
@@ -440,7 +440,7 @@ Enumerate all live UI matches using `rg -n -i "encourage|encouragement|encourage
 
 - [ ] **Step 2: Run and record RED**
 
-Run: `npm.cmd test -- --runInBand src/feed/cheerCopyContract.test.ts`  
+Run: `npm.cmd test -- --runInBand src/feed/cheerCopyContract.test.ts`
 Expected: FAIL on current user-facing Encourage copy.
 
 - [ ] **Step 3: Replace presentation copy only**
@@ -457,7 +457,7 @@ Do not rename persisted tables, RPCs, analytics identifiers, TypeScript data pro
 
 - [ ] **Step 4: Run copy, notification, Feed, and accessibility tests**
 
-Run: `npm.cmd test -- --runInBand src/feed/cheerCopyContract.test.ts src/feed src/notifications`  
+Run: `npm.cmd test -- --runInBand src/feed/cheerCopyContract.test.ts src/feed src/notifications`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -486,7 +486,7 @@ The verifier accepts sanitized Supabase migration-list output and reports missin
 
 - [ ] **Step 2: Run and record RED, then implement the verifier**
 
-Run: `node --test scripts/verify-staging-migrations.test.mjs`  
+Run: `node --test scripts/verify-staging-migrations.test.mjs`
 Expected before implementation: FAIL.
 
 Implement parsing that returns missing versions and refuses any project reference other than the configured staging project. Never infer that a production project is safe.

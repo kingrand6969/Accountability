@@ -127,7 +127,10 @@ describe('Cheer user-facing copy contract', () => {
 
   test('buddy card editing applies presentation mapping on load and storage mapping on save', () => {
     const editor = readFileSync(path.join(repoRoot, 'src/app/buddy-card-edit.tsx'), 'utf8');
-    expect(editor).toContain('traits: presentationTraits(loaded.traits)');
-    expect(editor).toContain('traits: storageTraits(card.traits)');
+    const editorModel = readFileSync(path.join(repoRoot, 'src/buddy/editorModel.ts'), 'utf8');
+    expect(editor).toContain('normalizeBuddyCardEditorDraft({');
+    expect(editor).toContain('buildBuddyCardEditorPatch(draftCard, earnedIds)');
+    expect(editorModel).toContain('traits: presentationTraits(card.traits)');
+    expect(editorModel).toContain('traits: storageTraits(normalizedCard.traits)');
   });
 });
