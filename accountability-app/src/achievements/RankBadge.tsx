@@ -50,7 +50,7 @@ export function RankBadge({
   reducedMotion?: boolean;
   /** `none` renders only the official artwork, without decorative effects. */
   effects?: 'auto' | 'none';
-  /** `crest` clips the official 3:1 artwork to its square left emblem. */
+  /** `crest` renders the dedicated square crest artwork. */
   variant?: 'nameplate' | 'crest';
   onPress?: () => void;
 }) {
@@ -60,10 +60,10 @@ export function RankBadge({
   const frameWidth = variant === 'crest' ? size : w;
   const artworkGeometry = variant === 'crest'
     ? {
-        width: w * 1.7,
-        height: h * 1.7,
-        left: -size * 0.85,
-        top: -size * 0.32,
+        width: size,
+        height: size,
+        left: 0,
+        top: 0,
         right: undefined,
         bottom: undefined,
       }
@@ -192,9 +192,6 @@ export function RankBadge({
         style={{
           width: frameWidth,
           height: h,
-          ...(variant === 'crest'
-            ? { overflow: 'hidden' as const, borderRadius: size / 2 }
-            : null),
         }}
       >
         {/* faint static base aura — a soft tinted cloud behind the badge.
@@ -242,26 +239,10 @@ export function RankBadge({
         })}
 
         {/* the exact badge artwork — never altered */}
-        <View
-          testID={variant === 'crest' ? 'rank-badge-crest-mask' : undefined}
-          pointerEvents="none"
-          style={
-            variant === 'crest'
-              ? {
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  width: size,
-                  height: size,
-                  borderRadius: size / 2,
-                  overflow: 'hidden',
-                }
-              : StyleSheet.absoluteFill
-          }
-        >
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           <Animated.Image
             testID="rank-badge-artwork"
-            source={cfg.image}
+            source={variant === 'crest' ? cfg.crest : cfg.image}
             resizeMode="contain"
             style={[
               StyleSheet.absoluteFill,
