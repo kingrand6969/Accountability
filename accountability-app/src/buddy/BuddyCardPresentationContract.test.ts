@@ -486,6 +486,28 @@ describe('PublicBuddyCardFace clean composition', () => {
     ]);
   });
 
+  it('keeps challenge wins directly below the inline rank without a horizontal offset', () => {
+    const renderer = publicCard();
+    const challengeWins = renderer.root.findAllByType(Text).find(
+      (node) => node.props.children?.[0] === 'Challenges won · ',
+    );
+
+    expect(challengeWins).toBeDefined();
+    expect(StyleSheet.flatten(challengeWins!.props.style).marginLeft ?? 0).toBe(0);
+  });
+
+  it('uses a contained palette glow instead of a fixed full-width identity band', () => {
+    const renderer = publicCard();
+    const atmosphere = renderer.root.findByProps({ testID: 'buddy-card-atmosphere' });
+    const layout = StyleSheet.flatten(atmosphere.props.style);
+
+    expect(layout.width).toBeGreaterThan(0);
+    expect(layout.height).toBeGreaterThan(0);
+    expect(layout.borderRadius).toBeGreaterThan(0);
+    expect(layout.left).toBeUndefined();
+    expect(layout.right).toBeLessThan(0);
+  });
+
   it('does not invent a rank when the shared rank is missing or unknown', () => {
     const missingRank = publicCard({
       card: { ...completeCard, rank_name: undefined, show_challenge_wins: true },

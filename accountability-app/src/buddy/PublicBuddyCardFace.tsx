@@ -112,7 +112,6 @@ function BuddyCardIdentity({
           <Text
             style={[
               styles.challengeWins,
-              !showRank && styles.challengeWinsWithoutRank,
               { color: palette.textMuted },
             ]}
           >
@@ -386,6 +385,7 @@ export function PublicBuddyCardFace({
       style={[styles.frame, { backgroundColor: palette.surface, borderColor: palette.border }]}
     >
       <View
+        testID="buddy-card-atmosphere"
         pointerEvents="none"
         style={[styles.atmosphere, { backgroundColor: palette.surfaceTint }]}
       />
@@ -440,10 +440,12 @@ const styles = StyleSheet.create({
   },
   atmosphere: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 132,
+    width: 220,
+    height: 220,
+    right: -110,
+    top: -120,
+    borderRadius: 110,
+    opacity: 0.26,
   },
   accent: {
     height: 4,
@@ -511,12 +513,9 @@ const styles = StyleSheet.create({
   },
   challengeWins: {
     marginTop: 2,
-    marginLeft: 104,
+    marginLeft: 0,
     fontFamily: font.semibold,
     fontSize: 11.5,
-  },
-  challengeWinsWithoutRank: {
-    marginLeft: 0,
   },
   traitRow: {
     width: '100%',
