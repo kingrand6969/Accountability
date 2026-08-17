@@ -152,6 +152,18 @@ describe('Buddy Card viewer state', () => {
       .not.toContain('assertBuddyCardViewer');
   });
 
+  test('owner view repairs a missing RPC avatar through an owner-scoped read', () => {
+    expect(screenSource).toContain('getOwnBuddyCardAvatar');
+    expect(screenSource).toMatch(
+      /mode === 'self' && v && !v\.avatar[\s\S]*?getOwnBuddyCardAvatar\(targetId\)/,
+    );
+    expect(screenSource).toMatch(
+      /getOwnBuddyCardAvatar\(targetId\)[\s\S]*?loadContextIsCurrent\(token\)[\s\S]*?avatar:/,
+    );
+    expect(cardSource.match(/export async function getOwnBuddyCardAvatar[\s\S]*?^}/m)?.[0])
+      .not.toContain('auth.getUser');
+  });
+
   test('initial auth and primary read failures settle to visible retry instead of a spinner', () => {
     expect(screenSource).toContain('.then(({ data, error }) =>');
     expect(screenSource).toContain('if (error) throw error;');
@@ -310,6 +322,25 @@ describe('full Buddy profile privacy boundary', () => {
       card: { headline: 'Private buddy focus' },
     });
     expect(mockRpc).toHaveBeenCalledWith('buddy_full_profile', { p_target: targetId });
+    expect(mockGetUser).not.toHaveBeenCalled();
+  });
+
+  test('the owner avatar fallback is scoped to the expected profile without another auth read', async () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+    const maybeSingle = jest.fn(async () => ({
+      data: { avatar_url: 'avatars/owner.jpg' },
+      error: null,
+    }));
+    const eq = jest.fn(() => ({ maybeSingle }));
+    const select = jest.fn(() => ({ eq }));
+    mockFrom.mockReturnValue({ select });
+
+    const { getOwnBuddyCardAvatar } = require('./card') as typeof import('./card');
+    await expect(getOwnBuddyCardAvatar(ownerId)).resolves.toBe('avatars/owner.jpg');
+
+    expect(mockFrom).toHaveBeenCalledWith('profiles');
+    expect(select).toHaveBeenCalledWith('avatar_url');
+    expect(eq).toHaveBeenCalledWith('id', ownerId);
     expect(mockGetUser).not.toHaveBeenCalled();
   });
 

@@ -213,6 +213,21 @@ export async function getAuthorizedBuddyCard(id: string): Promise<BuddyCardView 
   };
 }
 
+/**
+ * Owner-only fallback for the profile photo. The caller supplies the immutable
+ * owner ID from its existing authenticated load; profiles RLS is the final
+ * authorization boundary, so this does not need another client auth read.
+ */
+export async function getOwnBuddyCardAvatar(expectedOwnerId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('avatar_url')
+    .eq('id', expectedOwnerId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.avatar_url ?? null;
+}
+
 /** One public-profile request for a Discover page; no per-card fan-out. */
 export async function getBuddyCards(ids: string[]): Promise<Map<string, BuddyCardView>> {
   const result = new Map<string, BuddyCardView>();

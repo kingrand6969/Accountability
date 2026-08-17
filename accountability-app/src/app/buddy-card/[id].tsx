@@ -14,6 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   getAuthorizedBuddyCard,
   getBuddyCard,
+  getOwnBuddyCardAvatar,
   getBuddyCardSocialProof,
   getBuddyStats,
   getBoardRank,
@@ -198,9 +199,14 @@ export default function BuddyCardScreen() {
                 commit(setLoadError, null);
                 return;
               }
-              const v = mode === 'self' || mode === 'buddy'
+              let v = mode === 'self' || mode === 'buddy'
                 ? await getAuthorizedBuddyCard(targetId)
                 : await getBuddyCard(targetId);
+              if (mode === 'self' && v && !v.avatar) {
+                const ownerAvatar = await getOwnBuddyCardAvatar(targetId).catch(() => null);
+                if (!loadContextIsCurrent(token)) return;
+                if (ownerAvatar) v = { ...v, avatar: ownerAvatar };
+              }
               const confirmedMode = mode === 'public'
                 ? await getBuddyCardAccessMode(targetId)
                 : mode;
