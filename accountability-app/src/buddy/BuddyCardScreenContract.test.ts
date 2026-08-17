@@ -57,6 +57,15 @@ function publicFaceInvocation(source: string) {
   return source.slice(start, source.indexOf('/>', start));
 }
 
+function selectCardText(view: BuddyCardView, fullAccess: boolean) {
+  const { cardText } = require('./card') as typeof import('./card');
+  const selector = cardText as unknown as (
+    value: BuddyCardView,
+    canReadPrivateText?: boolean,
+  ) => ReturnType<typeof cardText>;
+  return selector(view, fullAccess);
+}
+
 function authUser(id: string | null) {
   return { data: { user: id ? { id } : null } };
 }
@@ -113,12 +122,6 @@ describe('Buddy Card viewer state', () => {
         show_bio: false,
       },
     };
-    const { cardText } = require('./card') as typeof import('./card');
-    const selectCardText = cardText as unknown as (
-      value: BuddyCardView,
-      fullAccess?: boolean,
-    ) => ReturnType<typeof cardText>;
-
     expect([
       selectCardText(view, true),
       selectCardText(view, false),
@@ -126,6 +129,35 @@ describe('Buddy Card viewer state', () => {
       { headline: 'Morning 10K', about: 'Runner and lifter' },
       { headline: null, about: null },
     ]);
+  });
+
+  test('public text selection returns only consented trimmed card text', () => {
+    const view: BuddyCardView = {
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'Public Buddy',
+      avatar: null,
+      area: 'Perth, Australia',
+      bio: 'Private profile biography',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: {
+        headline: ' Shared morning training ',
+        about: ' Shared public card biography ',
+        show_headline: true,
+        show_bio: true,
+      },
+    };
+
+    expect(selectCardText(view, false)).toEqual({
+      headline: 'Shared morning training',
+      about: 'Shared public card biography',
+    });
+  });
+
+  test('screen passes owner-or-buddy text access into the card text selector', () => {
+    expect(screenSource).toMatch(
+      /const\s+([A-Za-z_$][\w$]*)\s*=\s*ownerView\s*\|\|\s*isBuddy\s*;?[\s\S]*?cardText\(\s*view\s*,\s*\1\s*\)/,
+    );
   });
 
   test('buddy receives the full profile branch while a non-buddy receives only the public branch', () => {
