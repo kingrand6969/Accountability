@@ -3,7 +3,7 @@ import { createElement, type ReactElement } from 'react';
 import fs from 'node:fs';
 import path from 'node:path';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 jest.mock('../lib/supabase', () => ({ supabase: {} }));
 jest.mock('@expo/vector-icons/Ionicons', () => {
@@ -338,6 +338,26 @@ describe('PublicBuddyCardFace clean composition', () => {
     countryRank: null,
   };
   const stats = { buddies: 42, km: 300, stars: 99, cheers: 215 };
+  const privateCard: BuddyCard = {
+    palette_key: 'polar_blue',
+    show_area: false,
+    show_rank: false,
+    rank_name: 'Mythical',
+    show_challenge_wins: false,
+    show_country_rank: false,
+    show_city_rank: false,
+    show_consistency: false,
+    show_points: false,
+    show_medals: false,
+    medals_list: [{ id: 'streak', tier: 0 }],
+    featured_medal_ids: ['streak'],
+  };
+  const privateBoardRank = {
+    city: 'Perth',
+    country: 'Australia',
+    cityRank: 4,
+    countryRank: 8,
+  };
 
   function publicCard(overrides: Record<string, unknown> = {}) {
     return render(createElement(PublicBuddyCardFace, {
@@ -360,6 +380,25 @@ describe('PublicBuddyCardFace clean composition', () => {
   function renderedText(renderer: TestRenderer.ReactTestRenderer) {
     return renderer.root.findAllByType(Text).map((node) =>
       Array.isArray(node.props.children) ? node.props.children.join('') : String(node.props.children ?? ''),
+    );
+  }
+
+  function rankingCells(renderer: TestRenderer.ReactTestRenderer) {
+    const rankings = renderer.root.findByProps({ testID: 'buddy-card-rankings' });
+    const cells = rankings.findAllByType(View).filter(
+      (node) => node.findAllByType(Text).length === 2,
+    ).map((cell) => {
+      const [value, label] = cell.findAllByType(Text);
+      return {
+        label: String(label.props.children),
+        value: String(value.props.children),
+      };
+    });
+    return cells.filter(
+      (cell, index) =>
+        cells.findIndex(
+          (candidate) => candidate.label === cell.label && candidate.value === cell.value,
+        ) === index,
     );
   }
 
@@ -415,6 +454,12 @@ describe('PublicBuddyCardFace clean composition', () => {
       'Distance',
       '321.8 km',
     ]));
+    expect(rankingCells(renderer)).toEqual([
+      { label: 'Country', value: '—' },
+      { label: 'City', value: '#4' },
+      { label: 'Buddies', value: '#3' },
+      { label: 'Points', value: '1,234' },
+    ]);
   });
 
   it('keeps the official compact rank crest immediately left of the rank name', () => {
@@ -475,14 +520,12 @@ describe('PublicBuddyCardFace clean composition', () => {
     });
     expect(crestOnly.root.findByProps({ testID: 'buddy-card-rank-inline' })).toBeDefined();
     expect(crestOnly.root.findByProps({ testID: 'buddy-card-rankings' })).toBeDefined();
-    expect(renderedText(crestOnly)).toEqual(expect.arrayContaining([
-      'Country',
-      'City',
-      'Buddies',
-      'Points',
-      '—',
-    ]));
-    expect(renderedText(crestOnly).filter((value) => value === '—')).toHaveLength(4);
+    expect(rankingCells(crestOnly)).toEqual([
+      { label: 'Country', value: '—' },
+      { label: 'City', value: '—' },
+      { label: 'Buddies', value: '—' },
+      { label: 'Points', value: '—' },
+    ]);
 
     const buddiesRankingOnly = publicCard({
       card: {
@@ -495,19 +538,16 @@ describe('PublicBuddyCardFace clean composition', () => {
       },
     });
     expect(buddiesRankingOnly.root.findAllByProps({ testID: 'buddy-card-rank-inline' })).toHaveLength(0);
-    expect(renderedText(buddiesRankingOnly)).toEqual(expect.arrayContaining([
-      'Country',
-      'City',
-      'Buddies',
-      '#3',
-      'Points',
-      '—',
-    ]));
-    expect(renderedText(buddiesRankingOnly).filter((value) => value === '—')).toHaveLength(3);
+    expect(rankingCells(buddiesRankingOnly)).toEqual([
+      { label: 'Country', value: '—' },
+      { label: 'City', value: '—' },
+      { label: 'Buddies', value: '#3' },
+      { label: 'Points', value: '—' },
+    ]);
   });
 
   it('keeps stable country and city columns while applying their consent independently', () => {
-    const countryOnly = renderedText(publicCard({
+    const countryOnly = publicCard({
       card: {
         ...completeCard,
         show_country_rank: true,
@@ -515,13 +555,15 @@ describe('PublicBuddyCardFace clean composition', () => {
         show_consistency: false,
         show_points: false,
       },
-    }));
-    expect(countryOnly).toContain('Country');
-    expect(countryOnly).toContain('City');
-    expect(countryOnly).not.toContain('#4');
-    expect(countryOnly.filter((value) => value === '—')).toHaveLength(4);
+    });
+    expect(rankingCells(countryOnly)).toEqual([
+      { label: 'Country', value: '—' },
+      { label: 'City', value: '—' },
+      { label: 'Buddies', value: '—' },
+      { label: 'Points', value: '—' },
+    ]);
 
-    const cityOnly = renderedText(publicCard({
+    const cityOnly = publicCard({
       card: {
         ...completeCard,
         show_country_rank: false,
@@ -529,11 +571,13 @@ describe('PublicBuddyCardFace clean composition', () => {
         show_consistency: false,
         show_points: false,
       },
-    }));
-    expect(cityOnly).toContain('Country');
-    expect(cityOnly).toContain('City');
-    expect(cityOnly).toContain('#4');
-    expect(cityOnly.filter((value) => value === '—')).toHaveLength(3);
+    });
+    expect(rankingCells(cityOnly)).toEqual([
+      { label: 'Country', value: '—' },
+      { label: 'City', value: '#4' },
+      { label: 'Buddies', value: '—' },
+      { label: 'Points', value: '—' },
+    ]);
   });
 
   it('uses Mutual for another viewer and Groups for the owner', () => {
@@ -591,65 +635,66 @@ describe('PublicBuddyCardFace clean composition', () => {
       'Points',
       'Medals and Challenges',
     ]));
-    expect(copy.filter((value) => value === '—')).toHaveLength(4);
+    expect(rankingCells(renderer)).toEqual([
+      { label: 'Country', value: '—' },
+      { label: 'City', value: '—' },
+      { label: 'Buddies', value: '—' },
+      { label: 'Points', value: '—' },
+    ]);
   });
 
-  it('shows owner-authorized values while visitors receive stable private placeholders', () => {
-    const privateCard: BuddyCard = {
-      palette_key: 'polar_blue',
-      show_area: false,
-      show_rank: false,
-      rank_name: 'Mythical',
-      show_challenge_wins: false,
-      show_country_rank: false,
-      show_city_rank: false,
-      show_consistency: false,
-      show_points: false,
-      show_medals: false,
-    };
-    const privateBoardRank = {
-      city: 'Perth',
-      country: 'Australia',
-      cityRank: 4,
-      countryRank: 8,
-    };
-    const ownerCopy = renderedText(publicCard({
+  it('shows owner-authorized area, rank, challenge wins, rankings, and points', () => {
+    const owner = publicCard({
       ownerView: true,
       card: privateCard,
       boardRank: privateBoardRank,
-    }));
-    const visitorCopy = renderedText(publicCard({
-      ownerView: false,
-      card: privateCard,
-      boardRank: privateBoardRank,
-    }));
+    });
+    const ownerCopy = renderedText(owner);
 
     expect(ownerCopy).toEqual(expect.arrayContaining([
       expect.stringContaining('Perth, Australia'),
       'Mythical',
       'Challenges won · 7',
-      'Country',
-      '#8',
-      'City',
-      '#4',
-      'Buddies',
-      '#3',
-      'Points',
-      '1,234',
     ]));
+    expect(rankingCells(owner)).toEqual([
+      { label: 'Country', value: '#8' },
+      { label: 'City', value: '#4' },
+      { label: 'Buddies', value: '#3' },
+      { label: 'Points', value: '1,234' },
+    ]);
+  });
 
-    expect(visitorCopy.some((value) => value.includes('Perth, Australia'))).toBe(false);
+  it('keeps visitor-private values hidden behind stable labels and placeholders', () => {
+    const visitor = publicCard({
+      ownerView: false,
+      card: privateCard,
+      boardRank: privateBoardRank,
+    });
+    const visitorCopy = renderedText(visitor);
+
+    for (const privateLocation of ['Perth', 'Australia']) {
+      expect(visitorCopy.some((value) => value.includes(privateLocation))).toBe(false);
+    }
     for (const privateValue of ['Mythical', 'Challenges won · 7', '#8', '#4', '#3', '1,234']) {
       expect(visitorCopy).not.toContain(privateValue);
     }
-    expect(visitorCopy).toEqual(expect.arrayContaining([
-      'Challenges won · —',
-      'Country',
-      'City',
-      'Buddies',
-      'Points',
-    ]));
-    expect(visitorCopy.filter((value) => value === '—')).toHaveLength(4);
+    expect(visitorCopy).toContain('Challenges won · —');
+    expect(rankingCells(visitor)).toEqual([
+      { label: 'Country', value: '—' },
+      { label: 'City', value: '—' },
+      { label: 'Buddies', value: '—' },
+      { label: 'Points', value: '—' },
+    ]);
+  });
+
+  it('shows a real earned medal to the owner without leaking unshared artwork to visitors', () => {
+    const owner = publicCard({ ownerView: true, card: privateCard });
+    const visitor = publicCard({ ownerView: false, card: privateCard });
+
+    expect(featuredMedals(visitor)).toHaveLength(0);
+    expect(featuredMedals(owner).map((node) => node.props.testID)).toEqual([
+      'featured-medal-streak',
+    ]);
   });
 });
 

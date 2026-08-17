@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { BuddyCardView } from './card';
 
 const mockGetUser = jest.fn<(...args: unknown[]) => Promise<any>>();
 const mockFrom = jest.fn<(...args: unknown[]) => any>();
@@ -89,11 +90,42 @@ describe('Buddy Card viewer state', () => {
     expect(createBuddyCardConnectLock().tryAcquire(ownerId, ownerId)).toBeNull();
     expect(screenSource).toContain("const ownerView = accessMode === 'self' && currentUserId === id");
     expect(publicFaceInvocation(screenSource)).toContain('ownerView={ownerView}');
-    expect(screenSource).toContain('const visibleAbout = ownerView || isBuddy ? view.bio : about');
-    expect(screenSource).toContain('<Text style={styles.aboutText}>{visibleAbout}</Text>');
+    expect(screenSource).toContain('visibleAbout');
+    expect(screenSource).toMatch(/<Text[^>]*>\{visibleAbout\}<\/Text>/);
     expect(screenSource).toContain("router.push('/buddy-card-edit' as never)");
     expect(screenSource).toContain('!ownerView && !isBuddy');
     expect(screenSource).toContain('headerRight: ownerView');
+  });
+
+  test('text selection gives full-access viewers profile text without exposing it publicly', () => {
+    const view: BuddyCardView = {
+      id: '11111111-1111-4111-8111-111111111111',
+      name: 'Kin Grand',
+      avatar: null,
+      area: 'Perth, Australia',
+      bio: ' Runner and lifter ',
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_active_at: null,
+      card: {
+        headline: ' Morning 10K ',
+        about: ' Public card about ',
+        show_headline: false,
+        show_bio: false,
+      },
+    };
+    const { cardText } = require('./card') as typeof import('./card');
+    const selectCardText = cardText as unknown as (
+      value: BuddyCardView,
+      fullAccess?: boolean,
+    ) => ReturnType<typeof cardText>;
+
+    expect([
+      selectCardText(view, true),
+      selectCardText(view, false),
+    ]).toEqual([
+      { headline: 'Morning 10K', about: 'Runner and lifter' },
+      { headline: null, about: null },
+    ]);
   });
 
   test('buddy receives the full profile branch while a non-buddy receives only the public branch', () => {
