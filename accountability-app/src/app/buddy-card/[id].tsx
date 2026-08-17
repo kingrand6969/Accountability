@@ -521,8 +521,8 @@ export default function BuddyCardScreen() {
   const ownerView = accessMode === 'self' && currentUserId === id;
   const isBuddy = accessMode === 'buddy';
   const fullBuddyView = isBuddy && !ownerView;
-  const { headline, about } = cardText(view);
-  const visibleAbout = ownerView || isBuddy ? view.bio : about;
+  const fullTextAccess = ownerView || isBuddy;
+  const { headline, about: visibleAbout } = cardText(view, fullTextAccess);
   const memberSince = new Date(view.created_at).toLocaleDateString(undefined, {
     month: 'short',
     year: 'numeric',

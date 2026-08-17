@@ -322,9 +322,18 @@ export async function listCardPosts(userId: string, isBuddy: boolean): Promise<C
   return (data ?? []) as CardPost[];
 }
 
-/** The text a viewer should see — the owner's own words, falling back to their
- *  profile area/bio so the card is never blank. */
-export function cardText(view: BuddyCardView): { headline: string | null; about: string | null } {
+/** Selects profile text within the caller's already-established access boundary. */
+export function cardText(
+  view: BuddyCardView,
+  fullAccess = false,
+): { headline: string | null; about: string | null } {
+  if (fullAccess) {
+    return {
+      headline: view.card.headline?.trim() || null,
+      about: view.bio?.trim() || view.card.about?.trim() || null,
+    };
+  }
+
   return {
     headline: view.card.show_headline ? view.card.headline?.trim() || null : null,
     about: view.card.show_bio ? view.card.about?.trim() || null : null,
