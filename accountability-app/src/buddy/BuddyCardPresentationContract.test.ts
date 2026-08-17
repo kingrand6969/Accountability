@@ -654,14 +654,36 @@ describe('PublicBuddyCardFace clean composition', () => {
     ]);
   });
 
-  it('uses Mutual for another viewer and Groups for the owner', () => {
-    const visitorCopy = renderedText(publicCard({ ownerView: false }));
+  it('keeps Cheers and Buddies visible with unavailable values when social stats are missing', () => {
+    const renderer = publicCard({
+      stats: null,
+      ownerView: false,
+      mutualBuddiesCount: null,
+    });
+    const social = renderer.root.findByProps({ testID: 'buddy-card-social-proof' });
+    const copy = social.findAllByType(Text).map((node) => String(node.props.children));
+
+    expect(copy).toEqual([
+      'Social',
+      '—',
+      'Cheers',
+      '—',
+      'Buddies',
+    ]);
+  });
+
+  it('shows Mutual to another viewer only when the actual count is positive', () => {
+    const zeroCopy = renderedText(publicCard({ ownerView: false, mutualBuddiesCount: 0 }));
+    const positiveCopy = renderedText(publicCard({ ownerView: false, mutualBuddiesCount: 5 }));
+
+    expect(zeroCopy).not.toContain('Mutual');
+    expect(positiveCopy).toContain('Mutual');
+    expect(positiveCopy).toContain('5');
+  });
+
+  it('uses Groups for the owner without exposing Mutual', () => {
     const ownerCopy = renderedText(publicCard({ ownerView: true, groupsCount: 6 }));
 
-    expect(visitorCopy).toContain('Mutual');
-    expect(visitorCopy).toContain('0');
-    expect(visitorCopy).not.toContain('Groups');
-    expect(visitorCopy).not.toContain('99');
     expect(ownerCopy).toContain('Groups');
     expect(ownerCopy).toContain('6');
     expect(ownerCopy).not.toContain('Mutual');

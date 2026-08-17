@@ -216,21 +216,16 @@ function BuddyCardSocialProof({
   palette: BuddyCardPalette;
 }): React.JSX.Element | null {
   const items = [
-    ...(stats
-      ? [
-          { label: 'Cheers', value: formatWholeNumber(stats.cheers) },
-          { label: 'Buddies', value: formatWholeNumber(stats.buddies) },
-        ]
-      : []),
+    { label: 'Cheers', value: formatWholeNumber(stats?.cheers) },
+    { label: 'Buddies', value: formatWholeNumber(stats?.buddies) },
     ...(ownerView
       ? groupsCount == null
         ? []
         : [{ label: 'Groups', value: formatWholeNumber(groupsCount) }]
-      : mutualBuddiesCount == null
+      : mutualBuddiesCount == null || mutualBuddiesCount <= 0
         ? []
         : [{ label: 'Mutual', value: formatWholeNumber(mutualBuddiesCount) }]),
   ];
-  if (items.length === 0) return null;
 
   return (
     <View
