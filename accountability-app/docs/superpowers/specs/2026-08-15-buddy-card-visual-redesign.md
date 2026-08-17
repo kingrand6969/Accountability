@@ -2,12 +2,12 @@
 
 ## Purpose
 
-The Buddy Card is the public-facing profile shown to people who are not yet buddies. It must feel like a collectible fitness identity card while preserving the account owner's existing information. Buddies retain access to the fuller profile experience.
+The Buddy Card is the public-facing profile shown to people who are not yet buddies. It must feel like a clean, collectible fitness identity card while preserving the account owner's existing information. Buddies retain access to the fuller profile experience.
 
 ## Approved presentation
 
-- Keep the large blue gradient card, rounded silhouette, and collectible-card character.
-- Improve hierarchy and spacing without removing existing information.
+- The exact approved visual reference is the clean light card titled **Buddy Card Customization**: white rounded card, soft palette tint, compact circular avatar, small crest beside the rank name, restrained dividers, four-accent palette selector, and blue owner Edit Buddy Card action. Do not reinterpret this as a dark segmented card, a full blue gradient card, or a new redesign.
+- Preserve the approved hierarchy and spacing without removing existing information.
 - Show identity first: avatar, display name, location/activity status, rank badge, member-since date, and Challenges won.
 - Show Current Focus full-width below identity. It supports up to 90 characters and three visible lines. If the complete text does not fit, the section is tappable to reveal it.
 - Rename the competitive section from Achievements to Rankings. It shows Country, City, and Buddies positions.
@@ -16,6 +16,15 @@ The Buddy Card is the public-facing profile shown to people who are not yet budd
 - Tapping Medals and Challenges opens the owner's complete earned-medal and completed-challenge collection.
 - Keep the fitness metric row to four balanced columns: Consistency, Points, Average distance per day, and Distance.
 - Do not repeat total kilometres in the social row.
+
+## Required card structure
+
+- The Buddy Card always retains visible places for profile text, area, earned medals, challenge wins, and Rankings. Loading, missing legacy flags, or optional-request failures must not collapse the approved card into an identity-only shell.
+- Privacy remains authoritative. A public viewer never receives a private value merely to fill the design. When an authorized value is unavailable, the existing section stays stable and uses a truthful compact fallback: an em dash for an unavailable rank, `0` for an authorized zero challenge-win count, and the existing no-earned-medals treatment without inventing artwork.
+- The owner's profile/About text and Current Focus remain separate pieces of content. Current Focus stays inside the card in its approved clean treatment; the profile/About text remains readable in the profile presentation without replacing Focus.
+- Area stays in the identity metadata when authorized. If it is unavailable, the layout closes the line cleanly without shifting or removing the other required sections.
+- Medals and Challenges uses real earned medal artwork only. It shows up to four selected earned medals and keeps the full-gallery action visible.
+- The Rankings section always keeps the approved Country, City, Buddies, and Points positions. Values respect the existing consent gates; missing or withheld values render as an em dash rather than causing a column or the section to disappear.
 
 ## Viewer-aware social row
 
@@ -57,7 +66,7 @@ The Buddy Card is the public-facing profile shown to people who are not yet budd
 
 ## Acceptance criteria
 
-1. The approved information hierarchy and wording appear in light and dark modes.
+1. The exact approved clean-card hierarchy and wording appear in light and dark modes; no alternative Buddy Card redesign is introduced.
 2. Rankings and Medals and Challenges are visually and semantically distinct.
 3. Challenges won appears beneath Member since and is not duplicated in the metric row.
 4. The card shows at most four owner-selected medals in their chosen order.
@@ -66,3 +75,5 @@ The Buddy Card is the public-facing profile shown to people who are not yet budd
 7. Owner navigation never requires connecting to oneself.
 8. All specified links reach the correct destination and preserve back navigation.
 9. Existing information, privacy rules, and Buddy Card/public-profile semantics remain intact.
+10. Missing legacy flags and optional-data failures cannot remove the required profile text, area placement, Rankings, Challenges won placement, or Medals and Challenges structure.
+11. The card never invents ranks, medal artwork, challenge wins, or private values to preserve the layout.
