@@ -402,6 +402,11 @@ describe('PublicBuddyCardFace clean composition', () => {
     );
   }
 
+  function rankingAccessibilityCells(renderer: TestRenderer.ReactTestRenderer) {
+    const rankings = renderer.root.findByProps({ testID: 'buddy-card-rankings' });
+    return rankings.findAllByType(View).filter((node) => node.props.accessible === true);
+  }
+
   it('follows the approved clean information order without a photo-led hero', () => {
     const order = [
       'BuddyCardIdentity',
@@ -580,6 +585,75 @@ describe('PublicBuddyCardFace clean composition', () => {
     ]);
   });
 
+  it('keeps all four ranking columns on one non-wrapping row without changing other metric grids', () => {
+    const renderer = publicCard();
+    const rankingRow = renderer.root.findByProps({ testID: 'buddy-card-ranking-row' });
+    const rankingLayout = StyleSheet.flatten(rankingRow.props.style);
+
+    expect(rankingLayout.flexDirection).toBe('row');
+    expect(rankingLayout.flexWrap).not.toBe('wrap');
+    expect(rankingAccessibilityCells(renderer)).toHaveLength(4);
+    rankingAccessibilityCells(renderer).forEach((cell) => {
+      expect(StyleSheet.flatten(cell.props.style)).toEqual(expect.objectContaining({
+        flex: 1,
+        minWidth: 0,
+      }));
+    });
+
+    expect(StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'buddy-card-social-proof' }).findAllByType(View)[1].props.style,
+    ).flexWrap).toBe('wrap');
+    expect(StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'buddy-card-fitness' }).findAllByType(View)[1].props.style,
+    ).flexWrap).toBe('wrap');
+  });
+
+  it('groups ranking values with scope-aware accessible labels and hides descendant announcements', () => {
+    const owner = publicCard({
+      ownerView: true,
+      card: privateCard,
+      boardRank: privateBoardRank,
+    });
+    const visitor = publicCard({
+      ownerView: false,
+      card: privateCard,
+      boardRank: privateBoardRank,
+    });
+
+    expect(rankingAccessibilityCells(owner).map((cell) => cell.props.accessibilityLabel)).toEqual([
+      'Country ranking, #8',
+      'City ranking, #4',
+      'Buddies ranking, #3',
+      'Points, 1,234',
+    ]);
+    expect(rankingAccessibilityCells(visitor).map((cell) => cell.props.accessibilityLabel)).toEqual([
+      'Country ranking, unavailable',
+      'City ranking, unavailable',
+      'Buddies ranking, unavailable',
+      'Points, unavailable',
+    ]);
+    [...rankingAccessibilityCells(owner), ...rankingAccessibilityCells(visitor)].forEach((cell) => {
+      expect(cell.findAllByType(Text).every((text) => text.props.accessible === false)).toBe(true);
+    });
+  });
+
+  it('shows unavailable for invalid ranks and rounds valid positive ranks', () => {
+    for (const invalidRank of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 0, 0.49]) {
+      const renderer = publicCard({
+        boardRank: { ...boardRank, countryRank: invalidRank },
+      });
+      expect(rankingCells(renderer)[0]).toEqual({ label: 'Country', value: '—' });
+    }
+
+    const renderer = publicCard({
+      boardRank: { ...boardRank, countryRank: 0.5, cityRank: 4.4 },
+    });
+    expect(rankingCells(renderer).slice(0, 2)).toEqual([
+      { label: 'Country', value: '#1' },
+      { label: 'City', value: '#4' },
+    ]);
+  });
+
   it('uses Mutual for another viewer and Groups for the owner', () => {
     const visitorCopy = renderedText(publicCard({ ownerView: false }));
     const ownerCopy = renderedText(publicCard({ ownerView: true, groupsCount: 6 }));
@@ -724,6 +798,7 @@ describe('PublicBuddyCardFace runtime wiring', () => {
     expect(invocation).toContain('stats={stats}');
     expect(invocation).toContain('boardRank={boardRank}');
     expect(invocation).toContain('metrics={metrics}');
+    expect(invocation).toContain('ownerView={ownerView}');
   });
 
   it('clears viewer-bound state and guards every asynchronous profile load', () => {

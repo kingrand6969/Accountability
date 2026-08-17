@@ -25,6 +25,11 @@ const editorSource = fs.readFileSync(
   'utf8',
 );
 
+function publicFaceInvocation(source: string) {
+  const start = source.indexOf('<PublicBuddyCardFace');
+  return source.slice(start, source.indexOf('/>', start));
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((res) => {
@@ -71,6 +76,13 @@ describe('Buddy Card editor presentation controls', () => {
     expect(editorSource).toContain('palette_key: paletteKey');
     expect(editorSource).not.toContain('Use my cover photo as the card hero');
     expect(editorSource).not.toContain('show_hero: value');
+  });
+
+  test('keeps the live public preview subject to the draft privacy toggles', () => {
+    const invocation = publicFaceInvocation(editorSource);
+    const ownerOverride = invocation.match(/\bownerView(?:\s*=\s*\{([^}]*)\})?/);
+
+    expect(ownerOverride === null || ownerOverride[1]?.trim() === 'false').toBe(true);
   });
 
   test('has synchronous duplicate-submit, stale-generation, unmount, and dirty navigation guards', () => {

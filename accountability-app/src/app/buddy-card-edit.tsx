@@ -534,7 +534,6 @@ export default function BuddyCardEdit() {
           stats={myStats}
           boardRank={myBoardRank}
           metrics={myMetrics}
-          ownerView
           onPressMedals={() => router.push('/achievements' as never)}
         />
         {about ? (

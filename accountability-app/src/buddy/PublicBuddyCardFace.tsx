@@ -185,9 +185,17 @@ function BuddyCardRankings({
       style={[styles.section, { borderBottomColor: palette.border }]}
     >
       <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Rankings</Text>
-      <View style={styles.metricGrid}>
+      <View testID="buddy-card-ranking-row" style={styles.rankingRow}>
         {items.map((item) => (
-          <Metric key={item.label} {...item} palette={palette} />
+          <Metric
+            key={item.label}
+            {...item}
+            palette={palette}
+            layout="ranking"
+            accessibilityLabel={`${item.label === 'Points' ? 'Points' : `${item.label} ranking`}, ${
+              item.value === EMPTY_VALUE ? 'unavailable' : item.value
+            }`}
+          />
         ))}
       </View>
     </View>
@@ -283,21 +291,46 @@ function Metric({
   label,
   value,
   palette,
+  layout = 'wrapping',
+  accessibilityLabel,
 }: {
   label: string;
   value: string;
   palette: BuddyCardPalette;
+  layout?: 'ranking' | 'wrapping';
+  accessibilityLabel?: string;
 }) {
+  const groupedForAccessibility = accessibilityLabel !== undefined;
+
   return (
-    <View style={styles.metric}>
-      <Text style={[styles.metricValue, { color: palette.text }]}>{value}</Text>
-      <Text style={[styles.metricLabel, { color: palette.textMuted }]}>{label}</Text>
+    <View
+      accessible={groupedForAccessibility ? true : undefined}
+      accessibilityLabel={accessibilityLabel}
+      style={[
+        styles.metric,
+        layout === 'ranking' ? styles.rankingMetric : styles.wrappingMetric,
+      ]}
+    >
+      <Text
+        accessible={groupedForAccessibility ? false : undefined}
+        style={[styles.metricValue, { color: palette.text }]}
+      >
+        {value}
+      </Text>
+      <Text
+        accessible={groupedForAccessibility ? false : undefined}
+        style={[styles.metricLabel, { color: palette.textMuted }]}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
 
 function formatRank(value: number | null | undefined) {
-  return value == null ? EMPTY_VALUE : `#${Math.round(value)}`;
+  if (value == null || !Number.isFinite(value) || value <= 0) return EMPTY_VALUE;
+  const rounded = Math.round(value);
+  return rounded < 1 ? EMPTY_VALUE : `#${rounded}`;
 }
 
 function formatWholeNumber(value: number | null | undefined) {
@@ -528,10 +561,19 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     rowGap: spacing.md,
   },
+  rankingRow: {
+    flexDirection: 'row',
+  },
   metric: {
+    paddingRight: spacing.sm,
+  },
+  wrappingMetric: {
     width: '25%',
     minWidth: 72,
-    paddingRight: spacing.sm,
+  },
+  rankingMetric: {
+    flex: 1,
+    minWidth: 0,
   },
   metricValue: {
     fontFamily: font.extrabold,
