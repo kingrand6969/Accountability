@@ -179,10 +179,16 @@ function BuddyCardRankings({
   return (
     <View
       testID="buddy-card-rankings"
-      style={[styles.section, { borderBottomColor: palette.border }]}
+      style={styles.rankingsSection}
     >
-      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Rankings</Text>
-      <View testID="buddy-card-ranking-row" style={styles.rankingRow}>
+      <View style={styles.sectionHeader}>
+        <Text accessibilityRole="header" style={[styles.sectionTitle, { color: palette.text }]}>Rankings</Text>
+        <Text style={[styles.sectionAction, { color: palette.accent }]}>YOUR POSITION</Text>
+      </View>
+      <View
+        testID="buddy-card-ranking-row"
+        style={[styles.rankingRow, { borderColor: palette.border }]}
+      >
         {items.map((item) => (
           <Metric
             key={item.label}
@@ -227,12 +233,14 @@ function BuddyCardSocialProof({
   return (
     <View
       testID="buddy-card-social-proof"
-      style={[styles.section, { borderBottomColor: palette.border }]}
+      style={[
+        styles.socialStrip,
+        { backgroundColor: palette.surfaceTint, borderColor: palette.border },
+      ]}
     >
-      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Social</Text>
-      <View style={styles.metricGrid}>
+      <View testID="buddy-card-social-row" style={styles.compactMetricRow}>
         {items.map((item) => (
-          <Metric key={item.label} {...item} palette={palette} />
+          <Metric key={item.label} {...item} palette={palette} layout="compact" />
         ))}
       </View>
     </View>
@@ -269,10 +277,9 @@ function BuddyCardFitnessMetrics({
 
   return (
     <View testID="buddy-card-fitness" style={styles.lastSection}>
-      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Fitness</Text>
-      <View style={styles.metricGrid}>
+      <View testID="buddy-card-fitness-row" style={styles.compactMetricRow}>
         {items.map((item) => (
-          <Metric key={item.label} {...item} palette={palette} />
+          <Metric key={item.label} {...item} palette={palette} layout="compact" />
         ))}
       </View>
     </View>
@@ -283,24 +290,25 @@ function Metric({
   label,
   value,
   palette,
-  layout = 'wrapping',
+  layout = 'compact',
   accessibilityLabel,
 }: {
   label: string;
   value: string;
   palette: BuddyCardPalette;
-  layout?: 'ranking' | 'wrapping';
+  layout?: 'ranking' | 'compact';
   accessibilityLabel?: string;
 }) {
   const groupedForAccessibility = accessibilityLabel !== undefined;
 
   return (
     <View
+      testID={`buddy-card-metric-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
       accessible={groupedForAccessibility ? true : undefined}
       accessibilityLabel={accessibilityLabel}
       style={[
         styles.metric,
-        layout === 'ranking' ? styles.rankingMetric : styles.wrappingMetric,
+        layout === 'ranking' ? styles.rankingMetric : styles.compactMetric,
       ]}
     >
       <Text
@@ -388,11 +396,6 @@ export function PublicBuddyCardFace({
         pointerEvents="none"
         style={[styles.atmosphere, { backgroundColor: palette.surfaceTint }]}
       />
-      <View
-        testID="buddy-card-accent"
-        pointerEvents="none"
-        style={[styles.accent, { backgroundColor: palette.accent }]}
-      />
       <View style={styles.content}>
         <BuddyCardIdentity
           name={name}
@@ -445,9 +448,6 @@ const styles = StyleSheet.create({
     top: -120,
     borderRadius: 110,
     opacity: 0.26,
-  },
-  accent: {
-    height: 4,
   },
   content: {
     paddingHorizontal: spacing.lg,
@@ -541,36 +541,54 @@ const styles = StyleSheet.create({
     fontFamily: font.semibold,
     fontSize: 11.5,
   },
-  section: {
-    paddingVertical: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  rankingsSection: {
+    paddingTop: spacing.lg,
+  },
+  sectionHeader: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    fontFamily: font.extrabold,
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
+  sectionAction: {
+    fontFamily: font.extrabold,
+    fontSize: 9,
+    letterSpacing: 0.8,
   },
   lastSection: {
-    paddingVertical: spacing.lg,
-  },
-  sectionLabel: {
-    marginBottom: spacing.md,
-    fontFamily: font.extrabold,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  metricGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: spacing.md,
+    paddingVertical: spacing.md,
   },
   rankingRow: {
     flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.md,
+  },
+  socialStrip: {
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+  },
+  compactMetricRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
   },
   metric: {
     paddingRight: spacing.sm,
   },
-  wrappingMetric: {
-    width: '25%',
-    minWidth: 72,
-  },
   rankingMetric: {
+    flex: 1,
+    minWidth: 0,
+  },
+  compactMetric: {
     flex: 1,
     minWidth: 0,
   },

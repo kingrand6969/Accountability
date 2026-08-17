@@ -384,7 +384,7 @@ describe('PublicBuddyCardFace clean composition', () => {
   }
 
   function rankingCells(renderer: TestRenderer.ReactTestRenderer) {
-    const rankings = renderer.root.findByProps({ testID: 'buddy-card-rankings' });
+    const rankings = renderer.root.findByProps({ testID: 'buddy-card-ranking-row' });
     const cells = rankings.findAllByType(View).filter(
       (node) => node.findAllByType(Text).length === 2,
     ).map((cell) => {
@@ -451,7 +451,6 @@ describe('PublicBuddyCardFace clean composition', () => {
       'Medals and Challenges',
       'Cheers',
       '215',
-      'Fitness',
       'Consistency',
       '88%',
       'Avg km/day',
@@ -501,6 +500,36 @@ describe('PublicBuddyCardFace clean composition', () => {
       backgroundColor: selected.surface,
       borderColor: selected.border,
     }));
+  });
+
+  it('uses one clean card surface with the approved compact section treatments', () => {
+    const renderer = publicCard({ ownerView: true, groupsCount: 3 });
+    const rankings = renderer.root.findByProps({ testID: 'buddy-card-rankings' });
+    const social = renderer.root.findByProps({ testID: 'buddy-card-social-proof' });
+    const fitnessRow = renderer.root.findByProps({ testID: 'buddy-card-fitness-row' });
+    const selected = resolveBuddyCardPalette('power_violet', 'light');
+
+    expect(renderer.root.findAllByProps({ testID: 'buddy-card-accent' })).toHaveLength(0);
+    expect(rankings.findAllByType(Text).map((node) => node.props.children)).toContain('YOUR POSITION');
+    expect(StyleSheet.flatten(social.props.style)).toEqual(expect.objectContaining({
+      backgroundColor: selected.surfaceTint,
+      borderRadius: expect.any(Number),
+    }));
+    expect(StyleSheet.flatten(fitnessRow.props.style)).toEqual(expect.objectContaining({
+      flexDirection: 'row',
+      flexWrap: 'nowrap',
+    }));
+    const fitnessCells = fitnessRow.findAllByType(View).filter(
+      (node) => node.props.testID?.startsWith('buddy-card-metric-'),
+    );
+    expect(fitnessCells).toHaveLength(4);
+    fitnessCells.forEach((cell) => {
+      expect(StyleSheet.flatten(cell.props.style)).toEqual(expect.objectContaining({
+        flex: 1,
+        minWidth: 0,
+      }));
+    });
+    expect(renderedText(renderer)).not.toEqual(expect.arrayContaining(['Social', 'Fitness']));
   });
 
   it('keeps challenge wins directly below the inline rank without a horizontal offset', () => {
@@ -624,7 +653,7 @@ describe('PublicBuddyCardFace clean composition', () => {
     ]);
   });
 
-  it('keeps all four ranking columns on one non-wrapping row without changing other metric grids', () => {
+  it('keeps the approved ranking, social, and fitness summaries on compact non-wrapping rows', () => {
     const renderer = publicCard();
     const rankingRow = renderer.root.findByProps({ testID: 'buddy-card-ranking-row' });
     const rankingLayout = StyleSheet.flatten(rankingRow.props.style);
@@ -639,12 +668,16 @@ describe('PublicBuddyCardFace clean composition', () => {
       }));
     });
 
-    expect(StyleSheet.flatten(
-      renderer.root.findByProps({ testID: 'buddy-card-social-proof' }).findAllByType(View)[1].props.style,
-    ).flexWrap).toBe('wrap');
-    expect(StyleSheet.flatten(
-      renderer.root.findByProps({ testID: 'buddy-card-fitness' }).findAllByType(View)[1].props.style,
-    ).flexWrap).toBe('wrap');
+    const socialRow = renderer.root.findByProps({ testID: 'buddy-card-social-row' });
+    const fitnessRow = renderer.root.findByProps({ testID: 'buddy-card-fitness-row' });
+    expect(StyleSheet.flatten(socialRow.props.style)).toEqual(expect.objectContaining({
+      flexDirection: 'row',
+      flexWrap: 'nowrap',
+    }));
+    expect(StyleSheet.flatten(fitnessRow.props.style)).toEqual(expect.objectContaining({
+      flexDirection: 'row',
+      flexWrap: 'nowrap',
+    }));
   });
 
   it('groups ranking values with scope-aware accessible labels and hides descendant announcements', () => {
@@ -703,7 +736,6 @@ describe('PublicBuddyCardFace clean composition', () => {
     const copy = social.findAllByType(Text).map((node) => String(node.props.children));
 
     expect(copy).toEqual([
-      'Social',
       '—',
       'Cheers',
       '—',
@@ -732,16 +764,17 @@ describe('PublicBuddyCardFace clean composition', () => {
     const selected = resolveBuddyCardPalette('power_violet', 'light');
     const renderer = publicCard();
     const frame = renderer.root.findByProps({ testID: 'public-buddy-card' });
-    const accent = renderer.root.findByProps({ testID: 'buddy-card-accent' });
+    const atmosphere = renderer.root.findByProps({ testID: 'buddy-card-atmosphere' });
     const badge = renderer.root.findByProps({ testID: 'buddy-card-rank-badge' });
 
     expect(StyleSheet.flatten(frame.props.style)).toEqual(expect.objectContaining({
       backgroundColor: selected.surface,
       borderColor: selected.border,
     }));
-    expect(StyleSheet.flatten(accent.props.style)).toEqual(expect.objectContaining({
-      backgroundColor: selected.accent,
+    expect(StyleSheet.flatten(atmosphere.props.style)).toEqual(expect.objectContaining({
+      backgroundColor: selected.surfaceTint,
     }));
+    expect(renderer.root.findAllByProps({ testID: 'buddy-card-accent' })).toHaveLength(0);
     expect(badge.props.color).toBeUndefined();
     expect(badge.props.tintColor).toBeUndefined();
     expect(badge.props.effects).toBe('none');
@@ -902,5 +935,12 @@ describe('PublicBuddyCardFace runtime wiring', () => {
     expect(invocation).toContain('stats={myStats}');
     expect(invocation).toContain('boardRank={myBoardRank}');
     expect(invocation).toContain('metrics={myMetrics}');
+  });
+
+  it('does not place the approved public card inside the legacy padded card shell', () => {
+    expect(screenSource).toContain(
+      '<View style={fullBuddyView ? styles.card : styles.publicCardShell}>',
+    );
+    expect(screenSource).toMatch(/publicCardShell:\s*\{\s*width:\s*'100%'/);
   });
 });

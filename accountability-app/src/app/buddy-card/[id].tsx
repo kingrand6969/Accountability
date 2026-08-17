@@ -548,7 +548,7 @@ export default function BuddyCardScreen() {
               ),
         }}
       />
-      <View style={styles.card}>
+      <View style={fullBuddyView ? styles.card : styles.publicCardShell}>
         {fullBuddyView ? (
           <BuddyCardFace
           name={view.name}
@@ -753,6 +753,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.md,
     ...shadow.card,
+  },
+  publicCardShell: {
+    width: '100%',
   },
   aboutCard: {
     backgroundColor: colors.card,
