@@ -51,6 +51,11 @@ const fullProfileSql = fs.readFileSync(
   'utf8',
 );
 
+function publicFaceInvocation(source: string) {
+  const start = source.indexOf('<PublicBuddyCardFace');
+  return source.slice(start, source.indexOf('/>', start));
+}
+
 function authUser(id: string | null) {
   return { data: { user: id ? { id } : null } };
 }
@@ -76,8 +81,16 @@ describe('Buddy Card viewer state', () => {
     expect(buddyCardViewerMode(null, 'owner', true)).toBe('public');
   });
 
-  test('owner renders an edit action and never renders Connect-to-self or profile options', () => {
+  test('owner card keeps owner display, About wiring, and no Connect-to-self path', () => {
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+    const { buddyCardViewerMode, createBuddyCardConnectLock } = relationship();
+
+    expect(buddyCardViewerMode(ownerId, ownerId, false)).toBe('owner');
+    expect(createBuddyCardConnectLock().tryAcquire(ownerId, ownerId)).toBeNull();
     expect(screenSource).toContain("const ownerView = accessMode === 'self' && currentUserId === id");
+    expect(publicFaceInvocation(screenSource)).toContain('ownerView={ownerView}');
+    expect(screenSource).toContain('const visibleAbout = ownerView || isBuddy ? view.bio : about');
+    expect(screenSource).toContain('<Text style={styles.aboutText}>{visibleAbout}</Text>');
     expect(screenSource).toContain("router.push('/buddy-card-edit' as never)");
     expect(screenSource).toContain('!ownerView && !isBuddy');
     expect(screenSource).toContain('headerRight: ownerView');

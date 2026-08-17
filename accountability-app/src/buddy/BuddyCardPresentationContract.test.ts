@@ -30,6 +30,7 @@ jest.mock('../ui/CachedImage', () => {
 });
 
 import { MEDALS, medalState } from '../achievements/catalog';
+import { Medal } from '../achievements/Medal';
 import { BuddyCardAchievements } from './BuddyCardAchievements';
 import { BuddyCardFocus } from './BuddyCardFocus';
 import { resolveBuddyCardPalette } from './palette';
@@ -202,14 +203,35 @@ describe('BuddyCardAchievements', () => {
     };
   }
 
-  it('omits the section when medal visibility is off or there are no earned medals', () => {
+  function expectTruthfulEmptyAchievements(renderer: TestRenderer.ReactTestRenderer, onPress: jest.Mock) {
+    expect(renderer.root.findByProps({ testID: 'buddy-card-achievements' })).toBeDefined();
+    expect(featuredMedals(renderer)).toHaveLength(0);
+    expect(renderer.root.findAllByType(Medal)).toHaveLength(0);
+    expect(renderer.root.findAllByType(Text).map((node) => node.props.children)).toEqual(
+      expect.arrayContaining(['Medals and Challenges', 'No earned medals shared yet']),
+    );
+
+    const action = interactiveByLabel(renderer, 'View all medals and completed challenges');
+    act(() => action.props.onPress());
+    expect(onPress).toHaveBeenCalledTimes(1);
+  }
+
+  it('keeps the gallery action and truthful empty state when earned medals are not shared', () => {
     const onPress = jest.fn();
-    expect(render(createElement(BuddyCardAchievements, {
+    const renderer = render(createElement(BuddyCardAchievements, {
       card: card({ show_medals: false }), palette, onPress,
-    })).toJSON()).toBeNull();
-    expect(render(createElement(BuddyCardAchievements, {
+    }));
+
+    expectTruthfulEmptyAchievements(renderer, onPress);
+  });
+
+  it('keeps the gallery action and truthful empty state when no medals have been earned', () => {
+    const onPress = jest.fn();
+    const renderer = render(createElement(BuddyCardAchievements, {
       card: card({ medals_list: [] }), palette, onPress,
-    })).toJSON()).toBeNull();
+    }));
+
+    expectTruthfulEmptyAchievements(renderer, onPress);
   });
 
   it('shows at most four real earned medals in requested order and filters invalid choices', () => {
@@ -452,7 +474,15 @@ describe('PublicBuddyCardFace clean composition', () => {
       },
     });
     expect(crestOnly.root.findByProps({ testID: 'buddy-card-rank-inline' })).toBeDefined();
-    expect(crestOnly.root.findAllByProps({ testID: 'buddy-card-rankings' })).toHaveLength(0);
+    expect(crestOnly.root.findByProps({ testID: 'buddy-card-rankings' })).toBeDefined();
+    expect(renderedText(crestOnly)).toEqual(expect.arrayContaining([
+      'Country',
+      'City',
+      'Buddies',
+      'Points',
+      '—',
+    ]));
+    expect(renderedText(crestOnly).filter((value) => value === '—')).toHaveLength(4);
 
     const buddiesRankingOnly = publicCard({
       card: {
@@ -465,10 +495,18 @@ describe('PublicBuddyCardFace clean composition', () => {
       },
     });
     expect(buddiesRankingOnly.root.findAllByProps({ testID: 'buddy-card-rank-inline' })).toHaveLength(0);
-    expect(renderedText(buddiesRankingOnly)).toEqual(expect.arrayContaining(['Buddies', '#3']));
+    expect(renderedText(buddiesRankingOnly)).toEqual(expect.arrayContaining([
+      'Country',
+      'City',
+      'Buddies',
+      '#3',
+      'Points',
+      '—',
+    ]));
+    expect(renderedText(buddiesRankingOnly).filter((value) => value === '—')).toHaveLength(3);
   });
 
-  it('renders country and city ranking consent independently', () => {
+  it('keeps stable country and city columns while applying their consent independently', () => {
     const countryOnly = renderedText(publicCard({
       card: {
         ...completeCard,
@@ -479,7 +517,9 @@ describe('PublicBuddyCardFace clean composition', () => {
       },
     }));
     expect(countryOnly).toContain('Country');
-    expect(countryOnly).not.toContain('City');
+    expect(countryOnly).toContain('City');
+    expect(countryOnly).not.toContain('#4');
+    expect(countryOnly.filter((value) => value === '—')).toHaveLength(4);
 
     const cityOnly = renderedText(publicCard({
       card: {
@@ -490,8 +530,10 @@ describe('PublicBuddyCardFace clean composition', () => {
         show_points: false,
       },
     }));
+    expect(cityOnly).toContain('Country');
     expect(cityOnly).toContain('City');
-    expect(cityOnly).not.toContain('Country');
+    expect(cityOnly).toContain('#4');
+    expect(cityOnly.filter((value) => value === '—')).toHaveLength(3);
   });
 
   it('uses Mutual for another viewer and Groups for the owner', () => {
@@ -526,7 +568,7 @@ describe('PublicBuddyCardFace clean composition', () => {
     expect(badge.props.effects).toBe('none');
   });
 
-  it('omits optional metric sections when no authorized values are supplied', () => {
+  it('preserves the approved required structure on a minimal public card', () => {
     const renderer = publicCard({
       card: { palette_key: 'polar_blue', show_medals: false },
       metrics: null,
@@ -535,10 +577,79 @@ describe('PublicBuddyCardFace clean composition', () => {
       mutualBuddiesCount: null,
       groupsCount: null,
     });
+    const copy = renderedText(renderer);
 
-    expect(renderer.root.findAllByProps({ testID: 'buddy-card-rankings' })).toHaveLength(0);
-    expect(renderer.root.findAllByProps({ testID: 'buddy-card-social-proof' })).toHaveLength(0);
-    expect(renderer.root.findAllByProps({ testID: 'buddy-card-fitness' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'public-buddy-card' })).toBeDefined();
+    expect(renderer.root.findByProps({ testID: 'buddy-card-rankings' })).toBeDefined();
+    expect(renderer.root.findByProps({ testID: 'buddy-card-achievements' })).toBeDefined();
+    expect(copy).toEqual(expect.arrayContaining([
+      'Challenges won · —',
+      'Rankings',
+      'Country',
+      'City',
+      'Buddies',
+      'Points',
+      'Medals and Challenges',
+    ]));
+    expect(copy.filter((value) => value === '—')).toHaveLength(4);
+  });
+
+  it('shows owner-authorized values while visitors receive stable private placeholders', () => {
+    const privateCard: BuddyCard = {
+      palette_key: 'polar_blue',
+      show_area: false,
+      show_rank: false,
+      rank_name: 'Mythical',
+      show_challenge_wins: false,
+      show_country_rank: false,
+      show_city_rank: false,
+      show_consistency: false,
+      show_points: false,
+      show_medals: false,
+    };
+    const privateBoardRank = {
+      city: 'Perth',
+      country: 'Australia',
+      cityRank: 4,
+      countryRank: 8,
+    };
+    const ownerCopy = renderedText(publicCard({
+      ownerView: true,
+      card: privateCard,
+      boardRank: privateBoardRank,
+    }));
+    const visitorCopy = renderedText(publicCard({
+      ownerView: false,
+      card: privateCard,
+      boardRank: privateBoardRank,
+    }));
+
+    expect(ownerCopy).toEqual(expect.arrayContaining([
+      expect.stringContaining('Perth, Australia'),
+      'Mythical',
+      'Challenges won · 7',
+      'Country',
+      '#8',
+      'City',
+      '#4',
+      'Buddies',
+      '#3',
+      'Points',
+      '1,234',
+    ]));
+
+    expect(visitorCopy.some((value) => value.includes('Perth, Australia'))).toBe(false);
+    for (const privateValue of ['Mythical', 'Challenges won · 7', '#8', '#4', '#3', '1,234']) {
+      expect(visitorCopy).not.toContain(privateValue);
+    }
+    expect(visitorCopy).toEqual(expect.arrayContaining([
+      'Challenges won · —',
+      'Country',
+      'City',
+      'Buddies',
+      'Points',
+    ]));
+    expect(visitorCopy.filter((value) => value === '—')).toHaveLength(4);
   });
 });
 
