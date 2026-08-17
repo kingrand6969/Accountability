@@ -471,19 +471,36 @@ describe('PublicBuddyCardFace clean composition', () => {
     const renderer = publicCard();
     const row = renderer.root.findByProps({ testID: 'buddy-card-rank-inline' });
     const badge = renderer.root.findByProps({ testID: 'buddy-card-rank-badge' });
+    const rankLabel = row.findAllByType(Text).find((node) => node.props.children === 'Mythical');
 
     expect(StyleSheet.flatten(row.props.style)).toEqual(expect.objectContaining({
       flexDirection: 'row',
       alignItems: 'center',
     }));
     expect(badge.props.rank).toBe('Mythical');
-    expect(badge.props.size).toBeLessThanOrEqual(36);
+    expect(badge.props.size).toBe(24);
     expect(badge.props.animated).toBe(false);
     expect(badge.props.variant).toBe('crest');
+    expect(StyleSheet.flatten(rankLabel!.props.style)).toEqual(expect.objectContaining({
+      color: resolveBuddyCardPalette('power_violet', 'light').accent,
+      fontSize: 13,
+    }));
     expect(row.findAllByType(Text).map((node) => node.props.children)).toEqual([
       'rank crest',
       'Mythical',
     ]);
+  });
+
+  it('uses the approved light Buddy Card palette instead of the phone system appearance', () => {
+    const renderer = publicCard();
+    const frame = renderer.root.findByProps({ testID: 'public-buddy-card' });
+    const selected = resolveBuddyCardPalette('power_violet', 'light');
+
+    expect(publicFaceSource).not.toContain('useColorScheme');
+    expect(StyleSheet.flatten(frame.props.style)).toEqual(expect.objectContaining({
+      backgroundColor: selected.surface,
+      borderColor: selected.border,
+    }));
   });
 
   it('keeps challenge wins directly below the inline rank without a horizontal offset', () => {

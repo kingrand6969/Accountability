@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { RankBadge } from '../achievements/RankBadge';
 import { RANK_ORDER, type RankName } from '../achievements/rankAssets';
@@ -101,24 +101,22 @@ function BuddyCardIdentity({
             <View testID="buddy-card-rank-inline" style={styles.rankInline}>
               <RankBadge
                 rank={rankName}
-                size={32}
+                size={24}
                 animated={false}
                 effects="none"
                 variant="crest"
               />
-              <Text style={[styles.rankName, { color: palette.text }]}>{rankName}</Text>
+              <Text style={[styles.rankName, { color: palette.accent }]}>{rankName}</Text>
             </View>
           ) : null}
-          <Text
-            style={[
-              styles.challengeWins,
-              { color: palette.textMuted },
-            ]}
-          >
-            Challenges won · {card.show_challenge_wins && metrics?.chwin != null
-              ? Math.round(metrics.chwin)
-              : EMPTY_VALUE}
-          </Text>
+          <View style={styles.challengeWinsRow}>
+            <Ionicons name="trophy" size={10} color={palette.accent} />
+            <Text style={[styles.challengeWins, { color: palette.textMuted }]}>
+              Challenges won · {card.show_challenge_wins && metrics?.chwin != null
+                ? Math.round(metrics.chwin)
+                : EMPTY_VALUE}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -362,8 +360,9 @@ export function PublicBuddyCardFace({
   groupsCount?: number | null;
   onPressMedals?: () => void;
 }) {
-  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
-  const palette = resolveBuddyCardPalette(card.palette_key, scheme);
+  // The app shell currently uses its approved light appearance. Reading the
+  // phone's system scheme here made this one card turn dark inside a light app.
+  const palette = resolveBuddyCardPalette(card.palette_key, 'light');
   const presentedCard: BuddyCard = ownerView
     ? {
         ...card,
@@ -456,21 +455,21 @@ const styles = StyleSheet.create({
   identitySection: {
     paddingVertical: spacing.lg,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.md,
   },
   avatarRing: {
-    width: 78,
-    height: 78,
+    width: 86,
+    height: 86,
     padding: 3,
     borderWidth: 2,
-    borderRadius: 39,
+    borderRadius: 43,
   },
   avatar: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
   },
   avatarFallback: {
     alignItems: 'center',
@@ -482,8 +481,8 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: font.extrabold,
-    fontSize: 23,
-    lineHeight: 28,
+    fontSize: 21,
+    lineHeight: 26,
     letterSpacing: -0.45,
   },
   identityMeta: {
@@ -499,23 +498,29 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   rankDetails: {
-    marginTop: spacing.sm,
+    marginTop: 6,
     alignItems: 'flex-start',
   },
   rankInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 5,
   },
   rankName: {
     fontFamily: font.extrabold,
-    fontSize: 17,
+    fontSize: 13,
+  },
+  challengeWinsRow: {
+    minHeight: 18,
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   challengeWins: {
-    marginTop: 2,
     marginLeft: 0,
     fontFamily: font.semibold,
-    fontSize: 11.5,
+    fontSize: 10,
   },
   traitRow: {
     width: '100%',
