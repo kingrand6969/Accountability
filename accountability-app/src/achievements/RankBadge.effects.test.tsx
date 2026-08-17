@@ -40,7 +40,7 @@ describe('RankBadge effect modes', () => {
     expect(renderer.root.findAllByProps({ testID: 'rank-badge-artwork' }).length).toBeGreaterThan(0);
   });
 
-  it('clips the official nameplate to its square left crest in crest mode', () => {
+  it('centers the complete left emblem inside the square crest frame', () => {
     const renderer = renderBadge({
       rank: 'Mythical',
       size: 32,
@@ -59,7 +59,8 @@ describe('RankBadge effect modes', () => {
     expect(StyleSheet.flatten(artwork.props.style)).toEqual(expect.objectContaining({
       width: 96,
       height: 32,
-      left: 0,
+      left: -8,
+      right: undefined,
     }));
     expect(frame.props.accessibilityRole).toBe('image');
     expect(frame.props.accessibilityLabel).toBe('Rank: Mythical');

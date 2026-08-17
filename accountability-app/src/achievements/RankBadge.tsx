@@ -236,7 +236,12 @@ export function RankBadge({
           resizeMode="contain"
           style={[
             StyleSheet.absoluteFill,
-            { width: w, height: h, opacity: showEffects && cfg.flicker ? flick : 1 },
+            {
+              width: w,
+              height: h,
+              opacity: showEffects && cfg.flicker ? flick : 1,
+              ...(variant === 'crest' ? { left: -size * 0.25, right: undefined } : null),
+            },
           ]}
         />
 
