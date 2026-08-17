@@ -16,8 +16,8 @@ export function JourneyEncouragementBar({
 }) {
   const first = value?.people[0];
   const copy = value
-    ? `${authorLabel(first?.name ?? null)}${value.count > 1 ? ` and ${value.count - 1} ${value.count === 2 ? 'other' : 'others'}` : ''} encouraged you`
-    : 'No encouragement on your recent proofs yet.';
+    ? `${authorLabel(first?.name ?? null)}${value.count > 1 ? ` and ${value.count - 1} ${value.count === 2 ? 'other' : 'others'}` : ''} cheered you`
+    : 'No Cheers on your recent proofs yet.';
   return (
     <Pressable
       disabled={!value}
@@ -25,7 +25,7 @@ export function JourneyEncouragementBar({
       style={({ pressed }) => [styles.bar, dark && styles.barDark, !value && styles.empty, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityState={{ disabled: !value }}
-      accessibilityLabel={value ? `${copy}. Open encouragement.` : copy}
+      accessibilityLabel={value ? `${copy}. Open Cheers.` : copy}
     >
       <View style={styles.faces}>
         {value?.people.length ? value.people.map((person, index) => (
@@ -37,10 +37,10 @@ export function JourneyEncouragementBar({
         )}
       </View>
       <View style={styles.copy}>
-        <Text style={[styles.title, dark && styles.titleDark]}>Encouragement</Text>
+        <Text style={[styles.title, dark && styles.titleDark]}>Cheers</Text>
         <Text style={[styles.meta, dark && styles.metaDark]} numberOfLines={2}>{copy}</Text>
       </View>
-      {value?.hasVoice ? <Ionicons name="pulse" size={22} color={colors.primary} accessibilityLabel="Includes voice encouragement" /> : null}
+      {value?.hasVoice ? <Ionicons name="pulse" size={22} color={colors.primary} accessibilityLabel="Includes a voice Cheer" /> : null}
       <Ionicons name="chevron-forward" size={18} color={dark ? '#AFC1D7' : colors.navy} />
     </Pressable>
   );

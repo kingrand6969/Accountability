@@ -12,14 +12,13 @@ type BrandGeometry = {
   colors: {
     cobalt: string;
     navy: string;
+    cyan: string;
     cream: string;
   };
-  heads: {
-    cx: number;
-    cy: number;
-    r: number;
-  }[];
-  ribbons: string[];
+  mark: {
+    primaryPath: string;
+    accentPath: string;
+  };
 };
 
 export type BrandGeometryContract = DeepReadonly<BrandGeometry>;
@@ -30,15 +29,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9A-F]{6}$/.test(value);
-}
-
-function isHead(value: unknown) {
-  return (
-    isRecord(value) &&
-    ['cx', 'cy', 'r'].every(
-      (key) => typeof value[key] === 'number' && Number.isFinite(value[key]),
-    )
-  );
 }
 
 function deepFreeze<T>(value: T): DeepReadonly<T> {
@@ -59,15 +49,13 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
     !isRecord(value.colors) ||
     !isHexColor(value.colors.cobalt) ||
     !isHexColor(value.colors.navy) ||
+    !isHexColor(value.colors.cyan) ||
     !isHexColor(value.colors.cream) ||
-    !Array.isArray(value.heads) ||
-    value.heads.length !== 2 ||
-    !value.heads.every(isHead) ||
-    !Array.isArray(value.ribbons) ||
-    value.ribbons.length !== 2 ||
-    !value.ribbons.every(
-      (ribbon) => typeof ribbon === 'string' && ribbon.length > 0,
-    )
+    !isRecord(value.mark) ||
+    typeof value.mark.primaryPath !== 'string' ||
+    value.mark.primaryPath.length === 0 ||
+    typeof value.mark.accentPath !== 'string' ||
+    value.mark.accentPath.length === 0
   ) {
     throw new Error('Invalid brand geometry');
   }
@@ -79,21 +67,18 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
  * Node asset generator. Keep it as JSON so neither runtime needs a transpiler.
  */
 export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
-  "viewBox": "0 0 96 88",
-  "wordmark": "AccountAbility",
+  "viewBox": "0 0 96 96",
+  "wordmark": "Accountability",
   "colors": {
     "cobalt": "#155EEF",
     "navy": "#081A3A",
+    "cyan": "#20C7D9",
     "cream": "#F7F4EC"
   },
-  "heads": [
-    { "cx": 27, "cy": 15, "r": 10 },
-    { "cx": 69, "cy": 15, "r": 10 }
-  ],
-  "ribbons": [
-    "M5 78 20 33c2-7 11-10 17-5l22 22-14 17-13-15-10 30H9c-3 0-5-2-4-4Z",
-    "m91 78-15-45c-2-7-11-10-17-5L37 50l14 17 13-15 10 30h13c3 0 5-2 4-4Z"
-  ]
+  "mark": {
+    "primaryPath": "M6 86 36 13Q39 5 47 5t11 8l32 73H68L61 68H31L24 86H6Zm32-35h16L46 30l-8 21Z",
+    "accentPath": "M31 62 58 40 62 49 36 66Z"
+  }
 }`));
 
 export const BRAND_WORDMARK = BRAND_GEOMETRY.wordmark;

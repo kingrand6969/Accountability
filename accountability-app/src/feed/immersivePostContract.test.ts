@@ -17,8 +17,20 @@ jest.mock('./Avatar', () => ({ Avatar: () => null }));
 jest.mock('./PostImage', () => ({ PostImage: () => null }));
 jest.mock('./PostVideo', () => ({ PostVideo: () => null }));
 
-const routeSource = readFileSync(require.resolve('../app/post/[id]'), 'utf8');
+const routeSource = readFileSync(require.resolve('../app/(app)/post/[id]'), 'utf8');
 const componentSource = readFileSync(require.resolve('./ImmersivePost'), 'utf8');
+
+function jsxCalls(componentSource: string, componentName: string): string[] {
+  return [
+    ...componentSource.matchAll(
+      new RegExp(`<${componentName}\\b[\\s\\S]*?\\/>`, 'g'),
+    ),
+  ].map(([call]) => call);
+}
+
+function hasBooleanProp(openingTag: string, prop: string): boolean {
+  return new RegExp(`\\b${prop}(?=\\s|\\/?>)`).test(openingTag);
+}
 
 const post = {
   id: 'post-a',
@@ -144,12 +156,20 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain("useState(encouragement === '1')");
     expect(routeSource).toContain('showPostMenu');
     expect(routeSource).toContain('setLiked');
-    expect(routeSource).toContain('<SaveToMemories');
+    const memoryActions = jsxCalls(routeSource, 'SaveToMemories');
+    expect(memoryActions).not.toHaveLength(0);
+    expect(memoryActions.some((tag) => hasBooleanProp(tag, 'inline'))).toBe(true);
+    expect(
+      memoryActions.some(
+        (tag) =>
+          hasBooleanProp(tag, 'inline') && hasBooleanProp(tag, 'iconOnly'),
+      ),
+    ).toBe(false);
     expect(routeSource).toContain('<BroadcastSheet');
     expect(routeSource).toContain('operations.current.start(');
     expect(routeSource).toContain('operations.current.complete(');
     expect(routeSource).toContain('viewGeneration.current += 1');
-    expect(componentSource).toContain('label="Encourage this post"');
+    expect(componentSource).toContain('label="Cheer this post"');
     expect(componentSource).toContain('label="Comment on this post"');
     expect(componentSource).toContain('label="Share this post"');
     expect(componentSource).toContain('accessibilityLabel={label}');
@@ -250,8 +270,17 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(componentSource).toContain('chevron-forward');
     expect(componentSource).toContain('actionBar');
     expect(componentSource).toContain("backgroundColor: 'rgba(2,8,20,.78)'");
-    expect(routeSource).toContain('ListFooterComponent={');
-    expect(routeSource.indexOf('<ImmersivePost')).toBeLessThan(routeSource.indexOf('ListFooterComponent={'));
+    expect(routeSource).toContain('<KeyboardAvoidingView');
+    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : undefined}");
+    expect(routeSource).toContain("Keyboard.addListener('keyboardDidShow'");
+    expect(routeSource).toContain("Keyboard.addListener('keyboardDidHide'");
+    expect(routeSource).toContain('translateY: -keyboardInset');
+    expect(routeSource).toContain("keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}");
+    expect(routeSource).not.toContain('ListFooterComponent={');
+    expect(routeSource).toMatch(/<FlatList[\s\S]*?\/>\s*<View[\s\S]*?styles\.inputBar[\s\S]*?<TextInput/);
+    expect(routeSource).toContain('Math.max(insets.bottom, spacing.sm)');
+    expect(componentSource).toContain('style={styles.photoContain}');
+    expect(componentSource).not.toMatch(/<PostImage[\s\S]{0,250}transform:/);
   });
 
   test('prevents the rejected generic Post Detail presentation', () => {

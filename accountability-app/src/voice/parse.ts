@@ -23,7 +23,6 @@ function detectType(lower: string): TimelineType {
   if (/\b(workout|gym|exercise|train|lift)\b/.test(lower)) return 'workout';
   if (/\b(run|jog|walk|ride|cycle|bike)\b/.test(lower)) return 'activity';
   if (/\b(eat|meal|breakfast|lunch|dinner|snack)\b/.test(lower)) return 'meal';
-  if (/\b(pay|spend|budget|bill)\b/.test(lower)) return 'expense';
   if (/\b(meeting|appointment|event|call)\b/.test(lower)) return 'event';
   return 'task';
 }

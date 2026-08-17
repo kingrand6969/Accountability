@@ -41,7 +41,7 @@ export function EncouragementBar({
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={1}>
           {people[0]?.name?.split(/\s+/)[0] ?? `${count} ${count === 1 ? 'buddy' : 'buddies'}`}
-          {count > 1 ? ` and ${count - 1} ${count === 2 ? 'other' : 'others'}` : ''} encouraging {author}
+          {count > 1 ? ` and ${count - 1} ${count === 2 ? 'other' : 'others'}` : ''} cheering on {author}
         </Text>
         <View style={styles.wave}>
           {[8, 15, 11, 20, 13, 17, 9, 19, 12, 16, 7, 14].map((height, index) => (

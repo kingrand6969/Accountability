@@ -6,7 +6,15 @@ import { showToast } from '../ui/Toast';
 import { colors, font } from '../ui/theme';
 
 /** Bookmark button overlaid on any post photo — copies it into Memories. */
-export function SaveToMemories({ url, inline = false }: { url: string; inline?: boolean }) {
+export function SaveToMemories({
+  url,
+  inline = false,
+  iconOnly = false,
+}: {
+  url: string;
+  inline?: boolean;
+  iconOnly?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -34,7 +42,13 @@ export function SaveToMemories({ url, inline = false }: { url: string; inline?: 
       accessibilityState={{ disabled: busy || saved, busy }}
     >
       {busy ? (
-        <ActivityIndicator size="small" color="#fff" />
+        <ActivityIndicator size="small" color={inline ? colors.textMuted : '#fff'} />
+      ) : iconOnly ? (
+        <Ionicons
+          name={saved ? 'albums' : 'albums-outline'}
+          size={21}
+          color={inline ? (saved ? colors.primary : colors.textMuted) : '#fff'}
+        />
       ) : (
         <>
           <Ionicons
@@ -42,7 +56,9 @@ export function SaveToMemories({ url, inline = false }: { url: string; inline?: 
             size={17}
             color={inline ? (saved ? colors.primary : colors.textMuted) : '#fff'}
           />
-          {inline ? <Text style={[styles.inlineText, saved && styles.inlineSaved]}>{saved ? 'Saved' : 'Save'}</Text> : null}
+          {inline && !iconOnly ? (
+            <Text style={[styles.inlineText, saved && styles.inlineSaved]}>{saved ? 'Saved' : 'Save'}</Text>
+          ) : null}
         </>
       )}
     </Pressable>
@@ -64,7 +80,8 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   inlineBtn: {
     flex: 1,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

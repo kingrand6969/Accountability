@@ -369,7 +369,7 @@ describe('PublicBuddyCardFace clean composition', () => {
       'Member since Jan 2025',
       'Mythical',
       'Challenges won · 7',
-      'Encouraging',
+      'Cheering',
       'Running',
       'CURRENT FOCUS',
       'Build a stronger morning routine.',

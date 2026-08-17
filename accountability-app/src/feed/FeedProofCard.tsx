@@ -13,11 +13,13 @@ import type { EncouragementPreview } from './api';
 import { deriveFeedCardPresentation } from './SocialModeSelector';
 
 type Props = {
-  post: FeedPost;
+  post: FeedPost & { suggested?: boolean };
   currentUserId: string | null;
+  mediaActive?: boolean;
   preview?: EncouragementPreview;
   attending: boolean;
   onOpen: () => void;
+  onOpenMedia?: () => void;
   onMenu: () => void;
   onAttend: () => void;
   onToggleLike: () => void;
@@ -33,7 +35,6 @@ function postTypeLabel(post: FeedPost): string | null {
     milestone: 'Milestone',
     event: 'Event',
     memory: 'Memory',
-    savings: 'Savings win',
   };
   return labels[post.post_type] ?? null;
 }
@@ -41,9 +42,11 @@ function postTypeLabel(post: FeedPost): string | null {
 export function FeedProofCard({
   post,
   currentUserId,
+  mediaActive = false,
   preview,
   attending,
   onOpen,
+  onOpenMedia,
   onMenu,
   onAttend,
   onToggleLike,
@@ -52,11 +55,24 @@ export function FeedProofCard({
 }: Props) {
   const typeLabel = postTypeLabel(post);
   const presentation = deriveFeedCardPresentation(post, currentUserId);
+  const suggestionLabel = post.suggested ? 'Suggested for you' : null;
+  // Preserve the established accessibilityLabel="View comments" wording before adding the count.
+  const viewCommentsLabel = 'View comments';
   return (
     <View
       style={styles.card}
       accessibilityLabel={`${presentation.ownerLabel}. ${presentation.audienceLabel}`}
     >
+      {suggestionLabel ? (
+        <View
+          style={styles.suggestedRow}
+          accessible
+          accessibilityLabel="Suggested for you"
+        >
+          <Ionicons name="sparkles-outline" size={13} color={colors.textMuted} />
+          <Text style={styles.suggestedText}>{suggestionLabel}</Text>
+        </View>
+      ) : null}
       <View style={styles.authorHeader}>
         <Avatar url={post.author_avatar} name={post.author_name} size={40} />
         <View style={styles.authorCopy}>
@@ -121,14 +137,14 @@ export function FeedProofCard({
 
       {post.image_url ? (
             <Pressable
-              onPress={onOpen}
+              onPress={onOpenMedia ?? onOpen}
               accessibilityRole="link"
               accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
-              accessibilityHint="Opens the full post, comments, and encouragement"
+              accessibilityHint="Opens the full post, comments, and Cheers"
               style={({ pressed }) => [styles.media, pressed && styles.pressed]}
             >
           {post.post_type === 'video' ? (
-            <PostVideo url={post.image_url} />
+            <PostVideo url={post.image_url} active={mediaActive} />
           ) : (
             <PostImage url={post.image_url} capTall />
           )}
@@ -144,26 +160,25 @@ export function FeedProofCard({
 
       <View style={styles.actions}>
         <Action
-          icon={post.liked_by_me ? 'flame' : 'flame-outline'}
-          label={`Encourage${post.like_count > 0 ? ` ${post.like_count}` : ''}`}
-          accessibilityLabel={post.liked_by_me ? 'Remove encouragement' : 'Encourage'}
+          icon="clap"
+          count={post.like_count}
+          accessibilityLabel={`${post.liked_by_me ? 'Remove Cheer' : 'Cheer'}${post.like_count > 0 ? `, ${post.like_count} ${post.like_count === 1 ? 'Cheer' : 'Cheers'}` : ''}`}
           active={post.liked_by_me}
           onPress={onToggleLike}
         />
         <Action
           icon="chatbubble-outline"
-          label={`Comment${post.comment_count > 0 ? ` ${post.comment_count}` : ''}`}
-          accessibilityLabel="View comments"
+          count={post.comment_count}
+          accessibilityLabel={`${viewCommentsLabel}${post.comment_count > 0 ? `, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}` : ''}`}
           onPress={onOpen}
         />
         <Action
           icon="paper-plane-outline"
-          label="Share"
           accessibilityLabel="Share this post"
           onPress={onShare}
         />
         {post.image_url && post.post_type !== 'video' ? (
-          <SaveToMemories url={post.image_url} inline />
+          <SaveToMemories url={post.image_url} inline iconOnly />
         ) : null}
       </View>
       <FeedSupporterSummary
@@ -189,7 +204,7 @@ function FeedSupporterSummary({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${count} ${count === 1 ? 'buddy has' : 'buddies have'} encouraged this post`}
+      accessibilityLabel={`${count} ${count === 1 ? 'buddy has' : 'buddies have'} cheered this post`}
       style={({ pressed }) => [styles.supporters, pressed && styles.pressed]}
     >
       <View style={styles.supporterAvatars} accessibilityElementsHidden>
@@ -200,21 +215,30 @@ function FeedSupporterSummary({
         ))}
       </View>
       <Text style={styles.supporterText}>
-        {count} {count === 1 ? 'buddy encouraged this' : 'buddies encouraged this'}
+        {count} {count === 1 ? 'buddy cheered this' : 'buddies cheered this'}
       </Text>
     </Pressable>
   );
 }
 
+function CheerIcon({ color }: { color: string }) {
+  return (
+    <View style={styles.cheerIcon} accessibilityElementsHidden>
+      <Ionicons name="hand-left-outline" size={21} color={color} style={styles.cheerLeft} />
+      <Ionicons name="hand-right-outline" size={21} color={color} style={styles.cheerRight} />
+    </View>
+  );
+}
+
 function Action({
   icon,
-  label,
+  count,
   accessibilityLabel,
-  active = false,
+  active,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
+  icon: 'clap' | keyof typeof Ionicons.glyphMap;
+  count?: number;
   accessibilityLabel: string;
   active?: boolean;
   onPress: () => void;
@@ -224,10 +248,17 @@ function Action({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={active === undefined ? undefined : { selected: active }}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
-      <Ionicons name={icon} size={18} color={active ? colors.cheer : colors.textMuted} />
-      <Text style={[styles.actionText, active && styles.active]}>{label}</Text>
+      {icon === 'clap' ? (
+        <CheerIcon color={Boolean(active) ? colors.primary : colors.textMuted} />
+      ) : (
+        <Ionicons name={icon} size={21} color={Boolean(active) ? colors.primary : colors.textMuted} />
+      )}
+      {count != null && count > 0 ? (
+        <Text style={[styles.actionText, active && styles.active]}>{count}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -242,6 +273,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     ...shadow.card,
+  },
+  suggestedRow: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  suggestedText: {
+    color: colors.textMuted,
+    fontFamily: font.semibold,
+    fontSize: 11.5,
   },
   authorHeader: {
     minHeight: 60,
@@ -317,15 +362,19 @@ const styles = StyleSheet.create({
   },
   action: {
     flex: 1,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
     borderRadius: radius.sm,
   },
+  cheerIcon: { width: 27, height: 23, position: 'relative' },
+  cheerLeft: { position: 'absolute', left: 0, top: 0 },
+  cheerRight: { position: 'absolute', right: 0, top: 2 },
   actionText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 11 },
-  active: { color: colors.cheer },
+  active: { color: colors.primary },
   supporters: {
     minHeight: 44,
     flexDirection: 'row',

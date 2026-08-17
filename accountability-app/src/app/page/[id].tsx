@@ -21,6 +21,7 @@ import { useAuth } from '../../auth/AuthProvider';
 import { SaveToMemories } from '../../memories/SaveToMemories';
 import { PostImage } from '../../feed/PostImage';
 import { PostVideo } from '../../feed/PostVideo';
+import { useActiveVideoList } from '../../feed/useActiveVideoList';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, taggedLabel } from '../../feed/format';
 import type { FeedPost } from '../../feed/types';
@@ -52,6 +53,7 @@ export default function PageDetail() {
   const [body, setBody] = useState('');
   const [posting, setPosting] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  const [screenFocused, setScreenFocused] = useState(false);
   // posts with a like request in flight — blocks double-taps from racing
   const likesInFlight = useRef<Set<string>>(new Set());
 
@@ -123,8 +125,10 @@ export default function PageDetail() {
 
   useFocusEffect(
     useCallback(() => {
+      setScreenFocused(true);
       void load();
       return () => {
+        setScreenFocused(false);
         loadGeneration.current += 1;
         lifecycleGeneration.current += 1;
         likesInFlight.current.clear();
@@ -138,6 +142,13 @@ export default function PageDetail() {
     setRefreshing(true);
     await load();
   }
+
+  const videoPlayback = useActiveVideoList({
+    posts,
+    scopeKey: viewKey,
+    focused: screenFocused,
+    blocked: loading || refreshing || posting || followBusy,
+  });
 
   async function onToggleFollow() {
     const requestOwner = myId;
@@ -368,8 +379,10 @@ export default function PageDetail() {
   return (
     <View style={styles.screen}>
       <FlatList
-        data={posts}
-        keyExtractor={(p) => p.id}
+        data={videoPlayback.rows}
+        keyExtractor={(row) => row.post.id}
+        viewabilityConfig={videoPlayback.viewabilityConfig}
+        onViewableItemsChanged={videoPlayback.onViewableItemsChanged}
         contentContainerStyle={styles.list}
         ListHeaderComponent={header}
         refreshControl={
@@ -382,7 +395,9 @@ export default function PageDetail() {
             subtitle={page.is_owner ? 'Share your first update' : 'Check back soon.'}
           />
         }
-        renderItem={({ item }) => (
+        renderItem={({ item: row }) => {
+          const item = row.post;
+          return (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               {/* The page is speaking, not the person — show the page identity. */}
@@ -437,7 +452,7 @@ export default function PageDetail() {
                   accessibilityLabel="Open post"
                 >
                   {item.post_type === 'video' ? (
-                    <PostVideo url={item.image_url} />
+                    <PostVideo url={item.image_url} active={videoPlayback.activeVideoId === row.post.id} />
                   ) : (
                     <PostImage url={item.image_url} capTall />
                   )}
@@ -450,7 +465,7 @@ export default function PageDetail() {
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 onPress={() => onToggleLike(item)}
                 hitSlop={8}
-                accessibilityLabel={item.liked_by_me ? 'Remove encouragement' : 'Encourage'}
+                accessibilityLabel={item.liked_by_me ? 'Remove Cheer' : 'Cheer'}
               >
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}
@@ -472,7 +487,8 @@ export default function PageDetail() {
               </Pressable>
             </View>
           </View>
-        )}
+          );
+        }}
       />
     </View>
   );

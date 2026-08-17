@@ -35,7 +35,6 @@ export async function getMetrics(): Promise<Metrics> {
     activeDays: Number(card.consistency ?? 0),
     challengeWins: Number(card.chwin ?? 0),
     memories: counts.memories,
-    goalsHit: counts.goals_hit,
     totalHours: act.hours,
     places: counts.places,
     invitesAccepted: invites,
@@ -56,13 +55,12 @@ type MetricCounts = {
   likes: number;
   groups: number;
   messages: number;
-  goals_hit: number;
   profile_fields: number;
 };
 
 const ZERO_COUNTS: MetricCounts = {
   workouts: 0, challenges: 0, memories: 0, places: 0, posts: 0,
-  likes: 0, groups: 0, messages: 0, goals_hit: 0, profile_fields: 0,
+  likes: 0, groups: 0, messages: 0, profile_fields: 0,
 };
 
 /** Every medal/mission tally in ONE round trip (my_metric_counts RPC) —

@@ -8,12 +8,12 @@ const migration0040 = fs.readFileSync(
   'utf8',
 );
 const expandSql = fs.readFileSync(
-  path.resolve(root, 'supabase/migrations/0099_buddy_completed_challenges.sql'),
+  path.resolve(root, 'supabase/migrations/0106_buddy_completed_challenges.sql'),
   'utf8',
 );
 const contractPath = path.resolve(
   root,
-  'supabase/migrations/0101_challenge_participant_privacy_lockdown.sql',
+  'supabase/migrations/0108_challenge_participant_privacy_lockdown.sql',
 );
 const contractSql = fs.existsSync(contractPath) ? fs.readFileSync(contractPath, 'utf8') : '';
 const rolloutToolPath = path.resolve(root, 'scripts/check-challenge-lockdown-rollout.mjs');
@@ -190,7 +190,7 @@ describe('checked adoption evidence', () => {
     expect(rolloutDoc).toContain('8218691');
     expect(rolloutDoc).toContain('Privacy is not yet remediated in Stage A');
     expect(rolloutDoc).toContain('zero active legacy clients');
-    expect(rolloutDoc).toContain('0101_challenge_participant_privacy_lockdown.sql');
+    expect(rolloutDoc).toContain('0108_challenge_participant_privacy_lockdown.sql');
     expect(rolloutDoc).toContain('challenge_participant_lockdown_readiness');
     expect(rolloutDoc).toContain('Normal migration application and fresh database reset succeed');
     expect(rolloutDoc).toContain(

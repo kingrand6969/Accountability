@@ -28,7 +28,6 @@ type TabBarProps = {
 
 export const VISIBLE_TAB_LABELS = [
   'Feed',
-  'Finance',
   'Journey',
   'Run',
   'Messages',
@@ -37,13 +36,12 @@ export const VISIBLE_TAB_LABELS = [
 const visibleTabLabels = new Set<string>(VISIBLE_TAB_LABELS);
 const compactTabLabels: Record<(typeof VISIBLE_TAB_LABELS)[number], string> = {
   Feed: 'Home',
-  Finance: 'Cash',
   Journey: 'Path',
   Run: 'Run',
   Messages: 'Chat',
 };
 
-/** Quiet five-destination bottom navigation matching the approved references. */
+/** Quiet four-destination bottom navigation matching the approved references. */
 export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const fontScale = PixelRatio.getFontScale();

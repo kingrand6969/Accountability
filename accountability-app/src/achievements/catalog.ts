@@ -17,7 +17,6 @@ export type Metrics = {
   activeDays: number; // distinct days with any activity (all-time)
   challengeWins: number; // challenges won
   memories: number; // photos / videos saved
-  goalsHit: number; // savings goals reached
   totalHours: number; // total time spent on GPS activities
   places: number; // memories saved with a location
   invitesAccepted: number; // friends who joined the app from your invite
@@ -219,21 +218,6 @@ export const MEDALS: MedalDef[] = [
       { name: 'Collection', at: 100 },
       { name: 'Archive', at: 250 },
       { name: 'Vault', at: 500 },
-    ],
-  },
-  {
-    id: 'goalcrusher',
-    title: 'Goal Crusher',
-    icon: 'flag',
-    blurb: 'Savings goals you have fully reached. Finish what you start.',
-    unit: 'goals',
-    metric: 'goalsHit',
-    tiers: [
-      { name: 'Finisher', at: 1 },
-      { name: 'On a Roll', at: 3 },
-      { name: 'Closer', at: 5 },
-      { name: 'Machine', at: 10 },
-      { name: 'Legend', at: 25 },
     ],
   },
   {

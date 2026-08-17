@@ -97,7 +97,6 @@ export default function Achievements() {
               activeDays: 0,
               challengeWins: 0,
               memories: 0,
-              goalsHit: 0,
               totalHours: 0,
               places: 0,
               invitesAccepted: 0,

@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   createDiscoverActionLock,
+  discoverActionKey,
+  isDiscoverActionBusy,
   createDiscoverLoadGuard,
   createDiscoverOperationGuard,
   DISCOVER_FIRST_VIEWPORT_HEIGHT,
@@ -226,6 +228,13 @@ describe('DiscoverViewState contract', () => {
     expect(lock.acquire('A:group:1')).not.toBeNull();
   });
 
+  test('uses one owner-aware key for locking and rendered busy state', () => {
+    const key = discoverActionKey('owner-a', 'person', 'person-1');
+    expect(key).toBe('owner-a:person:person-1');
+    expect(isDiscoverActionBusy(new Set([key]), 'owner-a', 'person', 'person-1')).toBe(true);
+    expect(isDiscoverActionBusy(new Set([key]), 'owner-b', 'person', 'person-1')).toBe(false);
+  });
+
   test('stale owner release cannot delete the new owner lock for the same entity', () => {
     const lock = createDiscoverActionLock();
     const a = lock.acquire('A:person:1');
@@ -360,7 +369,7 @@ describe('DiscoverViewState contract', () => {
       'loadGuardRef.current.canCommit(ticket, currentOwnerRef.current)',
     );
     expect(experience).not.toContain('canCommit(ticket, ownerId)');
-    expect(experience).toContain("const key = `${actionOwner}:${kind}:${id}`");
+    expect(experience).toContain('const key = discoverActionKey(actionOwner, kind, id)');
     expect(experience).toContain('accessibilityHint="Shows their public accountability card"');
     expect(experience).toContain('personHero: { height: DISCOVER_GEOMETRY.personHero');
     expect(experience).toContain('connect: { height: DISCOVER_GEOMETRY.connect');
@@ -378,7 +387,7 @@ describe('DiscoverViewState contract', () => {
     expect(experience).toContain('prepared.allowedIds,');
     expect(experience).toContain('getBuddyCards,');
     expect(experience).toContain('requestAllowedCardsIfCurrent(');
-    expect(experience).toContain('if (!isCurrentLoad()) return;');
+    expect(experience).toContain('if (!input.isCurrent()) return null;');
   });
 
   test('reflows search, filters, Nearby copy and state notices from 125 percent text', () => {

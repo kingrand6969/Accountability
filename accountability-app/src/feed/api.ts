@@ -109,7 +109,194 @@ export async function reportComment(commentId: string, reason?: string): Promise
 }
 
 export const FEED_PAGE_SIZE = 20;
-export type FeedMode = 'buddies' | 'discover';
+const FEED_CANDIDATE_LIMIT = 500;
+const FEED_SESSION_MAX_AGE_MS = 29 * 60 * 1000;
+const FEED_REPLACEMENT_MAX_PAGES = Math.ceil(FEED_CANDIDATE_LIMIT / FEED_PAGE_SIZE);
+
+export type UnifiedFeedSource =
+  | 'self'
+  | 'buddy'
+  | 'followed_person'
+  | 'joined_group'
+  | 'followed_page'
+  | 'suggested';
+
+export type UnifiedFeedPost = FeedPost & {
+  feed_source: UnifiedFeedSource;
+  suggested: boolean;
+  feed_position: number;
+  feed_session_id: string;
+};
+
+type UnifiedFeedRow = {
+  session_id: string;
+  position: number;
+  id: string;
+  source: UnifiedFeedSource;
+  suggested: boolean;
+};
+
+type FeedSnapshot = {
+  ownerId: string;
+  sessionId: string;
+  afterPosition: number;
+  seenPostIds: Set<string>;
+  createdAtMs: number;
+};
+
+let activeFeedSnapshot: FeedSnapshot | null = null;
+let refreshGeneration = 0;
+
+class FeedSnapshotUnavailableError extends Error {}
+
+async function createFeedSession(): Promise<string> {
+  const { data, error } = await supabase.rpc('create_unified_feed_session', {
+    p_candidate_limit: FEED_CANDIDATE_LIMIT,
+  });
+  if (error) throw error;
+  if (typeof data !== 'string' || data.length === 0) throw new Error('Feed session could not be created.');
+  return data;
+}
+
+async function currentSessionUserId(): Promise<string | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return data.session?.user.id ?? null;
+}
+
+async function pageFeedSession(sessionId: string, afterPosition: number): Promise<UnifiedFeedRow[]> {
+  const { data, error } = await supabase.rpc('unified_feed_post_ids', {
+    p_session_id: sessionId,
+    p_after_position: afterPosition,
+    p_limit: FEED_PAGE_SIZE,
+  });
+  if (error?.code === 'PFS01') throw new FeedSnapshotUnavailableError('Feed session unavailable.');
+  if (error) throw error;
+  return (data ?? []) as UnifiedFeedRow[];
+}
+
+async function hydrateUnifiedRows(me: string, rankedRows: UnifiedFeedRow[]): Promise<UnifiedFeedPost[]> {
+  const ids = rankedRows.map((row) => row.id);
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from('posts').select(POST_SELECT).in('id', ids);
+  if (error) throw error;
+  const rows = data ?? [];
+  const rowsById = new Map(rows.map((row: any) => [row.id as string, row]));
+  const [likedSet, profiles] = await Promise.all([
+    myLikedSet(me, rows.map((row: any) => row.id)),
+    getPublicProfiles(profileIds(rows)),
+  ]);
+  const postsById = new Map(
+    rows.map((row: any) => [row.id as string, mapPost(row, likedSet, profiles)]),
+  );
+  return rankedRows.flatMap((ranked) => {
+    if (!rowsById.has(ranked.id)) return [];
+    const post = postsById.get(ranked.id);
+    return post ? [{
+      ...post,
+      feed_source: ranked.source,
+      suggested: ranked.suggested,
+      feed_position: ranked.position,
+      feed_session_id: ranked.session_id,
+    }] : [];
+  });
+}
+
+async function loadHydratedSnapshotPage(
+  me: string,
+  sessionId: string,
+  initialAfterPosition: number,
+  seenBeforeRefresh: Set<string>,
+): Promise<{ posts: UnifiedFeedPost[]; afterPosition: number; encounteredIds: Set<string> }> {
+  const posts: UnifiedFeedPost[] = [];
+  const returnedIds = new Set<string>();
+  const encounteredIds = new Set<string>();
+  let afterPosition = initialAfterPosition;
+
+  // The server snapshot is capped at FEED_CANDIDATE_LIMIT, so this bound can
+  // refill around duplicates or RLS-filtered rows without an open-ended loop.
+  for (let page = 0; page < FEED_REPLACEMENT_MAX_PAGES; page += 1) {
+    const batch = await pageFeedSession(sessionId, afterPosition);
+    const eligibleRows = batch.filter((row) => (
+      !seenBeforeRefresh.has(row.id) && !encounteredIds.has(row.id)
+    ));
+    const hydrated = await hydrateUnifiedRows(me, eligibleRows);
+    const hydratedById = new Map(hydrated.map((post) => [post.id, post]));
+    for (const row of batch) {
+      afterPosition = Math.max(afterPosition, row.position);
+      encounteredIds.add(row.id);
+      const post = hydratedById.get(row.id);
+      if (!seenBeforeRefresh.has(row.id) && post && !returnedIds.has(row.id)) {
+        posts.push(post);
+        returnedIds.add(row.id);
+        if (posts.length === FEED_PAGE_SIZE) break;
+      }
+    }
+    if (posts.length === FEED_PAGE_SIZE || batch.length < FEED_PAGE_SIZE) break;
+  }
+  return { posts, afterPosition, encounteredIds };
+}
+
+async function refreshPersonalFeed(
+  me: string,
+  seenBeforeRefresh: Set<string> = new Set(),
+  confirmOwner: () => Promise<string | null> = currentUserId,
+): Promise<UnifiedFeedPost[]> {
+  const generation = ++refreshGeneration;
+  const sessionId = await createFeedSession();
+  const page = await loadHydratedSnapshotPage(me, sessionId, 0, seenBeforeRefresh);
+  const confirmedUserId = await confirmOwner();
+  if (confirmedUserId !== me || generation !== refreshGeneration) return [];
+
+  activeFeedSnapshot = {
+    ownerId: me,
+    sessionId,
+    afterPosition: page.afterPosition,
+    seenPostIds: new Set([
+      ...seenBeforeRefresh,
+      ...page.encounteredIds,
+    ]),
+    createdAtMs: Date.now(),
+  };
+  return page.posts;
+}
+
+async function pagePersonalFeed(
+  me: string,
+  confirmOwner: () => Promise<string | null> = currentUserId,
+): Promise<UnifiedFeedPost[]> {
+  const snapshot = activeFeedSnapshot;
+  if (!snapshot || snapshot.ownerId !== me) return refreshPersonalFeed(me, new Set(), confirmOwner);
+  if (Date.now() - snapshot.createdAtMs >= FEED_SESSION_MAX_AGE_MS) {
+    return refreshPersonalFeed(me, snapshot.seenPostIds, confirmOwner);
+  }
+
+  let page: Awaited<ReturnType<typeof loadHydratedSnapshotPage>>;
+  try {
+    page = await loadHydratedSnapshotPage(me, snapshot.sessionId, snapshot.afterPosition, snapshot.seenPostIds);
+  } catch (error) {
+    if (!(error instanceof FeedSnapshotUnavailableError)) throw error;
+    // A server-expired or invalid snapshot gets one fresh-session attempt. The
+    // old IDs are filtered so recovery cannot duplicate already rendered rows.
+    return refreshPersonalFeed(me, snapshot.seenPostIds, confirmOwner);
+  }
+  const confirmedUserId = await confirmOwner();
+  if (confirmedUserId !== me || activeFeedSnapshot !== snapshot) return [];
+  snapshot.afterPosition = page.afterPosition;
+  page.encounteredIds.forEach((id) => snapshot.seenPostIds.add(id));
+  return page.posts;
+}
+
+/** Fast personal-feed path for screens that already own an authenticated identity. */
+export async function listPersonalFeed(
+  expectedOwnerId: string,
+  beforeCreatedAt?: string,
+): Promise<UnifiedFeedPost[]> {
+  if (await currentSessionUserId() !== expectedOwnerId) return [];
+  return beforeCreatedAt
+    ? pagePersonalFeed(expectedOwnerId, currentSessionUserId)
+    : refreshPersonalFeed(expectedOwnerId, new Set(), currentSessionUserId);
+}
 
 async function myBuddyIds(me: string | null): Promise<string[]> {
   if (!me) return [];
@@ -126,14 +313,37 @@ async function myBuddyIds(me: string | null): Promise<string[]> {
  * groupId scopes to one group's feed, pageId to one business page's feed;
  * otherwise the main feed shows only personal posts (no group/page posts).
  */
+export function listFeed(beforeCreatedAt?: string): Promise<UnifiedFeedPost[]>;
+export function listFeed(
+  beforeCreatedAt: string | undefined,
+  groupId: string,
+  pageId?: string,
+): Promise<FeedPost[]>;
+export function listFeed(
+  beforeCreatedAt: string | undefined,
+  groupId: undefined,
+  pageId: string,
+): Promise<FeedPost[]>;
+export function listFeed(
+  beforeCreatedAt: string | undefined,
+  groupId: string | undefined,
+  pageId: string | undefined,
+): Promise<FeedPost[]>;
 export async function listFeed(
   beforeCreatedAt?: string,
   groupId?: string,
   pageId?: string,
-  mode: FeedMode = 'buddies',
 ): Promise<FeedPost[]> {
   const me = await currentUserId();
-  const [hidden, buddyIds] = await Promise.all([myHiddenPostIds(me), myBuddyIds(me)]);
+  if (!groupId && !pageId) {
+    if (!me) return [];
+    return beforeCreatedAt ? pagePersonalFeed(me) : refreshPersonalFeed(me);
+  }
+
+  const [hidden] = await Promise.all([
+    myHiddenPostIds(me),
+    myBuddyIds(me),
+  ]);
   let query = supabase
     .from('posts')
     .select(POST_SELECT)
@@ -142,19 +352,8 @@ export async function listFeed(
   if (hidden.length > 0) query = query.not('id', 'in', `(${hidden.join(',')})`);
   if (groupId) {
     query = query.eq('group_id', groupId);
-  } else if (pageId) {
-    query = query.eq('page_id', pageId);
   } else {
-    query = query.is('group_id', null).is('page_id', null);
-    const known = me ? [me, ...buddyIds] : buddyIds;
-    if (mode === 'discover') {
-      query = query.eq('audience', 'public');
-      if (known.length > 0) query = query.not('user_id', 'in', `(${known.join(',')})`);
-    } else if (known.length > 0) {
-      query = query.in('user_id', known);
-    } else {
-      return [];
-    }
+    query = query.eq('page_id', pageId);
   }
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
   const { data, error } = await query;
@@ -448,7 +647,7 @@ export async function sendVoiceEncouragement(
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
   if (durationMs < 250 || durationMs > 10_000) {
-    throw new Error('Voice encouragement must be between 1 and 10 seconds.');
+    throw new Error('A voice Cheer must be between 1 and 10 seconds.');
   }
   const file = new File(uri);
   const bytes = await file.bytes();
@@ -477,7 +676,7 @@ type VoiceSafetyTarget = {
 
 function assertOpaqueVoiceId(voiceId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(voiceId)) {
-    throw new Error('Voice encouragement is invalid.');
+    throw new Error('The voice Cheer is invalid.');
   }
 }
 
@@ -489,9 +688,9 @@ async function voiceSafetyTarget(voiceId: string): Promise<VoiceSafetyTarget> {
     .eq('id', voiceId)
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error('Voice encouragement is unavailable.');
+  if (!data) throw new Error('The voice Cheer is unavailable.');
   const post = Array.isArray((data as any).post) ? (data as any).post[0] : (data as any).post;
-  if (!post?.user_id) throw new Error('Voice encouragement is unavailable.');
+  if (!post?.user_id) throw new Error('The voice Cheer is unavailable.');
   return {
     senderId: (data as any).user_id as string,
     postOwnerId: post.user_id as string,
@@ -517,12 +716,12 @@ export async function reportVoiceEncouragement(voiceId: string): Promise<void> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
   const target = await voiceSafetyTarget(voiceId);
-  if (target.senderId === me) throw new Error('You cannot report your own encouragement.');
-  if (target.postOwnerId !== me) throw new Error('Only the recipient can report this encouragement.');
+  if (target.senderId === me) throw new Error('You cannot report your own Cheer.');
+  if (target.postOwnerId !== me) throw new Error('Only the recipient can report this Cheer.');
   const { error } = await supabase.from('buddy_reports').insert({
     reporter: me,
     reported: target.senderId,
-    reason: `Reported voice encouragement ${voiceId}`,
+    reason: `Reported voice Cheer ${voiceId}`,
   });
   if (error) throw error;
 }

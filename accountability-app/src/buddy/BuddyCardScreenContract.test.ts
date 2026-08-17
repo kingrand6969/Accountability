@@ -41,13 +41,13 @@ const publicFaceSource = fs.readFileSync(
 );
 const socialProofMigrationPath = path.resolve(
   process.cwd(),
-  'supabase/migrations/0100_buddy_card_social_proof.sql',
+  'supabase/migrations/0107_buddy_card_social_proof.sql',
 );
 const socialProofSql = fs.existsSync(socialProofMigrationPath)
   ? fs.readFileSync(socialProofMigrationPath, 'utf8')
   : '';
 const fullProfileSql = fs.readFileSync(
-  path.resolve(process.cwd(), 'supabase/migrations/0098_buddy_full_profile.sql'),
+  path.resolve(process.cwd(), 'supabase/migrations/0105_buddy_full_profile.sql'),
   'utf8',
 );
 

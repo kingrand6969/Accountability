@@ -57,11 +57,6 @@ export const MEDAL_ART = {
   'archivist-2': require('../../assets/images/medals/archivist-2.webp'),
   'archivist-3': require('../../assets/images/medals/archivist-3.webp'),
   'archivist-4': require('../../assets/images/medals/archivist-4.webp'),
-  'goalcrusher-0': require('../../assets/images/medals/goalcrusher-0.webp'),
-  'goalcrusher-1': require('../../assets/images/medals/goalcrusher-1.webp'),
-  'goalcrusher-2': require('../../assets/images/medals/goalcrusher-2.webp'),
-  'goalcrusher-3': require('../../assets/images/medals/goalcrusher-3.webp'),
-  'goalcrusher-4': require('../../assets/images/medals/goalcrusher-4.webp'),
   'endurance-0': require('../../assets/images/medals/endurance-0.webp'),
   'endurance-1': require('../../assets/images/medals/endurance-1.webp'),
   'endurance-2': require('../../assets/images/medals/endurance-2.webp'),
@@ -104,7 +99,6 @@ const FAMILIES: Record<string, MedalIconKey[]> = {
   devotion: ['devotion-0', 'devotion-1', 'devotion-2', 'devotion-3', 'devotion-4'],
   champion: ['champion-0', 'champion-1', 'champion-2', 'champion-3', 'champion-4'],
   archivist: ['archivist-0', 'archivist-1', 'archivist-2', 'archivist-3', 'archivist-4'],
-  goalcrusher: ['goalcrusher-0', 'goalcrusher-1', 'goalcrusher-2', 'goalcrusher-3', 'goalcrusher-4'],
   endurance: ['endurance-0', 'endurance-1', 'endurance-2', 'endurance-3', 'endurance-4'],
   explorer: ['explorer-0', 'explorer-1', 'explorer-2'],
   ambassador: ['ambassador-0', 'ambassador-1', 'ambassador-2'],
@@ -367,36 +361,6 @@ const ICON_FX: Partial<Record<MedalIconKey, Partial<MedalFx>>> = {
   'archivist-4': {
     // Vault Diamond — blue-white light travels the vault ring; bolts sparkle; motes
     orbit: { color: '#CFE0FF', ms: 5800 },
-    glint: { bright: 0.26, everyMs: 4200, double: true },
-    sparkles: { count: 3, color: '#FFFFFF' },
-  },
-
-  // ── Goal Crusher: savings goals reached (flag → stacks → bullseye → bank → chest)
-  'goalcrusher-0': {
-    // Finisher Bronze — bronze sheen across the flag + a glint at the pole
-    embers: [{ color: '#F0A85F', max: 0.14, ms: 2600 }],
-    glint: { bright: 0.16, everyMs: 6800 },
-  },
-  'goalcrusher-1': {
-    // On a Roll Silver — sheen rising through the coin stacks + completion shimmer
-    embers: [{ color: '#DFE9F2', max: 0.11, ms: 3200 }],
-    glint: { bright: 0.24, everyMs: 4600 },
-  },
-  'goalcrusher-2': {
-    // Closer Gold — a gold pulse contracting to the bullseye + a prestige glint
-    halo: { color: '#FFC94D', max: 0.22, scaleTo: 1.1, ms: 2400 },
-    glint: { bright: 0.3, everyMs: 3800 },
-    sparkles: { count: 1, color: '#FFF3C4' },
-  },
-  'goalcrusher-3': {
-    // Machine Platinum — platinum light through the bank + restrained fullness glow
-    halo: { color: '#7FD6E3', max: 0.2, scaleTo: 1.14, ms: 3200 },
-    embers: [{ color: '#CFF3FA', max: 0.11, ms: 3000 }],
-    glint: { bright: 0.2, everyMs: 5000 },
-  },
-  'goalcrusher-4': {
-    // Legend Diamond — blue-white light around the chest + a lock-gem prism flare
-    halo: { color: '#AEB9FF', max: 0.22, scaleTo: 1.18, ms: 2800 },
     glint: { bright: 0.26, everyMs: 4200, double: true },
     sparkles: { count: 3, color: '#FFFFFF' },
   },

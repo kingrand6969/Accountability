@@ -49,4 +49,13 @@ describe('parseVoiceCommand', () => {
     expect(r.time).toBe('09:00');
     expect(r.remind).toBe(false);
   });
+
+  it('treats money speech as an ordinary task', () => {
+    const r = parseVoiceCommand('pay the electricity bill', NOW);
+    expect(r.title).toBe('Pay the electricity bill');
+    expect(r.type).toBe('task');
+    expect(r.date).toBe('2026-06-24');
+    expect(r.time).toBe('09:00');
+    expect(r.remind).toBe(false);
+  });
 });

@@ -185,10 +185,10 @@ export function EncouragementSheet(props: Props) {
   return (
     <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modal}>
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close encouragement" />
+        <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close Cheers" />
         <View style={styles.sheet}>
           <View style={styles.head}>
-            <Text style={styles.title}>Encouragement</Text>
+            <Text style={styles.title}>Cheers</Text>
             <Text style={styles.subtitle}>
               {state === 'privacy-redacted'
                 ? 'Support details unavailable'
@@ -196,12 +196,12 @@ export function EncouragementSheet(props: Props) {
             </Text>
           </View>
           <ScrollView contentContainerStyle={styles.list}>
-            {state === 'loading' ? <SheetState text="Loading encouragement…" /> : null}
-            {state === 'offline' ? <SheetState text="Encouragement is unavailable while offline." /> : null}
-            {state === 'privacy-redacted' ? <SheetState text="Encouragement is private or no longer available." /> : null}
-            {state === 'empty' ? <SheetState text="No encouragement yet." /> : null}
+            {state === 'loading' ? <SheetState text="Loading Cheers…" /> : null}
+            {state === 'offline' ? <SheetState text="Cheers are unavailable while offline." /> : null}
+            {state === 'privacy-redacted' ? <SheetState text="Cheers are private or no longer available." /> : null}
+            {state === 'empty' ? <SheetState text="No Cheers yet." /> : null}
             {state === 'retryable-error' ? (
-              <SheetState text="Encouragement could not be loaded." action="Retry" onAction={onRetry} />
+              <SheetState text="Cheers could not be loaded." action="Retry" onAction={onRetry} />
             ) : null}
             {state === 'populated' ? comments.map((comment) => (
               <MessageRow
@@ -231,9 +231,9 @@ export function EncouragementSheet(props: Props) {
               : null}
           </ScrollView>
           {state !== 'privacy-redacted' ? <View style={styles.secondaryAction}>
-            <Pressable onPress={onRecordVoice} style={styles.recordVoice} accessibilityRole="button" accessibilityLabel="Record a voice encouragement, up to 10 seconds">
+            <Pressable onPress={onRecordVoice} style={styles.recordVoice} accessibilityRole="button" accessibilityLabel="Record a voice Cheer, up to 10 seconds">
               <Ionicons name="mic-outline" size={18} color={colors.primary} />
-              <Text style={styles.recordVoiceText}>Send voice encouragement</Text>
+              <Text style={styles.recordVoiceText}>Send voice Cheer</Text>
             </Pressable>
           </View> : null}
           {state !== 'privacy-redacted' ? <Pressable
@@ -318,7 +318,7 @@ function VoiceMessage(props: {
     <View>
       <View style={styles.message}>
         <Avatar url={voice.avatar_url} name={voice.name} size={34} />
-        <Pressable disabled={!url} onPress={() => (status.playing ? player.pause() : player.play())} style={[styles.voiceBubble, !url && styles.loadingVoice]} accessibilityRole="button" accessibilityLabel={`${status.playing ? 'Pause' : 'Play'} ${seconds} second voice encouragement from ${name}`}>
+        <Pressable disabled={!url} onPress={() => (status.playing ? player.pause() : player.play())} style={[styles.voiceBubble, !url && styles.loadingVoice]} accessibilityRole="button" accessibilityLabel={`${status.playing ? 'Pause' : 'Play'} ${seconds} second voice Cheer from ${name}`}>
           <Ionicons name={status.playing ? 'pause-circle' : 'play-circle'} size={26} color={colors.primary} />
           <View style={styles.voiceWave}>{[8, 15, 11, 20, 13, 18, 9, 16].map((height, index) => <View key={index} style={[styles.voiceBar, { height }]} />)}</View>
           <Text style={styles.voiceDuration}>0:{String(seconds).padStart(2, '0')}</Text>

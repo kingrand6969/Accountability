@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const migrationPath = path.resolve(
   process.cwd(),
-  'supabase/migrations/0097_buddy_card_presentation.sql',
+  'supabase/migrations/0104_buddy_card_presentation.sql',
 );
 const sql = fs.existsSync(migrationPath) ? fs.readFileSync(migrationPath, 'utf8') : '';
 const privacyBaselineSql = fs.readFileSync(

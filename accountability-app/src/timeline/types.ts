@@ -3,8 +3,6 @@ export type TimelineType =
   | 'task'
   | 'workout'
   | 'meal'
-  | 'expense'
-  | 'income'
   | 'activity'
   | 'grocery'
   | 'other';

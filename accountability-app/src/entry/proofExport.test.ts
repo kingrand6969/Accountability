@@ -20,7 +20,6 @@ const safeInput: ProofExportInput = {
   metrics: { workouts: 3, activities: 5, streakDays: 8 },
   locationLabel: 'Kings Park',
   routeImage: undefined,
-  amountDisplay: '$50',
   buddyDisplayNames: ['Alex', 'Sam'],
   buddyPortraitImages: undefined,
 };
@@ -29,7 +28,6 @@ const noOptIns: ProofExportOptIns = {};
 const allOptIns: ProofExportOptIns = {
   location: true,
   route: true,
-  amount: true,
   buddyNames: true,
   buddyPortraits: true,
 };
@@ -80,7 +78,7 @@ describe('Share Proof screen safety contract', () => {
         allOptIns,
       ))).toBe(
         `AccountAbility. I showed up today. 3 workouts. 5 activities. 8 day streak. ` +
-        `Location: Kings Park. Amount: $50. Buddies: Alex, Sam. ${format} format.`,
+        `Location: Kings Park. Buddies: Alex, Sam. ${format} format.`,
       );
     },
   );
@@ -101,7 +99,6 @@ const singleOptInCases: [
   string | readonly string[],
 ][] = [
   ['location', { location: true }, 'locationLabel', 'Kings Park'],
-  ['amount', { amount: true }, 'amountDisplay', '$50'],
   ['buddy names', { buddyNames: true }, 'buddyDisplayNames', ['Alex', 'Sam']],
 ];
 
@@ -147,7 +144,6 @@ describe.each(builders)('%s proof export', (_destination, build) => {
   test('fails closed for malformed opt-ins', () => {
     expect(build(safeInput, {
       location: 1,
-      amount: 'true',
       buddyNames: new Boolean(true),
     } as unknown as ProofExportOptIns)).toEqual(build(safeInput, noOptIns));
   });
@@ -159,7 +155,6 @@ describe.each(builders)('%s proof export', (_destination, build) => {
       format: 'portrait',
       metrics: { workouts: 3, activities: 5, streakDays: 8 },
       locationLabel: 'Kings Park',
-      amountDisplay: '$50',
       buddyDisplayNames: ['Alex', 'Sam'],
     });
   });
@@ -178,7 +173,6 @@ describe.each(builders)('%s proof export', (_destination, build) => {
         storage: 'r2://private',
       },
       locationLabel: 'https://project.supabase.co/storage/v1/private',
-      amountDisplay: 'content://private',
       buddyDisplayNames: [{ user_id: 'private', name: 'Alex' }],
       nested: {
         signed: 'https://media.example/photo?X-Amz-Signature=private',
@@ -213,7 +207,6 @@ describe.each(builders)('%s proof export', (_destination, build) => {
           nested: encoded,
         },
         locationLabel: encoded,
-        amountDisplay: encoded,
         buddyDisplayNames: [encoded],
       },
       allOptIns,
@@ -323,7 +316,6 @@ describe('trusted proof render asset store', () => {
         metrics: { workouts: 3, activities: 5, streakDays: 8 },
         locationLabel: 'Kings Park',
         routeImage: route,
-        amountDisplay: '$50',
         buddyDisplayNames: ['Alex', 'Sam'],
         buddyPortraitImages: [portrait1, portrait2],
       });

@@ -120,6 +120,21 @@ export function createDiscoverOperationGuard() {
 }
 
 /** Ref-backed synchronous lock; unlike render state it closes same-tick double taps. */
+export type DiscoverActionKind = 'person' | 'group' | 'challenge' | 'page';
+
+export function discoverActionKey(ownerId: string, kind: DiscoverActionKind, id: string) {
+  return `${ownerId}:${kind}:${id}`;
+}
+
+export function isDiscoverActionBusy(
+  busy: ReadonlySet<string>,
+  ownerId: string | null,
+  kind: DiscoverActionKind,
+  id: string,
+) {
+  return ownerId ? busy.has(discoverActionKey(ownerId, kind, id)) : false;
+}
+
 export function createDiscoverActionLock() {
   let epoch = 0;
   let sequence = 0;

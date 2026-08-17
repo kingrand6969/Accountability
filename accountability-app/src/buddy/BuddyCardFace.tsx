@@ -145,7 +145,7 @@ export function BuddyCardFace({
       <RankBadge rank={rankName} size={wide ? 58 : 50} />
       <View style={styles.idStats}>
         <Text style={styles.idStat}>
-          {stats?.cheers ?? 0} Encouragement{(stats?.cheers ?? 0) === 1 ? '' : 's'}
+          {stats?.cheers ?? 0} {(stats?.cheers ?? 0) === 1 ? 'Cheer' : 'Cheers'}
         </Text>
         <Text style={styles.idDot}>·</Text>
         <Text style={styles.idStat}>{stats?.buddies ?? 0} Buddies</Text>

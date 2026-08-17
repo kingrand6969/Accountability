@@ -147,7 +147,7 @@ export default function Notifications() {
             <EmptyState
               icon="notifications-outline"
               title="No notifications yet"
-              subtitle="Encouragement, comments, tags and buddy requests land here the moment they happen."
+              subtitle="Cheers, comments, tags and buddy requests land here the moment they happen."
             />
           }
           renderItem={({ item }) => {

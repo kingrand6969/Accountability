@@ -44,11 +44,6 @@ export async function loadBrandGeometry(sourceReference) {
 }
 
 function validateGeometry(geometry) {
-  const isHead = (head) =>
-    head &&
-    ['cx', 'cy', 'r'].every(
-      (key) => typeof head[key] === 'number' && Number.isFinite(head[key]),
-    );
   const isColor = (color) =>
     typeof color === 'string' && /^#[0-9A-F]{6}$/.test(color);
 
@@ -57,27 +52,20 @@ function validateGeometry(geometry) {
     typeof geometry?.wordmark !== 'string' ||
     !isColor(geometry?.colors?.cobalt) ||
     !isColor(geometry?.colors?.navy) ||
+    !isColor(geometry?.colors?.cyan) ||
     !isColor(geometry?.colors?.cream) ||
-    geometry?.heads?.length !== 2 ||
-    !geometry.heads.every(isHead) ||
-    geometry?.ribbons?.length !== 2 ||
-    !geometry.ribbons.every(
-      (ribbon) => typeof ribbon === 'string' && ribbon.length > 0,
-    )
+    typeof geometry?.mark?.primaryPath !== 'string' ||
+    geometry.mark.primaryPath.length === 0 ||
+    typeof geometry?.mark?.accentPath !== 'string' ||
+    geometry.mark.accentPath.length === 0
   ) {
     throw new Error('Invalid brand geometry');
   }
   return geometry;
 }
 
-function markBody({ heads, ribbons }, fill) {
-  return [
-    ...heads.map(
-      ({ cx, cy, r }) =>
-        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/>`,
-    ),
-    ...ribbons.map((d) => `<path d="${d}" fill="${fill}"/>`),
-  ].join('');
+function markBody({ colors, mark }, fill, accentFill = colors.cyan) {
+  return `<path d="${mark.primaryPath}" fill="${fill}"/><path d="${mark.accentPath}" fill="${accentFill}"/>`;
 }
 
 function createMarkup(geometry) {
@@ -86,20 +74,20 @@ function createMarkup(geometry) {
   function mark(fill = colors.cobalt, background = 'transparent') {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${viewBox}">
       <rect width="96" height="88" fill="${background}"/>
-      ${markBody(geometry, fill)}
+      ${markBody(geometry, fill, fill === colors.cobalt ? colors.cyan : fill)}
     </svg>`;
   }
 
   function appIcon(fill = colors.cobalt, background = '#FFFFFC') {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 96 96">
       <rect width="96" height="96" fill="${background}"/>
-      <g transform="translate(0 4)">${markBody(geometry, fill)}</g>
+      ${markBody(geometry, fill, fill === colors.cobalt ? colors.cyan : fill)}
     </svg>`;
   }
 
   const wordmark = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="300" viewBox="0 0 1400 300">
-    <g transform="translate(18 22) scale(2.72)">${markBody(geometry, colors.cobalt)}</g>
-    <text x="306" y="193" font-family="Arial, Helvetica, sans-serif" font-size="126" font-weight="700" letter-spacing="-4" fill="${colors.navy}">${brandWordmark.slice(0, 7)}<tspan fill="${colors.cobalt}">${brandWordmark.slice(7)}</tspan></text>
+    <g transform="translate(18 15) scale(2.72)">${markBody(geometry, colors.cobalt)}</g>
+    <text x="306" y="193" font-family="Arial, Helvetica, sans-serif" font-size="126" font-weight="700" letter-spacing="-4" fill="${colors.navy}">${brandWordmark}</text>
   </svg>`;
 
   return { appIcon, mark, wordmark };

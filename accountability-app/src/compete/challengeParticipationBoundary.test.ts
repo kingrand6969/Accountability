@@ -18,13 +18,13 @@ import { createChallenge, getChallenge, joinChallenge, listChallenges } from './
 
 const apiSource = fs.readFileSync(path.resolve(process.cwd(), 'src/compete/api.ts'), 'utf8');
 const boundarySql = fs.readFileSync(
-  path.resolve(process.cwd(), 'supabase/migrations/0099_buddy_completed_challenges.sql'),
+  path.resolve(process.cwd(), 'supabase/migrations/0106_buddy_completed_challenges.sql'),
   'utf8',
 );
 const lockdownSql = fs.readFileSync(
   path.resolve(
     process.cwd(),
-    'supabase/migrations/0101_challenge_participant_privacy_lockdown.sql',
+    'supabase/migrations/0108_challenge_participant_privacy_lockdown.sql',
   ),
   'utf8',
 );
@@ -98,13 +98,13 @@ describe('server-owned challenge enrollment', () => {
       'revoke insert on table public.challenge_participants from public, anon, authenticated',
     );
     expect(boundarySql).toMatch(
-      /create or replace function public\.join_challenge\(\s*p_challenge uuid,\s*p_timezone_offset integer\s*\)/,
+      /create or replace function public\.join_challenge\(\s*p_challenge uuid,\s*p_timezone_offset integer,\s*p_expected_owner uuid\s*\)/,
     );
     expect(boundarySql).toContain(
-      'revoke execute on function public.join_challenge(uuid, integer) from public, anon',
+      'revoke execute on function public.join_challenge(uuid, integer, uuid) from public, anon',
     );
     expect(boundarySql).toContain(
-      'grant execute on function public.join_challenge(uuid, integer) to authenticated',
+      'grant execute on function public.join_challenge(uuid, integer, uuid) to authenticated',
     );
   });
 
@@ -118,13 +118,14 @@ describe('server-owned challenge enrollment', () => {
     expect(boundarySql).toContain('on conflict (challenge_id, user_id) do nothing');
   });
 
-  test('joinChallenge sends no client identity or timestamp and is replay-safe on the server', async () => {
+  test('joinChallenge binds the initiating owner without sending a client timestamp', async () => {
     const timezone = jest.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(480);
 
     await expect(joinChallenge(challengeId)).resolves.toBeUndefined();
 
     expect(mockRpc).toHaveBeenCalledWith('join_challenge', {
       p_challenge: challengeId,
+      p_expected_owner: viewerId,
       p_timezone_offset: 480,
     });
     expect(mockFrom).not.toHaveBeenCalled();

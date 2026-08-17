@@ -2,7 +2,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 
 export type R2Kind = 'avatar' | 'cover' | 'post' | 'video' | 'voice' | 'share';
-export type R2UploadOptions = { operationId?: string };
+export type R2UploadOptions = { operationId?: string; expectedOwnerId?: string };
 
 export const R2_UPLOAD_MAX_BYTES: Readonly<Record<R2Kind, number>> = {
   avatar: 2 * 1024 * 1024,
@@ -40,7 +40,14 @@ export async function uploadToR2(
   // Declare size + type so the signing function can reject oversized/abusive
   // uploads and rate-limit per user before handing back an upload URL.
   const { data, error } = await supabase.functions.invoke('r2-sign', {
-    body: { kind, ext, bytes: body.byteLength, contentType, operationId: options.operationId },
+    body: {
+      kind,
+      ext,
+      bytes: body.byteLength,
+      contentType,
+      operationId: options.operationId,
+      expectedOwnerId: options.expectedOwnerId,
+    },
   });
   if (error) throw error;
   const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };

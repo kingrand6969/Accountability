@@ -29,7 +29,7 @@ it('does not create a duplicate promise when the same promise already exists tod
   ] satisfies TimelineItem[];
 
   await persistPromisesForToday(
-    new Set(['body-run', 'money-save']),
+    new Set(['body-run', 'people-call']),
     {
       listItemsForDay: async () => existing,
       createItem: async (item) => {
@@ -40,7 +40,7 @@ it('does not create a duplicate promise when the same promise already exists tod
   );
 
   expect(created).toHaveLength(1);
-  expect(created[0].title).toBe('Save $50');
+  expect(created[0].title).toBe('Call someone I care about');
 });
 
 it('creates no timeline item when no promise is selected', async () => {
@@ -76,11 +76,14 @@ it('creates no duplicates when the same selection is persisted twice', async () 
     createItem,
   };
 
-  await persistPromisesForToday(new Set(['body-run', 'money-save']), dependencies, DAY);
-  await persistPromisesForToday(new Set(['body-run', 'money-save']), dependencies, DAY);
+  await persistPromisesForToday(new Set(['body-run', 'people-call']), dependencies, DAY);
+  await persistPromisesForToday(new Set(['body-run', 'people-call']), dependencies, DAY);
 
   expect(createItem).toHaveBeenCalledTimes(2);
-  expect(rows.map((row) => row.title)).toEqual(['Morning run 3.2 km', 'Save $50']);
+  expect(rows.map((row) => row.title)).toEqual([
+    'Morning run 3.2 km',
+    'Call someone I care about',
+  ]);
 });
 
 it('does not create an item if the owner changes while the existing day is loading', async () => {
@@ -112,7 +115,7 @@ it('stops before a second item if the owner changes during the first create', as
 
   await expect(
     persistPromisesForToday(
-      new Set(['body-run', 'money-save']),
+      new Set(['body-run', 'people-call']),
       {
         listItemsForDay: async () => [],
         createItem,

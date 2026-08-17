@@ -26,10 +26,12 @@ import { showToast } from '../ui/Toast';
 import { colors, font, radius, spacing } from '../ui/theme';
 import {
   createDiscoverActionLock,
+  discoverActionKey,
   createDiscoverLoadGuard,
   createDiscoverOperationGuard,
   DISCOVER_GEOMETRY,
   keepPublicDiscoveryRows,
+  isDiscoverActionBusy,
   mapDiscoverViewState,
   preparePublicCandidates,
   readDiscoverFixtureConfig,
@@ -51,7 +53,53 @@ export function deriveDiscoverLayout(fontScale: number) {
   };
 }
 
-export function DiscoverExperience() {
+export type DiscoverScope = 'all' | 'people';
+
+type DiscoverScopeData = {
+  people: Candidate[];
+  cards: Map<string, BuddyCardView | null>;
+  groups: Group[];
+  challenges: ChallengeCard[];
+};
+
+export function discoverDataCount(
+  scope: DiscoverScope,
+  data: { people: readonly unknown[]; groups: readonly unknown[]; challenges: readonly unknown[] },
+) {
+  return data.people.length + (scope === 'all' ? data.groups.length + data.challenges.length : 0);
+}
+
+/** Loads only the sources that can affect the requested Discover surface. */
+export async function loadDiscoverScopeData(input: {
+  scope: DiscoverScope;
+  listPeople: typeof listDiscoveryCandidates;
+  listGroups: typeof listGroups;
+  listChallenges: typeof listChallenges;
+  getCards: typeof getBuddyCards;
+  isCurrent: () => boolean;
+}): Promise<DiscoverScopeData | null> {
+  const [discovery, rawGroups, rawChallenges] = await Promise.all([
+    input.listPeople(),
+    input.scope === 'all' ? input.listGroups() : Promise.resolve([]),
+    input.scope === 'all' ? input.listChallenges() : Promise.resolve([]),
+  ]);
+  const prepared = preparePublicCandidates(discovery.candidates, 'public_profiles');
+  if (!input.isCurrent()) return null;
+  const cards = await requestAllowedCardsIfCurrent(
+    prepared.allowedIds,
+    input.isCurrent,
+    input.getCards,
+  );
+  if (!cards || !input.isCurrent()) return null;
+  return {
+    people: prepared.candidates,
+    cards,
+    groups: keepPublicDiscoveryRows(rawGroups),
+    challenges: keepPublicDiscoveryRows(rawChallenges),
+  };
+}
+
+export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope }) {
   const router = useRouter();
   const { fontScale } = useWindowDimensions();
   const layout = deriveDiscoverLayout(fontScale);
@@ -87,29 +135,22 @@ export function DiscoverExperience() {
     const ticket = loadGuardRef.current.begin(ownerId);
     setError(null);
     try {
-      const [discovery, nextGroups, nextChallenges] = await Promise.all([
-        listDiscoveryCandidates(),
-        listGroups(),
-        listChallenges(),
-      ]);
-      const prepared = preparePublicCandidates(discovery.candidates, 'public_profiles');
       const isCurrentLoad = () =>
         mountedRef.current &&
         loadGuardRef.current.canCommit(ticket, currentOwnerRef.current);
-      if (!isCurrentLoad()) return;
-      const nextCards = await requestAllowedCardsIfCurrent(
-        prepared.allowedIds,
-        isCurrentLoad,
-        getBuddyCards,
-      );
-      if (!nextCards) return;
-      if (
-        !isCurrentLoad()
-      ) return;
-      setPeople(prepared.candidates);
-      setCards(nextCards);
-      setGroups(keepPublicDiscoveryRows(nextGroups));
-      setChallenges(keepPublicDiscoveryRows(nextChallenges));
+      const next = await loadDiscoverScopeData({
+        scope,
+        listPeople: listDiscoveryCandidates,
+        listGroups,
+        listChallenges,
+        getCards: getBuddyCards,
+        isCurrent: isCurrentLoad,
+      });
+      if (!next || !isCurrentLoad()) return;
+      setPeople(next.people);
+      setCards(next.cards);
+      setGroups(next.groups);
+      setChallenges(next.challenges);
       setDataOwnerId(ownerId);
     } catch (cause) {
       if (
@@ -125,7 +166,7 @@ export function DiscoverExperience() {
         loadGuardRef.current.canCommit(ticket, currentOwnerRef.current)
       ) setLoading(false);
     }
-  }, [ownerId]);
+  }, [ownerId, scope]);
 
   useLayoutEffect(() => {
     const loadGuard = loadGuardRef.current;
@@ -164,16 +205,16 @@ export function DiscoverExperience() {
     [],
   );
 
-  async function act(kind: 'person' | 'group' | 'challenge', id: string, action: () => Promise<void>, message: string) {
+  async function act(kind: 'person' | 'group' | 'challenge', id: string, action: (expectedOwner: string) => Promise<void>, message: string) {
     const actionOwner = currentOwnerRef.current;
     if (!actionOwner) return;
-    const key = `${actionOwner}:${kind}:${id}`;
+    const key = discoverActionKey(actionOwner, kind, id);
     const lockToken = actionLockRef.current.acquire(key);
     if (!lockToken) return;
     const ticket = operationGuardRef.current.begin(key, actionOwner);
     setBusy((current) => new Set(current).add(key));
     try {
-      await action();
+      await action(actionOwner);
       if (!operationGuardRef.current.canCommit(ticket, currentOwnerRef.current)) return;
       showToast(message);
       await load();
@@ -232,12 +273,12 @@ export function DiscoverExperience() {
     permission: filter === 'nearby' ? nearbyPermission : 'granted',
     nearby: filter === 'nearby',
     privacySafeNearbyQuery: false,
-    dataCount: people.length + groups.length + challenges.length,
+    dataCount: discoverDataCount(scope, { people, groups, challenges }),
   });
   const showData =
     dataOwnerId === ownerId && (state.status === 'ready' ||
     ((state.status === 'offline' || state.status === 'error') &&
-      people.length + groups.length + challenges.length > 0));
+      discoverDataCount(scope, { people, groups, challenges }) > 0));
 
   return (
     <ScrollView
@@ -258,7 +299,7 @@ export function DiscoverExperience() {
         <Ionicons name="options-outline" size={19} color={colors.primary} />
       </Pressable>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+      {scope === 'all' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         {([
           ['for-you', 'For you'],
           ['nearby', 'Nearby'],
@@ -287,8 +328,8 @@ export function DiscoverExperience() {
             </Text>
           </Pressable>
         ))}
-      </ScrollView>
-      <Text
+      </ScrollView> : null}
+      {scope === 'all' ? <Text
         style={[
           styles.nearbyExplanation,
           isLargeText && styles.nearbyExplanationLargeText,
@@ -296,7 +337,7 @@ export function DiscoverExperience() {
         accessibilityLabel="Nearby unavailable"
       >
         Nearby is off until private location permission and a privacy-safe public query are proven.
-      </Text>
+      </Text> : null}
 
       {state.status === 'offline' ? <StateNotice status="offline" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
       {state.status === 'error' ? <StateNotice status="error" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
@@ -309,7 +350,7 @@ export function DiscoverExperience() {
         />
       ) : null}
 
-      {showData && filter === 'for-you' ? (
+      {showData && (scope === 'people' || filter === 'for-you') ? (
         <>
           <SectionHeader
             title="People you may connect with"
@@ -323,20 +364,20 @@ export function DiscoverExperience() {
               person={person}
               card={cards.get(person.id) ?? null}
               comparisonFixture={fixture?.personId === person.id}
-              busy={busy.has(`person:${person.id}`)}
+                busy={isDiscoverActionBusy(busy, ownerId, 'person', person.id)}
               largeText={useAdaptiveGeometry}
               onOpen={() =>
                 router.push({ pathname: '/buddy-card/[id]', params: { id: person.id } } as never)
               }
               onConnect={() =>
-                act('person', person.id, () => sendRequest(person.id), `Connection request sent to ${person.display_name ?? 'this member'}`)
+                act('person', person.id, (expectedOwner) => sendRequest(person.id, expectedOwner), `Connection request sent to ${person.display_name ?? 'this member'}`)
               }
             />
           ))}
         </>
       ) : null}
 
-      {showData && (filter === 'for-you' || filter === 'groups') ? (
+      {scope === 'all' && showData && (filter === 'for-you' || filter === 'groups') ? (
         <>
           <SectionHeader title="Recommended group" action="See all" onPress={() => router.push('/groups' as never)} largeText={layout.stackCards} />
           {recommendedGroups.slice(0, filter === 'groups' ? 8 : 1).map((group) => (
@@ -344,30 +385,30 @@ export function DiscoverExperience() {
               key={group.id}
               group={group}
               fixtureMediaUrl={fixture?.groupId === group.id ? fixture.groupMediaUrl : null}
-              busy={busy.has(`group:${group.id}`)}
+              busy={isDiscoverActionBusy(busy, ownerId, 'group', group.id)}
               largeText={layout.stackCards}
               clampDynamicText={layout.clampDynamicText}
               onOpen={() => router.push(`/group/${group.id}` as never)}
-              onJoin={() => act('group', group.id, () => joinGroup(group.id), `Joined ${group.name}`)}
+              onJoin={() => act('group', group.id, (expectedOwner) => joinGroup(group.id, expectedOwner), `Joined ${group.name}`)}
             />
           ))}
           {groups.length === 0 ? <Empty icon="people-circle-outline" text="No public groups to recommend yet." /> : null}
         </>
       ) : null}
 
-      {showData && (filter === 'for-you' || filter === 'challenges') ? (
+      {scope === 'all' && showData && (filter === 'for-you' || filter === 'challenges') ? (
         <>
           <SectionHeader title="Challenge spotlight" action="See all" onPress={() => router.push('/compete' as never)} largeText={layout.stackCards} />
           {recommendedChallenges.slice(0, filter === 'challenges' ? 8 : 1).map((challenge) => (
             <ChallengeRow
               key={challenge.id}
               challenge={challenge}
-              busy={busy.has(`challenge:${challenge.id}`)}
+              busy={isDiscoverActionBusy(busy, ownerId, 'challenge', challenge.id)}
               largeText={layout.stackCards}
               onOpen={() =>
                 router.push({ pathname: '/challenge/[id]', params: { id: challenge.id } } as never)
               }
-              onJoin={() => act('challenge', challenge.id, () => joinChallenge(challenge.id), `Joined ${challenge.title}`)}
+              onJoin={() => act('challenge', challenge.id, (expectedOwner) => joinChallenge(challenge.id, expectedOwner), `Joined ${challenge.title}`)}
             />
           ))}
           {challenges.length === 0 ? <Empty icon="trophy-outline" text="The next challenge is being prepared." /> : null}
@@ -467,8 +508,9 @@ function PersonCard({
       <Pressable
         style={({ pressed }) => [styles.connect, largeText && styles.connectLargeText, pressed && styles.pressed, busy && styles.disabled]}
         onPress={onConnect}
-        disabled={busy}
-        accessibilityRole="button"
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: busy, busy }}
         accessibilityLabel={`Connect with ${person.display_name ?? 'member'}`}
       >
         {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectText}>Connect</Text>}
@@ -545,6 +587,7 @@ function GroupCard({
         onPress={group.is_member ? onOpen : onJoin}
         disabled={busy}
         accessibilityRole="button"
+        accessibilityState={{ disabled: busy, busy }}
         accessibilityLabel={group.is_member ? `Open ${group.name}` : `Join ${group.name}`}
       >
         <Text style={[styles.joinText, group.is_member && styles.joinedText]}>
@@ -588,6 +631,7 @@ function ChallengeRow({
         onPress={challenge.joined ? onOpen : onJoin}
         disabled={busy}
         accessibilityRole="button"
+        accessibilityState={{ disabled: busy, busy }}
         accessibilityLabel={challenge.joined ? `Open ${challenge.title}` : `Join ${challenge.title}`}
       >
         <Text style={styles.challengeNumber}>

@@ -59,4 +59,8 @@ describe('root layout contract', () => {
     );
     expect(layoutSource).not.toMatch(/if\s*\(\s*loading\s*\|\|\s*!fontsLoaded\s*\)/);
   });
+
+  test('does not mount Post in the root Android stack', () => {
+    expect(layoutSource).not.toContain('<Stack.Screen name="post/[id]"');
+  });
 });

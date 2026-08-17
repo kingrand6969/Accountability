@@ -105,6 +105,8 @@ export default function Compose() {
   const [draftMedia, setDraftMedia] = useState<DurableDraftMedia | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const [screenFocused, setScreenFocused] = useState(false);
   const draftRef = useRef<ComposeDraftV1 | null>(null);
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = ownerId;
@@ -343,6 +345,7 @@ export default function Compose() {
 
   useEffect(() => {
     const appState = AppState.addEventListener('change', (state) => {
+      setAppActive(state === 'active');
       if (state !== 'active') void flushDraft();
     });
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -366,6 +369,7 @@ export default function Compose() {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      setScreenFocused(true);
       if (
         Platform.OS !== 'web'
         && !editingIdRef.current
@@ -375,7 +379,10 @@ export default function Compose() {
       ) {
         void recoveryControllerRef.current?.recover();
       }
-      return () => { focusedRef.current = false; };
+      return () => {
+        focusedRef.current = false;
+        setScreenFocused(false);
+      };
     }, [ownerId, draftId, draftReady]),
   );
 
@@ -390,6 +397,11 @@ export default function Compose() {
     draftRef.current = null;
     recoveryControllerRef.current?.dispose();
   }, []);
+
+  const composeVideoActive =
+    screenFocused && appActive
+    && !posting && !tagPickerOpen && !editorUri
+    && !eventOpen && !showCreateHub;
 
   async function clearSavedDraft(deleteMedia = true, submittedDraft?: ComposeDraftV1 | null) {
     const draft = selectDraftCleanupTarget(submittedDraft, currentDraft(), draftRef.current);
@@ -906,7 +918,7 @@ export default function Compose() {
           <View style={styles.previewWrap}>
             {pickedVideo ? (
               <View style={styles.videoPreview}>
-                <PostVideo url={pickedVideo.uri} />
+                <PostVideo url={pickedVideo.uri} active={composeVideoActive} />
               </View>
             ) : (
               <Image source={{ uri: previewUri }} style={styles.preview} resizeMode="cover" />

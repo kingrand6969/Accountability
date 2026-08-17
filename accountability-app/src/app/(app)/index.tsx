@@ -5,6 +5,7 @@ import {
   AppState,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -12,8 +13,9 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ViewToken,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useIsFocused, useNavigation, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,15 +23,16 @@ import NetInfo from '@react-native-community/netinfo';
 import {
   FEED_PAGE_SIZE,
   listEncouragementPreviews,
-  listFeed,
+  listPersonalFeed,
   setLiked,
   type EncouragementPreview,
-  type FeedMode,
+  type UnifiedFeedPost,
 } from '../../feed/api';
 import { showPostMenu } from '../../feed/postActions';
 import { useAuth } from '../../auth/AuthProvider';
 import { attendEvent } from '../../events/api';
 import { StoryRail, type StoryRailHandle } from '../../stories/StoryRail';
+import { createStoryPickerQueue } from '../../stories/storyPickerQueue';
 import { AdCard } from '../../pro/AdCard';
 import { useFeedAdsReady } from '../../pro/adAdapter';
 import { useIsPro } from '../../pro/ProProvider';
@@ -41,18 +44,15 @@ import { getMyProfile } from '../../profiles/api';
 import type { FeedPost } from '../../feed/types';
 import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
 import { hapticTap } from '../../ui/haptics';
-import { DiscoverExperience } from '../../discover/DiscoverExperience';
 import { SocialBrandHeader } from '../../feed/SocialBrandHeader';
 import {
-  SocialModeSelector,
   deriveFeedViewState,
-  deriveMyDayValues,
   feedRowsBelongToView,
-  restoreFeedSession,
   scheduleIdentityBoundAction,
 } from '../../feed/SocialModeSelector';
-import { MyDayRail } from '../../feed/MyDayRail';
 import { FeedProofCard } from '../../feed/FeedProofCard';
+import { PostImage } from '../../feed/PostImage';
+import { activeVideoPost } from '../../feed/videoPolicy';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type CreateItem = {
@@ -61,7 +61,9 @@ type CreateItem = {
   title: string;
   sub: string;
 } & ({ kind: 'story' } | { kind: 'route'; route: string });
-type FeedRow = { kind: 'post'; post: FeedPost } | { kind: 'ad'; id: string };
+type FeedRow =
+  | { kind: 'post'; post: UnifiedFeedPost; generation: string }
+  | { kind: 'ad'; id: string; generation: string };
 
 const AD_EVERY = 5;
 const FEED_SESSION_KEY = 'feed-session-v1';
@@ -97,15 +99,14 @@ function QuickShare({
 
 export default function Feed() {
   const router = useRouter();
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const navigation = useNavigation();
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
-  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const isFocused = useIsFocused();
+  const [posts, setPosts] = useState<UnifiedFeedPost[]>([]);
   const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
-  const [dataMode, setDataMode] = useState<FeedMode | null>(null);
   const [encouragementPreviews, setEncouragementPreviews] = useState<Map<string, EncouragementPreview>>(new Map());
-  const [feedMode, setFeedMode] = useState<FeedMode>('buddies');
-  const [discoverVisited, setDiscoverVisited] = useState(false);
   const [restored, setRestored] = useState(false);
   const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -118,34 +119,53 @@ export default function Feed() {
   const [broadcast, setBroadcast] = useState<FeedPost | null>(null);
   const [me, setMe] = useState<{ name: string | null; avatar: string | null }>({ name: null, avatar: null });
   const [profileOwnerId, setProfileOwnerId] = useState<string | null>(null);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
+  const [visibilityGeneration, setVisibilityGeneration] = useState('');
   const likesInFlight = useRef<Set<string>>(new Set());
   const loadGeneration = useRef(0);
-  const storyRailRef = useRef<StoryRailHandle>(null);
+  const storyPickerQueue = useMemo(() => createStoryPickerQueue(myId), [myId]);
   const feedListRef = useRef<FlatList<FeedRow>>(null);
-  const buddiesOffset = useRef(0);
-  const pendingBuddiesOffset = useRef<number | null>(null);
+  const feedOffset = useRef(0);
+  const pendingFeedOffset = useRef<number | null>(null);
   const listContentReady = useRef(false);
   const connectivityRef = useRef(true);
   const profileGeneration = useRef(0);
   const currentUserIdRef = useRef(myId);
+  const [viewabilityConfig] = useState({ itemVisiblePercentThreshold: 65, minimumViewTime: 180 });
+  const [onViewableItemsChanged] = useState(() => ({ viewableItems }: { viewableItems: ViewToken<FeedRow>[] }) => {
+    const ids = viewableItems.flatMap(({ item }) => item?.kind === 'post' ? [item.post.id] : []);
+    setVisiblePostIds((current) => current.join('|') === ids.join('|') ? current : ids);
+    setVisibilityGeneration(viewableItems[0]?.item?.generation ?? '');
+  });
   // This latest-value ref prevents a prior identity's delayed action during the render-to-effect gap.
   // eslint-disable-next-line react-hooks/refs
   currentUserIdRef.current = myId;
   const pendingCreateAction = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { unread } = useUnreadNotifications();
   const { isPro, loading: proLoading } = useIsPro();
+  const attachStoryRail = useCallback((handle: StoryRailHandle | null) => {
+    storyPickerQueue.attach(handle);
+  }, [storyPickerQueue]);
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
   useEffect(() => {
+    currentUserIdRef.current = myId;
     return () => {
       currentUserIdRef.current = null;
       if (pendingCreateAction.current) clearTimeout(pendingCreateAction.current);
       pendingCreateAction.current = null;
     };
   }, []);
+
+  const feedGeneration = `${myId ?? ''}:${dataOwnerId ?? ''}`;
+
+  useEffect(() => {
+    return () => storyPickerQueue.reset();
+  }, [storyPickerQueue]);
 
   useEffect(() => {
     const generation = ++profileGeneration.current;
@@ -178,7 +198,6 @@ export default function Feed() {
       setRestored(false);
       setPosts([]);
       setDataOwnerId(null);
-      setDataMode(null);
       setEncouragementPreviews(new Map());
       setLoadError(null);
       setLoadingMore(false);
@@ -191,16 +210,17 @@ export default function Feed() {
       setAttending(new Set());
       setCreateOpen(false);
       likesInFlight.current.clear();
-      pendingBuddiesOffset.current = null;
+      pendingFeedOffset.current = null;
       listContentReady.current = false;
       try {
         const raw = await AsyncStorage.getItem(FEED_SESSION_KEY);
-        const saved = restoreFeedSession(raw ? JSON.parse(raw) : null);
+        const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+        const savedOffset = typeof parsed.feedOffset === 'number' && Number.isFinite(parsed.feedOffset)
+          ? Math.max(0, parsed.feedOffset)
+          : 0;
         if (!alive) return;
-        buddiesOffset.current = saved.buddiesOffset;
-        pendingBuddiesOffset.current = saved.buddiesOffset;
-        setFeedMode(saved.mode);
-        setDiscoverVisited(saved.mode === 'discover');
+        feedOffset.current = savedOffset;
+        pendingFeedOffset.current = savedOffset;
       } catch {
         // Harmless preferences are optional.
       } finally {
@@ -214,26 +234,22 @@ export default function Feed() {
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
-    if (feedMode === 'buddies') {
-      pendingBuddiesOffset.current = buddiesOffset.current;
-      listContentReady.current = false;
-    }
+    pendingFeedOffset.current = feedOffset.current;
+    listContentReady.current = false;
     setLoadError(null);
     setLoadingMore(false);
     if (!myId) {
       setPosts([]);
       setDataOwnerId(null);
-      setDataMode(null);
       setLoading(false);
       setRefreshing(false);
       return;
     }
     try {
-      const page = await listFeed(undefined, undefined, undefined, feedMode);
+      const page = await listPersonalFeed(myId);
       if (generation !== loadGeneration.current) return;
       setPosts(page);
       setDataOwnerId(myId);
-      setDataMode(feedMode);
       setEndReached(page.length < FEED_PAGE_SIZE);
       try {
         const previews = await listEncouragementPreviews(page.map((post) => post.id));
@@ -251,7 +267,7 @@ export default function Feed() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [feedMode, myId]);
+  }, [myId]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -272,15 +288,16 @@ export default function Feed() {
   const persistFeedPosition = useCallback(() => {
     void AsyncStorage.setItem(
       FEED_SESSION_KEY,
-      JSON.stringify({ mode: feedMode, buddiesOffset: buddiesOffset.current }),
+      JSON.stringify({ feedOffset: feedOffset.current }),
     );
-  }, [feedMode]);
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
+      setAppActive(nextState === 'active');
       if (nextState !== 'active') {
         loadGeneration.current += 1;
-        pendingBuddiesOffset.current = buddiesOffset.current;
+        pendingFeedOffset.current = feedOffset.current;
         listContentReady.current = false;
         persistFeedPosition();
         return;
@@ -290,54 +307,39 @@ export default function Feed() {
     return () => subscription.remove();
   }, [load, myId, persistFeedPosition, restored]);
 
+  useEffect(() => {
+    if (restored) {
+      setLoading(true);
+      void load();
+    }
+  }, [load, restored]);
+
   useFocusEffect(
     useCallback(() => {
-      if (restored) {
-        setLoading(true);
-        void load();
-      }
       return () => {
-        loadGeneration.current += 1;
-        pendingBuddiesOffset.current = buddiesOffset.current;
+        pendingFeedOffset.current = feedOffset.current;
         listContentReady.current = false;
         persistFeedPosition();
       };
-    }, [load, persistFeedPosition, restored]),
+    }, [persistFeedPosition]),
   );
 
-  function changeFeedMode(mode: FeedMode) {
-    if (mode === feedMode) return;
-    if (feedMode === 'buddies') {
-      pendingBuddiesOffset.current = buddiesOffset.current;
-      listContentReady.current = false;
-    }
-    if (mode === 'discover') setDiscoverVisited(true);
-    setFeedMode(mode);
-    void AsyncStorage.setItem(FEED_SESSION_KEY, JSON.stringify({ mode, buddiesOffset: buddiesOffset.current }));
-    if (mode === 'buddies') {
-      pendingBuddiesOffset.current = buddiesOffset.current;
-    }
+  function rememberFeedOffset(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    feedOffset.current = event.nativeEvent.contentOffset.y;
   }
 
-  function rememberModeOffset(event: NativeSyntheticEvent<NativeScrollEvent>) {
-    if (feedMode === 'buddies') {
-      buddiesOffset.current = event.nativeEvent.contentOffset.y;
-    }
-  }
-
-  function restorePendingBuddiesOffset() {
+  function restorePendingFeedOffset() {
     if (
-      feedMode !== 'buddies' ||
-      pendingBuddiesOffset.current == null ||
+      pendingFeedOffset.current == null ||
       !listContentReady.current ||
       !feedListRef.current
     ) return;
-    const offset = pendingBuddiesOffset.current;
+    const offset = pendingFeedOffset.current;
     requestAnimationFrame(() => {
       const list = feedListRef.current;
       if (!list) return;
       list.scrollToOffset({ offset, animated: false });
-      if (pendingBuddiesOffset.current === offset) pendingBuddiesOffset.current = null;
+      if (pendingFeedOffset.current === offset) pendingFeedOffset.current = null;
     });
   }
 
@@ -347,12 +349,12 @@ export default function Feed() {
   }
 
   async function onLoadMore() {
-    if (loadingMore || endReached || loading || posts.length === 0) return;
+    if (!myId || loadingMore || endReached || loading || posts.length === 0) return;
     setLoadingMore(true);
     const generation = loadGeneration.current;
     try {
       const oldest = posts[posts.length - 1].created_at;
-      const page = await listFeed(oldest, undefined, undefined, feedMode);
+      const page = await listPersonalFeed(myId, oldest);
       if (generation !== loadGeneration.current) return;
       if (page.length < FEED_PAGE_SIZE) setEndReached(true);
       if (page.length > 0) {
@@ -425,33 +427,36 @@ export default function Feed() {
 
   const adsReady = useFeedAdsReady();
   const visiblePosts = useMemo(
-    () => (feedRowsBelongToView(dataOwnerId, myId, dataMode, feedMode) ? posts : []),
-    [dataMode, dataOwnerId, feedMode, myId, posts],
+    () => (feedRowsBelongToView(dataOwnerId, myId) ? posts : []),
+    [dataOwnerId, myId, posts],
   );
   const feedData = useMemo<FeedRow[]>(() => {
     const rows: FeedRow[] = [];
     visiblePosts.forEach((post, index) => {
-      rows.push({ kind: 'post', post });
+      rows.push({ kind: 'post', post, generation: feedGeneration });
       if (adsReady && !isPro && !proLoading && (index + 1) % AD_EVERY === 0) {
-        rows.push({ kind: 'ad', id: `ad-${post.id}` });
+        rows.push({ kind: 'ad', id: `ad-${post.id}`, generation: feedGeneration });
       }
     });
     return rows;
-  }, [adsReady, isPro, proLoading, visiblePosts]);
-  const connectionCount = useMemo(
-    () => [...encouragementPreviews.values()].reduce((total, preview) => total + preview.count, 0),
-    [encouragementPreviews],
-  );
-  const myDayValues = useMemo(
-    () => deriveMyDayValues(visiblePosts, myId, connectionCount),
-    [connectionCount, myId, visiblePosts],
-  );
+  }, [adsReady, feedGeneration, isPro, proLoading, visiblePosts]);
   const viewState = deriveFeedViewState({
     loading,
     loadingMore,
     postCount: visiblePosts.length,
     error: loadError,
     online,
+  });
+  const activeVideoId = activeVideoPost({
+    focused: isFocused,
+    appActive,
+    overlayOpen: createOpen || broadcast !== null,
+    generation: feedGeneration,
+    visibilityGeneration,
+    visiblePostIds,
+    eligibleVideoIds: visiblePosts.flatMap((post) =>
+      post.post_type === 'video' && post.image_url ? [post.id] : [],
+    ),
   });
 
   function openOwnBuddyCard() {
@@ -495,7 +500,14 @@ export default function Feed() {
           <QuickShare icon="sparkles-outline" label="Flex" onPress={() => router.push('/win-card' as never)} />
         </View>
       </View>
-      <MyDayRail values={myDayValues} />
+      {myId ? (
+        <StoryRail
+          key={myId}
+          ref={attachStoryRail}
+          meName={profileOwnerId === myId ? me.name : null}
+          meAvatar={profileOwnerId === myId ? me.avatar : null}
+        />
+      ) : null}
       {viewState === 'offline-cached' || viewState === 'offline-uncached' ? (
         <View style={styles.offlineNotice} accessible accessibilityLabel="Offline">
           <Ionicons name="cloud-offline-outline" size={18} color={colors.textMuted} />
@@ -546,7 +558,7 @@ export default function Feed() {
                     () => currentUserIdRef.current,
                     () => {
                       if (item.kind === 'story') {
-                        storyRailRef.current?.openPicker();
+                        storyPickerQueue.request();
                       } else {
                         router.push(item.route as never);
                       }
@@ -570,36 +582,26 @@ export default function Feed() {
           </Pressable>
         </Pressable>
       </Modal>
-      {myId ? (
-        <View style={styles.hiddenStoryController} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-          <StoryRail
-            key={myId}
-            ref={storyRailRef}
-            meName={profileOwnerId === myId ? me.name : null}
-            meAvatar={profileOwnerId === myId ? me.avatar : null}
-            controllerOnly
-          />
-        </View>
-      ) : null}
-
-      <SocialModeSelector value={feedMode} onChange={changeFeedMode} />
-      {/* Discover owns its ScrollView; explicit offset persistence is deferred to Task 3.3. */}
-      <View style={feedMode === 'discover' ? styles.modeVisible : styles.modeHidden}>
-        {discoverVisited ? <DiscoverExperience /> : null}
-      </View>
-      <View style={feedMode === 'buddies' ? styles.modeVisible : styles.modeHidden}>
-        {feedMode !== 'buddies' ? null : loading ? (
+      <View style={styles.feedContent}>
+        {loading ? (
           <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
         ) : (
           <FlatList
             ref={feedListRef}
             data={feedData}
-            onScroll={rememberModeOffset}
+            initialNumToRender={4}
+            maxToRenderPerBatch={4}
+            updateCellsBatchingPeriod={50}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS === 'android'}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
+            onScroll={rememberFeedOffset}
             onScrollEndDrag={persistFeedPosition}
             onMomentumScrollEnd={persistFeedPosition}
             onContentSizeChange={() => {
               listContentReady.current = true;
-              restorePendingBuddiesOffset();
+              restorePendingFeedOffset();
             }}
             scrollEventThrottle={16}
             ListHeaderComponent={feedHeader}
@@ -612,8 +614,8 @@ export default function Feed() {
             ListEmptyComponent={loadError ? null : (
               <View style={styles.emptyCard}>
                 <Ionicons name="people-outline" size={38} color={colors.primary} />
-                <Text style={styles.emptyTitle}>No buddy posts yet</Text>
-                <Text style={styles.emptySub}>Share a win or add an accountability buddy.</Text>
+                <Text style={styles.emptyTitle}>Your Feed is ready</Text>
+                <Text style={styles.emptySub}>Share a win or discover people and communities to follow.</Text>
                 <View style={styles.emptyActions}>
                   <Pressable onPress={() => router.push('/compose' as never)} style={styles.emptyPrimary} accessibilityRole="button">
                     <Text style={styles.emptyPrimaryText}>Share a win</Text>
@@ -630,10 +632,12 @@ export default function Feed() {
               return (
                 <FeedProofCard
                   post={item}
+                  mediaActive={activeVideoId === item.id}
                   currentUserId={myId}
                   preview={encouragementPreviews.get(item.id)}
                   attending={!!item.event && attending.has(item.event.group_id)}
                   onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
+                  onOpenMedia={item.post_type === 'video' || !item.image_url ? undefined : () => setPreviewPhoto(item.image_url)}
                   onMenu={() => onPostMenu(item)}
                   onAttend={() => onAttend(item)}
                   onToggleLike={() => onToggleLike(item)}
@@ -645,6 +649,33 @@ export default function Feed() {
           />
         )}
       </View>
+      <Modal
+        visible={previewPhoto !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setPreviewPhoto(null)}
+      >
+        <View style={styles.photoPreview}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setPreviewPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+          />
+          <Pressable
+            style={styles.photoClose}
+            onPress={() => setPreviewPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
+          <View style={styles.photoFrame} pointerEvents="box-none">
+            {previewPhoto ? <PostImage url={previewPhoto} immersive /> : null}
+          </View>
+        </View>
+      </Modal>
       <BroadcastSheet
         post={dataOwnerId === myId && myId ? broadcast : null}
         onClose={() => setBroadcast(null)}
@@ -655,9 +686,21 @@ export default function Feed() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.surfaceAlt },
-  modeVisible: { flex: 1 },
-  modeHidden: { display: 'none' },
-  hiddenStoryController: { width: 1, height: 1, overflow: 'hidden', opacity: 0 },
+  feedContent: { flex: 1 },
+  photoPreview: { flex: 1, justifyContent: 'center', backgroundColor: '#000' },
+  photoFrame: { width: '100%' },
+  photoClose: {
+    position: 'absolute',
+    top: 54,
+    right: spacing.md,
+    zIndex: 2,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,.72)',
+  },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,.45)', paddingTop: 64, alignItems: 'flex-end', paddingRight: spacing.md },
   sheet: { width: 280, borderRadius: radius.lg, overflow: 'hidden', padding: spacing.sm, ...shadow.card },
   sheetGlass: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,.82)' },

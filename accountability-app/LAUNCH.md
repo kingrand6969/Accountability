@@ -21,8 +21,8 @@ than any line of code. Everything else is mechanical; that one is a real decisio
 
 ## ✅ Already done (in the repo)
 
-- Full app: 5 pillars, feed, buddies, groups/pages, compete, finance + business tracker,
-  GPS run tracker, achievements, memories.
+- Full app: four tabs — Feed, Journey, Run, and Messages — plus buddies, groups/pages,
+  challenges, GPS activity tracking, achievements, and memories.
 - **Auth & onboarding**: email+password, 18+ age gate, required consent, 6-digit email
   verification flow (goes live the moment you wire email — Section 4F), forgot-password.
 - **Safety/anti-abuse**: RLS on every table, server-side rate limits on write paths,
@@ -153,24 +153,24 @@ to add screenshots (take them from the running app) and host the legal pages (Se
 ## Section A — Store listing pack (drafted; edit + paste)
 
 **App name:** AccountAbility
-**Subtitle / short description (30–80 chars):** Your fitness & money accountability crew
+**Subtitle / short description (30–80 chars):** Your fitness accountability crew
 **Category:** Health & Fitness (secondary: Social Networking / Lifestyle)
 **Age rating:** 18+ (the app enforces an 18+ age gate; declare 17+/18+ so ratings match)
 
 **Full description (paste, trim to taste):**
-> AccountAbility keeps you honest about the goals that matter — training, money, and daily
+> AccountAbility keeps you honest about the goals that matter — training, connection, and daily
 > habits — with a crew that actually shows up. Track runs, rides and walks with GPS. Log
-> workouts, meals and budgets. Set challenges, compete on leaderboards, and cheer your
+> workouts and meals. Set challenges, compete on leaderboards, and cheer your
 > buddies on. Earn medals for real streaks and real distance. Private by default, safe by
 > design, and built to make consistency feel good.
 >
 > • GPS run/ride/walk tracking with route maps
-> • Workout, diet and finance tracking in one place
+> • Workout, diet, and GPS activity tracking in one place
 > • Accountability buddies, groups, and head-to-head challenges
 > • Achievements and leaderboards that reward showing up
 > • Strong safety tools: reporting, blocking, and active moderation
 
-**Keywords (iOS, ≤100 chars):** accountability,fitness,running,gps,habit,buddy,workout,goals,challenge,budget
+**Keywords (iOS, ≤100 chars):** accountability,fitness,running,gps,habit,buddy,workout,goals,challenge,social
 
 **Support URL:** https://<your-domain>/  (or a mailto: support@awldesk.com page)
 **Marketing URL (optional):** your landing page
@@ -178,7 +178,7 @@ to add screenshots (take them from the running app) and host the legal pages (Se
 **Terms URL:** https://<your-legal-host>/terms.html
 
 **Screenshots you'll need to capture** (from the running app): feed, run tracker, a buddy
-card, achievements/trophy case, finance/business, a challenge. Take iPhone 6.7" + 6.5" and a
+card, achievements/trophy case, messages, and a challenge. Take iPhone 6.7" + 6.5" and a
 few Android sizes; the app is already tablet-responsive if you want iPad shots too.
 
 ### Data-safety / privacy-label answers (pre-filled from the Privacy Policy)
@@ -193,7 +193,6 @@ final feature set (e.g. drop the ad rows if you launch without ads).
 | Approximate/precise location (GPS) | Yes | Run/ride tracking, buddy matching | Yes | No |
 | Photos & videos | Yes | Posts, stories, run cards, memories | Yes | No |
 | Health & fitness (runs, workouts, diet) | Yes | Core app function | Yes | No |
-| Financial info (user-entered budgets/debts) | Yes | Finance/business tracker (stored for the user) | Yes | No |
 | Messages (buddy chat) | Yes | In-app messaging | Yes | No |
 | IP address | Yes | Security, moderation, abuse prevention | Yes | No |
 | Device/diagnostic & usage data | Yes | App function, analytics | Yes | No |

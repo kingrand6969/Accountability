@@ -1,6 +1,7 @@
 import type { BoardRank, BuddyCard, BuddyStats, CardMetrics } from './card';
 import { MAX_FEATURED_MEDALS, normalizeFeaturedMedalIds } from './featuredMedals';
 import { BUDDY_CARD_PALETTE_KEYS, type BuddyCardPaletteKey } from './palette';
+import { presentationTraits, storageTraits } from './presentation';
 
 export const BUDDY_CARD_EDITOR_KEYS = Object.freeze([
   'palette_key',
@@ -39,6 +40,7 @@ export type BuddyCardRankingConsentKey = 'show_country_rank' | 'show_city_rank';
 export function normalizeBuddyCardEditorDraft(card: BuddyCard): BuddyCard {
   return {
     ...card,
+    traits: presentationTraits(card.traits),
     show_country_rank: card.show_country_rank === true,
     show_city_rank: card.show_city_rank === true,
   };
@@ -75,6 +77,7 @@ export function buildBuddyCardEditorPatch(
   const normalizedCard = normalizeBuddyCardEditorDraft(card);
   return {
     ...pickBuddyCardEditorChanges(normalizedCard),
+    traits: storageTraits(normalizedCard.traits),
     palette_key: validPaletteKey(normalizedCard.palette_key),
     featured_medal_ids: normalizeFeaturedMedalIds(normalizedCard.featured_medal_ids, earnedIds),
     mode: 'custom',

@@ -3,9 +3,8 @@ import { showToast } from '../ui/Toast';
 import { myInviteUrl } from '../profiles/referrals';
 
 const INVITE_MESSAGE =
-  `I'm using AccountAbility to stay on track — workouts, meals, money and a ` +
-  `daily streak, with buddies who keep me honest. 💪🔥\n\n` +
-  `Join me so we can keep each other accountable!`;
+  `I'm using AccountAbility to stay on track — workouts, meals, runs and challenges. ` +
+  `Join me as an accountability buddy.`;
 
 /**
  * Opens the native share sheet (Messenger, WhatsApp, TikTok, SMS — whatever

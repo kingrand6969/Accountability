@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const migration = fs.readFileSync(
-  path.resolve(process.cwd(), 'supabase/migrations/0097_buddy_card_presentation.sql'),
+  path.resolve(process.cwd(), 'supabase/migrations/0104_buddy_card_presentation.sql'),
   'utf8',
 );
 

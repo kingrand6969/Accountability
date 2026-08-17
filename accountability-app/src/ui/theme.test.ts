@@ -27,7 +27,6 @@ describe('AccountAbility semantic theme contract', () => {
     expect(semanticColors.status.success).toBe(colors.success);
     expect(category).toEqual({
       body: '#16a34a',
-      money: '#155EEF',
       focus: '#7c3aed',
       people: '#ea580c',
     });
@@ -147,7 +146,6 @@ describe('AccountAbility semantic theme contract', () => {
 
   it('aliases category roles through existing semantic tokens', () => {
     expect(category.body).toBe(semanticColors.status.success);
-    expect(category.money).toBe(colors.primary);
     expect(category.focus).toBe(colors.pro);
     expect(category.people).toBe(colors.cheer);
   });

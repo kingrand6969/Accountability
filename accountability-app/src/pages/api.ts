@@ -117,9 +117,10 @@ export async function createPage(input: {
   return data.id as string;
 }
 
-export async function followPage(pageId: string): Promise<void> {
+export async function followPage(pageId: string, expectedOwner?: string): Promise<void> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in.');
+  if (expectedOwner && uid !== expectedOwner) throw new Error('Account changed. Try again.');
   const { error } = await supabase
     .from('page_follows')
     .insert({ page_id: pageId, user_id: uid });

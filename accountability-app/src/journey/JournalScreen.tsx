@@ -22,12 +22,11 @@ import { hasCompletionProof, timelinePillar } from './data';
 import { getJourneyEncouragement, type JourneyEncouragement } from './encouragement';
 import { JourneyEncouragementBar } from './JourneyEncouragementBar';
 
-type JournalFilter = 'all' | 'body' | 'money' | 'focus' | 'people';
+type JournalFilter = 'all' | 'body' | 'focus' | 'people';
 
 const FILTERS: { key: JournalFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'body', label: 'Body' },
-  { key: 'money', label: 'Money' },
   { key: 'focus', label: 'Focus' },
   { key: 'people', label: 'People' },
 ];
@@ -35,7 +34,6 @@ const FILTERS: { key: JournalFilter; label: string }[] = [
 function iconFor(item: TimelineItem) {
   const pillar = timelinePillar(item.type);
   if (pillar === 'body') return 'walk-outline' as const;
-  if (pillar === 'money') return 'cash-outline' as const;
   if (pillar === 'focus') return 'radio-button-on-outline' as const;
   return 'people-outline' as const;
 }
@@ -61,7 +59,7 @@ export default function JournalScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<JournalFilter>(() => {
     const candidate = params.filter;
-    return candidate === 'body' || candidate === 'money' || candidate === 'focus' || candidate === 'people' || candidate === 'all'
+    return candidate === 'body' || candidate === 'focus' || candidate === 'people' || candidate === 'all'
       ? candidate
       : 'all';
   });

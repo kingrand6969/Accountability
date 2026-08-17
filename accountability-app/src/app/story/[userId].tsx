@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   AccessibilityInfo,
   Alert,
+  AppState,
   Image,
   Pressable,
   StyleSheet,
@@ -12,7 +13,7 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { listStoryGroups, deleteStory, reportStory, type StoryGroup } from '../../stories/api';
+import { listStoryGroups, markStoryViewed, deleteStory, reportStory, type StoryGroup } from '../../stories/api';
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
@@ -20,8 +21,10 @@ import { font, spacing } from '../../ui/theme';
 import { useAuth } from '../../auth/AuthProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 import { canReportContent, createReportAction } from '../../moderation/reportAction';
-
-const STORY_DURATION_MS = 6000;
+import {
+  createStoryPlaybackLifecycle,
+  isStoryPlaybackPlayable,
+} from '../../stories/storyPlaybackLifecycle';
 
 export default function StoryViewer() {
   const router = useRouter();
@@ -37,6 +40,12 @@ export default function StoryViewer() {
   const mountedRef = useRef(true);
   const focusedRef = useRef(false);
   const currentStoryIdRef = useRef<string | null>(null);
+  const [playback] = useState(() =>
+    createStoryPlaybackLifecycle({
+      advance: () => {},
+      initialPlayable: false,
+    }),
+  );
 
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [groupIndex, setGroupIndex] = useState(0);
@@ -46,8 +55,9 @@ export default function StoryViewer() {
   const [paused, setPaused] = useState(false);
   const [dataViewKey, setDataViewKey] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [reporting, setReporting] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const storyReportAction = useRef<ReturnType<typeof createReportAction> | null>(null);
 
   useLayoutEffect(() => {
@@ -81,18 +91,22 @@ export default function StoryViewer() {
 
   useEffect(() => {
     mountedRef.current = true;
+    playback.attach();
     return () => {
       mountedRef.current = false;
       focusedRef.current = false;
+      playback.detach();
       storyReportAction.current?.dispose();
+      storyReportAction.current = null;
     };
-  }, []);
+  }, [playback]);
 
   useEffect(() => {
     const lifecycle = ++lifecycleGeneration.current;
     currentOwnerRef.current = ownerId;
     currentViewKeyRef.current = viewKey;
     loadGeneration.current += 1;
+    playback.reset();
     storyReportAction.current?.invalidate();
     queueMicrotask(() => {
       if (
@@ -110,7 +124,15 @@ export default function StoryViewer() {
       setReporting(false);
       setLoading(ownerId !== null);
     });
-  }, [ownerId, viewKey]);
+  }, [ownerId, viewKey, playback]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') playback.setPlayable(false);
+      setAppActive(state === 'active');
+    });
+    return () => subscription.remove();
+  }, [playback]);
 
   const load = useCallback(async () => {
     const requestOwner = ownerId;
@@ -160,32 +182,42 @@ export default function StoryViewer() {
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
+      setFocused(true);
       void load();
       return () => {
         focusedRef.current = false;
+        setFocused(false);
         loadGeneration.current += 1;
         lifecycleGeneration.current += 1;
         storyReportAction.current?.invalidate();
-        if (timer.current) clearTimeout(timer.current);
+        playback.reset();
         setPaused(false);
         setReporting(false);
       };
-    }, [load]),
+    }, [load, playback]),
   );
 
   const safeClose = useCallback(() => {
+    playback.reset();
     navigateBackSafely(router);
-  }, [router]);
+  }, [router, playback]);
 
   const group: StoryGroup | undefined = groups[groupIndex];
   const story = group?.stories[storyIndex];
+  const displayedStoryId = story?.id ?? null;
 
   useLayoutEffect(() => {
-    currentStoryIdRef.current = story?.id ?? null;
-  }, [story?.id]);
+    currentStoryIdRef.current = displayedStoryId;
+  }, [displayedStoryId]);
+
+  useEffect(() => {
+    if (!displayedStoryId || !ownerId || dataViewKey !== viewKey) return;
+    void markStoryViewed(displayedStoryId, ownerId).catch(() => {});
+  }, [displayedStoryId, ownerId, viewKey, dataViewKey]);
 
   const goNext = useCallback(() => {
     if (!group) return;
+    playback.reset();
     if (storyIndex < group.stories.length - 1) {
       setStoryIndex(storyIndex + 1);
     } else if (groupIndex < groups.length - 1) {
@@ -194,27 +226,42 @@ export default function StoryViewer() {
     } else {
       safeClose();
     }
-  }, [group, groups.length, groupIndex, storyIndex, safeClose]);
+  }, [group, groups.length, groupIndex, storyIndex, safeClose, playback]);
 
   const goPrev = useCallback(() => {
     if (storyIndex > 0) {
+      playback.reset();
       setStoryIndex(storyIndex - 1);
     } else if (groupIndex > 0) {
+      playback.reset();
       const prev = groups[groupIndex - 1];
       setGroupIndex(groupIndex - 1);
       setStoryIndex(Math.max(0, prev.stories.length - 1));
     }
     // at the very first story: do nothing
-  }, [groups, groupIndex, storyIndex]);
+  }, [groups, groupIndex, storyIndex, playback]);
 
-  // Auto-advance after 6s per story; cleared on any index change / unmount.
+  useLayoutEffect(() => {
+    playback.setAdvance(goNext);
+  }, [goNext, playback]);
+
   useEffect(() => {
-    if (loading || paused || !story) return;
-    timer.current = setTimeout(goNext, STORY_DURATION_MS);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [loading, paused, story, goNext]);
+    if (!displayedStoryId) {
+      playback.reset();
+      return;
+    }
+    playback.show(displayedStoryId);
+  }, [displayedStoryId, playback]);
+
+  useEffect(() => {
+    playback.setPlayable(isStoryPlaybackPlayable({
+      focused,
+      appActive,
+      loading,
+      paused,
+      dataReady: dataViewKey === viewKey,
+    }));
+  }, [focused, appActive, loading, paused, dataViewKey, viewKey, playback]);
 
   function isCurrentMutation(requestOwner: string, lifecycle: number, requestViewKey: string) {
     return (

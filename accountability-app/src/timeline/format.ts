@@ -12,8 +12,6 @@ export const TIMELINE_TYPES: {
   { value: 'task', label: 'Task', emoji: '✅', icon: 'checkmark-circle-outline', tint: '#16a34a' },
   { value: 'workout', label: 'Workout', emoji: '🏋️', icon: 'barbell-outline', tint: '#7c3aed' },
   { value: 'meal', label: 'Meal', emoji: '🥗', icon: 'nutrition-outline', tint: '#16a34a' },
-  { value: 'expense', label: 'Expense', emoji: '💸', icon: 'cash-outline', tint: '#dc2626' },
-  { value: 'income', label: 'Income', emoji: '💰', icon: 'wallet-outline', tint: '#16a34a' },
   { value: 'activity', label: 'Activity', emoji: '🏃', icon: 'walk-outline', tint: '#ea580c' },
   { value: 'grocery', label: 'Groceries', emoji: '🛒', icon: 'cart-outline', tint: '#0d9488' },
   { value: 'other', label: 'Other', emoji: '📌', icon: 'bookmark-outline', tint: '#64748b' },

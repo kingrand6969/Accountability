@@ -8,7 +8,7 @@ Expo update cannot prove that every installed client has adopted the new RPCs.
 
 ## Stage A: compatible and time-hardened
 
-Migration `0099_buddy_completed_challenges.sql` keeps legacy create, join, count,
+Migration `0106_buddy_completed_challenges.sql` keeps legacy create, join, count,
 and current-user membership behavior working. Direct create/join policies now
 validate the database active window and tolerate only small phone-clock drift.
 New clients use the atomic server-owned RPCs.
@@ -39,7 +39,7 @@ unusable (`PENDING` with no client count), so a missing or guessed report fails.
 
 ## Stage B: explicit privacy lockdown
 
-Migration `0101_challenge_participant_privacy_lockdown.sql` only installs the
+Migration `0108_challenge_participant_privacy_lockdown.sql` only installs the
 trusted finalizer. Normal migration application and fresh database reset succeed
 without changing Stage A participant policies or grants. Merely applying every
 migration never performs the privacy lockdown.

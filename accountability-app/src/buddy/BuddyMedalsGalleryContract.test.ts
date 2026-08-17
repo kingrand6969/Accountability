@@ -31,7 +31,7 @@ const cardScreenSource = fs.readFileSync(
 );
 const completedChallengePath = path.resolve(
   process.cwd(),
-  'supabase/migrations/0099_buddy_completed_challenges.sql',
+  'supabase/migrations/0106_buddy_completed_challenges.sql',
 );
 const completedChallengeSql = fs.existsSync(completedChallengePath)
   ? fs.readFileSync(completedChallengePath, 'utf8')

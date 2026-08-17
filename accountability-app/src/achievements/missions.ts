@@ -68,14 +68,14 @@ export const MISSIONS: MissionDef[] = [
   },
   {
     id: 'cheerleader',
-    title: 'Encourager',
-    desc: 'Encourage 10 posts from your feed',
+    title: 'Cheerleader',
+    desc: 'Cheer on 10 posts from your feed',
     icon: 'heart',
     goal: 10,
     points: 30,
     source: 'metric',
     metric: 'likesGiven',
-    unit: 'encouragements',
+    unit: 'Cheers',
   },
   {
     id: 'all-set',

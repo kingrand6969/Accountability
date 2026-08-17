@@ -406,12 +406,14 @@ export async function createChallenge(input: {
   return data;
 }
 
-export async function joinChallenge(id: string): Promise<void> {
+export async function joinChallenge(id: string, expectedOwner?: string): Promise<void> {
   const uid = await me();
   if (!uid) throw new Error('Not signed in');
+  if (expectedOwner && uid !== expectedOwner) throw new Error('Account changed. Try again.');
   const { error } = await supabase.rpc('join_challenge', {
     p_challenge: id,
     p_timezone_offset: new Date().getTimezoneOffset(),
+    p_expected_owner: expectedOwner ?? uid,
   });
   // The server makes repeated enrollment requests a successful no-op.
   if (error) throw error;

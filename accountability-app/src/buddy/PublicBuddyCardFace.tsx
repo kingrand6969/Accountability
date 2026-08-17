@@ -14,9 +14,10 @@ import {
   resolveBuddyCardPalette,
   type BuddyCardPaletteTokens as BuddyCardPalette,
 } from './palette';
+import { presentationTraitName } from './presentation';
 
 const TRAIT_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Encouraging: 'heart-outline',
+  Cheering: 'heart-outline',
   Consistent: 'calendar-outline',
   'Goal focused': 'flag-outline',
   'Morning training': 'sunny-outline',
@@ -127,21 +128,24 @@ function BuddyCardIdentity({
 
       {traits.length > 0 ? (
         <View style={styles.traitRow}>
-          {traits.map((trait) => (
-            <View
-              key={trait}
-              style={[styles.trait, { backgroundColor: palette.surface, borderColor: palette.border }]}
-            >
-              <Ionicons
-                name={TRAIT_ICONS[trait] ?? 'checkmark-circle-outline'}
-                size={14}
-                color={palette.accent}
-              />
-              <Text style={[styles.traitText, { color: palette.text }]} numberOfLines={1}>
-                {trait}
-              </Text>
-            </View>
-          ))}
+          {traits.map((trait) => {
+            const label = presentationTraitName(trait);
+            return (
+              <View
+                key={trait}
+                style={[styles.trait, { backgroundColor: palette.surface, borderColor: palette.border }]}
+              >
+                <Ionicons
+                  name={TRAIT_ICONS[label] ?? 'checkmark-circle-outline'}
+                  size={14}
+                  color={palette.accent}
+                />
+                <Text style={[styles.traitText, { color: palette.text }]} numberOfLines={1}>
+                  {label}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       ) : null}
     </View>
