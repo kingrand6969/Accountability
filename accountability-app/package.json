@@ -87,6 +87,8 @@
     "lint": "expo lint",
     "test": "jest",
     "test:update-budget": "node --test scripts/check-update-budget.test.mjs",
+    "test:challenge-lockdown": "node --test scripts/check-challenge-lockdown-rollout.test.mjs",
+    "release:challenge-lockdown": "node scripts/check-challenge-lockdown-rollout.mjs",
     "release:budget": "expo export --platform android --output-dir dist && node scripts/check-update-budget.mjs dist"
   },
   "private": true

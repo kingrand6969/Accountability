@@ -21,6 +21,13 @@ const boundarySql = fs.readFileSync(
   path.resolve(process.cwd(), 'supabase/migrations/0099_buddy_completed_challenges.sql'),
   'utf8',
 );
+const lockdownSql = fs.readFileSync(
+  path.resolve(
+    process.cwd(),
+    'supabase/migrations/0101_challenge_participant_privacy_lockdown.sql',
+  ),
+  'utf8',
+);
 
 const viewerId = '11111111-1111-4111-8111-111111111111';
 const challengeId = '22222222-2222-4222-8222-222222222222';
@@ -31,14 +38,14 @@ afterEach(() => {
 
 describe('challenge participant least-privilege boundary', () => {
   test('replaces the broad participant-row policy with self-only reads', () => {
-    expect(boundarySql).toContain(
+    expect(lockdownSql).toContain(
       'drop policy if exists "Participants are public" on public.challenge_participants',
     );
-    expect(boundarySql).toContain(
+    expect(lockdownSql).toContain(
       'create policy "Participants read own rows" on public.challenge_participants',
     );
-    expect(boundarySql).toMatch(/for select\s+using \(auth\.uid\(\) = user_id\)/);
-    expect(boundarySql).not.toMatch(
+    expect(lockdownSql).toMatch(/for select\s+using \(auth\.uid\(\) = user_id\)/);
+    expect(lockdownSql).not.toMatch(
       /create policy "Participants are public"[\s\S]*?for select using \(auth\.role\(\) = 'authenticated'\)/,
     );
   });
@@ -83,11 +90,11 @@ describe('server-owned challenge enrollment', () => {
     mockRpc.mockResolvedValue({ data: null, error: null });
   });
 
-  test('removes direct inserts and permits enrollment only through the authenticated RPC', () => {
+  test('contracts direct inserts after adoption and permits enrollment through the RPC', () => {
     expect(boundarySql).toContain(
       'drop policy if exists "Join a challenge" on public.challenge_participants',
     );
-    expect(boundarySql).toContain(
+    expect(lockdownSql).toContain(
       'revoke insert on table public.challenge_participants from public, anon, authenticated',
     );
     expect(boundarySql).toMatch(
@@ -245,8 +252,8 @@ describe('atomic server-owned challenge creation', () => {
     expect(createFunction).toContain('return v_challenge');
   });
 
-  test('removes legacy direct creation and grants only the narrow RPC', () => {
-    expect(boundarySql).toContain(
+  test('contracts legacy direct creation after adoption and grants the narrow RPC', () => {
+    expect(lockdownSql).toContain(
       'revoke insert on table public.challenges from public, anon, authenticated',
     );
     expect(boundarySql).toContain(

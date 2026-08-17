@@ -1,26 +1,96 @@
 -- Server-authorized completed challenge history for the Buddy Card gallery.
 -- Applying this migration is a separately approved release action.
+--
+-- Compatibility stage: participant rows remain readable to authenticated clients
+-- because installed builds query embedded participant counts directly. This stage
+-- does NOT remediate that historical privacy exposure. Migration 0101 performs
+-- the lockdown only after its server-only adoption gate is explicitly enabled.
 
--- Raw participant history is private. Challenge surfaces use the aggregate RPC
--- below for counts and the current viewer's own membership state.
-drop policy if exists "Participants are public" on public.challenge_participants;
-drop policy if exists "Participants read own rows" on public.challenge_participants;
-create policy "Participants read own rows" on public.challenge_participants
-  for select using (auth.uid() = user_id);
+-- Make the compatibility contract explicit instead of depending on project-wide
+-- default privileges. RLS still restricts these operations to authenticated rows.
+revoke select, insert on table public.challenge_participants from public, anon;
+grant select, insert on table public.challenge_participants to authenticated;
+revoke insert on table public.challenges from public, anon;
+grant insert on table public.challenges to authenticated;
 
 create index if not exists challenge_participants_user_challenge_idx
   on public.challenge_participants (user_id, challenge_id);
 
--- Enrollment is server-owned so a client cannot backdate joined_at or join a
--- challenge after its database-time window has closed.
+-- Keep legacy enrollment working while enforcing the active window against the
+-- database clock. A small timestamp tolerance covers ordinary phone clock drift;
+-- it cannot revive an ended challenge or accept a deliberately backdated join.
 drop policy if exists "Join a challenge" on public.challenge_participants;
-revoke insert on table public.challenge_participants from public, anon, authenticated;
+drop policy if exists "Join an active challenge" on public.challenge_participants;
+create policy "Join an active challenge" on public.challenge_participants
+  for insert to authenticated
+  with check (
+    auth.uid() = user_id
+    and joined_at >= now() - interval '2 minutes'
+    and joined_at <= now() + interval '2 minutes'
+    and exists (
+      select 1
+      from public.challenges c
+      where c.id = challenge_id
+        and c.starts_at <= now() + interval '2 minutes'
+        and c.ends_at > now()
+    )
+  );
 
 -- User-created challenges retain the existing authenticated-public visibility.
 -- The current challenge schema has no private/group/page ownership branch: a
 -- user challenge is owned only by its authenticated creator. Creation and the
 -- creator's membership are therefore one transaction behind this RPC.
-revoke insert on table public.challenges from public, anon, authenticated;
+-- Legacy direct creation remains available during the compatibility stage, but
+-- rejects stale/far-future phone clocks before a creator can become orphaned.
+drop policy if exists "Pro users create challenges" on public.challenges;
+create policy "Pro users create challenges" on public.challenges
+  for insert to authenticated
+  with check (
+    auth.uid() = creator_id
+    and is_official = false
+    and starts_at >= now() - interval '2 minutes'
+    and starts_at <= now() + interval '2 minutes'
+    and ends_at > now()
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and p.is_pro = true
+    )
+  );
+
+-- Server-only rollout gate. There are deliberately no client policies. An
+-- operator must provide reviewed zero-legacy-client evidence before 0101 can run.
+create table if not exists public.challenge_participant_lockdown_readiness (
+  gate_key text primary key,
+  enabled boolean not null default false,
+  evidence text,
+  enabled_at timestamptz,
+  constraint challenge_participant_lockdown_gate_key
+    check (gate_key = 'challenge_participant_privacy_v1'),
+  constraint challenge_participant_lockdown_enabled_evidence
+    check (
+      not enabled
+      or (
+        enabled_at is not null
+        and evidence is not null
+        and length(trim(evidence)) >= 16
+      )
+    )
+);
+
+alter table public.challenge_participant_lockdown_readiness enable row level security;
+revoke all on table public.challenge_participant_lockdown_readiness from public, anon, authenticated;
+
+insert into public.challenge_participant_lockdown_readiness (
+  gate_key,
+  enabled,
+  evidence,
+  enabled_at
+) values (
+  'challenge_participant_privacy_v1', false, null, null
+)
+on conflict (gate_key) do nothing;
 
 create or replace function public.create_challenge(
   p_title text,
@@ -31,8 +101,8 @@ create or replace function public.create_challenge(
 )
 returns uuid
 language plpgsql
--- Definer is required because direct challenge and participant inserts are
--- intentionally revoked. Every caller-controlled field is validated below.
+-- Definer provides an atomic server boundary while compatibility policies remain
+-- available to installed builds. Every caller-controlled field is validated.
 security definer
 set search_path = ''
 as $$
