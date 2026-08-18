@@ -93,10 +93,11 @@ describe('immutable R2 uploads', () => {
         },
         error: null,
       } as never);
-    global.fetch = jest
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 409 })
-      .mockResolvedValueOnce({ ok: true, status: 200 }) as unknown as typeof fetch;
+    const responses = [
+      { ok: false, status: 409 },
+      { ok: true, status: 200 },
+    ];
+    global.fetch = jest.fn(async () => responses.shift()!) as unknown as typeof fetch;
 
     await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', { operationId })).resolves.toEqual({
       mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
@@ -123,7 +124,10 @@ describe('immutable R2 uploads', () => {
 
     expect(invoke).toHaveBeenCalledTimes(3);
     expect(global.fetch).toHaveBeenCalledTimes(3);
-    expect(invoke.mock.calls.every((call) => call[1]?.body?.operationId === operationId)).toBe(true);
+    expect(invoke.mock.calls.every((call) => {
+      const body = call[1]?.body as { operationId?: string } | undefined;
+      return body?.operationId === operationId;
+    })).toBe(true);
   });
 
   test('does not retry a conflict for a replaceable mutable upload', async () => {
