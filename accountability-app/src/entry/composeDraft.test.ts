@@ -255,9 +255,10 @@ describe('Compose production binding', () => {
 
   test('reuses the saved draft identity across media upload and lost-response post retries', () => {
     expect(source).toContain('const operationId = submittedDraft?.draftId ?? draftId;');
-    expect(source).toContain('uploadPostImage(pickedBase64, pickedExt, operationId)');
-    expect(source).toContain('uploadPostVideo(pickedVideo.uri, pickedVideo.mimeType, operationId)');
+    expect(source).toMatch(/uploadPostImage\(pickedBase64, pickedExt, operationId, submittedOwner\)/);
+    expect(source).toMatch(/uploadPostVideo\([\s\S]*?pickedVideo\.uri,[\s\S]*?pickedVideo\.mimeType,[\s\S]*?operationId,[\s\S]*?submittedOwner,[\s\S]*?\)/);
     expect(source).toMatch(/createPost\([\s\S]*?operationId,[\s\S]*?\);/);
+    expect(source).toMatch(/createPost\([\s\S]*?expectedOwnerId: submittedOwner,[\s\S]*?\);/);
   });
 });
 

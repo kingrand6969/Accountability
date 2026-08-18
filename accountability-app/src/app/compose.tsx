@@ -799,9 +799,19 @@ export default function Compose() {
     const tagIds = [...taggedIds];
     const tagNames = buddies.filter((b) => taggedIds.has(b.id)).map((b) => authorLabel(b.name));
     try {
+      if (!submittedOwner) throw new Error('Sign in again before posting.');
       let imageUrl: string | null = null;
-      if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt, operationId);
-      if (pickedVideo) imageUrl = await uploadPostVideo(pickedVideo.uri, pickedVideo.mimeType, operationId);
+      if (pickedBase64) {
+        imageUrl = await uploadPostImage(pickedBase64, pickedExt, operationId, submittedOwner);
+      }
+      if (pickedVideo) {
+        imageUrl = await uploadPostVideo(
+          pickedVideo.uri,
+          pickedVideo.mimeType,
+          operationId,
+          submittedOwner,
+        );
+      }
       const postId = await createPost(
         postedText,
         imageUrl,
@@ -813,6 +823,7 @@ export default function Compose() {
           audience,
           postType: pickedVideo ? 'video' : imageUrl ? 'photo' : 'post',
           operationId,
+          expectedOwnerId: submittedOwner,
         },
       );
       if (tagIds.length > 0) await addPostTags(postId, tagIds).catch(() => {});

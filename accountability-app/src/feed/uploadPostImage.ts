@@ -15,8 +15,9 @@ export async function uploadPostImage(
   base64: string,
   ext: string,
   operationId?: string,
+  expectedOwnerId?: string,
 ): Promise<string> {
-  return uploadPostImageForOwner(base64, ext, operationId);
+  return uploadPostImageForOwner(base64, ext, operationId, expectedOwnerId);
 }
 
 export async function uploadPostImageForOwner(
