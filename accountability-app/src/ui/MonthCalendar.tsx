@@ -1,8 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { toLocalDateString } from '../timeline/datetime';
-import { colors, font, radius, spacing } from './theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  themeColors,
+  type AppThemeColors,
+  type AppThemeMode,
+} from './theme';
 
 const WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -10,10 +18,16 @@ const WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 export function MonthCalendar({
   value,
   onChange,
+  theme = themeColors('light'),
+  mode = 'light',
 }: {
   value: string;
   onChange: (date: string) => void;
+  theme?: AppThemeColors;
+  mode?: AppThemeMode;
 }) {
+  const palette = useMemo(() => calendarPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const selected = value ? new Date(`${value}T12:00:00`) : new Date();
   const [view, setView] = useState(
     () => new Date(selected.getFullYear(), selected.getMonth(), 1),
@@ -40,7 +54,7 @@ export function MonthCalendar({
           style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
           accessibilityLabel="Previous month"
         >
-          <Ionicons name="chevron-back" size={20} color={colors.primary} />
+          <Ionicons name="chevron-back" size={20} color={palette.action} />
         </Pressable>
         <Text style={styles.month}>{monthLabel}</Text>
         <Pressable
@@ -49,7 +63,7 @@ export function MonthCalendar({
           style={({ pressed }) => [styles.navBtn, pressed && styles.pressed]}
           accessibilityLabel="Next month"
         >
-          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+          <Ionicons name="chevron-forward" size={20} color={palette.action} />
         </Pressable>
       </View>
 
@@ -101,11 +115,24 @@ export function MonthCalendar({
   );
 }
 
-const styles = StyleSheet.create({
+function calendarPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    text: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    faint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = calendarPalette(theme, mode);
+  return StyleSheet.create({
   wrap: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.md,
     gap: spacing.sm,
@@ -113,14 +140,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   navBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.6 },
-  month: { fontFamily: font.bold, fontSize: 15, color: colors.text },
+  month: { fontFamily: font.bold, fontSize: 15, color: palette.text },
   weekRow: { flexDirection: 'row' },
   weekLabel: {
     flexBasis: '14.28%',
     textAlign: 'center',
     fontFamily: font.bold,
     fontSize: 11.5,
-    color: colors.textFaint,
+    color: palette.faint,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: {
@@ -137,9 +164,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  daySel: { backgroundColor: colors.primary },
-  dayToday: { borderWidth: 1.5, borderColor: colors.primary },
-  dayText: { fontFamily: font.semibold, fontSize: 14, color: colors.text },
-  dayTextSel: { color: '#fff' },
-  dayTextToday: { color: colors.primary },
-});
+  daySel: { backgroundColor: palette.action },
+  dayToday: { borderWidth: 1.5, borderColor: palette.action },
+  dayText: { fontFamily: font.semibold, fontSize: 14, color: palette.text },
+  dayTextSel: { color: palette.onAction },
+  dayTextToday: { color: palette.action },
+  });
+}

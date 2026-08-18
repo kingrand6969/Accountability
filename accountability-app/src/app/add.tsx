@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -32,7 +32,15 @@ import {
 import { reminderTriggerDate } from '../notifications/trigger';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { resolveAddRouteSeed, type AddRouteSeed } from '../navigation/scheduleRouteState';
 import type { TimelineType } from '../timeline/types';
 
@@ -62,10 +70,12 @@ function PresetChip({
   label,
   selected,
   onPress,
+  styles,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
+  styles: PlannerStyles;
 }) {
   return (
     <Pressable
@@ -94,6 +104,9 @@ export default function Add() {
 function AddForm({ seed }: { seed: AddRouteSeed }) {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => plannerPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [type, setType] = useState<TimelineType | null>(seed.type);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
@@ -199,7 +212,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
       {isPro ? (
         <View style={styles.quickBox}>
           <View style={styles.quickTitleRow}>
-            <Ionicons name="mic-outline" size={17} color={colors.primary} />
+            <Ionicons name="mic-outline" size={17} color={palette.action} />
             <Text style={styles.quickTitle}>Quick add</Text>
           </View>
           <Text style={styles.quickHint}>
@@ -208,7 +221,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
           <TextInput
             style={[styles.input, styles.quickInput]}
             placeholder="e.g. Remind me to buy medicine tomorrow at 5pm"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={palette.placeholder}
             value={phrase}
             onChangeText={setPhrase}
             multiline
@@ -217,7 +230,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
             style={({ pressed }) => [styles.quickBtn, pressed && styles.pressed]}
             onPress={onAutoFill}
           >
-            <Ionicons name="arrow-down" size={15} color="#fff" />
+            <Ionicons name="arrow-down" size={15} color={palette.onAction} />
             <Text style={styles.quickBtnText}>Auto-fill</Text>
           </Pressable>
         </View>
@@ -226,7 +239,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
           style={({ pressed }) => [styles.proHint, pressed && styles.pressed]}
           onPress={() => router.push('/paywall')}
         >
-          <Ionicons name="star" size={15} color={colors.pro} />
+          <Ionicons name="star" size={15} color={palette.pro} />
           <Text style={styles.proHintText}>
             Pro: Quick add by voice — say “remind me to…” and we fill it in.
           </Text>
@@ -234,7 +247,12 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
       )}
 
       <Text style={styles.calHeading}>Tap a date to add something</Text>
-      <MonthCalendar value={date} onChange={openForDate} />
+      <MonthCalendar
+        value={date}
+        onChange={openForDate}
+        theme={theme}
+        mode={mode}
+      />
 
       {/* details popup — opens after a date is chosen */}
       <Modal
@@ -253,7 +271,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
                 style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}
                 accessibilityLabel="Close"
               >
-                <Ionicons name="close" size={22} color={colors.textFaint} />
+                <Ionicons name="close" size={22} color={palette.placeholder} />
               </Pressable>
             </View>
 
@@ -269,20 +287,25 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
               <TextInput
                 style={styles.input}
                 placeholder="e.g. Buy medicine"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={palette.placeholder}
                 value={title}
                 onChangeText={setTitle}
                 autoFocus
               />
 
               <Text style={styles.label}>Time</Text>
-              <TimePicker value={time} onChange={setTime} />
+              <TimePicker
+                value={time}
+                onChange={setTime}
+                theme={theme}
+                mode={mode}
+              />
 
               <Text style={styles.label}>Note (optional)</Text>
               <TextInput
                 style={[styles.input, styles.multiline]}
                 placeholder="Details"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={palette.placeholder}
                 value={note}
                 onChangeText={setNote}
                 multiline
@@ -291,14 +314,14 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
               <Text style={styles.label}>Checklist (optional)</Text>
               {checklist.map((line, i) => (
                 <View key={i} style={styles.checkLine}>
-                  <Ionicons name="ellipse-outline" size={16} color={colors.textFaint} />
+                  <Ionicons name="ellipse-outline" size={16} color={palette.placeholder} />
                   <Text style={styles.checkLineText}>{line}</Text>
                   <Pressable
                     onPress={() => setChecklist((c) => c.filter((_, idx) => idx !== i))}
                     hitSlop={8}
                     accessibilityLabel={`Remove ${line}`}
                   >
-                    <Ionicons name="close" size={16} color={colors.textFaint} />
+                    <Ionicons name="close" size={16} color={palette.placeholder} />
                   </Pressable>
                 </View>
               ))}
@@ -306,7 +329,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
                   placeholder="Add a checklist item…"
-                  placeholderTextColor={colors.textFaint}
+                  placeholderTextColor={palette.placeholder}
                   value={checkText}
                   onChangeText={setCheckText}
                   onSubmitEditing={() => {
@@ -329,12 +352,12 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
                   style={({ pressed }) => [styles.checkAddBtn, pressed && styles.pressed]}
                   accessibilityLabel="Add checklist item"
                 >
-                  <Ionicons name="add" size={22} color="#fff" />
+                  <Ionicons name="add" size={22} color={palette.onAction} />
                 </Pressable>
               </View>
 
               <View style={styles.remindRow}>
-                <Ionicons name="notifications-outline" size={20} color={colors.primary} />
+                <Ionicons name="notifications-outline" size={20} color={palette.action} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.remindTitle}>Remind me</Text>
                   <Text style={styles.remindSub}>Get an alarm at this time</Text>
@@ -350,6 +373,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
                       label={o.label}
                       selected={offsetMin === o.m}
                       onPress={() => setOffsetMin(o.m)}
+                      styles={styles}
                     />
                   ))}
                 </View>
@@ -358,7 +382,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
                   style={({ pressed }) => [styles.proHint, pressed && styles.pressed]}
                   onPress={() => router.push('/paywall')}
                 >
-                  <Ionicons name="star" size={15} color={colors.pro} />
+                  <Ionicons name="star" size={15} color={palette.pro} />
                   <Text style={styles.proHintText}>
                     Pro: get reminded earlier (10 min, 1 hour before…)
                   </Text>
@@ -388,56 +412,77 @@ function formatDateLabel(dateStr: string): string {
   });
 }
 
-const styles = StyleSheet.create({
+function plannerPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.muted,
+    quickSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
+    text: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    textSecondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
+    textMuted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    pro: mode === 'light' ? legacyColors.pro : theme.ink.action,
+    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
+    scrim: mode === 'light' ? 'rgba(15,23,42,0.5)' : theme.interaction.scrim,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = plannerPalette(theme, mode);
+  return StyleSheet.create({
   container: {
     padding: spacing.xl,
     gap: spacing.sm,
     paddingBottom: 40,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   pressed: { opacity: 0.7 },
   quickBox: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.quickSoft,
     borderRadius: radius.md,
     padding: spacing.lg,
     gap: spacing.sm,
   },
   quickTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  quickTitle: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  quickHint: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12.5 },
-  quickInput: { backgroundColor: colors.card, minHeight: 44 },
+  quickTitle: { fontSize: 15, fontFamily: font.bold, color: palette.text },
+  quickHint: { color: palette.textMuted, fontFamily: font.regular, fontSize: 12.5 },
+  quickInput: { backgroundColor: palette.card, minHeight: 44 },
   quickBtn: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     borderRadius: radius.sm,
     paddingVertical: 10,
     paddingHorizontal: spacing.lg,
     minHeight: 40,
   },
-  quickBtnText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  quickBtnText: { color: palette.onAction, fontFamily: font.bold, fontSize: 14 },
   calHeading: {
     fontSize: 16,
     fontFamily: font.bold,
-    color: colors.text,
+    color: palette.text,
     marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
   label: {
     fontSize: 14,
     fontFamily: font.semibold,
-    color: colors.textSecondary,
+    color: palette.textSecondary,
     marginTop: spacing.md,
   },
   sheetBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.5)',
+    backgroundColor: palette.scrim,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '88%',
@@ -451,38 +496,38 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: palette.border,
   },
-  sheetTitle: { fontFamily: font.extrabold, fontSize: 18, color: colors.text },
+  sheetTitle: { fontFamily: font.extrabold, fontSize: 18, color: palette.text },
   sheetClose: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   sheetScroll: { padding: spacing.xl, paddingTop: spacing.sm, gap: spacing.sm },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: palette.text,
+    backgroundColor: palette.field,
   },
   multiline: { minHeight: 70, textAlignVertical: 'top' },
   checkLine: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     borderRadius: radius.sm,
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
   },
-  checkLineText: { flex: 1, fontFamily: font.regular, fontSize: 14.5, color: colors.text },
+  checkLineText: { flex: 1, fontFamily: font.regular, fontSize: 14.5, color: palette.text },
   checkAddRow: { flexDirection: 'row', gap: spacing.sm },
   checkAddBtn: {
     width: 48,
     height: 48,
     borderRadius: radius.sm,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -491,19 +536,19 @@ const styles = StyleSheet.create({
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 6 },
   presetChip: {
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: palette.action,
     borderRadius: radius.pill,
     paddingVertical: 8,
     paddingHorizontal: 14,
     minHeight: 36,
     justifyContent: 'center',
   },
-  presetChipSel: { backgroundColor: colors.primary },
-  presetText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13 },
-  presetTextSel: { color: '#fff' },
+  presetChipSel: { backgroundColor: palette.action },
+  presetText: { color: palette.action, fontFamily: font.semibold, fontSize: 13 },
+  presetTextSel: { color: palette.onAction },
   timeInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.pill,
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -511,8 +556,8 @@ const styles = StyleSheet.create({
     width: 88,
     fontFamily: font.semibold,
     fontSize: 13,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: palette.text,
+    backgroundColor: palette.field,
     textAlign: 'center',
   },
   remindRow: {
@@ -520,31 +565,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     marginTop: spacing.lg,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.lg,
   },
-  remindTitle: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  remindSub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
+  remindTitle: { fontSize: 15, fontFamily: font.bold, color: palette.text },
+  remindSub: { color: palette.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
   proHint: {
     marginTop: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.proSoft,
-    borderColor: colors.pro,
+    backgroundColor: palette.proSoft,
+    borderColor: palette.pro,
     borderWidth: 1,
     borderRadius: radius.sm,
     padding: spacing.md,
     minHeight: 44,
   },
   proHintText: {
-    color: colors.pro,
+    color: palette.pro,
     fontFamily: font.semibold,
     fontSize: 13,
     flexShrink: 1,
   },
   save: { marginTop: spacing.xl },
-});
+  });
+}
+
+type PlannerStyles = ReturnType<typeof createStyles>;

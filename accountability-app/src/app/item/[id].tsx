@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,16 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { getItem, updateItemChecklist } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
 import { EmptyState } from '../../ui/EmptyState';
-import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import type { ChecklistItem, TimelineItem } from '../../timeline/types';
 import { becameCompleteChecklist } from '../../timeline/completion';
 import { createChecklistPersistence } from '../../timeline/checklistPersistence';
@@ -27,6 +36,9 @@ export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { session } = useAuth();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => detailPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [item, setItem] = useState<TimelineItem | null>(null);
   const [list, setList] = useState<ChecklistItem[]>([]);
   const [newText, setNewText] = useState('');
@@ -115,7 +127,7 @@ export default function ItemDetail() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -166,11 +178,12 @@ export default function ItemDetail() {
           <Pressable
             onPress={() => toggle(i)}
             style={({ pressed }) => [styles.checkBox, c.done && styles.checkBoxOn, pressed && styles.pressed]}
+            hitSlop={11}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: c.done }}
             accessibilityLabel={c.text}
           >
-            {c.done ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+            {c.done ? <Ionicons name="checkmark" size={16} color={palette.onAction} /> : null}
           </Pressable>
           <Text style={[styles.checkText, c.done && styles.checkTextDone]}>{c.text}</Text>
           <Pressable
@@ -179,7 +192,7 @@ export default function ItemDetail() {
             style={({ pressed }) => [styles.removeBtn, pressed && styles.pressed]}
             accessibilityLabel={`Remove ${c.text}`}
           >
-            <Ionicons name="close" size={17} color={colors.textFaint} />
+            <Ionicons name="close" size={17} color={palette.placeholder} />
           </Pressable>
         </View>
       ))}
@@ -192,7 +205,7 @@ export default function ItemDetail() {
         <TextInput
           style={styles.addInput}
           placeholder="Add a checklist item…"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           value={newText}
           onChangeText={setNewText}
           onSubmitEditing={addLine}
@@ -203,16 +216,33 @@ export default function ItemDetail() {
           style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
           accessibilityLabel="Add checklist item"
         >
-          <Ionicons name="add" size={22} color="#fff" />
+          <Ionicons name="add" size={22} color={palette.onAction} />
         </Pressable>
       </View>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+function detailPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.muted,
+    text: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    success: mode === 'light' ? legacyColors.success : theme.status.success,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = detailPalette(theme, mode);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.background },
   container: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 48, ...contentMax },
   pressed: { opacity: 0.7 },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -223,12 +253,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontSize: 20, fontFamily: font.extrabold, color: colors.text },
-  when: { fontSize: 13, fontFamily: font.medium, color: colors.textMuted, marginTop: 2 },
+  title: { fontSize: 20, fontFamily: font.extrabold, color: palette.text },
+  when: { fontSize: 13, fontFamily: font.medium, color: palette.muted, marginTop: 2 },
   noteCard: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     marginTop: spacing.sm,
@@ -236,25 +266,25 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: palette.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
-  noteText: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: colors.text, marginTop: 6 },
+  noteText: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: palette.text, marginTop: 6 },
   checkHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.lg,
   },
-  progress: { fontFamily: font.bold, fontSize: 12.5, color: colors.primary },
+  progress: { fontFamily: font.bold, fontSize: 12.5, color: palette.action },
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 52,
@@ -264,34 +294,35 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: colors.primary,
+    borderColor: palette.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkBoxOn: { backgroundColor: colors.success, borderColor: colors.success },
-  checkText: { flex: 1, fontSize: 15, fontFamily: font.medium, color: colors.text },
-  checkTextDone: { textDecorationLine: 'line-through', color: colors.textFaint },
+  checkBoxOn: { backgroundColor: palette.success, borderColor: palette.success },
+  checkText: { flex: 1, fontSize: 15, fontFamily: font.medium, color: palette.text },
+  checkTextDone: { textDecorationLine: 'line-through', color: palette.placeholder },
   removeBtn: { minWidth: 32, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
-  emptyHint: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  emptyHint: { fontFamily: font.regular, fontSize: 13, color: palette.muted, marginTop: 2 },
   addRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   addInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 15,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
-    minHeight: 48,
+    color: palette.text,
+    backgroundColor: palette.field,
+    minHeight: spacing.touch,
   },
   addBtn: {
-    width: 48,
-    height: 48,
+    width: spacing.touch,
+    height: spacing.touch,
     borderRadius: radius.sm,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+  });
+}
