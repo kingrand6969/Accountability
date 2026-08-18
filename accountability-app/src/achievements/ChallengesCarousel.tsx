@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { GlassCard } from '../ui/Glass';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { SwipeDeck } from './SwipeDeck';
 import { metricMeta, type ChallengeCard } from '../compete/api';
 import { MissionIcon } from './MissionIcon';
 import { challengeArtFor } from './missionArt';
 import { challengeEnded, daysLeft } from './challengeTime';
-import { font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
 import { INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
 
 const MINUTE_MS = 60_000;
@@ -22,6 +23,9 @@ export function ChallengesCarousel({
   onOpen: (id: string) => void;
   onBrowse: () => void;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => challengePalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -31,9 +35,9 @@ export function ChallengesCarousel({
 
   if (items === null) {
     return (
-      <GlassCard>
+      <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
         <View style={styles.inner}>
-          <ActivityIndicator color={ACCENT} />
+          <ActivityIndicator color={palette.action} />
         </View>
       </GlassCard>
     );
@@ -41,10 +45,10 @@ export function ChallengesCarousel({
 
   if (items.length === 0) {
     return (
-      <GlassCard>
+      <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
         <View style={styles.inner}>
           <View style={styles.iconWrap}>
-            <Ionicons name="trophy" size={22} color={ACCENT} />
+            <Ionicons name="trophy" size={22} color={palette.action} />
           </View>
           <Text style={styles.title}>No active challenges</Text>
           <Text style={styles.sub}>
@@ -73,10 +77,13 @@ export function ChallengesCarousel({
 }
 
 function ChallengePage({ c, now, onOpen }: { c: ChallengeCard; now: number; onOpen: (id: string) => void }) {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => challengePalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const meta = metricMeta(c.metric);
   const ended = challengeEnded(c.ends_at, now);
   return (
-    <GlassCard>
+    <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
       <Pressable
         onPress={() => onOpen(c.id)}
         style={({ pressed }) => [styles.inner, pressed && { opacity: 0.85 }]}
@@ -89,7 +96,7 @@ function ChallengePage({ c, now, onOpen }: { c: ChallengeCard; now: number; onOp
             <MissionIcon source={art} size={56} style={{ marginBottom: 2 }} />
           ) : (
             <View style={styles.iconWrap}>
-              <Ionicons name={meta.icon as never} size={22} color={ACCENT} />
+              <Ionicons name={meta.icon as never} size={22} color={palette.action} />
             </View>
           );
         })()}
@@ -109,42 +116,61 @@ function ChallengePage({ c, now, onOpen }: { c: ChallengeCard; now: number; onOp
   );
 }
 
-const styles = StyleSheet.create({
+function challengePalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    ink: mode === 'dark' ? theme.ink.primary : INK,
+    muted: mode === 'dark' ? theme.ink.muted : INK_SOFT,
+    action: mode === 'dark' ? theme.ink.action : ACCENT,
+    actionInk: mode === 'dark' ? theme.ink.inverse : '#fff',
+    success: mode === 'dark' ? theme.status.success : '#16a34a',
+    icon: mode === 'dark' ? theme.surface.muted : 'rgba(37,99,235,0.12)',
+    pill: mode === 'dark' ? theme.surface.muted : 'rgba(37,99,235,0.12)',
+    pillJoined: mode === 'dark' ? theme.status.successSoft : 'rgba(22,163,74,0.14)',
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = challengePalette(theme, mode);
+
+  return StyleSheet.create({
   inner: {
     padding: spacing.lg,
     alignItems: 'center',
     gap: 6,
     minHeight: 168,
     justifyContent: 'center',
+    backgroundColor: mode === 'dark' ? theme.surface.card : 'transparent',
   },
   iconWrap: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: palette.icon,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 2,
   },
-  title: { fontFamily: font.bold, fontSize: 16, color: INK, textAlign: 'center' },
-  meta: { fontFamily: font.medium, fontSize: 12.5, color: INK_SOFT, textAlign: 'center' },
-  sub: { fontFamily: font.regular, fontSize: 13, color: INK_SOFT, textAlign: 'center', lineHeight: 18 },
+  title: { fontFamily: font.bold, fontSize: 16, color: palette.ink, textAlign: 'center' },
+  meta: { fontFamily: font.medium, fontSize: 12.5, color: palette.muted, textAlign: 'center' },
+  sub: { fontFamily: font.regular, fontSize: 13, color: palette.muted, textAlign: 'center', lineHeight: 18 },
   btn: {
-    backgroundColor: ACCENT,
+    minHeight: spacing.touch,
+    backgroundColor: palette.action,
     borderRadius: radius.pill,
     paddingVertical: 10,
     paddingHorizontal: 20,
     marginTop: 6,
   },
-  btnText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  btnText: { color: palette.actionInk, fontFamily: font.bold, fontSize: 14 },
   pill: {
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: palette.pill,
     borderRadius: radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 16,
     marginTop: 4,
   },
-  pillText: { color: ACCENT, fontFamily: font.bold, fontSize: 13 },
-  pillJoined: { backgroundColor: 'rgba(22,163,74,0.14)' },
-  pillJoinedText: { color: '#16a34a', fontFamily: font.bold, fontSize: 13 },
-});
+  pillText: { color: palette.action, fontFamily: font.bold, fontSize: 13 },
+  pillJoined: { backgroundColor: palette.pillJoined },
+  pillJoinedText: { color: palette.success, fontFamily: font.bold, fontSize: 13 },
+  });
+}
