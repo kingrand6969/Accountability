@@ -1,6 +1,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import {
+  beginImmersiveRefresh,
   deriveImmersivePostState,
   createImmersiveOperationToken,
   beginImmersiveOperation,
@@ -8,6 +9,7 @@ import {
   ImmersiveOperationCoordinator,
   immersiveOperationOwnsCompletion,
   immersiveResultBelongsToView,
+  postDetailStatusBarStyle,
   presentImmersivePost,
   usesImmersivePostSurface,
   visibleImmersiveSnapshot,
@@ -58,6 +60,7 @@ const post = {
 describe('Group 3 immersive Post Detail contract', () => {
   test('derives explicit loading, retry, missing, revoked, offline, and comment states', () => {
     expect(deriveImmersivePostState({ loading: true, post: null })).toBe('loading');
+    expect(deriveImmersivePostState({ loading: true, post })).toBe('comments-empty');
     expect(deriveImmersivePostState({ loading: false, post: null, error: 'network' })).toBe('retryable-error');
     expect(deriveImmersivePostState({ loading: false, post: null })).toBe('unavailable');
     expect(deriveImmersivePostState({ loading: false, post, online: false, cached: true })).toBe('offline-cached');
@@ -89,6 +92,63 @@ describe('Group 3 immersive Post Detail contract', () => {
       privacyLabel: 'Author details unavailable',
     });
     expect(presentImmersivePost({ ...post, post_type: 'photo' }, 'owner').run).toBe(false);
+  });
+
+  test('keeps the same loaded view visible while a refresh runs in the background', () => {
+    const snapshot = {
+      viewKey: 'post-a:owner',
+      post,
+      comments: [{ id: 'comment-a' }],
+      encouragers: [{ id: 'supporter-a' }],
+      voices: [{ id: 'voice-a' }],
+      commentsLoading: false,
+      commentsError: true,
+    };
+    const refreshedPost = { ...post, body: 'Fresh server body' };
+
+    expect(
+      beginImmersiveRefresh(snapshot, 'post-a:owner', refreshedPost, true),
+    ).toEqual({
+      ...snapshot,
+      post: refreshedPost,
+      commentsLoading: true,
+      commentsError: false,
+    });
+    expect(
+      beginImmersiveRefresh(snapshot, 'post-b:owner', refreshedPost, true),
+    ).toEqual({
+      viewKey: 'post-b:owner',
+      post: refreshedPost,
+      comments: [],
+      encouragers: [],
+      voices: [],
+      commentsLoading: true,
+      commentsError: false,
+    });
+    expect(
+      beginImmersiveRefresh(snapshot, 'post-a:owner', null, true),
+    ).toEqual({
+      viewKey: 'post-a:owner',
+      post: null,
+      comments: [],
+      encouragers: [],
+      voices: [],
+      commentsLoading: false,
+      commentsError: false,
+    });
+  });
+
+  test('uses readable route-local status bar ink for every post surface', () => {
+    expect(postDetailStatusBarStyle(null)).toBe('dark');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'post' })).toBe('dark');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'event' })).toBe('dark');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'photo' })).toBe('light');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'video' })).toBe('light');
+    expect(postDetailStatusBarStyle(post)).toBe('light');
+    expect(routeSource).toContain("import { StatusBar } from 'expo-status-bar'");
+    expect(routeSource).toContain(
+      'isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null',
+    );
   });
 
   test('reserves the full-height immersive surface for media-first photo, video, and run posts', () => {
@@ -175,6 +235,11 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain("viewState === 'offline-uncached'");
     expect(routeSource).toContain('dataViewKeyRef.current');
     expect(routeSource).toContain('sameLoadedView && !onlineRef.current');
+    expect(routeSource).toContain('setLoading(!sameLoadedView)');
+    expect(routeSource).toContain('void load({ preserveVisible: sameLoadedView })');
+    expect(routeSource).toContain(
+      'beginImmersiveRefresh(current, requestedViewKey, loadedPost, preserveVisible)',
+    );
   });
 
   test('opens encouragement from the canonical query and preserves all actions', () => {

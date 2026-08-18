@@ -32,7 +32,7 @@ export function deriveImmersivePostState(input: {
   commentsError?: boolean;
   commentCount?: number;
 }): ImmersivePostState {
-  if (input.loading) return 'loading';
+  if (input.loading && !input.post) return 'loading';
   if (input.online === false) {
     return input.cached && input.post ? 'offline-cached' : 'offline-uncached';
   }
@@ -92,6 +92,37 @@ export function visibleImmersiveSnapshot<TPost, TComment, TPerson, TVoice>(
   currentViewKey: string,
 ) {
   return snapshot.viewKey === currentViewKey ? snapshot : null;
+}
+
+export function beginImmersiveRefresh<TPost, TComment, TPerson, TVoice>(
+  snapshot: ImmersiveSnapshot<TPost, TComment, TPerson, TVoice>,
+  viewKey: string,
+  post: TPost | null,
+  preserveVisible: boolean,
+): ImmersiveSnapshot<TPost, TComment, TPerson, TVoice> {
+  if (
+    preserveVisible &&
+    post !== null &&
+    snapshot.viewKey === viewKey &&
+    snapshot.post !== null
+  ) {
+    return {
+      ...snapshot,
+      post,
+      commentsLoading: true,
+      commentsError: false,
+    };
+  }
+
+  return {
+    viewKey,
+    post,
+    comments: [],
+    encouragers: [],
+    voices: [],
+    commentsLoading: post !== null,
+    commentsError: false,
+  };
 }
 
 export function beginImmersiveOperation(
@@ -212,6 +243,10 @@ export function usesImmersivePostSurface(
     Boolean(post.image_url) &&
     (post.post_type === 'photo' || post.post_type === 'video' || post.post_type === 'run')
   );
+}
+
+export function postDetailStatusBarStyle(post: FeedPost | null): 'dark' | 'light' {
+  return post && usesImmersivePostSurface(post) ? 'light' : 'dark';
 }
 
 function numberValue(value: unknown) {

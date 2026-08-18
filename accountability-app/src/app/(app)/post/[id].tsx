@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import {
@@ -44,10 +45,12 @@ import { VoiceEncouragementRecorder } from '../../../feed/VoiceEncouragementReco
 import { BroadcastSheet } from '../../../feed/BroadcastSheet';
 import { canReportContent, createReportAction } from '../../../moderation/reportAction';
 import {
+  beginImmersiveRefresh,
   ImmersivePost,
   ImmersiveOperationCoordinator,
   deriveImmersivePostState,
   immersiveResultBelongsToView,
+  postDetailStatusBarStyle,
   visibleImmersiveSnapshot,
   type ImmersiveSnapshot,
   type ImmersiveViewContext,
@@ -240,7 +243,9 @@ function PostDetailView({
     }, [router]),
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (
+    { preserveVisible = false }: { preserveVisible?: boolean } = {},
+  ) => {
     if (!id) return;
     const requestedId = id;
     const requestedOwnerId = myId;
@@ -259,16 +264,10 @@ function PostDetailView({
       const loadedPost = await getPost(id);
       if (!belongs()) return;
       const requestedViewKey = `${requestedId}:${requestedOwnerId ?? ''}`;
-      setSnapshot({
-        viewKey: requestedViewKey,
-        post: loadedPost,
-        comments: [],
-        encouragers: [],
-        voices: [],
-        commentsLoading: Boolean(loadedPost),
-        commentsError: false,
-      });
-      if (loadedPost) dataViewKeyRef.current = requestedViewKey;
+      setSnapshot((current) =>
+        beginImmersiveRefresh(current, requestedViewKey, loadedPost, preserveVisible),
+      );
+      dataViewKeyRef.current = loadedPost ? requestedViewKey : null;
       setLoadError(null);
       setLoading(false);
       if (!loadedPost) return;
@@ -313,9 +312,11 @@ function PostDetailView({
     }
     if (wasOfflineRef.current && focusedRef.current) {
       wasOfflineRef.current = false;
-      void load();
+      void load({
+        preserveVisible: dataViewKeyRef.current === `${id ?? ''}:${myId ?? ''}`,
+      });
     }
-  }, [load, online]);
+  }, [id, load, myId, online]);
 
   useFocusEffect(
     // This lifecycle boundary intentionally owns all transient resets.
@@ -345,8 +346,8 @@ function PostDetailView({
       if (sameLoadedView && !onlineRef.current) {
         setLoading(false);
       } else {
-        setLoading(true);
-        void load();
+        setLoading(!sameLoadedView);
+        void load({ preserveVisible: sameLoadedView });
       }
       return () => {
         focusedRef.current = false;
@@ -386,7 +387,7 @@ function PostDetailView({
     } catch (error) {
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
         Alert.alert('Could not update like', String((error as Error).message ?? error));
-        void load();
+        void load({ preserveVisible: true });
       }
     } finally {
       operations.current.complete(token, currentView(), mountedRef.current && focusedRef.current);
@@ -425,7 +426,7 @@ function PostDetailView({
       await addComment(id, text.trim());
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
         setText('');
-        await load();
+        await load({ preserveVisible: true });
       }
     } catch (error) {
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
@@ -474,48 +475,54 @@ function PostDetailView({
 
   if (viewState === 'loading') {
     return (
-      <PostDetailState
-        topInset={insets.top}
-        onBack={() => navigateBackSafely(router)}
-      >
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.stateText}>Loading post…</Text>
-      </PostDetailState>
+      <>
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
+        <PostDetailState
+          topInset={insets.top}
+          onBack={() => navigateBackSafely(router)}
+        >
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.stateText}>Loading post…</Text>
+        </PostDetailState>
+      </>
     );
   }
 
   if (!post) {
     return (
-      <PostDetailState
-        topInset={insets.top}
-        onBack={() => navigateBackSafely(router)}
-      >
-        <Text style={styles.stateTitle}>
-          {viewState === 'offline-uncached'
-            ? 'You are offline'
-            : viewState === 'retryable-error'
-              ? 'This post could not be loaded'
-              : 'This post is unavailable'}
-        </Text>
-        <Text style={styles.stateText}>
-          {viewState === 'offline-uncached'
-            ? 'Reconnect to load this post. No private post copy is stored on this device.'
-            : 'It may have been removed or its audience may have changed. We cannot reveal which.'}
-        </Text>
-        {loadError || viewState === 'offline-uncached' ? (
-          <Pressable
-            onPress={() => {
-              setLoading(true);
-              void load();
-            }}
-            style={styles.retryButton}
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading post"
-          >
-            <Text style={styles.retryText}>Try again</Text>
-          </Pressable>
-        ) : null}
-      </PostDetailState>
+      <>
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
+        <PostDetailState
+          topInset={insets.top}
+          onBack={() => navigateBackSafely(router)}
+        >
+          <Text style={styles.stateTitle}>
+            {viewState === 'offline-uncached'
+              ? 'You are offline'
+              : viewState === 'retryable-error'
+                ? 'This post could not be loaded'
+                : 'This post is unavailable'}
+          </Text>
+          <Text style={styles.stateText}>
+            {viewState === 'offline-uncached'
+              ? 'Reconnect to load this post. No private post copy is stored on this device.'
+              : 'It may have been removed or its audience may have changed. We cannot reveal which.'}
+          </Text>
+          {loadError || viewState === 'offline-uncached' ? (
+            <Pressable
+              onPress={() => {
+                setLoading(true);
+                void load();
+              }}
+              style={styles.retryButton}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading post"
+            >
+              <Text style={styles.retryText}>Try again</Text>
+            </Pressable>
+          ) : null}
+        </PostDetailState>
+      </>
     );
   }
 
@@ -525,6 +532,7 @@ function PostDetailView({
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
+      {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
       {viewState === 'offline-cached' ? (
         <View style={styles.offlineBanner} accessibilityRole="alert">
           <Text style={styles.offlineText}>Offline · showing this session’s last loaded copy</Text>
@@ -573,7 +581,7 @@ function PostDetailView({
           ) : viewState === 'comments-error' ? (
             <View style={styles.commentsState}>
               <Text style={styles.stateText}>Comments are unavailable. The post is still safe to view.</Text>
-              <Pressable onPress={() => void load()} accessibilityRole="button" accessibilityLabel="Retry loading comments" style={styles.commentsRetry}>
+              <Pressable onPress={() => void load({ preserveVisible: true })} accessibilityRole="button" accessibilityLabel="Retry loading comments" style={styles.commentsRetry}>
                 <Text style={styles.commentsRetryText}>Retry comments</Text>
               </Pressable>
             </View>
