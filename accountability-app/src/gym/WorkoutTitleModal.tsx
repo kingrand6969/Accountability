@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -9,7 +9,15 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button } from '../ui/Button';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 /**
  * Name-your-workout sheet. A workout must have a title; the chosen exercises
@@ -28,6 +36,9 @@ export function WorkoutTitleModal({
   onCancel: () => void;
   onSave: (title: string) => void;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => modalPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [title, setTitle] = useState('');
   const canSave = title.trim().length > 0 && !saving;
 
@@ -37,15 +48,15 @@ export function WorkoutTitleModal({
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.head}>
             <Text style={styles.title}>Name your workout</Text>
-            <Pressable onPress={onCancel} hitSlop={8} accessibilityLabel="Cancel">
-              <Ionicons name="close" size={22} color={colors.textFaint} />
+            <Pressable onPress={onCancel} style={styles.closeButton} accessibilityLabel="Cancel">
+              <Ionicons name="close" size={22} color={palette.placeholder} />
             </Pressable>
           </View>
 
           <TextInput
             style={styles.input}
             placeholder="e.g. Push day, Leg burner, Quick session"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={palette.placeholder}
             value={title}
             onChangeText={setTitle}
             autoFocus
@@ -59,7 +70,7 @@ export function WorkoutTitleModal({
           <View style={styles.list}>
             {exercises.map((name, i) => (
               <View key={i} style={styles.line}>
-                <Ionicons name="ellipse-outline" size={14} color={colors.textFaint} />
+                <Ionicons name="ellipse-outline" size={14} color={palette.placeholder} />
                 <Text style={styles.lineText} numberOfLines={1}>
                   {name}
                 </Text>
@@ -80,15 +91,35 @@ export function WorkoutTitleModal({
   );
 }
 
-const styles = StyleSheet.create({
+function modalPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light'
+      ? legacyColors.surfaceAlt
+      : theme.surface.raised,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    scrim: mode === 'light' ? 'rgba(15,23,42,0.45)' : theme.interaction.scrim,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = modalPalette(theme, mode);
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.45)',
+    backgroundColor: palette.scrim,
     justifyContent: 'center',
     padding: spacing.xl,
   },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
+    borderWidth: mode === 'light' ? 0 : 1,
+    borderColor: palette.border,
     borderRadius: radius.lg,
     padding: spacing.lg,
     gap: spacing.sm,
@@ -97,29 +128,37 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontFamily: font.extrabold, fontSize: 18, color: colors.text },
+  closeButton: {
+    width: spacing.touch,
+    height: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: -13,
+  },
+  title: { fontFamily: font.extrabold, fontSize: 18, color: palette.ink },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: palette.ink,
+    backgroundColor: palette.field,
     minHeight: 48,
     marginTop: spacing.xs,
   },
   label: {
     fontSize: 12.5,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: palette.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginTop: spacing.sm,
   },
   list: { gap: 4 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  lineText: { flex: 1, fontFamily: font.regular, fontSize: 14, color: colors.textSecondary },
+  lineText: { flex: 1, fontFamily: font.regular, fontSize: 14, color: palette.secondary },
   save: { marginTop: spacing.md },
-});
+  });
+}

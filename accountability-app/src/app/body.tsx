@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -16,7 +16,14 @@ import { listExercises, type LibraryExercise } from '../gym/library';
 import { getInsights, type Insights } from '../insights/api';
 import { listItemsForDay } from '../timeline/api';
 import type { TimelineItem } from '../timeline/types';
-import { colors, font, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { EditorialBackdrop } from '../journey/EditorialBackdrop';
 import { listRecentJourneyItems, pillarCompletion } from '../journey/data';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
@@ -30,6 +37,9 @@ const ACTIONS = [
 export default function BodyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => bodyPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [insights, setInsights] = useState<Insights | null>(null);
   const [workouts, setWorkouts] = useState<TimelineItem[]>([]);
   const [exercise, setExercise] = useState<LibraryExercise | null>(null);
@@ -79,11 +89,11 @@ export default function BodyScreen() {
       >
         <View style={styles.header}>
           <Pressable onPress={() => navigateBackSafely(router)} style={styles.iconButton} accessibilityLabel="Back to Journey">
-            <Ionicons name="chevron-back" size={23} color={colors.navy} />
+            <Ionicons name="chevron-back" size={23} color={palette.ink} />
           </Pressable>
           <Text style={styles.breadcrumb}>Journey / Body</Text>
           <Pressable onPress={() => router.push('/menu' as never)} style={styles.iconButton} accessibilityLabel="Body options">
-            <Ionicons name="notifications-outline" size={21} color={colors.navy} />
+            <Ionicons name="notifications-outline" size={21} color={palette.ink} />
           </Pressable>
         </View>
 
@@ -98,10 +108,10 @@ export default function BodyScreen() {
         </View>
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={styles.loader} />
+          <ActivityIndicator color={palette.action} style={styles.loader} />
         ) : error ? (
           <View style={styles.errorCard}>
-            <Ionicons name="cloud-offline-outline" size={21} color={colors.primary} />
+            <Ionicons name="cloud-offline-outline" size={21} color={palette.action} />
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : (
@@ -144,13 +154,13 @@ export default function BodyScreen() {
                   accessibilityLabel={`${action.label}. ${action.sub}`}
                 >
                   <View style={styles.actionIcon}>
-                    <Ionicons name={action.icon} size={20} color={colors.primary} />
+                    <Ionicons name={action.icon} size={20} color={palette.action} />
                   </View>
                   <View style={styles.flex}>
                     <Text style={styles.actionTitle}>{action.label}</Text>
                     <Text style={styles.actionSub}>{action.sub}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.inkSoft} />
+                  <Ionicons name="chevron-forward" size={18} color={palette.softInk} />
                 </Pressable>
               ))}
             </View>
@@ -174,7 +184,7 @@ export default function BodyScreen() {
                     : `${insights?.workouts ?? 0} workouts this week`}
                 </Text>
               </View>
-              <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+              <Ionicons name="checkmark-circle" size={20} color={palette.action} />
             </View>
 
             <Pressable
@@ -183,10 +193,10 @@ export default function BodyScreen() {
               accessibilityRole="button"
             >
               <View style={styles.shareIcon}>
-                <Ionicons name="camera-outline" size={20} color={colors.primary} />
+                <Ionicons name="camera-outline" size={20} color={palette.action} />
               </View>
               <Text style={styles.shareText}>Share proof after completion</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.navy} />
+              <Ionicons name="chevron-forward" size={18} color={palette.ink} />
             </Pressable>
 
             <Text style={styles.journalNote}>
@@ -199,19 +209,38 @@ export default function BodyScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.cream },
+function bodyPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? legacyColors.cream : theme.surface.canvas,
+    card: mode === 'light' ? '#FFFFFF' : theme.surface.card,
+    glassCard: mode === 'light' ? 'rgba(255,255,255,0.78)' : theme.surface.card,
+    quietCard: mode === 'light' ? 'rgba(255,255,255,0.75)' : theme.surface.card,
+    ink: mode === 'light' ? legacyColors.navy : theme.ink.primary,
+    softInk: mode === 'light' ? legacyColors.inkSoft : theme.ink.secondary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    border: mode === 'light' ? 'rgba(8,26,58,0.10)' : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
+    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
+    dangerBorder: mode === 'light' ? '#F3B4B4' : theme.border.danger,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = bodyPalette(theme, mode);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: spacing.lg, paddingBottom: 80 },
   header: { minHeight: 48, flexDirection: 'row', alignItems: 'center' },
-  iconButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  breadcrumb: { flex: 1, color: colors.inkSoft, fontFamily: font.medium, fontSize: 12 },
-  title: { color: colors.navy, fontFamily: 'Georgia', fontSize: 34, lineHeight: 39, marginTop: 4 },
+  iconButton: { width: spacing.touch, height: spacing.touch, alignItems: 'center', justifyContent: 'center' },
+  breadcrumb: { flex: 1, color: palette.softInk, fontFamily: font.medium, fontSize: 12 },
+  title: { color: palette.ink, fontFamily: 'Georgia', fontSize: 34, lineHeight: 39, marginTop: 4 },
   momentumRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, marginBottom: 12 },
   momentumDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: '#78A92B' },
-  momentumText: { color: colors.inkSoft, fontFamily: font.medium, fontSize: 12 },
+  momentumText: { color: palette.softInk, fontFamily: font.medium, fontSize: 12 },
   loader: { marginTop: 80 },
-  errorCard: { minHeight: 82, marginTop: 24, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F3B4B4', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  errorText: { flex: 1, color: colors.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
+  errorCard: { minHeight: 82, marginTop: 24, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.dangerBorder, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  errorText: { flex: 1, color: palette.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
   hero: { height: 226, borderRadius: 16, overflow: 'hidden', justifyContent: 'flex-end' },
   pressed: { opacity: 0.7 },
   heroImage: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '62%' },
@@ -220,24 +249,25 @@ const styles = StyleSheet.create({
   heroKicker: { color: '#BED3EB', fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1.1 },
   heroTitle: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 26, lineHeight: 30, marginTop: 3 },
   heroMeta: { color: '#D7E3F1', fontFamily: font.medium, fontSize: 11.5, marginTop: 2 },
-  startButton: { alignSelf: 'flex-start', minHeight: 44, marginTop: 12, borderRadius: 9, backgroundColor: colors.primary, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  startButton: { alignSelf: 'flex-start', minHeight: spacing.touch, marginTop: 12, borderRadius: 9, backgroundColor: palette.action, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   startText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 12.5 },
   actions: { gap: 8, marginTop: 12 },
-  action: { minHeight: 64, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: 'rgba(8,26,58,0.10)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 10 },
-  actionIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  action: { minHeight: 64, borderRadius: 14, backgroundColor: palette.glassCard, borderWidth: 1, borderColor: palette.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 10 },
+  actionIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: palette.actionSoft, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
-  actionTitle: { color: colors.navy, fontFamily: font.bold, fontSize: 13.5 },
-  actionSub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 10.5, marginTop: 2 },
+  actionTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 13.5 },
+  actionSub: { color: palette.muted, fontFamily: font.regular, fontSize: 10.5, marginTop: 2 },
   sectionRow: { minHeight: 52, marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { color: colors.navy, fontFamily: 'Georgia', fontSize: 18 },
-  sectionAction: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
-  sectionActionText: { color: colors.primary, fontFamily: font.bold, fontSize: 11 },
-  recentCard: { minHeight: 72, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.75)', borderWidth: 1, borderColor: 'rgba(8,26,58,0.10)', padding: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sectionTitle: { color: palette.ink, fontFamily: 'Georgia', fontSize: 18 },
+  sectionAction: { minHeight: spacing.touch, justifyContent: 'center', paddingHorizontal: 4 },
+  sectionActionText: { color: palette.action, fontFamily: font.bold, fontSize: 11 },
+  recentCard: { minHeight: 72, borderRadius: 14, backgroundColor: palette.quietCard, borderWidth: 1, borderColor: palette.border, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
   recentThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#0C294A', alignItems: 'center', justifyContent: 'center' },
-  recentTitle: { color: colors.navy, fontFamily: font.bold, fontSize: 12.5 },
-  recentMeta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 10.5, marginTop: 3 },
-  shareCard: { minHeight: 62, marginTop: 10, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: colors.primary, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  shareIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  shareText: { flex: 1, color: colors.navy, fontFamily: font.bold, fontSize: 12.5 },
-  journalNote: { color: colors.textMuted, fontFamily: font.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 12, paddingHorizontal: 14 },
-});
+  recentTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 12.5 },
+  recentMeta: { color: palette.muted, fontFamily: font.regular, fontSize: 10.5, marginTop: 3 },
+  shareCard: { minHeight: 62, marginTop: 10, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1.5, borderColor: palette.action, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  shareIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: palette.actionSoft, alignItems: 'center', justifyContent: 'center' },
+  shareText: { flex: 1, color: palette.ink, fontFamily: font.bold, fontSize: 12.5 },
+  journalNote: { color: palette.muted, fontFamily: font.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 12, paddingHorizontal: 14 },
+  });
+}

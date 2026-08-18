@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,11 +23,23 @@ import { createItem } from '../timeline/api';
 import { useIsPro } from '../pro/ProProvider';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing, contentMax } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function GymPlan() {
   const router = useRouter();
   const { isPro, loading: proLoading } = useIsPro();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => planPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [focus, setFocus] = useState<Set<MuscleGroup>>(new Set());
   const [equip, setEquip] = useState<'any' | 'gym' | 'body'>('any');
   const [heightCm, setHeightCm] = useState('');
@@ -145,7 +157,7 @@ export default function GymPlan() {
   if (proLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -155,7 +167,7 @@ export default function GymPlan() {
     return (
       <View style={styles.upsell}>
         <View style={styles.upsellIconCircle}>
-          <Ionicons name="barbell-outline" size={48} color={colors.pro} />
+          <Ionicons name="barbell-outline" size={48} color={palette.pro} />
         </View>
         <Text style={styles.upsellTitle}>Build My Plan</Text>
         <Text style={styles.upsellText}>
@@ -174,7 +186,7 @@ export default function GymPlan() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.hero}>
         <View style={styles.heroIcon}>
-          <Ionicons name="sparkles" size={22} color={colors.primary} />
+          <Ionicons name="sparkles" size={22} color={palette.action} />
         </View>
         <Text style={styles.heroTitle}>Build my plan</Text>
         <Text style={styles.heroSub}>
@@ -224,7 +236,7 @@ export default function GymPlan() {
               <Ionicons
                 name={o.icon}
                 size={15}
-                color={on ? colors.primary : colors.textMuted}
+                color={on ? palette.action : palette.muted}
               />
               <Text style={[styles.toggleText, on && styles.toggleTextActive]}>{o.label}</Text>
             </Pressable>
@@ -242,7 +254,7 @@ export default function GymPlan() {
           <TextInput
             style={styles.input}
             placeholder="Height"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={palette.placeholder}
             keyboardType="number-pad"
             value={heightCm}
             onChangeText={setHeightCm}
@@ -253,7 +265,7 @@ export default function GymPlan() {
           <TextInput
             style={styles.input}
             placeholder="Weight"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={palette.placeholder}
             keyboardType="number-pad"
             value={weightKg}
             onChangeText={setWeightKg}
@@ -263,7 +275,7 @@ export default function GymPlan() {
       </View>
       {b !== null && cat ? (
         <View style={styles.bmiBadge}>
-          <Ionicons name="fitness-outline" size={15} color={colors.primary} />
+          <Ionicons name="fitness-outline" size={15} color={palette.action} />
           <Text style={styles.bmiText}>
             BMI {b} · {cat.label} — {scheme.note}
           </Text>
@@ -323,7 +335,7 @@ export default function GymPlan() {
                     <Image source={{ uri: item.exercise.images[0] }} style={styles.thumb} resizeMode="contain" />
                   ) : (
                     <View style={[styles.thumb, styles.thumbFallback]}>
-                      <Ionicons name="barbell-outline" size={22} color={colors.textFaint} />
+                      <Ionicons name="barbell-outline" size={22} color={palette.placeholder} />
                     </View>
                   )}
                   <View style={{ flex: 1 }}>
@@ -332,7 +344,7 @@ export default function GymPlan() {
                       {item.sets} × {item.reps} · {prettyEquipment(item.exercise.equipment)}
                     </Text>
                   </View>
-                  <Ionicons name="information-circle-outline" size={20} color={colors.textFaint} />
+                  <Ionicons name="information-circle-outline" size={20} color={palette.placeholder} />
                 </Pressable>
               </View>
             );
@@ -352,29 +364,53 @@ export default function GymPlan() {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+function planPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light'
+      ? legacyColors.surfaceAlt
+      : theme.surface.raised,
+    surface: mode === 'light' ? legacyColors.surface : theme.surface.muted,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
+    success: mode === 'light' ? legacyColors.success : theme.status.success,
+    successSoft: mode === 'light' ? legacyColors.successSoft : theme.status.successSoft,
+    pro: mode === 'light' ? legacyColors.pro : '#C4B5FD',
+    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = planPalette(theme, mode);
+  return StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.background },
   upsell: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xxl,
     gap: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   upsellIconCircle: {
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: colors.proSoft,
+    backgroundColor: palette.proSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  upsellTitle: { fontFamily: font.bold, fontSize: 20, color: colors.text },
+  upsellTitle: { fontFamily: font.bold, fontSize: 20, color: palette.ink },
   upsellText: {
     fontFamily: font.regular,
     fontSize: 14.5,
-    color: colors.textMuted,
+    color: palette.muted,
     textAlign: 'center',
     lineHeight: 21,
     maxWidth: 320,
@@ -384,7 +420,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.sm,
     paddingBottom: 48,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
     ...contentMax,
   },
   pressed: { opacity: 0.7 },
@@ -393,14 +429,14 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.actionSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
   },
-  heroTitle: { fontSize: 22, fontFamily: font.extrabold, color: colors.text },
+  heroTitle: { fontSize: 22, fontFamily: font.extrabold, color: palette.ink },
   heroSub: {
-    color: colors.textMuted,
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 13.5,
     textAlign: 'center',
@@ -409,30 +445,30 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: palette.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: spacing.md,
   },
-  hint: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12.5 },
+  hint: { color: palette.muted, fontFamily: font.regular, fontSize: 12.5 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: palette.action,
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 15,
-    minHeight: 42,
+    minHeight: spacing.touch,
   },
-  chipOn: { backgroundColor: colors.primary },
-  chipText: { color: colors.primary, fontFamily: font.semibold, fontSize: 14 },
+  chipOn: { backgroundColor: palette.action },
+  chipText: { color: palette.action, fontFamily: font.semibold, fontSize: 14 },
   chipTextOn: { color: '#fff' },
   toggle: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
+    backgroundColor: palette.surface,
     borderRadius: radius.sm,
     padding: 3,
     gap: 3,
@@ -445,28 +481,29 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 9,
     borderRadius: 8,
-    minHeight: 40,
+    minHeight: spacing.touch,
   },
-  toggleActive: { backgroundColor: colors.card },
-  toggleText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
-  toggleTextActive: { color: colors.primary },
+  toggleActive: { backgroundColor: palette.card },
+  toggleText: { color: palette.muted, fontFamily: font.semibold, fontSize: 13 },
+  toggleTextActive: { color: palette.action },
   bmiRow: { flexDirection: 'row', gap: spacing.md },
   bmiField: { flex: 1, position: 'relative', justifyContent: 'center' },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
     padding: spacing.md,
     paddingRight: 42,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: palette.ink,
+    backgroundColor: palette.field,
+    minHeight: spacing.touch,
   },
   unit: {
     position: 'absolute',
     right: 14,
-    color: colors.textFaint,
+    color: palette.placeholder,
     fontFamily: font.semibold,
     fontSize: 13,
   },
@@ -474,15 +511,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.actionSoft,
     borderRadius: radius.sm,
     padding: spacing.md,
     marginTop: 2,
   },
-  bmiText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 12.5, flexShrink: 1 },
+  bmiText: { color: palette.secondary, fontFamily: font.semibold, fontSize: 12.5, flexShrink: 1 },
   generate: { marginTop: spacing.lg },
   pickHint: {
-    color: colors.textFaint,
+    color: palette.placeholder,
     fontFamily: font.medium,
     fontSize: 12.5,
     textAlign: 'center',
@@ -493,41 +530,42 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
-  planScheme: { color: colors.primary, fontFamily: font.bold, fontSize: 12.5 },
+  planScheme: { color: palette.action, fontFamily: font.bold, fontSize: 12.5 },
   exRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     paddingLeft: spacing.md,
     paddingRight: 10,
     paddingVertical: 10,
   },
   checkBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+    width: spacing.touch,
+    height: spacing.touch,
+    borderRadius: radius.sm,
     borderWidth: 2,
-    borderColor: colors.primary,
+    borderColor: palette.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkBoxOn: { backgroundColor: colors.success, borderColor: colors.success },
-  exRowKept: { borderColor: colors.success, backgroundColor: colors.successSoft },
-  keepHint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: -2 },
+  checkBoxOn: { backgroundColor: palette.success, borderColor: palette.success },
+  exRowKept: { borderColor: palette.success, backgroundColor: palette.successSoft },
+  keepHint: { fontFamily: font.regular, fontSize: 12.5, color: palette.muted, marginTop: -2 },
   exBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  thumb: { width: 54, height: 54, borderRadius: radius.sm - 2, backgroundColor: colors.surface },
+  thumb: { width: 54, height: 54, borderRadius: radius.sm - 2, backgroundColor: palette.surface },
   thumbFallback: { alignItems: 'center', justifyContent: 'center' },
-  exName: { fontSize: 15, fontFamily: font.bold, color: colors.text },
+  exName: { fontSize: 15, fontFamily: font.bold, color: palette.ink },
   exMeta: {
-    color: colors.textMuted,
+    color: palette.muted,
     fontFamily: font.medium,
     fontSize: 13,
     marginTop: 2,
     textTransform: 'capitalize',
   },
   logBtn: { marginTop: spacing.md },
-});
+  });
+}
