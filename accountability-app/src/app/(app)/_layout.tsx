@@ -11,14 +11,14 @@ import { floatingTabBarStyle } from '../../ui/floatingTabBar';
 import { GlassTabBar } from '../../ui/GlassTabBar';
 import { useUnreadMessages } from '../../buddy/useUnreadMessages';
 import { getMyProfile, touchLastActive } from '../../profiles/api';
-import { colors } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { statusBarStyleForPath } from '../../navigation/routeAccessContract';
 import { notificationHeaderOptions } from '../../navigation/SafeBackButton';
 import { AppLaunchState } from '../../ui/AppLaunchState';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Quiet tab icon: selected destinations use the approved deep-navy ink. */
+/** Quiet tab icon: the shell supplies the selected appearance's semantic ink. */
 function tabIcon(active: IoniconName, inactive: IoniconName) {
   return function TabIcon({
     color,
@@ -33,7 +33,7 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
       <Ionicons
         name={focused ? active : inactive}
         size={size}
-        color={focused ? colors.navy : color}
+        color={color}
       />
     );
   };
@@ -51,14 +51,17 @@ function MessagesTabIcon({
   focused: boolean;
   unread: number;
 }) {
+  const { colors: theme } = useAppTheme();
   return (
     <View style={styles.messageIcon}>
       <Ionicons
         name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
         size={size}
-        color={focused ? colors.navy : color}
+        color={color}
       />
-      {unread > 0 && !focused ? <View style={styles.unreadDot} /> : null}
+      {unread > 0 && !focused ? (
+        <View style={[styles.unreadDot, { borderColor: theme.surface.card }]} />
+      ) : null}
     </View>
   );
 }
@@ -74,15 +77,15 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#db2777',
     borderWidth: 1.5,
-    borderColor: '#fff',
   },
 });
 
 export default function AppLayout() {
   const { session } = useAuth();
+  const { colors: theme, mode } = useAppTheme();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { width: winW } = useWindowDimensions();
+  const { width: winW, fontScale } = useWindowDimensions();
   const userId = session?.user.id ?? null;
   const { unread: unreadMessages } = useUnreadMessages(userId);
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
@@ -133,17 +136,20 @@ export default function AppLayout() {
 
   return (
     <>
-      <StatusBar style={statusBarStyleForPath(pathname)} />
+      <StatusBar style={statusBarStyleForPath(pathname, mode)} />
       <Tabs
       // custom quiet bar — guarantees the approved four destinations and spacing
       tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
         headerShown: true,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: '#475569',
+        tabBarActiveTintColor: theme.ink.primary,
+        tabBarInactiveTintColor: theme.ink.muted,
         tabBarShowLabel: true,
         // kept so the run screen can hide the bar via tabBarStyle:{display:'none'}
-        tabBarStyle: floatingTabBarStyle(winW, insets.bottom),
+        tabBarStyle: floatingTabBarStyle(winW, insets.bottom, fontScale, {
+          backgroundColor: theme.surface.card,
+          borderTopColor: theme.border.subtle,
+        }),
         tabBarItemStyle: {
           height: 62,
           alignItems: 'center',

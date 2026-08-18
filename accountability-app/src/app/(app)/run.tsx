@@ -71,6 +71,7 @@ import { font } from '../../ui/theme';
 import { hapticImpact } from '../../ui/haptics';
 import { contentMaxWidth } from '../../ui/responsive';
 import { useAuth } from '../../auth/AuthProvider';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 
 const LIME = '#c6f24e';
@@ -118,9 +119,10 @@ async function stopUpdatesIfRunning() {
 export default function ActivityTrack() {
   const router = useRouter();
   const { session, loading: authLoading } = useAuth();
+  const { colors: theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { width: W } = useWindowDimensions();
+  const { width: W, fontScale } = useWindowDimensions();
   const [type, setType] = useState<ActivityType>('run');
   const [tracking, setTracking] = useState(false);
   const [distance, setDistance] = useState(0);
@@ -255,9 +257,14 @@ export default function ActivityTrack() {
   const immersive = tracking || !!shareRun;
   useEffect(() => {
     navigation.setOptions({
-      tabBarStyle: immersive ? { display: 'none' } : floatingTabBarStyle(W, insets.bottom),
+      tabBarStyle: immersive
+        ? { display: 'none' }
+        : floatingTabBarStyle(W, insets.bottom, fontScale, {
+            backgroundColor: theme.surface.card,
+            borderTopColor: theme.border.subtle,
+          }),
     });
-  }, [immersive, navigation, W, insets.bottom]);
+  }, [fontScale, immersive, navigation, theme, W, insets.bottom]);
 
   useEffect(() => {
     if (!tracking) {

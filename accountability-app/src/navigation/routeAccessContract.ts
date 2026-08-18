@@ -1,4 +1,5 @@
 import { publicShareUrl } from '../feed/publicShareFormat';
+import type { AppThemeMode } from '../ui/theme';
 
 export type SessionState = 'signed-out' | 'signed-in';
 export type ShareAccess = 'public' | 'restricted' | 'revoked' | 'missing' | 'private';
@@ -49,8 +50,13 @@ const PROTECTED_ENTITY_ROUTE = /^\/(?:group|page|story)\/[A-Za-z0-9_-]+$/;
 const PUBLIC_SHARE_ROUTE = /^\/share\/[^/]+$/;
 const POST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function statusBarStyleForPath(path: string): 'dark' | 'light' {
-  return path === '/activity' || path === '/run' ? 'light' : 'dark';
+export function statusBarStyleForPath(
+  path: string,
+  mode: AppThemeMode = 'light',
+): 'dark' | 'light' {
+  return mode === 'dark' || path === '/activity' || path === '/run'
+    ? 'light'
+    : 'dark';
 }
 
 export function canonicalPublicShareDestination(

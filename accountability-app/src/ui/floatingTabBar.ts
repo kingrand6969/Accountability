@@ -1,5 +1,9 @@
 import type { ViewStyle } from 'react-native';
 
+export type FloatingTabBarPalette = Partial<
+  Pick<ViewStyle, 'backgroundColor' | 'borderTopColor'>
+>;
+
 export const TAB_BAR_MIN_CONTENT_HEIGHT = 64;
 export const TAB_BAR_MAX_CONTENT_HEIGHT = 128;
 export const TAB_BAR_SAFE_AREA_ALLOWANCE = 32;
@@ -18,6 +22,7 @@ export function floatingTabBarStyle(
   winW: number,
   insetsBottom: number,
   fontScale = 1,
+  palette: FloatingTabBarPalette = {},
 ): ViewStyle {
   const contentHeight = tabBarContentHeight(fontScale);
   return {
@@ -26,9 +31,9 @@ export function floatingTabBarStyle(
     left: 0,
     bottom: 0,
     height: contentHeight + insetsBottom,
-    backgroundColor: '#ffffff',
+    backgroundColor: palette.backgroundColor ?? '#ffffff',
     borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
+    borderTopColor: palette.borderTopColor ?? '#e2e8f0',
   };
 }
 

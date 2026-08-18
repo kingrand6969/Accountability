@@ -123,6 +123,22 @@ describe('cold-link route access contract', () => {
     expect(statusBarStyleForPath?.('/activity')).toBe('light');
     expect(statusBarStyleForPath?.('/run')).toBe('light');
     expect(statusBarStyleForPath?.('/body')).toBe('dark');
+    expect(statusBarStyleForPath?.('/', 'dark')).toBe('light');
+    expect(statusBarStyleForPath?.('/messages', 'dark')).toBe('light');
+    expect(statusBarStyleForPath?.('/activity', 'dark')).toBe('light');
+  });
+
+  test('wires the primary tab shell to the manual appearance without changing its routes', () => {
+    const layoutSource = routeSource('(app)/_layout.tsx');
+
+    expect(layoutSource).toContain('useAppTheme()');
+    expect(layoutSource).toContain('statusBarStyleForPath(pathname, mode)');
+    expect(layoutSource).toContain('backgroundColor: theme.surface.card');
+    expect(layoutSource).toContain('borderTopColor: theme.border.subtle');
+    expect(layoutSource).toContain("name=\"index\"");
+    expect(layoutSource).toContain("name=\"activity\"");
+    expect(layoutSource).toContain("name=\"run\"");
+    expect(layoutSource).toContain("name=\"messages\"");
   });
 
   test.each(['/body', '/journey-path'] as const)(

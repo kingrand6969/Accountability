@@ -10,8 +10,21 @@ import {
   TAB_BAR_SAFE_AREA_ALLOWANCE,
 } from './floatingTabBar';
 import * as floatingTabBar from './floatingTabBar';
-import { colors, spacing } from './theme';
+import { colors, spacing, themeColors, type AppThemeMode } from './theme';
 import { hapticSelect } from './haptics';
+
+let mockThemeMode: AppThemeMode = 'light';
+
+jest.mock('./AppThemeProvider', () => ({
+  useAppTheme: () => {
+    const theme = jest.requireActual<typeof import('./theme')>('./theme');
+    return {
+      mode: mockThemeMode,
+      colors: theme.themeColors(mockThemeMode),
+      setMode: jest.fn(),
+    };
+  },
+}));
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 16, left: 0 }),
@@ -131,6 +144,7 @@ function pressableByLabel(
 
 describe('GlassTabBar contract', () => {
   beforeEach(() => {
+    mockThemeMode = 'light';
     jest.restoreAllMocks();
     jest.clearAllMocks();
   });
@@ -170,6 +184,41 @@ describe('GlassTabBar contract', () => {
         bottom: 3,
       }),
     );
+  });
+
+  it('uses the selected dark appearance for the surface, border, ink, and indicator', () => {
+    mockThemeMode = 'dark';
+    const dark = themeColors('dark');
+    const { renderer } = renderTabBar({ focusedIndex: 0 });
+
+    expect(renderer.toJSON()).toEqual(
+      expect.objectContaining({
+        props: expect.objectContaining({
+          style: expect.arrayContaining([
+            expect.objectContaining({
+              backgroundColor: dark.surface.card,
+              borderTopColor: dark.border.subtle,
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(
+      renderer.root.findByProps({ testID: 'tab-label-Feed' }).props.style,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ color: dark.ink.primary })]),
+    );
+    expect(renderer.root.findByProps({ testID: 'icon-Feed' }).props.style).toEqual(
+      expect.objectContaining({ color: dark.ink.primary }),
+    );
+    expect(
+      renderer.root.findByProps({ testID: 'tab-label-Messages' }).props.style,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ color: dark.ink.muted })]),
+    );
+    expect(
+      renderer.root.findByProps({ testID: 'tab-indicator-Feed' }).props.style,
+    ).toEqual(expect.objectContaining({ backgroundColor: dark.ink.primary }));
   });
 
   it('renders Journey with the approved mark and no filled or elevated holder', () => {
@@ -303,5 +352,22 @@ describe('GlassTabBar contract', () => {
     );
     expect(TAB_BAR_MAX_CONTENT_HEIGHT).toBeGreaterThanOrEqual(100);
     expect(TAB_BAR_SAFE_AREA_ALLOWANCE).toBeGreaterThanOrEqual(32);
+  });
+
+  it('keeps the underlying native tab bar aligned with the selected appearance', () => {
+    const dark = themeColors('dark');
+    const style = floatingTabBar.floatingTabBarStyle(320, 16, 1, {
+      backgroundColor: dark.surface.card,
+      borderTopColor: dark.border.subtle,
+    });
+
+    expect(style).toEqual(
+      expect.objectContaining({
+        width: 320,
+        height: 84,
+        backgroundColor: dark.surface.card,
+        borderTopColor: dark.border.subtle,
+      }),
+    );
   });
 });
