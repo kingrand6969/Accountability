@@ -63,6 +63,7 @@ import {
   type AchievementCompletion,
   type AchievementStoryOperation,
 } from '../entry/achievementCompletion';
+import { parseFlexContext, type FlexKind } from '../entry/flexContext';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
@@ -76,14 +77,15 @@ export default function WinCard() {
     achievementKind?: string | string[];
     achievementSourceId?: string | string[];
     achievementTitle?: string | string[];
+    achievementText?: string | string[];
+    audience?: string | string[];
+    showOnCard?: string | string[];
     autoPrompt?: string | string[];
   }>();
   const proofLocation = sanitizeProofParam(params.location);
   const proofRoute = sanitizeProofParam(params.route);
   const proofBuddyName = sanitizeProofParam(params.buddyName);
-  const achievementTitle = sanitizeProofParam(params.achievementTitle);
-  const achievementKind = sanitizeProofParam(params.achievementKind);
-  const achievementSourceId = sanitizeProofParam(params.achievementSourceId);
+  const parsedFlexContext = parseFlexContext(params);
   const {
     stats,
     loadError,
@@ -213,15 +215,22 @@ export default function WinCard() {
     );
   }
 
-  const message =
-    achievementTitle
-      ? `${achievementTitle} completed on AccountAbility. I showed up today.`
-      : stats.streak > 0
+  const fallbackMessage =
+    stats.streak > 0
       ? `${stats.streak}-day streak on AccountAbility. Achieve consistency.`
       : `Building better habits with AccountAbility - ${stats.weekWorkouts} workouts this week.`;
+  const flexContext = parsedFlexContext ?? {
+    kind: 'streak' as const,
+    sourceId: `streak-${stats.streak}-${new Date().toISOString().slice(0, 10)}`,
+    title: 'I showed up today.',
+    body: fallbackMessage,
+    audience: 'buddies' as const,
+    showOnCard: false,
+  };
+  const message = flexContext.body;
   const proofInput: ProofExportInput = {
     brand: 'AccountAbility',
-    headline: achievementTitle ?? 'I showed up today.',
+    headline: flexContext.title,
     format,
     metrics: {
       workouts: stats.weekWorkouts,
@@ -245,10 +254,8 @@ export default function WinCard() {
   const cardModel = captureContext.dto;
   const proofCardSummary = buildProofCardSummary(cardModel);
   const completionPayload: AchievementCompletion = {
-    kind: achievementKind === 'workout' || achievementKind === 'challenge'
-      ? achievementKind
-      : 'streak',
-    sourceId: achievementSourceId ?? `streak-${stats.streak}-${new Date().toISOString().slice(0, 10)}`,
+    kind: achievementCompletionKind(flexContext.kind),
+    sourceId: flexContext.sourceId,
     text: message,
     mediaUri: null,
   };
@@ -641,6 +648,12 @@ export default function WinCard() {
       if (isRetryCurrent()) markLoadError();
     }
   }
+}
+
+function achievementCompletionKind(kind: FlexKind): AchievementCompletion['kind'] {
+  return kind === 'run' || kind === 'workout' || kind === 'challenge' || kind === 'streak'
+    ? kind
+    : 'streak';
 }
 
 function ScreenHeader({ onBack }: { onBack: () => void }) {

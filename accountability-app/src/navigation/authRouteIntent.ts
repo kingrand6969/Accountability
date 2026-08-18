@@ -1,3 +1,12 @@
+import {
+  FLEX_BODY_MAX_LENGTH,
+  FLEX_TITLE_MAX_LENGTH,
+  isFlexAudience,
+  isFlexKind,
+  isValidFlexSourceId,
+  normalizeFlexDisplayText,
+} from '../entry/flexContext';
+
 export type RouteQuery = Record<string, string | string[] | undefined>;
 
 const STATIC_ROUTES = new Set([
@@ -28,6 +37,13 @@ const QUERY_RULES: Record<
     location: safeProofValue,
     route: safeProofValue,
     buddyName: safeProofValue,
+    achievementKind: isFlexKind,
+    achievementSourceId: isValidFlexSourceId,
+    achievementTitle: (value) => normalizeFlexDisplayText(value, FLEX_TITLE_MAX_LENGTH) !== null,
+    achievementText: (value) => normalizeFlexDisplayText(value, FLEX_BODY_MAX_LENGTH) !== null,
+    audience: isFlexAudience,
+    showOnCard: (value) => value === '1',
+    autoPrompt: (value) => value === '1',
   },
 };
 

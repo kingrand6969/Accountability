@@ -18,6 +18,10 @@ describe('protected Group 3 route intent validation', () => {
     ['/compose?event=1&text=Show%20up', '/compose?event=1&text=Show+up'],
     ['/win-card?buddyName=Maya', '/win-card?buddyName=Maya'],
     [
+      '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&achievementText=Finished%20strong&audience=public&showOnCard=1&autoPrompt=1',
+      '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First+10K&achievementText=Finished+strong&audience=public&showOnCard=1&autoPrompt=1',
+    ],
+    [
       'accountabilityapp://story/restored_user-2026',
       '/story/restored_user-2026',
     ],
@@ -47,6 +51,14 @@ describe('protected Group 3 route intent validation', () => {
     '/compose?text=%0Ainjected',
     '/win-card?buddyName=a%0D%0Ab',
     '/win-card?amount=%2450',
+    '/win-card?achievementKind=Challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K',
+    '/win-card?achievementKind=challenge&achievementSourceId=runs%2Fsecret&achievementTitle=First%2010K',
+    `/win-card?achievementKind=challenge&achievementSourceId=${'x'.repeat(129)}&achievementTitle=First%2010K`,
+    `/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=${'x'.repeat(121)}`,
+    '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&achievementText%5Bprivate%5D=secret',
+    '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&audience=friends',
+    '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&showOnCard=true',
+    '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&autoPrompt=0',
     '/groups#fragment',
     'accountabilityapp-preview://body',
     'accountabilityapp-staging://post/private',
@@ -72,6 +84,20 @@ describe('one-shot authentication route intent lifecycle', () => {
     ['accountabilityapp-staging://body', '/body'],
     ['accountabilityapp://journey-path', '/journey-path'],
   ])('captures a signed-out cold link from either app scheme and resumes %s once', (href, expected) => {
+    const controller = createAuthRouteIntentController();
+    const ticket = controller.beginAsyncCapture();
+
+    expect(controller.completeAsyncCapture(ticket, href)).toBe(true);
+    expect(controller.peek()).toBe(expected);
+    expect(controller.transitionToOwner('owner-a')).toBe(expected);
+    expect(controller.transitionToOwner('owner-a')).toBeNull();
+  });
+
+  test('preserves a validated Flex context across signed-out cold resume', () => {
+    const href =
+      'accountabilityapp-staging://win-card?achievementKind=workout&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=Morning%20strength&audience=public&showOnCard=1&autoPrompt=1';
+    const expected =
+      '/win-card?achievementKind=workout&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=Morning+strength&audience=public&showOnCard=1&autoPrompt=1';
     const controller = createAuthRouteIntentController();
     const ticket = controller.beginAsyncCapture();
 
