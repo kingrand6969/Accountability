@@ -26,6 +26,7 @@ export type ComposeDraftV1 = {
   queryIdentity: DraftQueryIdentity;
   body: string;
   audience: 'buddies' | 'public';
+  showOnCard: boolean;
   media: DurableDraftMedia | null;
   event: { open: boolean; title: string; date: string; time: string; location: string };
   tagIds: string[];
@@ -37,6 +38,13 @@ export type DraftTrigger =
   | 'field-change' | 'background' | 'process-recovery' | 'explicit-cancel'
   | 'successful-post' | 'successful-edit' | 'hardware-back' | 'upload-error' | 'account-switch';
 export type DraftEffect = 'save' | 'clear' | 'keep' | 'detach';
+
+export function normalizeBuddyCardFeature(
+  audience: ComposeDraftV1['audience'],
+  showOnCard: unknown,
+): boolean {
+  return audience === 'public' && showOnCard === true;
+}
 
 export function selectDraftCleanupTarget(
   submitted: ComposeDraftV1 | null | undefined,
@@ -89,13 +97,14 @@ async function withOwnerLock<T>(ownerId: string, action: () => Promise<T>): Prom
 }
 
 async function saveComposeDraftUnlocked(draft: ComposeDraftV1, storage: DraftStorage): Promise<void> {
-  if (!parseComposeDraft(JSON.stringify(draft), draft.ownerId)) throw new Error('Invalid compose draft');
+  const normalizedDraft = parseComposeDraft(JSON.stringify(draft), draft.ownerId);
+  if (!normalizedDraft) throw new Error('Invalid compose draft');
   const key = composeDraftKey(draft.ownerId, draft.kind, draft.draftId);
   const indexKey = composeDraftIndexKey(draft.ownerId);
   const pendingKey = composeDraftPendingKey(draft.ownerId);
   const index = parseIndex(await storage.getItem(indexKey), draft.ownerId);
   await storage.setItem(pendingKey, key);
-  await storage.setItem(key, JSON.stringify(draft));
+  await storage.setItem(key, JSON.stringify(normalizedDraft));
   if (!index.includes(key)) await storage.setItem(indexKey, JSON.stringify([...index, key]));
   await storage.removeItem(pendingKey);
 }
@@ -236,10 +245,14 @@ export function parseComposeDraft(raw: string, expectedOwnerId: string): Compose
     if (!['hub', 'post', 'photo', 'event', 'edit'].includes(String(value.origin))) return null;
     if (!validQuery(value.queryIdentity) || typeof value.body !== 'string') return null;
     if (value.audience !== 'buddies' && value.audience !== 'public') return null;
+    if (value.showOnCard !== undefined && typeof value.showOnCard !== 'boolean') return null;
     if (value.media !== null && !validMedia(value.media, value.ownerId, value.draftId)) return null;
     if (!validEvent(value.event) || !Array.isArray(value.tagIds) || !value.tagIds.every((id) => typeof id === 'string')) return null;
     if (typeof value.keepInMemories !== 'boolean' || typeof value.updatedAt !== 'string') return null;
-    const draft = value as ComposeDraftV1;
+    const draft = {
+      ...value,
+      showOnCard: normalizeBuddyCardFeature(value.audience, value.showOnCard),
+    } as ComposeDraftV1;
     const expected = resolveDraftContext({
       edit: draft.queryIdentity.edit ?? undefined,
       event: draft.queryIdentity.event ? '1' : undefined,

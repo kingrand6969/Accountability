@@ -11,6 +11,7 @@ import {
   saveComposeDraft,
   selectDraftCleanupTarget,
   loadComposeDrafts,
+  normalizeBuddyCardFeature,
   clearComposeDraft,
   commitDraftMedia,
   removeDraftMedia,
@@ -39,6 +40,7 @@ const validDraft: ComposeDraftV1 = {
   queryIdentity: { photo: true, event: false, text: null, edit: null },
   body: 'hello',
   audience: 'buddies',
+  showOnCard: false,
   media: null,
   event: { open: false, title: '', date: '2026-07-29', time: '18:00', location: '' },
   tagIds: [],
@@ -51,6 +53,37 @@ describe('compose draft contract', () => {
     expect(composeDraftKey('user-a', 'new', 'draft-1')).toBe('compose-draft:v1:user-a:new:draft-1');
     expect(composeDraftIndexKey('user-a')).toBe('compose-draft-index:v1:user-a');
     expect(parseComposeDraft(JSON.stringify(validDraft), OWNER)).toEqual(validDraft);
+  });
+
+  test('round-trips an explicitly featured Public draft through save and load', async () => {
+    const featuredDraft: ComposeDraftV1 = {
+      ...validDraft,
+      audience: 'public',
+      showOnCard: true,
+    };
+    const storage = memoryStorage();
+
+    await saveComposeDraft(featuredDraft, storage);
+
+    expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([featuredDraft]);
+  });
+
+  test('defaults legacy drafts without a Buddy Card feature field to unfeatured', () => {
+    const { showOnCard: _legacyMissingField, ...legacyDraft } = validDraft;
+
+    expect(parseComposeDraft(JSON.stringify(legacyDraft), OWNER)).toEqual(validDraft);
+  });
+
+  test('allows featuring only for Public and never restores it after Buddies clears it', () => {
+    expect(normalizeBuddyCardFeature('public', true)).toBe(true);
+    expect(normalizeBuddyCardFeature('public', false)).toBe(false);
+    expect(normalizeBuddyCardFeature('buddies', true)).toBe(false);
+    expect(normalizeBuddyCardFeature('public', normalizeBuddyCardFeature('buddies', true))).toBe(false);
+  });
+
+  test('rejects a malformed Buddy Card feature field and normalizes Buddies to unfeatured', () => {
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showOnCard: 'yes' }), OWNER)).toBeNull();
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showOnCard: true }), OWNER)).toEqual(validDraft);
   });
 
   test('rejects corrupt, unsupported and cross-owner records', () => {
@@ -188,6 +221,7 @@ describe('Compose production binding', () => {
   test('binds debounced field saves and immediate background flush', () => {
     expect(source).toContain('setTimeout(() => { void flushDraft(); }, 500)');
     expect(source).toContain("if (state !== 'active') void flushDraft()");
+    expect(source).toContain('[draftReady, body, audience, showOnCard, draftMedia');
   });
 
   test('binds owner-guarded Restore and Discard plus truthful notices', () => {
@@ -207,6 +241,23 @@ describe('Compose production binding', () => {
     expect(source).toContain('draftRef.current = null');
     expect(source).toContain('setDraftMedia(null)');
     expect(source).toContain('setOwnerId(nextOwner)');
+    expect(source).toContain('setShowOnCard(false)');
+  });
+
+  test('persists and restores the approved Public Buddy Card feature intent', () => {
+    expect(source).toContain("showOnCard: normalizeBuddyCardFeature(audience, showOnCard)");
+    expect(source).toContain('setShowOnCard(normalizeBuddyCardFeature(draft.audience, draft.showOnCard))');
+    expect(source).toContain('setShowOnCard((current) => normalizeBuddyCardFeature(nextAudience, current))');
+    expect(source).toContain("!editingId && audience === 'public'");
+    expect(source).toContain('Feature on my Buddy Card');
+    expect(source).not.toContain('Show on Buddy Card');
+  });
+
+  test('reuses the saved draft identity across media upload and lost-response post retries', () => {
+    expect(source).toContain('const operationId = submittedDraft?.draftId ?? draftId;');
+    expect(source).toContain('uploadPostImage(pickedBase64, pickedExt, operationId)');
+    expect(source).toContain('uploadPostVideo(pickedVideo.uri, pickedVideo.mimeType, operationId)');
+    expect(source).toMatch(/createPost\([\s\S]*?operationId,[\s\S]*?\);/);
   });
 });
 

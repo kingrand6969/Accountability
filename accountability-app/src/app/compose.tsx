@@ -56,6 +56,7 @@ import {
   createExpoDraftFileAdapter,
   isCompatibleDraft,
   loadComposeDrafts,
+  normalizeBuddyCardFeature,
   persistDraftMedia,
   removeDraftMedia,
   removeDurableMedia,
@@ -206,6 +207,7 @@ export default function Compose() {
       setPreviewUri(null);
       setBody(typeof params.text === 'string' ? params.text : '');
       setAudience('buddies');
+      setShowOnCard(false);
       setTaggedIds(new Set());
       setKeepInMemories(false);
       setOwnerId(nextOwner);
@@ -261,6 +263,7 @@ export default function Compose() {
                   setDraftId(draft.draftId);
                   setBody(draft.body);
                   setAudience(draft.audience);
+                  setShowOnCard(normalizeBuddyCardFeature(draft.audience, draft.showOnCard));
                   setDraftMedia(draft.media);
                   setPreviewUri(draft.media?.uri ?? null);
                   setPickedVideo(draft.media?.kind === 'video'
@@ -311,6 +314,7 @@ export default function Compose() {
       ...draftContext,
       body,
       audience,
+      showOnCard: normalizeBuddyCardFeature(audience, showOnCard),
       media: draftMedia,
       event: { open: eventOpen, title: evTitle, date: evDate, time: evTime, location: evLocation },
       tagIds: [...taggedIds],
@@ -340,6 +344,11 @@ export default function Compose() {
     navigateBackSafely(routerRef.current);
   }
 
+  function selectAudience(nextAudience: Exclude<PostAudience, 'group'>) {
+    setAudience(nextAudience);
+    setShowOnCard((current) => normalizeBuddyCardFeature(nextAudience, current));
+  }
+
   useEffect(() => {
     if (!draftReady) return;
     if (suppressNextDebounce.current) {
@@ -349,7 +358,7 @@ export default function Compose() {
     const timer = setTimeout(() => { void flushDraft(); }, 500);
     return () => clearTimeout(timer);
     // Every persisted field intentionally triggers the debounce.
-  }, [draftReady, body, audience, draftMedia, eventOpen, evTitle, evDate, evTime, evLocation, taggedIds, keepInMemories]);
+  }, [draftReady, body, audience, showOnCard, draftMedia, eventOpen, evTitle, evDate, evTime, evLocation, taggedIds, keepInMemories]);
 
   useEffect(() => {
     const appState = AppState.addEventListener('change', (state) => {
@@ -748,6 +757,7 @@ export default function Compose() {
       }
       return;
     }
+    const operationId = submittedDraft?.draftId ?? draftId;
     setPosting(true);
     const postedText = body.trim();
     const postedImageUri = previewUri;
@@ -756,12 +766,21 @@ export default function Compose() {
     const tagNames = buddies.filter((b) => taggedIds.has(b.id)).map((b) => authorLabel(b.name));
     try {
       let imageUrl: string | null = null;
-      if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt);
-      if (pickedVideo) imageUrl = await uploadPostVideo(pickedVideo.uri, pickedVideo.mimeType);
-      const postId = await createPost(postedText, imageUrl, null, null, null, showOnCard, {
-        audience,
-        postType: pickedVideo ? 'video' : imageUrl ? 'photo' : 'post',
-      });
+      if (pickedBase64) imageUrl = await uploadPostImage(pickedBase64, pickedExt, operationId);
+      if (pickedVideo) imageUrl = await uploadPostVideo(pickedVideo.uri, pickedVideo.mimeType, operationId);
+      const postId = await createPost(
+        postedText,
+        imageUrl,
+        null,
+        null,
+        null,
+        normalizeBuddyCardFeature(audience, showOnCard),
+        {
+          audience,
+          postType: pickedVideo ? 'video' : imageUrl ? 'photo' : 'post',
+          operationId,
+        },
+      );
       if (tagIds.length > 0) await addPostTags(postId, tagIds).catch(() => {});
       if (keep && postedImageUri) {
         try {
@@ -806,7 +825,7 @@ export default function Compose() {
             router.replace(decision.route as never);
             return;
           }
-          setAudience(decision.audience);
+          selectAudience(decision.audience);
           setShowCreateHub(false);
           if (decision.kind === 'picker') {
             requestMediaPicker(decision.media);
@@ -872,10 +891,7 @@ export default function Compose() {
               {(['buddies', 'public'] as const).map((value) => (
                 <Pressable
                   key={value}
-                  onPress={() => {
-                    setAudience(value);
-                    if (value === 'buddies') setShowOnCard(false);
-                  }}
+                  onPress={() => selectAudience(value)}
                   style={[styles.privacyChip, audience === value && styles.privacyChipActive]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: audience === value }}
@@ -906,17 +922,12 @@ export default function Compose() {
         />
 
         {/* per-post grant: lets non-buddies see this post on your buddy card */}
-        {!editingId ? <Pressable
+        {!editingId && audience === 'public' ? <Pressable
           style={({ pressed }) => [styles.cardOptRow, pressed && styles.pressed]}
-          onPress={() => {
-            setShowOnCard((v) => {
-              if (!v) setAudience('public');
-              return !v;
-            });
-          }}
+          onPress={() => setShowOnCard((current) => normalizeBuddyCardFeature(audience, !current))}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: showOnCard }}
-          accessibilityLabel="Show on Buddy Card"
+          accessibilityLabel="Feature on my Buddy Card"
         >
           <Ionicons
             name={showOnCard ? 'checkbox' : 'square-outline'}
@@ -925,10 +936,10 @@ export default function Compose() {
           />
           <View style={{ flex: 1 }}>
             <Text style={[styles.cardOptText, showOnCard && { color: colors.primary }]}>
-              Show on Buddy Card
+              Feature on my Buddy Card
             </Text>
             <Text style={styles.cardOptHint}>
-              This makes the post Public and may show it to people viewing your card
+              Choose this post as a highlight for anyone viewing your public Buddy Card
             </Text>
           </View>
         </Pressable> : null}
