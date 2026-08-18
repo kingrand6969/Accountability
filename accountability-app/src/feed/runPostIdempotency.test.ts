@@ -35,12 +35,13 @@ const mockedSupabase = supabase as unknown as {
 
 function postQuery(options: {
   existingPostIds?: (string | null)[];
+  existingPostPayload?: Record<string, unknown>;
   insertResult?: { data: { id: string } | null; error: unknown };
 } = {}): PostQuery {
   const existingPostIds = [...(options.existingPostIds ?? [])];
   const maybeSingle = jest.fn(async () => {
     const id = existingPostIds.shift() ?? null;
-    return { data: id ? { id } : null, error: null };
+    return { data: id ? { id, ...(options.existingPostPayload ?? {}) } : null, error: null };
   });
   const secondEq = jest.fn(() => ({ maybeSingle }));
   const firstEq = jest.fn(() => ({ eq: secondEq }));
@@ -101,6 +102,18 @@ describe('idempotent Feed post creation', () => {
   test('standard post confirms the committed row when its insert response is lost', async () => {
     postQuery({
       existingPostIds: [null, 'post-committed'],
+      existingPostPayload: {
+        body: 'Earned a medal',
+        image_url: 'https://images.example/medal.jpg',
+        group_id: 'group-1',
+        page_id: 'page-1',
+        event_id: 'event-1',
+        show_on_card: true,
+        audience: 'group',
+        post_type: 'milestone',
+        share_data: { medal: 'trailblazer' },
+        activity_id: 'activity-1',
+      },
       insertResult: { data: null, error: new Error('response lost') },
     });
     const retrySafeOptions = {
@@ -122,6 +135,42 @@ describe('idempotent Feed post creation', () => {
         retrySafeOptions,
       ),
     ).resolves.toBe('post-committed');
+  });
+
+  test('rejects a retry when the committed operation has different content', async () => {
+    const query = postQuery({
+      existingPostIds: ['post-committed'],
+      existingPostPayload: {
+        body: 'Original copy',
+        image_url: null,
+        group_id: null,
+        page_id: null,
+        event_id: null,
+        show_on_card: false,
+        audience: 'buddies',
+        post_type: 'post',
+        share_data: {},
+        activity_id: null,
+      },
+    });
+
+    await expect(createPost('Edited copy', null, null, null, null, false, {
+      audience: 'buddies',
+      operationId,
+    })).rejects.toThrow('This draft changed after the post was created');
+    expect(query.insert).not.toHaveBeenCalled();
+  });
+
+  test('rejects an account mismatch before reading or writing a post', async () => {
+    const query = postQuery();
+
+    await expect(createPost('Account A copy', null, null, null, null, false, {
+      audience: 'buddies',
+      operationId,
+      expectedOwnerId: 'member-a',
+    })).rejects.toThrow('Account changed.');
+    expect(query.select).not.toHaveBeenCalled();
+    expect(query.insert).not.toHaveBeenCalled();
   });
 
   test('standard post keeps every insert field while recording its operation id', async () => {

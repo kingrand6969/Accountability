@@ -78,7 +78,14 @@ export async function uploadBytesToR2(
     throw Object.assign(new Error('That file is too large to upload.'), { status: 413 });
   }
   const { data, error } = await supabase.functions.invoke('r2-sign', {
-    body: { kind, ext, bytes: bytes.byteLength, contentType, operationId: options.operationId },
+    body: {
+      kind,
+      ext,
+      bytes: bytes.byteLength,
+      contentType,
+      operationId: options.operationId,
+      expectedOwnerId: options.expectedOwnerId,
+    },
   });
   if (error) throw error;
   const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };

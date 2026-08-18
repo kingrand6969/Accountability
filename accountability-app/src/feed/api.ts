@@ -427,6 +427,76 @@ async function postIdForOperation(
   return (data?.id as string | undefined) ?? null;
 }
 
+type StandardPostOperationPayload = {
+  body: string;
+  image_url: string | null;
+  group_id: string | null;
+  page_id: string | null;
+  event_id: string | null;
+  show_on_card: boolean;
+  audience: PostAudience;
+  post_type: PostType;
+  share_data: Record<string, unknown>;
+  activity_id: string | null;
+};
+
+const STANDARD_POST_OPERATION_SELECT =
+  'id,body,image_url,group_id,page_id,event_id,show_on_card,audience,post_type,share_data,activity_id';
+
+function canonicalJson(value: unknown): string {
+  if (value === null || value === undefined || typeof value === 'number' && !Number.isFinite(value)) {
+    return 'null';
+  }
+  if (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function matchesStandardPostOperation(
+  row: Record<string, unknown>,
+  expected: StandardPostOperationPayload,
+): boolean {
+  return row.body === expected.body
+    && (row.image_url ?? null) === expected.image_url
+    && (row.group_id ?? null) === expected.group_id
+    && (row.page_id ?? null) === expected.page_id
+    && (row.event_id ?? null) === expected.event_id
+    && row.show_on_card === expected.show_on_card
+    && row.audience === expected.audience
+    && row.post_type === expected.post_type
+    && canonicalJson(row.share_data ?? {}) === canonicalJson(expected.share_data)
+    && (row.activity_id ?? null) === expected.activity_id;
+}
+
+async function matchingStandardPostIdForOperation(
+  userId: string,
+  operationId: string,
+  expected: StandardPostOperationPayload,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select(STANDARD_POST_OPERATION_SELECT)
+    .eq('user_id', userId)
+    .eq('client_operation_id', operationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  if (!matchesStandardPostOperation(data as Record<string, unknown>, expected)) {
+    throw new Error('This draft changed after the post was created. Refresh before posting again.');
+  }
+  return data.id as string;
+}
+
 export async function findMyPostByOperationId(operationId: string): Promise<string | null> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
@@ -484,6 +554,7 @@ export async function createPost(
     shareData?: Record<string, unknown>;
     activityId?: string | null;
     operationId?: string;
+    expectedOwnerId?: string;
   } = {},
 ): Promise<string> {
   const operationId = options.operationId;
@@ -492,21 +563,27 @@ export async function createPost(
   }
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
+  if (options.expectedOwnerId && me !== options.expectedOwnerId) {
+    throw new Error('Account changed.');
+  }
+  const postPayload: StandardPostOperationPayload = {
+    body,
+    image_url: imageUrl,
+    group_id: groupId,
+    page_id: pageId,
+    event_id: eventId,
+    show_on_card: showOnCard,
+    audience: groupId ? 'group' : pageId ? 'public' : (options.audience ?? 'buddies'),
+    post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
+    share_data: options.shareData ?? {},
+    activity_id: options.activityId ?? null,
+  };
   const insert = async (): Promise<string> => {
     const { data, error } = await supabase
       .from('posts')
       .insert({
         user_id: me,
-        body,
-        image_url: imageUrl,
-        group_id: groupId,
-        page_id: pageId,
-        event_id: eventId,
-        show_on_card: showOnCard,
-        audience: groupId ? 'group' : pageId ? 'public' : (options.audience ?? 'buddies'),
-        post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
-        share_data: options.shareData ?? {},
-        activity_id: options.activityId ?? null,
+        ...postPayload,
         ...(operationId ? { client_operation_id: operationId } : {}),
       })
       .select('id')
@@ -517,7 +594,7 @@ export async function createPost(
 
   if (!operationId) return insert();
   const result = await executeIdempotentPost({
-    findExisting: () => postIdForOperation(me, operationId),
+    findExisting: () => matchingStandardPostIdForOperation(me, operationId, postPayload),
     insert,
   });
   return result.postId;
