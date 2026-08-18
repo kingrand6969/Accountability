@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -13,18 +13,15 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthProvider';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { getMyProfile } from '../../profiles/api';
 import type { Profile as ProfileRecord } from '../../profiles/types';
 import { getMetrics, getRank } from '../../achievements/api';
 import type { Metrics } from '../../achievements/catalog';
 import { CachedImage } from '../../ui/CachedImage';
 import { useResolvedMediaUrl } from '../../media/useResolvedMediaUrl';
-import { font, shadow } from '../../ui/theme';
+import { font, shadow, spacing, type AppThemeColors } from '../../ui/theme';
 
-const PAPER = '#F7F4EC';
-const INK = '#081A3A';
-const MUTED = '#647084';
-const BLUE = '#155EEF';
 const MOUNTAIN = require('../../../assets/images/auth-mountain-hero.png');
 
 type RankSummary = Awaited<ReturnType<typeof getRank>>;
@@ -40,6 +37,8 @@ export default function ProfileOverview() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [profile, setProfile] = useState<ProfileRecord | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [rank, setRank] = useState<RankSummary | null>(null);
@@ -69,7 +68,7 @@ export default function ProfileOverview() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={BLUE} size="large" />
+        <ActivityIndicator color={theme.ink.action} size="large" />
         <Text style={styles.loadingText}>Opening your story...</Text>
       </View>
     );
@@ -124,7 +123,7 @@ export default function ProfileOverview() {
         {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : <Text style={styles.bio}>Discipline is my compass.</Text>}
         {profile?.area ? (
           <View style={styles.location}>
-            <Ionicons name="location-outline" size={14} color={MUTED} />
+            <Ionicons name="location-outline" size={14} color={theme.ink.muted} />
             <Text style={styles.locationText}>{profile.area}</Text>
           </View>
         ) : null}
@@ -134,7 +133,7 @@ export default function ProfileOverview() {
           accessibilityRole="button"
           accessibilityLabel="Edit profile"
         >
-          <Ionicons name="pencil-outline" size={16} color="#fff" />
+          <Ionicons name="pencil-outline" size={16} color={theme.ink.inverse} />
           <Text style={styles.editButtonText}>Edit profile</Text>
         </Pressable>
       </View>
@@ -161,13 +160,13 @@ export default function ProfileOverview() {
             accessibilityLabel={`${tile.label}, ${tile.caption}`}
           >
             <View style={styles.tileIcon}>
-              <Ionicons name={tile.icon} size={22} color={BLUE} />
+              <Ionicons name={tile.icon} size={22} color={theme.ink.action} />
             </View>
             <View style={styles.tileCopy}>
               <Text style={styles.tileTitle}>{tile.label}</Text>
               <Text style={styles.tileCaption}>{tile.caption}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={17} color="#A4ACB9" />
+            <Ionicons name="chevron-forward" size={17} color={theme.ink.muted} />
           </Pressable>
         ))}
       </View>
@@ -183,6 +182,8 @@ export default function ProfileOverview() {
 }
 
 function Stat({ value, label }: { value: string | number; label: string }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.stat}>
       <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
@@ -205,6 +206,8 @@ function SettingsRow({
   last?: boolean;
 }) {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
       onPress={() => router.push(route as never)}
@@ -212,53 +215,53 @@ function SettingsRow({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={20} color={INK} />
+      <Ionicons name={icon} size={20} color={theme.ink.primary} />
       <Text style={styles.settingsText}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color="#A4ACB9" />
+      <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: PAPER },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   content: { paddingBottom: 120 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: PAPER },
-  loadingText: { color: MUTED, fontFamily: font.medium, fontSize: 14 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: theme.surface.canvas },
+  loadingText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 14 },
   pressed: { opacity: 0.72 },
   hero: { height: 184, paddingHorizontal: 18, overflow: 'hidden' },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   heroBrand: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
   heroBrandText: { color: '#fff', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },
-  heroButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,26,58,0.28)' },
+  heroButton: { width: spacing.touch, height: spacing.touch, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,26,58,0.28)' },
   identity: { alignItems: 'center', paddingHorizontal: 24, marginTop: -52 },
-  avatarRing: { width: 108, height: 108, borderRadius: 54, padding: 4, backgroundColor: PAPER, ...shadow.card },
+  avatarRing: { width: 108, height: 108, borderRadius: 54, padding: 4, backgroundColor: theme.surface.canvas, ...shadow.card },
   avatar: { width: 100, height: 100, borderRadius: 50 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8E4DA' },
-  avatarInitial: { color: INK, fontFamily: font.extrabold, fontSize: 36 },
-  name: { marginTop: 10, color: INK, fontFamily: font.bold, fontSize: 27, letterSpacing: -0.5 },
-  bio: { marginTop: 5, color: MUTED, fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surface.muted },
+  avatarInitial: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 36 },
+  name: { marginTop: 10, color: theme.ink.primary, fontFamily: font.bold, fontSize: 27, letterSpacing: -0.5 },
+  bio: { marginTop: 5, color: theme.ink.muted, fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   location: { marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationText: { color: MUTED, fontFamily: font.medium, fontSize: 12.5 },
-  editButton: { marginTop: 16, minHeight: 48, minWidth: 174, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE },
-  editButtonText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
-  stats: { marginHorizontal: 18, marginTop: 22, minHeight: 82, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 18, backgroundColor: '#FFFCF6', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, ...shadow.card },
+  locationText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5 },
+  editButton: { marginTop: 16, minHeight: spacing.touch, minWidth: 174, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.ink.action },
+  editButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
+  stats: { marginHorizontal: 18, marginTop: 22, minHeight: 82, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 18, backgroundColor: theme.surface.card, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, ...shadow.card },
   stat: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
-  statValue: { color: INK, fontFamily: font.bold, fontSize: 18 },
-  statLabel: { marginTop: 4, color: MUTED, fontFamily: font.medium, fontSize: 10.5, textAlign: 'center' },
-  statDivider: { height: 38, width: 1, backgroundColor: '#E1DDD2' },
+  statValue: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18 },
+  statLabel: { marginTop: 4, color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5, textAlign: 'center' },
+  statDivider: { height: 38, width: 1, backgroundColor: theme.border.subtle },
   sectionHeader: { paddingHorizontal: 20, marginTop: 28, marginBottom: 12 },
-  sectionTitle: { color: INK, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.4 },
-  sectionNote: { marginTop: 3, color: MUTED, fontFamily: font.regular, fontSize: 13 },
+  sectionTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.4 },
+  sectionNote: { marginTop: 3, color: theme.ink.muted, fontFamily: font.regular, fontSize: 13 },
   tileGrid: { paddingHorizontal: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: { width: '48.5%', minHeight: 94, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 16, backgroundColor: '#FFFCF6', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, ...shadow.card },
-  tileIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#EEF4FF', alignItems: 'center', justifyContent: 'center' },
+  tile: { width: '48.5%', minHeight: 94, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 16, backgroundColor: theme.surface.card, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, ...shadow.card },
+  tileIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
   tileCopy: { flex: 1 },
-  tileTitle: { color: INK, fontFamily: font.bold, fontSize: 13.5 },
-  tileCaption: { marginTop: 3, color: MUTED, fontFamily: font.regular, fontSize: 10.5, lineHeight: 14 },
-  settingsCard: { marginHorizontal: 18, marginTop: 24, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 18, backgroundColor: '#FFFCF6', overflow: 'hidden' },
+  tileTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13.5 },
+  tileCaption: { marginTop: 3, color: theme.ink.muted, fontFamily: font.regular, fontSize: 10.5, lineHeight: 14 },
+  settingsCard: { marginHorizontal: 18, marginTop: 24, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 18, backgroundColor: theme.surface.card, overflow: 'hidden' },
   settingsRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  settingsBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DDD8CC' },
-  settingsText: { flex: 1, color: INK, fontFamily: font.semibold, fontSize: 14 },
-  footer: { marginHorizontal: 28, marginTop: 14, color: MUTED, fontFamily: font.regular, fontSize: 11.5, lineHeight: 17, textAlign: 'center' },
+  settingsBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border.subtle },
+  settingsText: { flex: 1, color: theme.ink.primary, fontFamily: font.semibold, fontSize: 14 },
+  footer: { marginHorizontal: 28, marginTop: 14, color: theme.ink.muted, fontFamily: font.regular, fontSize: 11.5, lineHeight: 17, textAlign: 'center' },
 });
