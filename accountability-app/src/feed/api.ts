@@ -387,6 +387,9 @@ export type IdempotentPostResult = {
   created: boolean;
 };
 
+const POST_OPERATION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function executeIdempotentPost(deps: {
   findExisting(): Promise<string | null>;
   insert(): Promise<string>;
@@ -480,29 +483,44 @@ export async function createPost(
     postType?: PostType;
     shareData?: Record<string, unknown>;
     activityId?: string | null;
+    operationId?: string;
   } = {},
 ): Promise<string> {
+  const operationId = options.operationId;
+  if (operationId !== undefined && !POST_OPERATION_ID.test(operationId)) {
+    throw new Error('Invalid post operation id.');
+  }
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
-  const { data, error } = await supabase
-    .from('posts')
-    .insert({
-      user_id: me,
-      body,
-      image_url: imageUrl,
-      group_id: groupId,
-      page_id: pageId,
-      event_id: eventId,
-      show_on_card: showOnCard,
-      audience: groupId ? 'group' : pageId ? 'public' : (options.audience ?? 'buddies'),
-      post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
-      share_data: options.shareData ?? {},
-      activity_id: options.activityId ?? null,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
-  return data.id as string;
+  const insert = async (): Promise<string> => {
+    const { data, error } = await supabase
+      .from('posts')
+      .insert({
+        user_id: me,
+        body,
+        image_url: imageUrl,
+        group_id: groupId,
+        page_id: pageId,
+        event_id: eventId,
+        show_on_card: showOnCard,
+        audience: groupId ? 'group' : pageId ? 'public' : (options.audience ?? 'buddies'),
+        post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
+        share_data: options.shareData ?? {},
+        activity_id: options.activityId ?? null,
+        ...(operationId ? { client_operation_id: operationId } : {}),
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data.id as string;
+  };
+
+  if (!operationId) return insert();
+  const result = await executeIdempotentPost({
+    findExisting: () => postIdForOperation(me, operationId),
+    insert,
+  });
+  return result.postId;
 }
 
 export async function updatePost(postId: string, body: string): Promise<void> {
