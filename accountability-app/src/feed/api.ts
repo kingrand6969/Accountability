@@ -111,6 +111,7 @@ export async function reportComment(commentId: string, reason?: string): Promise
 export const FEED_PAGE_SIZE = 20;
 const FEED_CANDIDATE_LIMIT = 500;
 const FEED_SESSION_MAX_AGE_MS = 29 * 60 * 1000;
+const FEED_FIRST_PAGE_REUSE_MS = 2 * 60 * 1000;
 const FEED_REPLACEMENT_MAX_PAGES = Math.ceil(FEED_CANDIDATE_LIMIT / FEED_PAGE_SIZE);
 
 export type UnifiedFeedSource =
@@ -287,15 +288,52 @@ async function pagePersonalFeed(
   return page.posts;
 }
 
+async function reusePersonalFeedFirstPage(
+  me: string,
+  confirmOwner: () => Promise<string | null>,
+): Promise<UnifiedFeedPost[]> {
+  const snapshot = activeFeedSnapshot;
+  const ageMs = snapshot ? Date.now() - snapshot.createdAtMs : Number.POSITIVE_INFINITY;
+  if (
+    !snapshot
+    || snapshot.ownerId !== me
+    || ageMs < 0
+    || ageMs >= FEED_FIRST_PAGE_REUSE_MS
+    || ageMs >= FEED_SESSION_MAX_AGE_MS
+  ) {
+    return refreshPersonalFeed(me, new Set(), confirmOwner);
+  }
+
+  let page: Awaited<ReturnType<typeof loadHydratedSnapshotPage>>;
+  try {
+    page = await loadHydratedSnapshotPage(me, snapshot.sessionId, 0, new Set());
+  } catch (error) {
+    if (!(error instanceof FeedSnapshotUnavailableError)) throw error;
+    return refreshPersonalFeed(me, new Set(), confirmOwner);
+  }
+
+  const confirmedUserId = await confirmOwner();
+  if (confirmedUserId !== me || activeFeedSnapshot !== snapshot) return [];
+  snapshot.afterPosition = page.afterPosition;
+  snapshot.seenPostIds = new Set(page.encounteredIds);
+  return page.posts;
+}
+
+export type PersonalFeedLoadOptions = {
+  forceFresh?: boolean;
+};
+
 /** Fast personal-feed path for screens that already own an authenticated identity. */
 export async function listPersonalFeed(
   expectedOwnerId: string,
   beforeCreatedAt?: string,
+  options: PersonalFeedLoadOptions = {},
 ): Promise<UnifiedFeedPost[]> {
   if (await currentSessionUserId() !== expectedOwnerId) return [];
-  return beforeCreatedAt
-    ? pagePersonalFeed(expectedOwnerId, currentSessionUserId)
-    : refreshPersonalFeed(expectedOwnerId, new Set(), currentSessionUserId);
+  if (beforeCreatedAt) return pagePersonalFeed(expectedOwnerId, currentSessionUserId);
+  return options.forceFresh
+    ? refreshPersonalFeed(expectedOwnerId, new Set(), currentSessionUserId)
+    : reusePersonalFeedFirstPage(expectedOwnerId, currentSessionUserId);
 }
 
 async function myBuddyIds(me: string | null): Promise<string[]> {

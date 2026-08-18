@@ -392,12 +392,24 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).not.toContain('onScroll={persistFeedPosition}');
     expect(feedSource).toContain("AppState.addEventListener('change'");
     expect(feedSource).toContain('loadGeneration.current += 1');
-    expect(feedSource).toContain('if (reconnected && restored && myId) void load()');
+    expect(feedSource).toContain(
+      'if (reconnected && restored && myId) void load({ forceFresh: true })',
+    );
+  });
+
+  test('reuses a brief first-page snapshot except for explicit refresh and reconnect', () => {
+    expect(feedSource).toContain(
+      'loadPage: () => listPersonalFeed(requestedOwnerId, undefined, { forceFresh })',
+    );
+    expect(feedSource).toContain('await load({ forceFresh: true })');
+    expect(feedSource).toContain('void load({ forceFresh: true })');
+    expect(feedSource).toContain('if (restored && myId && connectivityRef.current) void load()');
+    expect(feedSource).toContain('void Promise.resolve().then(() => load())');
   });
 
   test('loads once after restoration without refreshing on every Feed focus', () => {
     expect(feedSource).toMatch(
-      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*void Promise\.resolve\(\)\.then\(load\);\s*\}\s*\}, \[load, restored\]\);/,
+      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*void Promise\.resolve\(\)\.then\(\(\) => load\(\)\);\s*\}\s*\}, \[load, restored\]\);/,
     );
     const focusBlock = feedSource.match(/useFocusEffect\([\s\S]*?\n\s*\);/)?.[0] ?? '';
     expect(focusBlock).not.toContain('void load()');

@@ -199,7 +199,6 @@ export default function Feed() {
   }, [dataOwnerId, posts.length]);
 
   useEffect(() => {
-    currentUserIdRef.current = myId;
     return () => {
       currentUserIdRef.current = null;
       if (pendingCreateAction.current) clearTimeout(pendingCreateAction.current);
@@ -278,7 +277,9 @@ export default function Feed() {
     };
   }, [myId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (
+    { forceFresh = false }: { forceFresh?: boolean } = {},
+  ) => {
     const generation = ++loadGeneration.current;
     const requestedOwnerId = myId;
     pendingFeedOffset.current = feedOffset.current;
@@ -301,7 +302,7 @@ export default function Feed() {
     }
 
     await runFeedCriticalLoad({
-      loadPage: () => listPersonalFeed(requestedOwnerId),
+      loadPage: () => listPersonalFeed(requestedOwnerId, undefined, { forceFresh }),
       loadPreviews: listEncouragementPreviews,
       isCurrent: () =>
         generation === loadGeneration.current
@@ -335,7 +336,7 @@ export default function Feed() {
   useEffect(() => {
     const reconnected = !previousOnline.current && online;
     previousOnline.current = online;
-    if (reconnected && restored && myId) void load();
+    if (reconnected && restored && myId) void load({ forceFresh: true });
   }, [load, myId, online, restored]);
 
   const persistFeedPosition = useCallback(() => {
@@ -362,7 +363,7 @@ export default function Feed() {
 
   useEffect(() => {
     if (restored) {
-      void Promise.resolve().then(load);
+      void Promise.resolve().then(() => load());
     }
   }, [load, restored]);
 
@@ -437,7 +438,7 @@ export default function Feed() {
 
   async function onRefresh() {
     setRefreshing(true);
-    await load();
+    await load({ forceFresh: true });
   }
 
   async function onLoadMore() {
@@ -628,7 +629,7 @@ export default function Feed() {
         </View>
       ) : null}
       {loadError ? (
-        <Pressable style={styles.inlineError} onPress={load} accessibilityRole="button" accessibilityLabel="Feed could not refresh. Retry">
+        <Pressable style={styles.inlineError} onPress={() => void load({ forceFresh: true })} accessibilityRole="button" accessibilityLabel="Feed could not refresh. Retry">
           <Ionicons name="cloud-offline-outline" size={19} color={colors.danger} />
           <View style={styles.inlineErrorCopy}>
             <Text style={styles.inlineErrorTitle}>Feed could not refresh</Text>
