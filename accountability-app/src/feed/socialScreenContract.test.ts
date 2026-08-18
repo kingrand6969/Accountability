@@ -181,11 +181,11 @@ describe('Group 3 social Feed contract', () => {
     const actionComponent = sourceSection(
       proofCardSource,
       'function Action(',
-      'const styles = StyleSheet.create',
+      'type ProofCardStyles',
     );
     expect(actionComponent).toContain('accessibilityState={active === undefined ? undefined : { selected: active }}');
     expect(actionComponent).toMatch(
-      /Boolean\(active\)\s*\?\s*colors\.primary\s*:\s*colors\.textMuted/,
+      /active\s*\?\s*theme\.ink\.action\s*:\s*theme\.ink\.muted/,
     );
   });
 

@@ -43,7 +43,15 @@ import { Avatar } from '../../feed/Avatar';
 import { useUnreadNotifications } from '../../notify/useUnread';
 import { getMyProfile } from '../../profiles/api';
 import type { FeedPost } from '../../feed/types';
-import { colors, font, radius, spacing, shadow, contentMax } from '../../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  shadow,
+  contentMax,
+  type AppThemeColors,
+} from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { hapticTap } from '../../ui/haptics';
 import { SocialBrandHeader } from '../../feed/SocialBrandHeader';
 import {
@@ -71,16 +79,20 @@ type FeedRow =
 
 const AD_EVERY = 5;
 const FEED_SESSION_KEY = 'feed-session-v1';
-const CREATE_ITEMS: CreateItem[] = [
-  { icon: 'create-outline', tint: colors.primary, title: 'Post', sub: 'Share a win or an update', kind: 'route', route: DIRECT_POST_HREF },
-  { icon: 'add-circle-outline', tint: '#db2777', title: 'My Day', sub: 'Share a photo for 24 hours', kind: 'story' },
-  { icon: 'flame-outline', tint: '#f59e0b', title: 'Win card', sub: 'Share your streak as an image', kind: 'route', route: '/win-card' },
-  { icon: 'people-outline', tint: '#16a34a', title: 'Group', sub: 'Start a community', kind: 'route', route: '/group-new' },
-  { icon: 'storefront-outline', tint: '#0d9488', title: 'Page', sub: 'For your gym, coaching or brand', kind: 'route', route: '/page-new' },
-];
+function createItems(theme: AppThemeColors): CreateItem[] {
+  return [
+    { icon: 'create-outline', tint: theme.ink.action, title: 'Post', sub: 'Share a win or an update', kind: 'route', route: DIRECT_POST_HREF },
+    { icon: 'add-circle-outline', tint: '#db2777', title: 'My Day', sub: 'Share a photo for 24 hours', kind: 'story' },
+    { icon: 'flame-outline', tint: '#f59e0b', title: 'Win card', sub: 'Share your streak as an image', kind: 'route', route: '/win-card' },
+    { icon: 'people-outline', tint: theme.status.success, title: 'Group', sub: 'Start a community', kind: 'route', route: '/group-new' },
+    { icon: 'storefront-outline', tint: '#0d9488', title: 'Page', sub: 'For your gym, coaching or brand', kind: 'route', route: '/page-new' },
+  ];
+}
 const FEED_SKELETON_ROWS = [0, 1] as const;
 
 function FeedLoadingSkeleton() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View
       style={styles.skeletonList}
@@ -119,6 +131,8 @@ function QuickShare({
   label: string;
   onPress: () => void;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
       onPress={onPress}
@@ -126,7 +140,7 @@ function QuickShare({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={18} color={colors.primary} />
+      <Ionicons name={icon} size={18} color={theme.ink.action} />
       <Text style={styles.quickShareText}>{label}</Text>
     </Pressable>
   );
@@ -134,6 +148,9 @@ function QuickShare({
 
 export default function Feed() {
   const router = useRouter();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const createMenuItems = useMemo(() => createItems(theme), [theme]);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const navigation = useNavigation();
   const { session } = useAuth();
@@ -622,7 +639,7 @@ export default function Feed() {
       ) : null}
       {viewState === 'offline-cached' || viewState === 'offline-uncached' ? (
         <View style={styles.offlineNotice} accessible accessibilityLabel="Offline">
-          <Ionicons name="cloud-offline-outline" size={18} color={colors.textMuted} />
+          <Ionicons name="cloud-offline-outline" size={18} color={theme.ink.muted} />
           <Text style={styles.offlineText}>
             {viewState === 'offline-cached' ? 'Offline · showing saved posts' : 'Offline · no saved posts available'}
           </Text>
@@ -630,7 +647,7 @@ export default function Feed() {
       ) : null}
       {loadError ? (
         <Pressable style={styles.inlineError} onPress={() => void load({ forceFresh: true })} accessibilityRole="button" accessibilityLabel="Feed could not refresh. Retry">
-          <Ionicons name="cloud-offline-outline" size={19} color={colors.danger} />
+          <Ionicons name="cloud-offline-outline" size={19} color={theme.status.danger} />
           <View style={styles.inlineErrorCopy}>
             <Text style={styles.inlineErrorTitle}>Feed could not refresh</Text>
             <Text style={styles.inlineErrorText} numberOfLines={2}>{loadError} Tap to retry.</Text>
@@ -652,10 +669,10 @@ export default function Feed() {
       <Modal visible={!!myId && createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)}>
           <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-            <BlurView intensity={60} tint="light" style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]} />
+            <BlurView intensity={60} tint={mode} style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]} />
             <View style={styles.sheetGlass} />
             <Text style={styles.sheetTitle}>Create</Text>
-            {CREATE_ITEMS.map((item) => (
+            {createMenuItems.map((item) => (
               <Pressable
                 key={item.title}
                 disabled={item.kind === 'story' && !myId}
@@ -716,16 +733,16 @@ export default function Feed() {
             ListHeaderComponent={feedHeader}
             keyExtractor={(row) => (row.kind === 'post' ? row.post.id : row.id)}
             contentContainerStyle={feedData.length === 0 ? styles.emptyWrap : styles.list}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.ink.action} />}
             onEndReached={onLoadMore}
             onEndReachedThreshold={0.4}
-            ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.footerSpinner} color={colors.primary} /> : null}
+            ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.footerSpinner} color={theme.ink.action} /> : null}
             ListEmptyComponent={loadError ? null : (
               viewState === 'initial-loading' ? (
                 <FeedLoadingSkeleton />
               ) : (
                 <View style={styles.emptyCard}>
-                  <Ionicons name="people-outline" size={38} color={colors.primary} />
+                  <Ionicons name="people-outline" size={38} color={theme.ink.action} />
                   <Text style={styles.emptyTitle}>Your Feed is ready</Text>
                   <Text style={styles.emptySub}>Share a win or discover people and communities to follow.</Text>
                   <View style={styles.emptyActions}>
@@ -797,8 +814,8 @@ export default function Feed() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.surfaceAlt },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.muted },
   feedContent: { flex: 1 },
   photoPreview: { flex: 1, justifyContent: 'center', backgroundColor: '#000' },
   photoFrame: { width: '100%' },
@@ -814,31 +831,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(15,23,42,.72)',
   },
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,.45)', paddingTop: 64, alignItems: 'flex-end', paddingRight: spacing.md },
+  sheetBackdrop: { flex: 1, backgroundColor: theme.interaction.scrim, paddingTop: 64, alignItems: 'flex-end', paddingRight: spacing.md },
   sheet: { width: 280, borderRadius: radius.lg, overflow: 'hidden', padding: spacing.sm, ...shadow.card },
-  sheetGlass: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,.82)' },
-  sheetTitle: { fontFamily: font.bold, fontSize: 13, color: colors.textMuted, padding: spacing.md },
+  sheetGlass: { ...StyleSheet.absoluteFill, backgroundColor: theme.surface.card, opacity: 0.82 },
+  sheetTitle: { fontFamily: font.bold, fontSize: 13, color: theme.ink.muted, padding: spacing.md },
   sheetRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderRadius: radius.sm },
   sheetIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   sheetCopy: { flex: 1 },
-  sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
-  promptWrap: { ...contentMax, width: '93%', alignSelf: 'center', marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.card, overflow: 'hidden', ...shadow.card },
+  sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
+  sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted },
+  promptWrap: { ...contentMax, width: '93%', alignSelf: 'center', marginTop: spacing.sm, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: radius.lg, backgroundColor: theme.surface.card, overflow: 'hidden', ...shadow.card },
   promptRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
   avatarButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   promptAction: { minHeight: 48, flex: 1, justifyContent: 'center', paddingRight: spacing.md },
-  promptText: { flex: 1, fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
-  composerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: spacing.lg },
+  promptText: { flex: 1, fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
+  composerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.border.subtle, marginHorizontal: spacing.lg },
   quickShareRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center' },
   quickShare: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  quickShareDivider: { width: StyleSheet.hairlineWidth, height: 24, backgroundColor: colors.border },
-  quickShareText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 13.5 },
-  inlineError: { minHeight: 58, margin: spacing.md, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+  quickShareDivider: { width: StyleSheet.hairlineWidth, height: 24, backgroundColor: theme.border.subtle },
+  quickShareText: { color: theme.ink.secondary, fontFamily: font.semibold, fontSize: 13.5 },
+  inlineError: { minHeight: 58, margin: spacing.md, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: theme.status.danger, backgroundColor: theme.status.dangerSoft },
   inlineErrorCopy: { flex: 1 },
-  inlineErrorTitle: { color: colors.danger, fontFamily: font.bold, fontSize: 13 },
-  inlineErrorText: { color: colors.textSecondary, fontFamily: font.medium, fontSize: 11.5 },
+  inlineErrorTitle: { color: theme.status.danger, fontFamily: font.bold, fontSize: 13 },
+  inlineErrorText: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 11.5 },
   offlineNotice: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md },
-  offlineText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
+  offlineText: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 12 },
   pressed: { opacity: 0.7 },
   list: { paddingTop: spacing.sm, paddingBottom: 110, ...contentMax },
   emptyWrap: { paddingBottom: 110, ...contentMax },
@@ -847,10 +864,10 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
   },
   skeletonHeader: {
     minHeight: 64,
@@ -859,12 +876,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  skeletonAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceAlt },
+  skeletonAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.interaction.skeleton },
   skeletonCopy: { flex: 1, gap: spacing.sm },
-  skeletonLine: { height: 10, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt },
+  skeletonLine: { height: 10, borderRadius: radius.pill, backgroundColor: theme.interaction.skeleton },
   skeletonLineLong: { width: '68%' },
   skeletonLineShort: { width: '38%' },
-  skeletonMedia: { height: 184, backgroundColor: colors.surfaceAlt },
+  skeletonMedia: { height: 184, backgroundColor: theme.interaction.skeleton },
   skeletonActions: {
     minHeight: 48,
     flexDirection: 'row',
@@ -872,17 +889,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingHorizontal: spacing.xl,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: theme.border.subtle,
   },
-  skeletonAction: { width: 28, height: 8, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt },
+  skeletonAction: { width: 28, height: 8, borderRadius: radius.pill, backgroundColor: theme.interaction.skeleton },
   adWrap: { marginHorizontal: spacing.md, marginBottom: spacing.md, borderRadius: radius.lg, overflow: 'hidden' },
   footerSpinner: { paddingVertical: spacing.lg },
-  emptyCard: { alignItems: 'center', gap: spacing.sm, margin: spacing.lg, padding: spacing.xxl, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  emptyTitle: { color: colors.text, fontFamily: font.bold, fontSize: 18 },
-  emptySub: { color: colors.textMuted, fontFamily: font.regular, fontSize: 14, textAlign: 'center' },
+  emptyCard: { alignItems: 'center', gap: spacing.sm, margin: spacing.lg, padding: spacing.xxl, borderRadius: radius.lg, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card },
+  emptyTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18 },
+  emptySub: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 14, textAlign: 'center' },
   emptyActions: { flexDirection: 'row', gap: spacing.sm },
-  emptyPrimary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.primary },
-  emptyPrimaryText: { color: '#fff', fontFamily: font.bold, fontSize: 13.5 },
-  emptySecondary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
-  emptySecondaryText: { color: colors.primary, fontFamily: font.bold, fontSize: 13.5 },
+  emptyPrimary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: theme.ink.action },
+  emptyPrimaryText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 13.5 },
+  emptySecondary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card },
+  emptySecondaryText: { color: theme.ink.action, fontFamily: font.bold, fontSize: 13.5 },
 });

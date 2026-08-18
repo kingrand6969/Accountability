@@ -1,8 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandMark } from '../ui/BrandMark';
-import { colors, font, spacing } from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 type Props = {
   unread: number;
@@ -20,11 +22,13 @@ export function SocialBrandHeader({
   onNotifications,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { fontScale } = useWindowDimensions();
   const isLargeText = fontScale >= 1.25;
   return (
     <View style={[styles.header, { paddingTop: insets.top }]}>
-      <IconButton icon="menu-outline" accessibilityLabel="Menu" onPress={onMenu} />
+      <IconButton icon="menu-outline" accessibilityLabel="Menu" onPress={onMenu} styles={styles} color={theme.ink.action} />
       <View style={styles.wordmark} accessible accessibilityLabel="AccountAbility">
         <BrandMark size={32} accessibilityLabel="AccountAbility logo" />
         {isLargeText ? null : (
@@ -32,13 +36,15 @@ export function SocialBrandHeader({
         )}
       </View>
       <View style={styles.actions}>
-        <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearch} />
-        <IconButton icon="add-circle-outline" accessibilityLabel="Create" onPress={onCreate} />
+        <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearch} styles={styles} color={theme.ink.action} />
+        <IconButton icon="add-circle-outline" accessibilityLabel="Create" onPress={onCreate} styles={styles} color={theme.ink.action} />
         <View>
           <IconButton
             icon="notifications-outline"
             accessibilityLabel="Notifications"
             onPress={onNotifications}
+            styles={styles}
+            color={theme.ink.action}
           />
           {unread > 0 ? <View style={styles.dot} accessibilityElementsHidden /> : null}
         </View>
@@ -51,10 +57,14 @@ function IconButton({
   icon,
   accessibilityLabel,
   onPress,
+  styles,
+  color,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   accessibilityLabel: string;
   onPress: () => void;
+  styles: BrandHeaderStyles;
+  color: string;
 }) {
   return (
     <Pressable
@@ -63,20 +73,22 @@ function IconButton({
       onPress={onPress}
       style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
     >
-      <Ionicons name={icon} size={23} color={colors.primary} />
+      <Ionicons name={icon} size={23} color={color} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+type BrandHeaderStyles = ReturnType<typeof createStyles>;
+
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   header: {
     minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.xs,
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: theme.border.subtle,
   },
   wordmark: {
     flex: 1,
@@ -84,8 +96,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-  account: { color: colors.navy, fontFamily: font.bold, fontSize: 16 },
-  ability: { color: colors.primary },
+  account: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 16 },
+  ability: { color: theme.ink.action },
   actions: { flexDirection: 'row', alignItems: 'center' },
   iconButton: {
     minWidth: 44,
@@ -101,9 +113,9 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.danger,
+    backgroundColor: theme.status.danger,
     borderWidth: 1,
-    borderColor: colors.card,
+    borderColor: theme.surface.card,
   },
   pressed: { opacity: 0.62 },
 });

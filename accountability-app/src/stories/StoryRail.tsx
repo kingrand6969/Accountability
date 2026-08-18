@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -26,7 +27,8 @@ import { listStoryGroups, addStory, type StoryGroup } from './api';
 import { authorLabel } from '../feed/format';
 import { PhotoEditor, type EditedPhoto } from '../media/PhotoEditor';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing, contentMax } from '../ui/theme';
+import { font, radius, spacing, contentMax, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type StoryRailHandle = { openPicker: () => void };
@@ -51,6 +53,8 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
   ref,
 ) {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { fontScale } = useWindowDimensions();
   const {
     tileWidth,
@@ -253,6 +257,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
       {others.map((g) => (
         <StoryTile
           key={g.user_id}
+          styles={styles}
           image={g.stories[g.stories.length - 1].image_url}
           avatar={g.avatar}
           name={authorLabel(g.name)}
@@ -285,7 +290,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
             accessibilityRole="button"
           >
             <View style={styles.hintIcon}>
-              <Ionicons name="people" size={22} color={colors.primary} />
+              <Ionicons name="people" size={22} color={theme.ink.action} />
             </View>
             <Text style={styles.hintText}>Find{'\n'}buddies</Text>
           </Pressable>
@@ -299,7 +304,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
             accessibilityLabel="Dismiss My Day suggestion"
             accessibilityRole="button"
           >
-            <Ionicons name="close" size={16} color={colors.textMuted} />
+            <Ionicons name="close" size={16} color={theme.ink.muted} />
           </Pressable>
         </View>
       ) : null}
@@ -308,6 +313,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
 });
 
 function StoryTile({
+  styles,
   image,
   avatar,
   name,
@@ -315,6 +321,7 @@ function StoryTile({
   tileSize,
   onPress,
 }: {
+  styles: StoryRailStyles;
   image: string;
   avatar: string | null;
   name: string;
@@ -354,7 +361,9 @@ function StoryTile({
 const TILE_W = 92;
 const TILE_H = 132;
 
-const styles = StyleSheet.create({
+type StoryRailStyles = ReturnType<typeof createStyles>;
+
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   rail: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,
@@ -366,7 +375,7 @@ const styles = StyleSheet.create({
     height: TILE_H,
     borderRadius: radius.md,
     overflow: 'hidden',
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.muted,
   },
   tileMainAction: {
     flex: 1,
@@ -381,16 +390,16 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     borderWidth: 2.5,
-    borderColor: colors.primary,
-    backgroundColor: colors.card,
+    borderColor: theme.ink.action,
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   tileAvatar: { width: 25, height: 25, borderRadius: 12.5 },
-  tileAvatarRingViewed: { borderColor: colors.border },
+  tileAvatarRingViewed: { borderColor: theme.border.subtle },
   tileAvatarFallback: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -412,7 +421,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderWidth: 2.5,
     borderColor: '#fff',
     alignItems: 'center',
@@ -427,14 +436,14 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     borderWidth: 2.5,
     borderColor: '#fff',
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   createAvatar: { width: 29, height: 29, borderRadius: 14.5 },
   createAvatarFallback: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -455,8 +464,8 @@ const styles = StyleSheet.create({
     height: TILE_H,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.primarySoft,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.muted,
     overflow: 'hidden',
   },
   retryTile: {
@@ -464,14 +473,14 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.sm,
   },
   retryText: {
-    color: colors.primary,
+    color: theme.ink.action,
     fontFamily: font.semibold,
     fontSize: 12,
     lineHeight: 17,
@@ -498,12 +507,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   hintText: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.semibold,
     fontSize: 11.5,
     textAlign: 'center',

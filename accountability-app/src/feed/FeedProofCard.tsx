@@ -1,7 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SaveToMemories } from '../memories/SaveToMemories';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import { font, radius, shadow, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { Avatar } from './Avatar';
 import { authorLabel, taggedLabel, timeAgo } from './format';
 import { PostImage } from './PostImage';
@@ -55,6 +57,8 @@ export function FeedProofCard({
   onShare,
   onOpenEncouragement,
 }: Props) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const typeLabel = postTypeLabel(post);
   const presentation = deriveFeedCardPresentation(post, currentUserId);
   const suggestionLabel = post.suggested ? 'Suggested for you' : null;
@@ -71,7 +75,7 @@ export function FeedProofCard({
           accessible
           accessibilityLabel="Suggested for you"
         >
-          <Ionicons name="sparkles-outline" size={13} color={colors.textMuted} />
+          <Ionicons name="sparkles-outline" size={13} color={theme.ink.muted} />
           <Text style={styles.suggestedText}>{suggestionLabel}</Text>
         </View>
       ) : null}
@@ -96,7 +100,7 @@ export function FeedProofCard({
           accessibilityLabel="Post options"
           style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
         >
-          <Ionicons name="ellipsis-horizontal" size={19} color={colors.textMuted} />
+          <Ionicons name="ellipsis-horizontal" size={19} color={theme.ink.muted} />
         </Pressable>
       </View>
 
@@ -108,7 +112,7 @@ export function FeedProofCard({
 
       {post.event ? (
         <View style={styles.event}>
-          <Ionicons name="calendar" size={20} color={colors.success} />
+          <Ionicons name="calendar" size={20} color={theme.status.success} />
           <View style={styles.eventCopy}>
             <Text style={styles.eventTitle} numberOfLines={2}>{post.event.title}</Text>
             <Text style={styles.eventMeta}>
@@ -162,6 +166,8 @@ export function FeedProofCard({
 
       <View style={styles.actions}>
         <Action
+          theme={theme}
+          styles={styles}
           icon="clap"
           count={post.like_count}
           accessibilityLabel={`${post.liked_by_me ? 'Remove Cheer' : 'Cheer'}${post.like_count > 0 ? `, ${post.like_count} ${post.like_count === 1 ? 'Cheer' : 'Cheers'}` : ''}`}
@@ -169,12 +175,16 @@ export function FeedProofCard({
           onPress={onToggleLike}
         />
         <Action
+          theme={theme}
+          styles={styles}
           icon="chatbubble-outline"
           count={post.comment_count}
           accessibilityLabel={`${viewCommentsLabel}${post.comment_count > 0 ? `, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}` : ''}`}
           onPress={onComment}
         />
         <Action
+          theme={theme}
+          styles={styles}
           icon="paper-plane-outline"
           accessibilityLabel="Share this post"
           onPress={onShare}
@@ -184,6 +194,7 @@ export function FeedProofCard({
         ) : null}
       </View>
       <FeedSupporterSummary
+        styles={styles}
         count={preview?.count ?? 0}
         people={preview?.people ?? []}
         onPress={onOpenEncouragement}
@@ -193,10 +204,12 @@ export function FeedProofCard({
 }
 
 function FeedSupporterSummary({
+  styles,
   count,
   people,
   onPress,
 }: {
+  styles: ProofCardStyles;
   count: number;
   people: NonNullable<EncouragementPreview['people']>;
   onPress: () => void;
@@ -223,7 +236,7 @@ function FeedSupporterSummary({
   );
 }
 
-function CheerIcon({ color }: { color: string }) {
+function CheerIcon({ color, styles }: { color: string; styles: ProofCardStyles }) {
   return (
     <View style={styles.cheerIcon} accessibilityElementsHidden>
       <Ionicons name="hand-left-outline" size={21} color={color} style={styles.cheerLeft} />
@@ -233,12 +246,16 @@ function CheerIcon({ color }: { color: string }) {
 }
 
 function Action({
+  theme,
+  styles,
   icon,
   count,
   accessibilityLabel,
   active,
   onPress,
 }: {
+  theme: AppThemeColors;
+  styles: ProofCardStyles;
   icon: 'clap' | keyof typeof Ionicons.glyphMap;
   count?: number;
   accessibilityLabel: string;
@@ -254,9 +271,16 @@ function Action({
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
       {icon === 'clap' ? (
-        <CheerIcon color={Boolean(active) ? colors.primary : colors.textMuted} />
+        <CheerIcon
+          color={active ? theme.ink.action : theme.ink.muted}
+          styles={styles}
+        />
       ) : (
-        <Ionicons name={icon} size={21} color={Boolean(active) ? colors.primary : colors.textMuted} />
+        <Ionicons
+          name={icon}
+          size={21}
+          color={active ? theme.ink.action : theme.ink.muted}
+        />
       )}
       {count != null && count > 0 ? (
         <Text style={[styles.actionText, active && styles.active]}>{count}</Text>
@@ -265,15 +289,17 @@ function Action({
   );
 }
 
-const styles = StyleSheet.create({
+type ProofCardStyles = ReturnType<typeof createStyles>;
+
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   card: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     ...shadow.card,
   },
   suggestedRow: {
@@ -283,10 +309,10 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: theme.border.subtle,
   },
   suggestedText: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.semibold,
     fontSize: 11.5,
   },
@@ -296,19 +322,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingLeft: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
   },
   authorCopy: { flex: 1 },
-  author: { color: colors.navy, fontFamily: font.bold, fontSize: 14 },
+  author: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 14 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  time: { color: colors.textMuted, fontFamily: font.medium, fontSize: 10.5 },
+  time: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5 },
   type: {
-    color: colors.primary,
+    color: theme.ink.action,
     fontFamily: font.bold,
     fontSize: 9.5,
     textTransform: 'uppercase',
   },
-  audience: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 9.5 },
+  audience: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 9.5 },
   iconButton: {
     width: 44,
     height: 44,
@@ -316,7 +342,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  body: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, color: colors.text, fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
+  body: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, color: theme.ink.primary, fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
   event: {
     minHeight: 64,
     marginHorizontal: spacing.md,
@@ -326,13 +352,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.successSoft,
+    backgroundColor: theme.status.successSoft,
     borderWidth: 1,
-    borderColor: colors.success,
+    borderColor: theme.status.success,
   },
   eventCopy: { flex: 1 },
-  eventTitle: { color: colors.text, fontFamily: font.bold, fontSize: 13 },
-  eventMeta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 10.5 },
+  eventTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13 },
+  eventMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5 },
   attend: {
     minHeight: 44,
     minWidth: 72,
@@ -340,11 +366,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.success,
+    backgroundColor: theme.status.success,
   },
-  attending: { backgroundColor: colors.textMuted },
-  attendText: { color: '#fff', fontFamily: font.bold, fontSize: 12 },
-  media: { minHeight: 220, backgroundColor: colors.navy, overflow: 'hidden' },
+  attending: { backgroundColor: theme.ink.muted },
+  attendText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 12 },
+  media: { minHeight: 220, backgroundColor: '#081A3A', overflow: 'hidden' },
   topScrim: {
     position: 'absolute',
     left: 0,
@@ -358,9 +384,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 2,
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9e3',
+    borderTopColor: theme.border.subtle,
   },
   action: {
     flex: 1,
@@ -375,8 +401,8 @@ const styles = StyleSheet.create({
   cheerIcon: { width: 27, height: 23, position: 'relative' },
   cheerLeft: { position: 'absolute', left: 0, top: 0 },
   cheerRight: { position: 'absolute', right: 0, top: 2 },
-  actionText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 11 },
-  active: { color: colors.primary },
+  actionText: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 11 },
+  active: { color: theme.ink.action },
   supporters: {
     minHeight: 44,
     flexDirection: 'row',
@@ -384,16 +410,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: theme.border.subtle,
   },
   supporterAvatars: { flexDirection: 'row', alignItems: 'center', paddingLeft: 2 },
   supporterAvatar: {
     borderWidth: 2,
-    borderColor: colors.card,
+    borderColor: theme.surface.card,
     borderRadius: 15,
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
   },
   supporterOverlap: { marginLeft: -8 },
-  supporterText: { flex: 1, color: colors.textMuted, fontFamily: font.semibold, fontSize: 11.5 },
+  supporterText: { flex: 1, color: theme.ink.muted, fontFamily: font.semibold, fontSize: 11.5 },
   pressed: { opacity: 0.7 },
 });
