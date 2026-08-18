@@ -53,6 +53,7 @@ const ALLOWED_TYPES = new Set([
 ]);
 const OPERATION_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256 = /^[a-f0-9]{64}$/;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -92,11 +93,12 @@ Deno.serve(async (req) => {
     if (authErr || !user) return json({ error: 'unauthorized' }, 401);
 
     // 2) Validate the request.
-    const { kind, ext, bytes, contentType, operationId, expectedOwnerId } = (await req.json().catch(() => ({}))) as {
+    const { kind, ext, bytes, contentType, sha256, operationId, expectedOwnerId } = (await req.json().catch(() => ({}))) as {
       kind?: string;
       ext?: string;
       bytes?: number;
       contentType?: string;
+      sha256?: string;
       operationId?: string;
       expectedOwnerId?: string;
     };
@@ -112,6 +114,9 @@ Deno.serve(async (req) => {
     if (bytes > MAX_BYTES[kind!]) return json({ error: 'file too large' }, 413);
     if (!contentType || !ALLOWED_TYPES.has(contentType)) {
       return json({ error: 'unsupported file type' }, 415);
+    }
+    if (!sha256 || !SHA256.test(sha256)) {
+      return json({ error: 'sha256 required' }, 400);
     }
     const safeExt =
       contentType === 'image/png'
@@ -149,7 +154,9 @@ Deno.serve(async (req) => {
     // 4) Build the object key, scoped to this user's folder (their own space).
     const filename = cfg.stable
       ? `${cfg.folder}.${safeExt}`
-      : `${operationId ?? crypto.randomUUID()}.${safeExt}`;
+      : operationId
+        ? `${operationId}-${sha256}.${safeExt}`
+        : `${crypto.randomUUID()}.${safeExt}`;
     const key = `${cfg.folder}/${user.id}/${filename}`;
 
     // 5) Presign a PUT to the R2 S3 endpoint (valid 5 minutes).
@@ -162,14 +169,20 @@ Deno.serve(async (req) => {
     const endpoint = `https://${Deno.env.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com/${Deno.env.get(
       'R2_BUCKET',
     )}/${key}`;
-    // Bind the Content-Type INTO the signature: it becomes a signed header, so
-    // R2 rejects any upload whose Content-Type differs from what we approved —
-    // a client can no longer request an "image/jpeg" URL then PUT a video/zip.
-    // (The app already sends this exact Content-Type on its PUT.)
+    // Bind type, exact length and content digest into the signature. A client
+    // cannot request approval for a small JPEG then PUT larger or different
+    // bytes. Deterministic retries are also create-only: digest-addressing plus
+    // If-None-Match makes an existing object safe to reuse without overwriting.
+    const uploadHeaders = {
+      'content-type': contentType,
+      'content-length': String(bytes),
+      'x-amz-content-sha256': sha256,
+      ...(operationId ? { 'if-none-match': '*' } : {}),
+    };
     const signed = await aws.sign(
       new Request(`${endpoint}?X-Amz-Expires=300`, {
         method: 'PUT',
-        headers: { 'content-type': contentType },
+        headers: uploadHeaders,
       }),
       { aws: { signQuery: true, allHeaders: true } },
     );

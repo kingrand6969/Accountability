@@ -28,16 +28,18 @@ jest.mock('../lib/supabase', () => {
   const maybeSingle = jest.fn();
   const upload = jest.fn();
   const remove = jest.fn();
+  const getUser = jest.fn(async () => ({
+    data: { user: { id: 'member-1' } },
+    error: null,
+  }));
+  const rpc = jest.fn(async () => ({ data: 0, error: null }));
   return {
-    memoryApiMocks: { insert, maybeSingle, upload, remove },
+    memoryApiMocks: { insert, maybeSingle, upload, remove, getUser, rpc },
     supabase: {
       auth: {
-        getUser: jest.fn(async () => ({
-          data: { user: { id: 'member-1' } },
-          error: null,
-        })),
+        getUser,
       },
-      rpc: jest.fn(async () => ({ data: 0, error: null })),
+      rpc,
       storage: {
         from: jest.fn(() => ({
           upload,
@@ -66,6 +68,8 @@ const memoryApiMocks = (
       maybeSingle: jest.Mock<(...args: any[]) => Promise<any>>;
       upload: jest.Mock<(...args: any[]) => Promise<any>>;
       remove: jest.Mock<(...args: any[]) => Promise<any>>;
+      getUser: jest.Mock<(...args: any[]) => Promise<any>>;
+      rpc: jest.Mock<(...args: any[]) => Promise<any>>;
     };
   }
 ).memoryApiMocks;
@@ -80,6 +84,13 @@ beforeEach(() => {
   memoryApiMocks.maybeSingle.mockReset();
   memoryApiMocks.upload.mockReset();
   memoryApiMocks.remove.mockReset();
+  memoryApiMocks.getUser.mockReset();
+  memoryApiMocks.rpc.mockReset();
+  memoryApiMocks.getUser.mockResolvedValue({
+    data: { user: { id: 'member-1' } },
+    error: null,
+  });
+  memoryApiMocks.rpc.mockResolvedValue({ data: 0, error: null });
   memoryApiMocks.upload.mockResolvedValue({ error: null });
   memoryApiMocks.remove.mockResolvedValue({ error: null });
 });
@@ -597,6 +608,23 @@ describe('run-media Feed operation identity', () => {
 });
 
 describe('ambiguous Memories row insertion', () => {
+  test('does not insert into a new account when the account changes after upload', async () => {
+    memoryApiMocks.getUser
+      .mockResolvedValueOnce({ data: { user: { id: 'member-1' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'member-1' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'member-2' } }, error: null });
+    memoryApiMocks.insert.mockResolvedValue({ error: null });
+
+    await expect(saveImageToMemories(
+      'file:///run.jpg',
+      null,
+      null,
+      'member-1',
+    )).rejects.toThrow('Account changed.');
+    expect(memoryApiMocks.upload).toHaveBeenCalledTimes(1);
+    expect(memoryApiMocks.insert).not.toHaveBeenCalled();
+  });
+
   test('saveImageToMemories confirms a committed row after a lost response without deleting the object', async () => {
     const insertError = new Error('response lost');
     memoryApiMocks.insert.mockResolvedValue({ error: insertError });

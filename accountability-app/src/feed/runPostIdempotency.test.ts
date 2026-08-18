@@ -65,6 +65,12 @@ beforeEach(() => {
 });
 
 describe('idempotent Feed post creation', () => {
+  test('digest-addresses deterministic Supabase fallback uploads', () => {
+    expect(postImagePath('member-1', operationId, 'jpg', 'a'.repeat(64))).toBe(
+      `member-1/post/${operationId}-${'a'.repeat(64)}.jpg`,
+    );
+  });
+
   test('confirms a committed post when the insert response was lost', async () => {
     const findExisting = jest
       .fn<() => Promise<string | null>>()

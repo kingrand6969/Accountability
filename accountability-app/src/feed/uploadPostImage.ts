@@ -1,6 +1,7 @@
 import { decode } from 'base64-arraybuffer';
+import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
-import { uploadToR2 } from '../lib/r2';
+import { uploadToR2WithDigest, type R2UploadedMedia } from '../lib/r2';
 import {
   classifyUploadFailure,
   estimateBase64Bytes,
@@ -17,7 +18,16 @@ export async function uploadPostImage(
   operationId?: string,
   expectedOwnerId?: string,
 ): Promise<string> {
-  return uploadPostImageForOwner(base64, ext, operationId, expectedOwnerId);
+  return (await uploadPostImageResult(base64, ext, operationId, expectedOwnerId)).mediaRef;
+}
+
+export async function uploadPostImageWithDigest(
+  base64: string,
+  ext: string,
+  operationId?: string,
+  expectedOwnerId?: string,
+): Promise<R2UploadedMedia> {
+  return uploadPostImageResult(base64, ext, operationId, expectedOwnerId);
 }
 
 export async function uploadPostImageForOwner(
@@ -26,11 +36,20 @@ export async function uploadPostImageForOwner(
   operationId?: string,
   expectedOwnerId?: string,
 ): Promise<string> {
+  return (await uploadPostImageResult(base64, ext, operationId, expectedOwnerId)).mediaRef;
+}
+
+async function uploadPostImageResult(
+  base64: string,
+  ext: string,
+  operationId?: string,
+  expectedOwnerId?: string,
+): Promise<R2UploadedMedia> {
   const bytes = estimateBase64Bytes(base64);
   try {
-    const url = await uploadToR2(base64, 'post', ext, { operationId, expectedOwnerId });
+    const uploaded = await uploadToR2WithDigest(base64, 'post', ext, { operationId, expectedOwnerId });
     void recordUploadEvent({ provider: 'r2', kind: 'post', outcome: 'success', bytes });
-    return url;
+    return uploaded;
   } catch (e) {
     if (!mayUseStorageFallback(e)) {
       void recordUploadEvent({
@@ -43,7 +62,7 @@ export async function uploadPostImageForOwner(
       throw e;
     }
     console.warn('[uploadPostImage] R2 unavailable, using Supabase Storage:', e);
-    const url = await uploadToSupabase(base64, ext, operationId, expectedOwnerId);
+    const uploaded = await uploadToSupabase(base64, ext, operationId, expectedOwnerId);
     void recordUploadEvent({
       provider: 'supabase',
       kind: 'post',
@@ -51,13 +70,19 @@ export async function uploadPostImageForOwner(
       bytes,
       failureClass: classifyUploadFailure(e),
     });
-    return url;
+    return uploaded;
   }
 }
 
-export function postImagePath(userId: string, operationId: string, ext: string): string {
+export function postImagePath(
+  userId: string,
+  operationId: string,
+  ext: string,
+  sha256?: string,
+): string {
   const safeExt = ext === 'png' ? 'png' : 'jpg';
-  return `${userId}/post/${operationId}.${safeExt}`;
+  const digestSuffix = sha256 ? `-${sha256}` : '';
+  return `${userId}/post/${operationId}${digestSuffix}.${safeExt}`;
 }
 
 export function isExistingPostImageError(error: unknown): boolean {
@@ -77,7 +102,7 @@ async function uploadToSupabase(
   ext: string,
   operationId?: string,
   expectedOwnerId?: string,
-): Promise<string> {
+): Promise<R2UploadedMedia> {
   const { data, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   const uid = data.user?.id;
@@ -85,8 +110,12 @@ async function uploadToSupabase(
   if (expectedOwnerId && uid !== expectedOwnerId) throw new Error('Account changed.');
 
   const safeExt = ext === 'png' ? 'png' : 'jpg';
+  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, decode(base64));
+  const sha256 = [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
   const path = operationId
-    ? postImagePath(uid, operationId, safeExt)
+    ? postImagePath(uid, operationId, safeExt, sha256)
     : `${uid}/${Date.now()}.${safeExt}`;
   const contentType = safeExt === 'png' ? 'image/png' : 'image/jpeg';
 
@@ -96,5 +125,8 @@ async function uploadToSupabase(
     .upload(path, decode(base64), { contentType, cacheControl: '31536000' });
   if (error && !(operationId && isExistingPostImageError(error))) throw error;
 
-  return supabase.storage.from('post-images').getPublicUrl(path).data.publicUrl;
+  return {
+    mediaRef: supabase.storage.from('post-images').getPublicUrl(path).data.publicUrl,
+    sha256,
+  };
 }

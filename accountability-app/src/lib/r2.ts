@@ -1,8 +1,10 @@
 import { decode } from 'base64-arraybuffer';
+import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
 
 export type R2Kind = 'avatar' | 'cover' | 'post' | 'video' | 'voice' | 'share';
 export type R2UploadOptions = { operationId?: string; expectedOwnerId?: string };
+export type R2UploadedMedia = { mediaRef: string; sha256: string };
 
 export const R2_UPLOAD_MAX_BYTES: Readonly<Record<R2Kind, number>> = {
   avatar: 2 * 1024 * 1024,
@@ -32,39 +34,21 @@ export async function uploadToR2(
   ext = 'jpg',
   options: R2UploadOptions = {},
 ): Promise<string> {
+  return (await uploadToR2WithDigest(base64, kind, ext, options)).mediaRef;
+}
+
+export async function uploadToR2WithDigest(
+  base64: string,
+  kind: R2Kind,
+  ext = 'jpg',
+  options: R2UploadOptions = {},
+): Promise<R2UploadedMedia> {
   const body = decode(base64);
   const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
   if (body.byteLength > R2_UPLOAD_MAX_BYTES[kind]) {
     throw Object.assign(new Error('That image is too large to upload.'), { status: 413 });
   }
-  // Declare size + type so the signing function can reject oversized/abusive
-  // uploads and rate-limit per user before handing back an upload URL.
-  const { data, error } = await supabase.functions.invoke('r2-sign', {
-    body: {
-      kind,
-      ext,
-      bytes: body.byteLength,
-      contentType,
-      operationId: options.operationId,
-      expectedOwnerId: options.expectedOwnerId,
-    },
-  });
-  if (error) throw error;
-  const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };
-  if (!uploadUrl || !mediaRef) throw new Error('Could not get an upload URL.');
-
-  const put = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': contentType,
-      // objects are content-addressed by a unique/stable key → cache hard at the CDN
-      'Cache-Control': 'private, max-age=0, no-store',
-    },
-    body,
-  });
-  if (!put.ok) throw new Error(`Upload failed (${put.status}).`);
-
-  return mediaRef;
+  return uploadArrayBufferToR2(body, kind, contentType, ext, options);
 }
 
 export async function uploadBytesToR2(
@@ -74,15 +58,40 @@ export async function uploadBytesToR2(
   ext: string,
   options: R2UploadOptions = {},
 ): Promise<string> {
+  return (await uploadBytesToR2WithDigest(bytes, kind, contentType, ext, options)).mediaRef;
+}
+
+export async function uploadBytesToR2WithDigest(
+  bytes: Uint8Array,
+  kind: R2Kind,
+  contentType: string,
+  ext: string,
+  options: R2UploadOptions = {},
+): Promise<R2UploadedMedia> {
   if (bytes.byteLength > R2_UPLOAD_MAX_BYTES[kind]) {
     throw Object.assign(new Error('That file is too large to upload.'), { status: 413 });
   }
+  return uploadArrayBufferToR2(Uint8Array.from(bytes).buffer, kind, contentType, ext, options);
+}
+
+async function uploadArrayBufferToR2(
+  bytes: ArrayBuffer,
+  kind: R2Kind,
+  contentType: string,
+  ext: string,
+  options: R2UploadOptions,
+): Promise<R2UploadedMedia> {
+  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
+  const sha256 = [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
   const { data, error } = await supabase.functions.invoke('r2-sign', {
     body: {
       kind,
       ext,
       bytes: bytes.byteLength,
       contentType,
+      sha256,
       operationId: options.operationId,
       expectedOwnerId: options.expectedOwnerId,
     },
@@ -90,11 +99,22 @@ export async function uploadBytesToR2(
   if (error) throw error;
   const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };
   if (!uploadUrl || !mediaRef) throw new Error('Could not get an upload URL.');
+  if (options.operationId && !mediaRef.includes(`${options.operationId}-${sha256}.`)) {
+    throw new Error('Upload service is out of date. Please try again shortly.');
+  }
   const put = await fetch(uploadUrl, {
     method: 'PUT',
-    headers: { 'Content-Type': contentType, 'Cache-Control': 'private, max-age=0, no-store' },
-    body: Uint8Array.from(bytes).buffer,
+    headers: {
+      'Content-Type': contentType,
+      'Content-Length': String(bytes.byteLength),
+      'x-amz-content-sha256': sha256,
+      ...(options.operationId ? { 'If-None-Match': '*' } : {}),
+      'Cache-Control': 'private, max-age=0, no-store',
+    },
+    body: bytes,
   });
-  if (!put.ok) throw new Error(`Upload failed (${put.status}).`);
-  return mediaRef;
+  if (!put.ok && !(options.operationId && (put.status === 409 || put.status === 412))) {
+    throw new Error(`Upload failed (${put.status}).`);
+  }
+  return { mediaRef, sha256 };
 }

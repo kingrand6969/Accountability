@@ -24,10 +24,11 @@ import { randomUUID } from 'expo-crypto';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addPostTags, createPost, getPost, updatePost, updatePostAudience } from '../feed/api';
+import { markFeedPostPublished } from '../feed/feedPublishSignal';
 import { createEvent } from '../events/api';
 import { toIsoFromLocal, toLocalDateString } from '../timeline/datetime';
-import { uploadPostImage } from '../feed/uploadPostImage';
-import { uploadPostVideo } from '../feed/uploadPostVideo';
+import { uploadPostImageWithDigest } from '../feed/uploadPostImage';
+import { uploadPostVideoWithDigest } from '../feed/uploadPostVideo';
 import { PostVideo } from '../feed/PostVideo';
 import { validatePostVideo, videoExtensionForMime } from '../feed/videoPolicy';
 import { currentPlaceLabel, saveImageToMemories } from '../memories/api';
@@ -776,6 +777,7 @@ export default function Compose() {
           audience,
           showOnCard: normalizeBuddyCardFeature(audience, showOnCard),
         }), () => clearSavedDraft(true, submittedDraft));
+        markFeedPostPublished(submittedOwner, result.value.postId);
         if (result.cleanupError) {
           finishAfterRemoteSuccess('Event announced', result.cleanupError, submittedDraft, submittedOwner, submittedToken);
           return;
@@ -801,17 +803,19 @@ export default function Compose() {
     try {
       if (!submittedOwner) throw new Error('Sign in again before posting.');
       let imageUrl: string | null = null;
+      let mediaUpload: { mediaRef: string; sha256: string } | null = null;
       if (pickedBase64) {
-        imageUrl = await uploadPostImage(pickedBase64, pickedExt, operationId, submittedOwner);
+        mediaUpload = await uploadPostImageWithDigest(pickedBase64, pickedExt, operationId, submittedOwner);
       }
       if (pickedVideo) {
-        imageUrl = await uploadPostVideo(
+        mediaUpload = await uploadPostVideoWithDigest(
           pickedVideo.uri,
           pickedVideo.mimeType,
           operationId,
           submittedOwner,
         );
       }
+      imageUrl = mediaUpload?.mediaRef ?? null;
       const postId = await createPost(
         postedText,
         imageUrl,
@@ -822,15 +826,17 @@ export default function Compose() {
         {
           audience,
           postType: pickedVideo ? 'video' : imageUrl ? 'photo' : 'post',
+          shareData: mediaUpload ? { client_media_sha256: mediaUpload.sha256 } : undefined,
           operationId,
           expectedOwnerId: submittedOwner,
         },
       );
+      markFeedPostPublished(submittedOwner, postId);
       if (tagIds.length > 0) await addPostTags(postId, tagIds).catch(() => {});
       if (keep && postedImageUri) {
         try {
           const place = await currentPlaceLabel();
-          await saveImageToMemories(postedImageUri, place, tagNames);
+          await saveImageToMemories(postedImageUri, place, tagNames, submittedOwner);
         } catch {
           // a Memories hiccup must never fail the post
         }

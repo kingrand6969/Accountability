@@ -255,10 +255,12 @@ describe('Compose production binding', () => {
 
   test('reuses the saved draft identity across media upload and lost-response post retries', () => {
     expect(source).toContain('const operationId = submittedDraft?.draftId ?? draftId;');
-    expect(source).toMatch(/uploadPostImage\(pickedBase64, pickedExt, operationId, submittedOwner\)/);
-    expect(source).toMatch(/uploadPostVideo\([\s\S]*?pickedVideo\.uri,[\s\S]*?pickedVideo\.mimeType,[\s\S]*?operationId,[\s\S]*?submittedOwner,[\s\S]*?\)/);
+    expect(source).toMatch(/uploadPostImageWithDigest\(pickedBase64, pickedExt, operationId, submittedOwner\)/);
+    expect(source).toMatch(/uploadPostVideoWithDigest\([\s\S]*?pickedVideo\.uri,[\s\S]*?pickedVideo\.mimeType,[\s\S]*?operationId,[\s\S]*?submittedOwner,[\s\S]*?\)/);
     expect(source).toMatch(/createPost\([\s\S]*?operationId,[\s\S]*?\);/);
     expect(source).toMatch(/createPost\([\s\S]*?expectedOwnerId: submittedOwner,[\s\S]*?\);/);
+    expect(source).toContain("shareData: mediaUpload ? { client_media_sha256: mediaUpload.sha256 } : undefined");
+    expect(source).toContain('saveImageToMemories(postedImageUri, place, tagNames, submittedOwner)');
   });
 
   test('keeps draft media alive until the native cross-share decision finishes', () => {
@@ -268,6 +270,11 @@ describe('Compose production binding', () => {
 
     expect(shareIndex).toBeGreaterThan(-1);
     expect(cleanupIndex).toBeGreaterThan(shareIndex);
+  });
+
+  test('signals the initiating account after standard and event posts commit', () => {
+    expect(source).toContain('markFeedPostPublished(submittedOwner, result.value.postId)');
+    expect(source).toContain('markFeedPostPublished(submittedOwner, postId)');
   });
 });
 
