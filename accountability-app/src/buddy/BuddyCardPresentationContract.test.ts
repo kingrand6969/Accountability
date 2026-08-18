@@ -3,7 +3,7 @@ import { createElement, type ReactElement } from 'react';
 import fs from 'node:fs';
 import path from 'node:path';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 jest.mock('../lib/supabase', () => ({ supabase: {} }));
 jest.mock('@expo/vector-icons/Ionicons', () => {
@@ -423,6 +423,56 @@ describe('PublicBuddyCardFace clean composition', () => {
     expect(publicFaceSource).not.toContain('resolvedHero');
     expect(publicFaceSource).not.toContain('Top achievements');
     expect(publicFaceSource).not.toContain('Rank 10 of 10');
+  });
+
+  it('makes a real profile photo ten percent larger and an accessible viewing action', () => {
+    const renderer = publicCard();
+    const photoButton = renderer.root.findByProps({ testID: 'buddy-card-profile-photo-button' });
+    const thumbnail = renderer.root.findByProps({ accessibilityLabel: "Kin Grand's profile photo" });
+    const buttonStyle = StyleSheet.flatten(photoButton.props.style({ pressed: false }));
+    const thumbnailStyle = StyleSheet.flatten(thumbnail.props.style);
+
+    expect(photoButton.props.accessibilityRole).toBe('button');
+    expect(photoButton.props.accessibilityLabel).toBe("View Kin Grand's profile photo");
+    expect(buttonStyle).toEqual(expect.objectContaining({ width: 95, height: 95 }));
+    expect(thumbnailStyle).toEqual(expect.objectContaining({ width: 84, height: 84 }));
+  });
+
+  it('opens the complete profile photo full screen and closes by button or Android Back', () => {
+    const renderer = publicCard();
+    const open = () => {
+      act(() => {
+        renderer.root.findByProps({ testID: 'buddy-card-profile-photo-button' }).props.onPress();
+      });
+    };
+
+    open();
+    const fullPhoto = renderer.root.findByProps({
+      accessibilityLabel: "Kin Grand's profile photo, full screen",
+    });
+    expect(fullPhoto.props.contentFit).toBe('contain');
+    expect(StyleSheet.flatten(fullPhoto.props.style)).toEqual(expect.objectContaining({
+      width: '100%',
+      height: '100%',
+    }));
+
+    act(() => {
+      renderer.root.findByProps({ testID: 'buddy-card-profile-photo-close' }).props.onPress();
+    });
+    expect(renderer.root.findAllByProps({ testID: 'buddy-card-profile-photo-viewer' })).toHaveLength(0);
+
+    open();
+    act(() => {
+      renderer.root.findByType(Modal).props.onRequestClose();
+    });
+    expect(renderer.root.findAllByProps({ testID: 'buddy-card-profile-photo-viewer' })).toHaveLength(0);
+  });
+
+  it('keeps a missing profile photo as a non-interactive placeholder', () => {
+    const renderer = publicCard({ avatar: null });
+
+    expect(renderer.root.findAllByProps({ testID: 'buddy-card-profile-photo-button' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'buddy-card-profile-photo-placeholder' })).toBeDefined();
   });
 
   it('retains authorized identity, ranking, medal, social, and fitness information', () => {

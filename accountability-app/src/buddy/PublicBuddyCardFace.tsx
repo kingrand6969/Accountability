@@ -4,11 +4,10 @@ import { StyleSheet, Text, View } from 'react-native';
 import { RankBadge } from '../achievements/RankBadge';
 import { RANK_ORDER, type RankName } from '../achievements/rankAssets';
 import { authorLabel, timeAgo } from '../feed/format';
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
-import { CachedImage } from '../ui/CachedImage';
 import { font, radius, shadow, spacing } from '../ui/theme';
 import { BuddyCardAchievements } from './BuddyCardAchievements';
 import { BuddyCardFocus } from './BuddyCardFocus';
+import { BuddyCardProfilePhoto } from './BuddyCardProfilePhoto';
 import type { BoardRank, BuddyCard, BuddyStats, CardMetrics } from './card';
 import {
   resolveBuddyCardPalette,
@@ -53,7 +52,6 @@ function BuddyCardIdentity({
   palette,
 }: IdentityProps): React.JSX.Element {
   const displayName = authorLabel(name);
-  const resolvedAvatar = useResolvedMediaUrl(avatar);
   const rankName = RANK_ORDER.includes(card.rank_name as RankName)
     ? (card.rank_name as RankName)
     : null;
@@ -66,22 +64,7 @@ function BuddyCardIdentity({
 
   return (
     <View testID="buddy-card-identity" style={styles.identitySection}>
-      <View style={[styles.avatarRing, { borderColor: palette.accent }]}>
-        {resolvedAvatar ? (
-          <CachedImage
-            uri={resolvedAvatar}
-            style={styles.avatar}
-            contentFit="cover"
-            accessibilityLabel={`${displayName}'s profile photo`}
-          />
-        ) : (
-          <View
-            style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.surfaceTint }]}
-          >
-            <Ionicons name="person" size={32} color={palette.accent} />
-          </View>
-        )}
-      </View>
+      <BuddyCardProfilePhoto avatar={avatar} displayName={displayName} palette={palette} />
 
       <View style={styles.identityCopy}>
         <Text style={[styles.name, { color: palette.text }]} numberOfLines={2}>
@@ -458,22 +441,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.md,
-  },
-  avatarRing: {
-    width: 86,
-    height: 86,
-    padding: 3,
-    borderWidth: 2,
-    borderRadius: 43,
-  },
-  avatar: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-  },
-  avatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   identityCopy: {
     flex: 1,
