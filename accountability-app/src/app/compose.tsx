@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -39,7 +39,8 @@ import { getMyProfile } from '../profiles/api';
 import { showToast } from '../ui/Toast';
 import { authorLabel, taggedLabel } from '../feed/format';
 import { Avatar } from '../feed/Avatar';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import type { PostAudience } from '../feed/types';
 import { supabase } from '../lib/supabase';
 import { CreateHub } from '../entry/CreateHub';
@@ -73,6 +74,8 @@ import { navigateBackSafely } from '../navigation/routeAccessContract';
 
 export default function Compose() {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const routerRef = useRef(router);
   routerRef.current = router;
   const insets = useSafeAreaInsets();
@@ -929,7 +932,7 @@ export default function Compose() {
           accessibilityLabel="Close"
           accessibilityState={{ disabled: posting, busy: posting }}
         >
-          <Ionicons name="close" size={26} color={colors.text} />
+          <Ionicons name="close" size={26} color={theme.ink.primary} />
         </Pressable>
         <Text style={styles.title}>{editingId ? 'Edit post' : eventOpen ? 'Announce event' : 'New post'}</Text>
         <Pressable
@@ -943,7 +946,7 @@ export default function Compose() {
           accessibilityLabel="Post"
         >
           {posting ? (
-            <ActivityIndicator size="small" color={colors.onPrimary} />
+            <ActivityIndicator size="small" color={theme.ink.inverse} />
           ) : (
             <Text style={styles.postBtnText}>{editingId ? 'Save' : eventOpen ? 'Announce' : 'Post'}</Text>
           )}
@@ -973,7 +976,7 @@ export default function Compose() {
                   <Ionicons
                     name={value === 'buddies' ? 'people' : 'earth'}
                     size={12}
-                    color={audience === value ? colors.primary : colors.textMuted}
+                    color={audience === value ? theme.ink.action : theme.ink.muted}
                   />
                   <Text style={[styles.privacyText, audience === value && styles.privacyTextActive]}>
                     {value === 'buddies' ? 'Buddies' : 'Public'}
@@ -987,7 +990,7 @@ export default function Compose() {
         <TextInput
           style={styles.input}
           placeholder="Share a win or what you're up to…"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={theme.ink.muted}
           value={body}
           onChangeText={setBody}
           multiline
@@ -1005,10 +1008,10 @@ export default function Compose() {
           <Ionicons
             name={showOnCard ? 'checkbox' : 'square-outline'}
             size={19}
-            color={showOnCard ? colors.primary : colors.textMuted}
+            color={showOnCard ? theme.ink.action : theme.ink.muted}
           />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.cardOptText, showOnCard && { color: colors.primary }]}>
+            <Text style={[styles.cardOptText, showOnCard && { color: theme.ink.action }]}>
               Feature on my Buddy Card
             </Text>
             <Text style={styles.cardOptHint}>
@@ -1032,7 +1035,7 @@ export default function Compose() {
               hitSlop={8}
               accessibilityLabel={pickedVideo ? 'Remove video' : 'Remove photo'}
             >
-              <Ionicons name="close" size={15} color="#fff" />
+              <Ionicons name="close" size={15} color={theme.ink.inverse} />
             </Pressable> : null}
             {!editingId && !pickedVideo ? <View style={styles.photoOpts}>
               <Pressable
@@ -1044,9 +1047,9 @@ export default function Compose() {
                 <Ionicons
                   name={keepInMemories ? 'checkbox' : 'square-outline'}
                   size={19}
-                  color={keepInMemories ? colors.primary : colors.textMuted}
+                  color={keepInMemories ? theme.ink.action : theme.ink.muted}
                 />
-                <Text style={[styles.optText, keepInMemories && { color: colors.primary }]}>
+                <Text style={[styles.optText, keepInMemories && { color: theme.ink.action }]}>
                   Add to Memories
                 </Text>
               </Pressable>
@@ -1057,10 +1060,10 @@ export default function Compose() {
                 <Ionicons
                   name={tagged.length > 0 ? 'people' : 'person-add-outline'}
                   size={18}
-                  color={tagged.length > 0 ? colors.primary : colors.textMuted}
+                  color={tagged.length > 0 ? theme.ink.action : theme.ink.muted}
                 />
                 <Text
-                  style={[styles.optText, tagged.length > 0 && { color: colors.primary }]}
+                  style={[styles.optText, tagged.length > 0 && { color: theme.ink.action }]}
                   numberOfLines={1}
                 >
                   {tagged.length > 0
@@ -1077,7 +1080,7 @@ export default function Compose() {
             <TextInput
               style={styles.eventInput}
               placeholder="Event title (e.g. Saturday 5k group run)"
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={theme.ink.muted}
               value={evTitle}
               onChangeText={setEvTitle}
             />
@@ -1085,7 +1088,7 @@ export default function Compose() {
               <TextInput
                 style={[styles.eventInput, { flex: 1 }]}
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={theme.ink.muted}
                 autoCapitalize="none"
                 value={evDate}
                 onChangeText={setEvDate}
@@ -1093,7 +1096,7 @@ export default function Compose() {
               <TextInput
                 style={[styles.eventInput, { flex: 1 }]}
                 placeholder="HH:MM"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={theme.ink.muted}
                 autoCapitalize="none"
                 value={evTime}
                 onChangeText={setEvTime}
@@ -1102,7 +1105,7 @@ export default function Compose() {
             <TextInput
               style={styles.eventInput}
               placeholder="Location (park, gym, meet point…)"
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={theme.ink.muted}
               value={evLocation}
               onChangeText={setEvLocation}
             />
@@ -1117,21 +1120,21 @@ export default function Compose() {
       <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <Action
           icon="image-outline"
-          tint={colors.primary}
+          tint={theme.ink.action}
           label="Photo"
           disabled={eventOpen}
           onPress={() => requestMediaPicker('photo')}
         />
         <Action
           icon="videocam-outline"
-          tint={colors.danger}
+          tint={theme.status.danger}
           label="Video"
           disabled={eventOpen}
           onPress={() => requestMediaPicker('video')}
         />
         <Action
           icon={eventOpen ? 'calendar' : 'calendar-outline'}
-          tint={colors.success}
+          tint={theme.status.success}
           label="Event"
           active={eventOpen}
           disabled={hasAttachedMedia}
@@ -1169,7 +1172,7 @@ export default function Compose() {
                     <Ionicons
                       name={selected ? 'checkbox' : 'square-outline'}
                       size={20}
-                      color={selected ? colors.primary : colors.textFaint}
+                      color={selected ? theme.ink.action : theme.ink.muted}
                     />
                   </Pressable>
                 );
@@ -1203,6 +1206,8 @@ function Action({
   disabled?: boolean;
   onPress: () => void;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -1222,8 +1227,9 @@ function Action({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.card },
   pressed: { opacity: 0.65 },
   topBar: {
     flexDirection: 'row',
@@ -1232,13 +1238,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: theme.border.subtle,
   },
   close: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  closeDisabled: { opacity: 0.45 },
-  title: { flex: 1, fontSize: 17, fontFamily: font.bold, color: colors.text },
+  closeDisabled: { opacity: theme.interaction.disabledOpacity },
+  title: { flex: 1, fontSize: 17, fontFamily: font.bold, color: theme.ink.primary },
   postBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 20,
@@ -1246,45 +1252,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  postBtnDisabled: { backgroundColor: '#cbd5e1' },
-  postBtnText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  postBtnDisabled: { backgroundColor: theme.interaction.skeleton },
+  postBtnText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   body: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
-  draftNotice: { color: colors.danger, fontFamily: font.semibold, fontSize: 13 },
+  draftNotice: { color: theme.status.danger, fontFamily: font.semibold, fontSize: 13 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  author: { fontSize: 16, fontFamily: font.bold, color: colors.text },
+  author: { fontSize: 16, fontFamily: font.bold, color: theme.ink.primary },
   audiencePicker: { flexDirection: 'row', gap: 6, marginTop: 4 },
   privacyChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     alignSelf: 'flex-start',
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.muted,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     paddingHorizontal: 8,
     paddingVertical: 3,
     minHeight: 44,
   },
-  privacyChipActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-  privacyText: { fontSize: 12, fontFamily: font.semibold, color: colors.textMuted },
-  privacyTextActive: { color: colors.primary },
+  privacyChipActive: { backgroundColor: theme.surface.raised, borderColor: theme.border.action },
+  privacyText: { fontSize: 12, fontFamily: font.semibold, color: theme.ink.muted },
+  privacyTextActive: { color: theme.ink.action },
   input: {
     fontSize: 19,
     lineHeight: 26,
     fontFamily: font.regular,
-    color: colors.text,
+    color: theme.ink.primary,
     minHeight: 120,
     textAlignVertical: 'top',
   },
   previewWrap: { alignSelf: 'flex-start', gap: spacing.sm },
-  preview: { width: 200, height: 200, borderRadius: radius.md, backgroundColor: colors.surface },
+  preview: { width: 200, height: 200, borderRadius: radius.md, backgroundColor: theme.surface.muted },
   videoPreview: { width: 200 },
   previewRemove: {
     position: 'absolute',
     top: -6,
     right: -6,
-    backgroundColor: colors.text,
+    backgroundColor: theme.ink.primary,
     borderRadius: 12,
     width: 24,
     height: 24,
@@ -1293,7 +1299,7 @@ const styles = StyleSheet.create({
   },
   photoOpts: { gap: 4 },
   optRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34 },
-  optText: { fontFamily: font.semibold, fontSize: 13.5, color: colors.textMuted },
+  optText: { fontFamily: font.semibold, fontSize: 13.5, color: theme.ink.secondary },
   cardOptRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1301,27 +1307,27 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     minHeight: 44,
   },
-  cardOptText: { fontFamily: font.semibold, fontSize: 13.5, color: colors.textMuted },
-  cardOptHint: { fontFamily: font.regular, fontSize: 12, color: colors.textFaint, marginTop: 1 },
+  cardOptText: { fontFamily: font.semibold, fontSize: 13.5, color: theme.ink.secondary },
+  cardOptHint: { fontFamily: font.regular, fontSize: 12, color: theme.ink.muted, marginTop: 1 },
   eventForm: { gap: spacing.sm },
   eventInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 15,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: theme.ink.primary,
+    backgroundColor: theme.surface.muted,
   },
-  eventHint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, lineHeight: 18 },
+  eventHint: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted, lineHeight: 18 },
   actionBar: {
     flexDirection: 'row',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: theme.border.subtle,
   },
   action: {
     flex: 1,
@@ -1329,23 +1335,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.md,
     paddingVertical: 12,
     minHeight: 48,
   },
-  actionActive: { backgroundColor: colors.successSoft, borderColor: colors.success },
-  actionDisabled: { opacity: 0.42 },
-  actionLabel: { fontFamily: font.bold, fontSize: 14, color: colors.text },
+  actionActive: { backgroundColor: theme.status.successSoft, borderColor: theme.status.success },
+  actionDisabled: { opacity: theme.interaction.disabledOpacity },
+  actionLabel: { fontFamily: font.bold, fontSize: 14, color: theme.ink.primary },
   sheetBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.45)',
+    backgroundColor: theme.interaction.scrim,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     padding: spacing.lg,
@@ -1355,12 +1361,12 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: font.bold,
     fontSize: 13,
-    color: colors.textMuted,
+    color: theme.ink.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: spacing.sm,
   },
-  tagEmpty: { fontFamily: font.regular, fontSize: 13.5, color: colors.textMuted, paddingVertical: 8, lineHeight: 19 },
+  tagEmpty: { fontFamily: font.regular, fontSize: 13.5, color: theme.ink.muted, paddingVertical: 8, lineHeight: 19 },
   tagRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1368,14 +1374,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     minHeight: 48,
   },
-  tagName: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: colors.text },
+  tagName: { flex: 1, fontFamily: font.semibold, fontSize: 15, color: theme.ink.primary },
   tagDone: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.md,
     minHeight: 46,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: spacing.sm,
   },
-  tagDoneText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
-});
+  tagDoneText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
+  });
+}
