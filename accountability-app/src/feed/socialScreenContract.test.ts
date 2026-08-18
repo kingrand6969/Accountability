@@ -156,7 +156,7 @@ describe('Group 3 social Feed contract', () => {
   test('uses icon-only Feed actions with visible counts and an icon-only memory affordance', () => {
     const actions = jsxCalls(proofCardSource, 'Action');
     const cheerAction = callWith(actions, 'onPress={onToggleLike}');
-    const commentAction = callWith(actions, 'onPress={onOpen}');
+    const commentAction = callWith(actions, 'onPress={onComment}');
     const shareAction = callWith(actions, 'onPress={onShare}');
     expect(cheerAction).toMatch(/\bicon=["']clap["']/);
     expect(cheerAction).toMatch(/\bcount=\{post\.like_count\}/);
@@ -189,9 +189,19 @@ describe('Group 3 social Feed contract', () => {
     );
   });
 
+  test('opens only the Comment action with an explicit keyboard-focus intent', () => {
+    const proofCardCall = jsxCalls(feedSource, 'FeedProofCard')[0] ?? '';
+    expect(proofCardSource).toContain('onComment: () => void');
+    expect(proofCardSource).toContain('onPress={onComment}');
+    expect(proofCardSource).toContain('<Pressable onPress={onOpen}');
+    expect(proofCardSource).toContain('onPress={onOpenMedia ?? onOpen}');
+    expect(proofCardCall).toContain("onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}");
+    expect(proofCardCall).toContain("onComment={() => router.push({ pathname: '/post/[id]', params: { id: item.id, comment: '1' } } as never)}");
+  });
+
   test.each([
     ['Cheer', 'onPress={onToggleLike}', 'like_count'],
-    ['Comment', 'onPress={onOpen}', 'comment_count'],
+    ['Comment', 'onPress={onComment}', 'comment_count'],
   ])('%s accessibility omits a numeric zero count', (_name, marker, countName) => {
     const action = callWith(jsxCalls(proofCardSource, 'Action'), marker);
     expect(action).toMatch(
@@ -247,11 +257,33 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('<StoryRail');
   });
 
-  test('keeps previews best-effort, suppresses Pro ads, and separates error from empty', () => {
-    expect(feedSource).toContain('setPosts(page)');
-    expect(feedSource.indexOf('setPosts(page)')).toBeLessThan(
-      feedSource.indexOf('await listEncouragementPreviews(page.map((post) => post.id))'),
+  test('commits the critical Feed page through a non-blocking, identity-guarded loader', () => {
+    const loadSource = sourceSection(
+      feedSource,
+      'const load = useCallback',
+      'const unsubscribe = NetInfo.addEventListener',
     );
+    expect(loadSource).toContain('runFeedCriticalLoad({');
+    expect(loadSource).toContain('onPage: (page) =>');
+    expect(loadSource).toContain('onPreviews: setEncouragementPreviews');
+    expect(loadSource).toContain('currentUserIdRef.current === requestedOwnerId');
+    expect(loadSource).toContain('dataOwnerIdRef.current');
+    expect(loadSource).toContain('postCountRef.current');
+    expect(loadSource).toContain('}, [myId]);');
+    expect(loadSource).not.toContain('[dataOwnerId, myId, posts.length]');
+    expect(loadSource).not.toContain('await listEncouragementPreviews');
+  });
+
+  test('keeps the Feed header mounted and replaces the cold blank spinner with fixed post skeletons', () => {
+    expect(feedSource).toContain("viewState === 'initial-loading' ? (");
+    expect(feedSource).toContain('<FeedLoadingSkeleton />');
+    expect(feedSource).toContain('const FEED_SKELETON_ROWS = [0, 1] as const');
+    expect(feedSource).toContain('function FeedLoadingSkeleton()');
+    expect(feedSource).not.toMatch(/\{loading\s*\?\s*\([\s\S]{0,120}<View style=\{styles\.center\}/);
+    expect(feedSource).not.toContain('if (restored) {\n      setLoading(true);');
+  });
+
+  test('keeps previews best-effort, suppresses Pro ads, and separates error from empty', () => {
     expect(feedSource).toContain('adsReady && !isPro && !proLoading');
     expect(feedSource).toContain('ListEmptyComponent={loadError ? null :');
   });
@@ -365,7 +397,7 @@ describe('Group 3 social Feed contract', () => {
 
   test('loads once after restoration without refreshing on every Feed focus', () => {
     expect(feedSource).toMatch(
-      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*setLoading\(true\);\s*void load\(\);\s*\}\s*\}, \[load, restored\]\);/,
+      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*void Promise\.resolve\(\)\.then\(load\);\s*\}\s*\}, \[load, restored\]\);/,
     );
     const focusBlock = feedSource.match(/useFocusEffect\([\s\S]*?\n\s*\);/)?.[0] ?? '';
     expect(focusBlock).not.toContain('void load()');

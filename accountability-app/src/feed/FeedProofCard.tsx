@@ -19,6 +19,7 @@ type Props = {
   preview?: EncouragementPreview;
   attending: boolean;
   onOpen: () => void;
+  onComment: () => void;
   onOpenMedia?: () => void;
   onMenu: () => void;
   onAttend: () => void;
@@ -46,6 +47,7 @@ export function FeedProofCard({
   preview,
   attending,
   onOpen,
+  onComment,
   onOpenMedia,
   onMenu,
   onAttend,
@@ -170,7 +172,7 @@ export function FeedProofCard({
           icon="chatbubble-outline"
           count={post.comment_count}
           accessibilityLabel={`${viewCommentsLabel}${post.comment_count > 0 ? `, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}` : ''}`}
-          onPress={onOpen}
+          onPress={onComment}
         />
         <Action
           icon="paper-plane-outline"

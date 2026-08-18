@@ -53,6 +53,7 @@ import {
 import { FeedProofCard } from '../../feed/FeedProofCard';
 import { PostImage } from '../../feed/PostImage';
 import { activeVideoPost } from '../../feed/videoPolicy';
+import { runFeedCriticalLoad } from '../../feed/feedLoadCoordinator';
 import { DIRECT_POST_HREF, type DirectPostHref } from '../../entry/createFlow';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -75,6 +76,37 @@ const CREATE_ITEMS: CreateItem[] = [
   { icon: 'people-outline', tint: '#16a34a', title: 'Group', sub: 'Start a community', kind: 'route', route: '/group-new' },
   { icon: 'storefront-outline', tint: '#0d9488', title: 'Page', sub: 'For your gym, coaching or brand', kind: 'route', route: '/page-new' },
 ];
+const FEED_SKELETON_ROWS = [0, 1] as const;
+
+function FeedLoadingSkeleton() {
+  return (
+    <View
+      style={styles.skeletonList}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading Feed posts"
+      accessibilityState={{ busy: true }}
+    >
+      {FEED_SKELETON_ROWS.map((row) => (
+        <View key={row} style={styles.skeletonCard}>
+          <View style={styles.skeletonHeader}>
+            <View style={styles.skeletonAvatar} />
+            <View style={styles.skeletonCopy}>
+              <View style={[styles.skeletonLine, styles.skeletonLineLong]} />
+              <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
+            </View>
+          </View>
+          <View style={styles.skeletonMedia} />
+          <View style={styles.skeletonActions}>
+            <View style={styles.skeletonAction} />
+            <View style={styles.skeletonAction} />
+            <View style={styles.skeletonAction} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function QuickShare({
   icon,
@@ -133,13 +165,15 @@ export default function Feed() {
   const connectivityRef = useRef(true);
   const profileGeneration = useRef(0);
   const currentUserIdRef = useRef(myId);
+  const dataOwnerIdRef = useRef(dataOwnerId);
+  const postCountRef = useRef(posts.length);
   const [viewabilityConfig] = useState({ itemVisiblePercentThreshold: 65, minimumViewTime: 180 });
   const [onViewableItemsChanged] = useState(() => ({ viewableItems }: { viewableItems: ViewToken<FeedRow>[] }) => {
     const ids = viewableItems.flatMap(({ item }) => item?.kind === 'post' ? [item.post.id] : []);
     setVisiblePostIds((current) => current.join('|') === ids.join('|') ? current : ids);
     setVisibilityGeneration(viewableItems[0]?.item?.generation ?? '');
   });
-  // This latest-value ref prevents a prior identity's delayed action during the render-to-effect gap.
+  // Latest-value refs prevent stale owner work during the render-to-effect gap and keep load stable.
   // eslint-disable-next-line react-hooks/refs
   currentUserIdRef.current = myId;
   const pendingCreateAction = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,6 +186,11 @@ export default function Feed() {
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
+
+  useEffect(() => {
+    dataOwnerIdRef.current = dataOwnerId;
+    postCountRef.current = posts.length;
+  }, [dataOwnerId, posts.length]);
 
   useEffect(() => {
     currentUserIdRef.current = myId;
@@ -235,39 +274,46 @@ export default function Feed() {
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
+    const requestedOwnerId = myId;
     pendingFeedOffset.current = feedOffset.current;
     listContentReady.current = false;
     setLoadError(null);
     setLoadingMore(false);
-    if (!myId) {
+    if (!requestedOwnerId) {
       setPosts([]);
       setDataOwnerId(null);
+      setEncouragementPreviews(new Map());
       setLoading(false);
       setRefreshing(false);
       return;
     }
-    try {
-      const page = await listPersonalFeed(myId);
-      if (generation !== loadGeneration.current) return;
-      setPosts(page);
-      setDataOwnerId(myId);
-      setEndReached(page.length < FEED_PAGE_SIZE);
-      try {
-        const previews = await listEncouragementPreviews(page.map((post) => post.id));
-        if (generation !== loadGeneration.current) return;
-        setEncouragementPreviews(previews);
-      } catch {
-        if (generation !== loadGeneration.current) return;
-        setEncouragementPreviews(new Map());
-      }
-    } catch (error) {
-      if (generation !== loadGeneration.current) return;
-      setLoadError(String((error as Error).message ?? error));
-    } finally {
-      if (generation !== loadGeneration.current) return;
-      setLoading(false);
-      setRefreshing(false);
+    if (
+      !feedRowsBelongToView(dataOwnerIdRef.current, requestedOwnerId)
+      || postCountRef.current === 0
+    ) {
+      setLoading(true);
     }
+
+    await runFeedCriticalLoad({
+      loadPage: () => listPersonalFeed(requestedOwnerId),
+      loadPreviews: listEncouragementPreviews,
+      isCurrent: () =>
+        generation === loadGeneration.current
+        && currentUserIdRef.current === requestedOwnerId,
+      onPage: (page) => {
+        setPosts(page);
+        setDataOwnerId(requestedOwnerId);
+        setEndReached(page.length < FEED_PAGE_SIZE);
+      },
+      onPageError: (error) => {
+        setLoadError(String((error as Error).message ?? error));
+      },
+      onPreviews: setEncouragementPreviews,
+      onVisibleSettled: () => {
+        setLoading(false);
+        setRefreshing(false);
+      },
+    });
   }, [myId]);
 
   useEffect(() => {
@@ -310,8 +356,7 @@ export default function Feed() {
 
   useEffect(() => {
     if (restored) {
-      setLoading(true);
-      void load();
+      void Promise.resolve().then(load);
     }
   }, [load, restored]);
 
@@ -584,10 +629,7 @@ export default function Feed() {
         </Pressable>
       </Modal>
       <View style={styles.feedContent}>
-        {loading ? (
-          <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
-        ) : (
-          <FlatList
+        <FlatList
             ref={feedListRef}
             data={feedData}
             initialNumToRender={4}
@@ -613,19 +655,23 @@ export default function Feed() {
             onEndReachedThreshold={0.4}
             ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.footerSpinner} color={colors.primary} /> : null}
             ListEmptyComponent={loadError ? null : (
-              <View style={styles.emptyCard}>
-                <Ionicons name="people-outline" size={38} color={colors.primary} />
-                <Text style={styles.emptyTitle}>Your Feed is ready</Text>
-                <Text style={styles.emptySub}>Share a win or discover people and communities to follow.</Text>
-                <View style={styles.emptyActions}>
-                  <Pressable onPress={() => router.push(DIRECT_POST_HREF as never)} style={styles.emptyPrimary} accessibilityRole="button">
-                    <Text style={styles.emptyPrimaryText}>Share a win</Text>
-                  </Pressable>
-                  <Pressable onPress={() => router.push('/buddy' as never)} style={styles.emptySecondary} accessibilityRole="button">
-                    <Text style={styles.emptySecondaryText}>Find buddies</Text>
-                  </Pressable>
+              viewState === 'initial-loading' ? (
+                <FeedLoadingSkeleton />
+              ) : (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="people-outline" size={38} color={colors.primary} />
+                  <Text style={styles.emptyTitle}>Your Feed is ready</Text>
+                  <Text style={styles.emptySub}>Share a win or discover people and communities to follow.</Text>
+                  <View style={styles.emptyActions}>
+                    <Pressable onPress={() => router.push(DIRECT_POST_HREF as never)} style={styles.emptyPrimary} accessibilityRole="button">
+                      <Text style={styles.emptyPrimaryText}>Share a win</Text>
+                    </Pressable>
+                    <Pressable onPress={() => router.push('/buddy' as never)} style={styles.emptySecondary} accessibilityRole="button">
+                      <Text style={styles.emptySecondaryText}>Find buddies</Text>
+                    </Pressable>
+                  </View>
                 </View>
-              </View>
+              )
             )}
             renderItem={({ item: row }) => {
               if (row.kind === 'ad') return <View style={styles.adWrap}><AdCard /></View>;
@@ -638,6 +684,7 @@ export default function Feed() {
                   preview={encouragementPreviews.get(item.id)}
                   attending={!!item.event && attending.has(item.event.group_id)}
                   onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
+                  onComment={() => router.push({ pathname: '/post/[id]', params: { id: item.id, comment: '1' } } as never)}
                   onOpenMedia={item.post_type === 'video' || !item.image_url ? undefined : () => setPreviewPhoto(item.image_url)}
                   onMenu={() => onPostMenu(item)}
                   onAttend={() => onAttend(item)}
@@ -647,8 +694,7 @@ export default function Feed() {
                 />
               );
             }}
-          />
-        )}
+        />
       </View>
       <Modal
         visible={previewPhoto !== null}
@@ -728,9 +774,41 @@ const styles = StyleSheet.create({
   offlineNotice: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md },
   offlineText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   pressed: { opacity: 0.7 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl },
   list: { paddingTop: spacing.sm, paddingBottom: 110, ...contentMax },
   emptyWrap: { paddingBottom: 110, ...contentMax },
+  skeletonList: { paddingTop: spacing.sm },
+  skeletonCard: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.card,
+  },
+  skeletonHeader: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  skeletonAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceAlt },
+  skeletonCopy: { flex: 1, gap: spacing.sm },
+  skeletonLine: { height: 10, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt },
+  skeletonLineLong: { width: '68%' },
+  skeletonLineShort: { width: '38%' },
+  skeletonMedia: { height: 184, backgroundColor: colors.surfaceAlt },
+  skeletonActions: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: spacing.xl,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  skeletonAction: { width: 28, height: 8, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt },
   adWrap: { marginHorizontal: spacing.md, marginBottom: spacing.md, borderRadius: radius.lg, overflow: 'hidden' },
   footerSpinner: { paddingVertical: spacing.lg },
   emptyCard: { alignItems: 'center', gap: spacing.sm, margin: spacing.lg, padding: spacing.xxl, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
