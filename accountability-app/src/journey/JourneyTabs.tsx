@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, font } from '../ui/theme';
+import { font, themeColors, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export type JourneySection = 'momentum' | 'path' | 'journal';
 
@@ -19,8 +21,11 @@ export function JourneyTabs({
 }) {
   const router = useRouter();
   const { fontScale } = useWindowDimensions();
+  const { colors: activeTheme } = useAppTheme();
+  const theme = useMemo(() => dark ? themeColors('dark') : activeTheme, [activeTheme, dark]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <View style={[styles.row, dark && styles.rowDark]} accessibilityRole="tablist">
+    <View style={styles.row} accessibilityRole="tablist">
       {TABS.map((tab) => {
         const selected = active === tab.key;
         const visualLabel =
@@ -39,15 +44,13 @@ export function JourneyTabs({
             <Text
               style={[
                 styles.label,
-                dark && styles.labelDark,
                 selected && styles.labelSelected,
-                selected && dark && styles.labelSelectedDark,
               ]}
             >
               {visualLabel}
             </Text>
             {selected ? (
-              <View style={[styles.indicator, dark && styles.indicatorDark]} />
+              <View style={styles.indicator} />
             ) : null}
           </Pressable>
         );
@@ -56,14 +59,13 @@ export function JourneyTabs({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   row: {
     minHeight: 48,
     flexDirection: 'row',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(8,26,58,0.14)',
+    borderBottomColor: theme.border.subtle,
   },
-  rowDark: { borderBottomColor: 'rgba(255,255,255,0.16)' },
   tab: {
     flex: 1,
     minHeight: 48,
@@ -72,17 +74,14 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   pressed: { opacity: 0.68 },
-  label: { color: colors.inkSoft, fontFamily: font.medium, fontSize: 12.5 },
-  labelDark: { color: 'rgba(255,255,255,0.68)' },
-  labelSelected: { color: colors.navy, fontFamily: font.bold },
-  labelSelectedDark: { color: '#FFFFFF' },
+  label: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5 },
+  labelSelected: { color: theme.ink.primary, fontFamily: font.bold },
   indicator: {
     position: 'absolute',
     bottom: -1,
     width: 38,
     height: 2,
     borderRadius: 1,
-    backgroundColor: colors.navy,
+    backgroundColor: theme.ink.action,
   },
-  indicatorDark: { backgroundColor: '#FFFFFF' },
 });

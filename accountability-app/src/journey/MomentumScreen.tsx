@@ -13,7 +13,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listItemsForDay } from '../timeline/api';
 import type { TimelineItem } from '../timeline/types';
-import { colors, font, spacing } from '../ui/theme';
+import { font, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { JourneyTabs } from './JourneyTabs';
 import {
   hasCompletionProof,
@@ -24,14 +25,26 @@ import { getJourneyEncouragement, type JourneyEncouragement } from './encouragem
 import { JourneyEncouragementBar } from './JourneyEncouragementBar';
 
 const PILLARS = [
-  { key: 'body', label: 'Body', icon: 'walk-outline' as const, color: '#9ED438' },
-  { key: 'focus', label: 'Focus', icon: 'radio-button-on-outline' as const, color: '#7F8EFF' },
-  { key: 'people', label: 'People', icon: 'people-outline' as const, color: '#D6DC3E' },
+  { key: 'body', label: 'Body', icon: 'walk-outline' as const },
+  { key: 'focus', label: 'Focus', icon: 'radio-button-on-outline' as const },
+  { key: 'people', label: 'People', icon: 'people-outline' as const },
 ] as const;
+
+function pillarDefinitions(theme: AppThemeColors, mode: AppThemeMode) {
+  const accents = [
+    mode === 'dark' ? theme.status.success : '#13753D',
+    theme.ink.action,
+    mode === 'dark' ? theme.status.attention : '#8A5B00',
+  ] as const;
+  return PILLARS.map((pillar, index) => ({ ...pillar, color: accents[index] }));
+}
 
 export default function MomentumScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const pillars = useMemo(() => pillarDefinitions(theme, mode), [theme, mode]);
   const { fontScale } = useWindowDimensions();
   const largeText = fontScale >= 1.75;
   const [items, setItems] = useState<TimelineItem[]>([]);
@@ -68,8 +81,8 @@ export default function MomentumScreen() {
   );
 
   const pillarScores = useMemo(
-    () => PILLARS.map((pillar) => ({ ...pillar, ...pillarCompletion(weekItems, pillar.key) })),
-    [weekItems],
+    () => pillars.map((pillar) => ({ ...pillar, ...pillarCompletion(weekItems, pillar.key) })),
+    [pillars, weekItems],
   );
   const measuredPillars = pillarScores.filter((pillar) => pillar.total > 0);
   const momentum = measuredPillars.length > 0
@@ -96,17 +109,17 @@ export default function MomentumScreen() {
             accessibilityRole="button"
             accessibilityLabel="Notifications"
           >
-            <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+            <Ionicons name="notifications-outline" size={20} color={theme.ink.action} />
           </Pressable>
         </View>
 
-        <JourneyTabs active="momentum" dark />
+        <JourneyTabs active="momentum" />
 
         {loading ? (
-          <ActivityIndicator color="#FFFFFF" style={styles.loader} />
+          <ActivityIndicator color={theme.ink.action} style={styles.loader} />
         ) : error ? (
           <View style={styles.errorCard}>
-            <Ionicons name="cloud-offline-outline" size={22} color="#AFC1D7" />
+            <Ionicons name="cloud-offline-outline" size={22} color={theme.status.danger} />
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : (
@@ -189,7 +202,11 @@ export default function MomentumScreen() {
               accessibilityLabel={nextItem ? `Next up, ${nextItem.title}` : 'Plan your next promise'}
             >
               <View style={styles.nextIcon}>
-                <Ionicons name={nextItem?.type === 'workout' ? 'barbell-outline' : 'arrow-forward'} size={20} color="#9ED438" />
+                <Ionicons
+                  name={nextItem?.type === 'workout' ? 'barbell-outline' : 'arrow-forward'}
+                  size={20}
+                  color={theme.status.success}
+                />
               </View>
               <View style={styles.flex}>
                 <Text style={styles.nextKicker}>NEXT UP</Text>
@@ -226,7 +243,7 @@ export default function MomentumScreen() {
                     <Ionicons
                       name={hasCompletionProof(item) ? 'checkmark-circle' : 'ellipse-outline'}
                       size={18}
-                      color={hasCompletionProof(item) ? colors.primary : '#89A8CC'}
+                      color={hasCompletionProof(item) ? theme.ink.action : theme.ink.muted}
                     />
                   </Pressable>
                 ))
@@ -235,7 +252,6 @@ export default function MomentumScreen() {
 
             <JourneyEncouragementBar
               value={encouragement}
-              dark
               onPress={() => encouragement && router.push({ pathname: '/post/[id]', params: { id: encouragement.postId, encouragement: '1' } } as never)}
             />
           </>
@@ -245,39 +261,108 @@ export default function MomentumScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#031A38', overflow: 'hidden' },
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas, overflow: 'hidden' },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 120, width: '100%', maxWidth: 720, alignSelf: 'center' },
-  glowOne: { position: 'absolute', width: 320, height: 320, borderRadius: 160, backgroundColor: 'rgba(0,169,255,0.13)', top: 90, left: -150 },
-  glowTwo: { position: 'absolute', width: 280, height: 280, borderRadius: 140, backgroundColor: 'rgba(70,94,255,0.12)', top: 220, right: -160 },
+  glowOne: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: mode === 'dark' ? 'rgba(96,165,250,0.13)' : 'rgba(21,94,239,0.07)',
+    top: 90,
+    left: -150,
+  },
+  glowTwo: {
+    position: 'absolute',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: mode === 'dark' ? 'rgba(129,140,248,0.12)' : 'rgba(124,58,237,0.06)',
+    top: 220,
+    right: -160,
+  },
   brandRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  eyebrow: { color: '#89A8CC', fontFamily: font.bold, fontSize: 10, letterSpacing: 1.4 },
-  greeting: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 24, lineHeight: 30 },
-  iconButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  eyebrow: { color: theme.ink.muted, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.4 },
+  greeting: { color: theme.ink.primary, fontFamily: 'Georgia', fontSize: 24, lineHeight: 30 },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pressed: { opacity: 0.68 },
   loader: { marginTop: 96 },
-  errorCard: { minHeight: 82, marginTop: 36, borderRadius: 14, padding: 14, backgroundColor: 'rgba(8,43,78,0.94)', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  errorText: { flex: 1, color: '#D7E3F1', fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
+  errorCard: {
+    minHeight: 82,
+    marginTop: 36,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.border.danger,
+    padding: 14,
+    backgroundColor: theme.surface.card,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  errorText: { flex: 1, color: theme.ink.primary, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
   orbit: { height: 308, marginTop: 20, alignItems: 'center', justifyContent: 'center' },
-  orbitOuter: { position: 'absolute', width: 270, height: 190, borderWidth: 1, borderRadius: 150, borderColor: 'rgba(91,196,255,0.44)', transform: [{ rotate: '-8deg' }] },
-  orbitInner: { position: 'absolute', width: 190, height: 190, borderWidth: 1, borderRadius: 100, borderColor: 'rgba(255,255,255,0.30)' },
-  core: { width: 126, height: 126, borderRadius: 63, borderWidth: 1, borderColor: 'rgba(255,255,255,0.44)', backgroundColor: 'rgba(3,26,56,0.88)', alignItems: 'center', justifyContent: 'center' },
-  coreLabel: { color: '#FFFFFF', fontFamily: font.medium, fontSize: 14 },
-  coreValue: { color: '#FFFFFF', fontFamily: font.display, fontSize: 58, lineHeight: 62 },
-  pillar: { position: 'absolute', width: 70, height: 70, borderRadius: 35, borderWidth: 2, backgroundColor: '#031A38', alignItems: 'center', justifyContent: 'center' },
+  orbitOuter: {
+    position: 'absolute',
+    width: 270,
+    height: 190,
+    borderWidth: 1,
+    borderRadius: 150,
+    borderColor: mode === 'dark' ? 'rgba(96,165,250,0.46)' : 'rgba(21,94,239,0.28)',
+    transform: [{ rotate: '-8deg' }],
+  },
+  orbitInner: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderWidth: 1,
+    borderRadius: 100,
+    borderColor: theme.border.strong,
+  },
+  core: {
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    borderWidth: 1,
+    borderColor: theme.border.strong,
+    backgroundColor: theme.surface.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coreLabel: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 14 },
+  coreValue: { color: theme.ink.primary, fontFamily: font.display, fontSize: 58, lineHeight: 62 },
+  pillar: {
+    position: 'absolute',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 2,
+    backgroundColor: theme.surface.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pillarTopLeft: { top: 40, left: 18 },
   pillarTopRight: { top: 40, right: 18 },
   pillarBottomLeft: { bottom: 34, left: 18 },
   pillarBottomRight: { bottom: 34, right: 18 },
   pillarLabel: { fontFamily: font.bold, fontSize: 10.5 },
-  pillarValue: { color: '#FFFFFF', fontFamily: font.extrabold, fontSize: 20 },
+  pillarValue: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 20 },
   largeMomentum: { marginTop: 20, gap: spacing.md },
   largeCore: {
     minHeight: 148,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.44)',
-    backgroundColor: 'rgba(3,26,56,0.88)',
+    borderColor: theme.border.strong,
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.md,
@@ -293,42 +378,86 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     borderRadius: 16,
     borderWidth: 2,
-    backgroundColor: 'rgba(8,43,78,0.94)',
+    backgroundColor: theme.surface.card,
     alignItems: 'flex-start',
     justifyContent: 'center',
     padding: spacing.md,
   },
   largePillarValue: {
-    color: '#FFFFFF',
+    color: theme.ink.primary,
     fontFamily: font.extrabold,
     fontSize: 20,
     marginTop: spacing.xs,
   },
-  nextCard: { minHeight: 60, borderRadius: 14, backgroundColor: 'rgba(8,43,78,0.94)', borderWidth: 1, borderColor: 'rgba(120,178,225,0.19)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 10 },
+  nextCard: {
+    minHeight: 60,
+    borderRadius: 14,
+    backgroundColor: theme.surface.card,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: 10,
+  },
   nextCardLargeText: {
     minHeight: 148,
     alignItems: 'flex-start',
     flexWrap: 'wrap',
     padding: spacing.md,
   },
-  nextIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(158,212,56,0.14)', alignItems: 'center', justifyContent: 'center' },
+  nextIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.status.successSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   flex: { flex: 1 },
-  nextKicker: { color: '#89A8CC', fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1 },
-  nextTitle: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 13.5, marginTop: 2 },
-  startText: { color: '#FFFFFF', backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, fontFamily: font.bold, fontSize: 12 },
-  today: { marginTop: 18, borderRadius: 14, backgroundColor: 'rgba(8,43,78,0.78)', padding: 14 },
+  nextKicker: { color: theme.ink.muted, fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1 },
+  nextTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13.5, marginTop: 2 },
+  startText: {
+    color: theme.ink.inverse,
+    backgroundColor: theme.ink.action,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    fontFamily: font.bold,
+    fontSize: 12,
+  },
+  today: {
+    marginTop: 18,
+    borderRadius: 14,
+    backgroundColor: theme.surface.card,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+    padding: 14,
+  },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   sectionHeaderLargeText: { flexDirection: 'column', alignItems: 'flex-start' },
-  sectionTitle: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 19 },
-  sectionMeta: { color: '#89A8CC', fontFamily: font.medium, fontSize: 11 },
-  emptyText: { color: '#AFC1D7', fontFamily: font.regular, fontSize: 13, lineHeight: 19, paddingVertical: 10 },
-  todayRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.10)', gap: 9 },
-  timelineDot: { width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, borderColor: '#89A8CC' },
-  timelineDotActive: { borderColor: '#9ED438', backgroundColor: '#9ED438' },
-  timeText: { width: 56, color: '#89A8CC', fontFamily: font.medium, fontSize: 10.5 },
-  itemTitle: { flex: 1, color: '#FFFFFF', fontFamily: font.medium, fontSize: 13 },
-  encouragement: { minHeight: 64, marginTop: 12, padding: 10, borderRadius: 14, backgroundColor: 'rgba(10,57,95,0.95)', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  encourageAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  encourageName: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 12.5 },
-  encourageText: { color: '#AFC1D7', fontFamily: font.regular, fontSize: 11, lineHeight: 15, marginTop: 2 },
+  sectionTitle: { color: theme.ink.primary, fontFamily: 'Georgia', fontSize: 19 },
+  sectionMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 11 },
+  emptyText: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 13, lineHeight: 19, paddingVertical: 10 },
+  todayRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.border.subtle,
+    gap: 9,
+  },
+  timelineDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: theme.ink.muted,
+  },
+  timelineDotActive: {
+    borderColor: theme.status.success,
+    backgroundColor: theme.status.success,
+  },
+  timeText: { width: 56, color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5 },
+  itemTitle: { flex: 1, color: theme.ink.primary, fontFamily: font.medium, fontSize: 13 },
 });
