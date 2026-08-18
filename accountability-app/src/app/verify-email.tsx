@@ -8,6 +8,7 @@ import { updateMyProfile } from '../profiles/api';
 import { AuthShell } from '../ui/AuthShell';
 import { Button } from '../ui/Button';
 import { colors, font, radius, spacing } from '../ui/theme';
+import { navigateBackSafely } from '../navigation/routeAccessContract';
 
 const RESEND_COOLDOWN_S = 45;
 
@@ -95,7 +96,7 @@ export default function VerifyEmail() {
           </Text>
         )}
       </Text>
-      <Text style={styles.back} onPress={() => router.back()}>
+      <Text style={styles.back} onPress={() => navigateBackSafely(router)}>
         Wrong email? Go back
       </Text>
     </AuthShell>

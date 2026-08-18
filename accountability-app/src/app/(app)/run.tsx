@@ -71,6 +71,7 @@ import { font } from '../../ui/theme';
 import { hapticImpact } from '../../ui/haptics';
 import { contentMaxWidth } from '../../ui/responsive';
 import { useAuth } from '../../auth/AuthProvider';
+import { navigateBackSafely } from '../../navigation/routeAccessContract';
 
 const LIME = '#c6f24e';
 const BG = '#101319';
@@ -758,7 +759,7 @@ export default function ActivityTrack() {
 
       {/* top bar */}
       <View style={[styles.topBar, { top: insets.top + 6, left: sideInset, right: sideInset }]}>
-        <Pressable style={styles.circleBtn} onPress={() => router.back()} accessibilityLabel="Back">
+        <Pressable style={styles.circleBtn} onPress={() => navigateBackSafely(router)} accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </Pressable>
         <View

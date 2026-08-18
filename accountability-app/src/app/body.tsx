@@ -19,6 +19,7 @@ import type { TimelineItem } from '../timeline/types';
 import { colors, font, spacing } from '../ui/theme';
 import { EditorialBackdrop } from '../journey/EditorialBackdrop';
 import { listRecentJourneyItems, pillarCompletion } from '../journey/data';
+import { navigateBackSafely } from '../navigation/routeAccessContract';
 
 const ACTIONS = [
   { label: 'My plan', sub: 'Build or continue this week', icon: 'walk-outline' as const, route: '/gym-plan' },
@@ -77,7 +78,7 @@ export default function BodyScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.iconButton} accessibilityLabel="Back to Journey">
+          <Pressable onPress={() => navigateBackSafely(router)} style={styles.iconButton} accessibilityLabel="Back to Journey">
             <Ionicons name="chevron-back" size={23} color={colors.navy} />
           </Pressable>
           <Text style={styles.breadcrumb}>Journey / Body</Text>

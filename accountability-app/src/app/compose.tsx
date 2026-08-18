@@ -5,6 +5,7 @@ import {
   AppState,
   BackHandler,
   Image,
+  Keyboard,
   Linking,
   Modal,
   Platform,
@@ -66,6 +67,7 @@ import {
   type ComposeDraftV1,
   type DurableDraftMedia,
 } from '../entry/composeDraft';
+import { navigateBackSafely } from '../navigation/routeAccessContract';
 
 export default function Compose() {
   const router = useRouter();
@@ -84,6 +86,8 @@ export default function Compose() {
   });
   const [body, setBody] = useState(typeof params.text === 'string' ? params.text : '');
   const [posting, setPosting] = useState(false);
+  const postingRef = useRef(posting);
+  postingRef.current = posting;
   const [pickedBase64, setPickedBase64] = useState<string | null>(null);
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -332,6 +336,10 @@ export default function Compose() {
     return flushDraftRef.current();
   }
 
+  function exitCompose() {
+    navigateBackSafely(routerRef.current);
+  }
+
   useEffect(() => {
     if (!draftReady) return;
     if (suppressNextDebounce.current) {
@@ -349,7 +357,9 @@ export default function Compose() {
       if (state !== 'active') void flushDraft();
     });
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      void flushDraft().finally(() => routerRef.current.back());
+      if (postingRef.current) return true;
+      Keyboard.dismiss();
+      void flushDraft().finally(exitCompose);
       return true;
     });
     return () => {
@@ -423,12 +433,12 @@ export default function Compose() {
     if (ownerRef.current !== expectedOwner || mountTokenRef.current !== expectedToken) return;
     if (!cleanupError) {
       showToast(successMessage);
-      router.back();
+      exitCompose();
       return;
     }
     setDraftNotice('Remote save succeeded, but the local draft could not be cleared');
     Alert.alert('Saved successfully', 'Your post is live. Only local draft cleanup failed; do not submit again.', [
-      { text: 'Close', onPress: () => router.back() },
+      { text: 'Close', onPress: exitCompose },
       {
         text: 'Retry cleanup',
         onPress: () => {
@@ -436,7 +446,7 @@ export default function Compose() {
             .then(() => {
               if (ownerRef.current === expectedOwner && mountTokenRef.current === expectedToken) {
                 showToast(successMessage);
-                router.back();
+                exitCompose();
               }
             })
             .catch(() => {
@@ -478,12 +488,14 @@ export default function Compose() {
   }
 
   function onClose() {
+    if (postingRef.current) return;
+    Keyboard.dismiss();
     Alert.alert('Cancel this draft?', 'You can keep it for next time or discard it now.', [
-      { text: 'Keep draft', onPress: () => { void flushDraft().finally(() => router.back()); } },
+      { text: 'Keep draft', onPress: () => { void flushDraft().finally(exitCompose); } },
       {
         text: 'Discard',
         style: 'destructive',
-        onPress: () => { void clearSavedDraft().finally(() => router.back()); },
+        onPress: () => { void clearSavedDraft().finally(exitCompose); },
       },
     ]);
   }
@@ -726,7 +738,7 @@ export default function Compose() {
         }
         if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
           showToast('Event announced — its group is ready 🎉');
-          router.back();
+          exitCompose();
         }
       } catch (e) {
         if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
@@ -768,7 +780,7 @@ export default function Compose() {
       if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
         if (Platform.OS === 'web') showToast('Posted to your feed 🎉');
         else promptCrossShare(postedText, postedImageUri, pickedVideo?.mimeType);
-        router.back();
+        exitCompose();
       }
     } catch (e) {
       if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
@@ -814,9 +826,16 @@ export default function Compose() {
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
         <Pressable
           onPress={onClose}
+          disabled={posting}
           hitSlop={10}
-          style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.close,
+            posting && styles.closeDisabled,
+            pressed && !posting && styles.pressed,
+          ]}
+          accessibilityRole="button"
           accessibilityLabel="Close"
+          accessibilityState={{ disabled: posting, busy: posting }}
         >
           <Ionicons name="close" size={26} color={colors.text} />
         </Pressable>
@@ -1120,6 +1139,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   close: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  closeDisabled: { opacity: 0.45 },
   title: { flex: 1, fontSize: 17, fontFamily: font.bold, color: colors.text },
   postBtn: {
     backgroundColor: colors.primary,
