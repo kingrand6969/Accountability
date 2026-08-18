@@ -1,6 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -23,6 +22,7 @@ import {
 import { useIsPro } from '../../pro/ProProvider';
 import { EmptyState } from '../../ui/EmptyState';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
+import { useAuth } from '../../auth/AuthProvider';
 
 function firstName(name: string | null): string {
   return authorLabel(name).split(' ')[0];
@@ -31,32 +31,125 @@ function firstName(name: string | null): string {
 export default function Messages() {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const currentOwnerRef = useRef(ownerId);
+  const dataOwnerRef = useRef<string | null>(null);
+  const loadGeneration = useRef(0);
+  const chatsInFlight = useRef<Set<string>>(new Set());
   const [items, setItems] = useState<Conversation[] | null>(null);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
   const [active, setActive] = useState<ActiveBuddy[]>([]);
+  const [activeOwnerId, setActiveOwnerId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => {
-    listConversations()
-      .then(setItems)
-      .catch(() => setItems([]));
-    listActiveBuddies()
-      .then(setActive)
-      .catch(() => {});
-  }, []);
+  currentOwnerRef.current = ownerId;
+  dataOwnerRef.current = dataOwnerId;
 
-  useFocusEffect(load);
+  useEffect(() => {
+    loadGeneration.current += 1;
+    chatsInFlight.current.clear();
+    queueMicrotask(() => {
+      if (currentOwnerRef.current !== ownerId) return;
+      setItems(null);
+      setDataOwnerId(null);
+      setActive([]);
+      setActiveOwnerId(null);
+      setQuery('');
+      setRefreshing(false);
+    });
+  }, [ownerId]);
+
+  const load = useCallback(async () => {
+    const requestOwner = ownerId;
+    const generation = ++loadGeneration.current;
+    if (!requestOwner) {
+      setItems([]);
+      setDataOwnerId(null);
+      setActive([]);
+      setActiveOwnerId(null);
+      setRefreshing(false);
+      return;
+    }
+
+    void listActiveBuddies()
+      .then((next) => {
+        if (
+          generation === loadGeneration.current &&
+          requestOwner === currentOwnerRef.current
+        ) {
+          setActive(next);
+          setActiveOwnerId(requestOwner);
+        }
+      })
+      .catch(() => {});
+
+    try {
+      const next = await listConversations();
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current
+      )
+        return;
+      setItems(next);
+      setDataOwnerId(requestOwner);
+    } catch {
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current
+      )
+        return;
+      if (dataOwnerRef.current !== requestOwner) {
+        setItems([]);
+        setDataOwnerId(requestOwner);
+      }
+    } finally {
+      if (
+        generation === loadGeneration.current &&
+        requestOwner === currentOwnerRef.current
+      )
+        setRefreshing(false);
+    }
+  }, [ownerId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      return () => {
+        loadGeneration.current += 1;
+        chatsInFlight.current.clear();
+        setRefreshing(false);
+      };
+    }, [load]),
+  );
+
+  const ownedItems = ownerId && dataOwnerId === ownerId ? items : null;
+  const ownedActive = ownerId && activeOwnerId === ownerId ? active : [];
 
   const filtered = useMemo(() => {
-    if (!items) return null;
+    if (!ownedItems) return null;
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((c) => authorLabel(c.name).toLowerCase().includes(q));
-  }, [items, query]);
+    if (!q) return ownedItems;
+    return ownedItems.filter((c) => authorLabel(c.name).toLowerCase().includes(q));
+  }, [ownedItems, query]);
 
-  const onlineCount = active.filter((b) => b.online).length;
+  const onlineIds = useMemo(
+    () => new Set(ownedActive.filter((buddy) => buddy.online).map((buddy) => buddy.id)),
+    [ownedActive],
+  );
+
+  const onlineCount = ownedActive.filter((buddy) => buddy.online).length;
 
   function openChat(id: string) {
+    const requestOwner = ownerId;
+    if (
+      !requestOwner ||
+      requestOwner !== currentOwnerRef.current ||
+      chatsInFlight.current.has(id)
+    )
+      return;
+    chatsInFlight.current.add(id);
     router.push({ pathname: '/buddy-chat/[id]', params: { id } });
   }
 
@@ -74,14 +167,19 @@ export default function Messages() {
           returnKeyType="search"
         />
         {query.length > 0 ? (
-          <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+          <Pressable
+            onPress={() => setQuery('')}
+            style={styles.clearSearch}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+          >
             <Ionicons name="close-circle" size={18} color={colors.textMuted} />
           </Pressable>
         ) : null}
       </View>
 
       {/* active buddies row */}
-      {active.length > 0 ? (
+      {ownedActive.length > 0 ? (
         <>
           <Text style={styles.activeTitle}>
             Active{onlineCount > 0 ? ` · ${onlineCount} online` : ''}
@@ -91,7 +189,7 @@ export default function Messages() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.activeRow}
           >
-            {active.map((b) => (
+            {ownedActive.map((b) => (
               <Pressable
                 key={b.id}
                 onPress={() => openChat(b.id)}
@@ -125,11 +223,8 @@ export default function Messages() {
 
   return (
     <View style={styles.screen}>
-      {filtered === null ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
-      ) : (
-        <FlatList
-          data={filtered}
+      <FlatList
+          data={filtered ?? []}
           keyExtractor={(c) => c.otherId}
           contentContainerStyle={[styles.list, contentMax]}
           keyboardShouldPersistTaps="handled"
@@ -139,17 +234,24 @@ export default function Messages() {
               refreshing={refreshing}
               onRefresh={() => {
                 setRefreshing(true);
-                Promise.all([
-                  listConversations().then(setItems),
-                  listActiveBuddies().then(setActive),
-                ])
-                  .catch(() => {})
-                  .finally(() => setRefreshing(false));
+                void load();
               }}
             />
           }
           ListEmptyComponent={
-            query ? (
+            filtered === null ? (
+              <View accessibilityLabel="Loading messages" style={styles.loadingList}>
+                {[0, 1, 2].map((index) => (
+                  <View key={index} style={styles.loadingRow}>
+                    <View style={styles.loadingAvatar} />
+                    <View style={styles.loadingCopy}>
+                      <View style={styles.loadingName} />
+                      <View style={styles.loadingPreview} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : query ? (
               <Text style={styles.noResults}>No conversations match “{query}”.</Text>
             ) : (
               <EmptyState
@@ -170,7 +272,7 @@ export default function Messages() {
             >
               <View>
                 <Avatar url={item.avatar} name={item.name} size={52} />
-                {active.find((b) => b.id === item.otherId)?.online ? (
+                {onlineIds.has(item.otherId) ? (
                   <View style={styles.onlineDotSm} />
                 ) : null}
               </View>
@@ -199,7 +301,6 @@ export default function Messages() {
             </Pressable>
           )}
         />
-      )}
     </View>
   );
 }
@@ -217,10 +318,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
-    height: 42,
+    minHeight: spacing.touch,
     marginBottom: spacing.md,
   },
   searchInput: { flex: 1, fontFamily: font.regular, fontSize: 15, color: colors.text, paddingVertical: 0 },
+  clearSearch: {
+    width: spacing.touch,
+    height: spacing.touch,
+    marginRight: -spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingList: { gap: spacing.sm, paddingTop: spacing.sm },
+  loadingRow: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  loadingAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.surface },
+  loadingCopy: { flex: 1, gap: spacing.sm },
+  loadingName: { width: '42%', height: 14, borderRadius: 7, backgroundColor: colors.surface },
+  loadingPreview: { width: '74%', height: 12, borderRadius: 6, backgroundColor: colors.surface },
   activeTitle: {
     fontFamily: font.bold,
     fontSize: 13,
