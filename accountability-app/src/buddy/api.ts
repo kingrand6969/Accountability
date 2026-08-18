@@ -25,6 +25,21 @@ async function me(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
+const ACCOUNT_CHANGED = 'Account changed. Reopen this conversation and try again.';
+
+async function operationOwner(expectedOwner?: string): Promise<string> {
+  if (expectedOwner) assertUuid(expectedOwner);
+  const uid = await me();
+  if (!uid) throw new Error('Not signed in.');
+  if (expectedOwner && uid !== expectedOwner) throw new Error(ACCOUNT_CHANGED);
+  return expectedOwner ?? uid;
+}
+
+async function assertOperationOwner(expectedOwner: string): Promise<void> {
+  const uid = await me();
+  if (uid !== expectedOwner) throw new Error(ACCOUNT_CHANGED);
+}
+
 export async function getBuddyOptIn(): Promise<boolean> {
   const uid = await me();
   if (!uid) return false;
@@ -257,9 +272,13 @@ const pairFilter = (uid: string, otherId: string) =>
  * list). Pass `before` (the oldest loaded created_at) to page further back.
  * Replaces loading the entire thread on every open/poll/send.
  */
-export async function listMessages(otherId: string, before?: string): Promise<Message[]> {
+export async function listMessages(
+  otherId: string,
+  before?: string,
+  expectedOwner?: string,
+): Promise<Message[]> {
   assertUuid(otherId);
-  const uid = await me();
+  const uid = expectedOwner ? await operationOwner(expectedOwner) : await me();
   if (!uid) return [];
   let q = supabase
     .from('buddy_messages')
@@ -270,13 +289,18 @@ export async function listMessages(otherId: string, before?: string): Promise<Me
   if (before) q = q.lt('created_at', before);
   const { data, error } = await q;
   if (error) throw error;
+  if (expectedOwner) await assertOperationOwner(expectedOwner);
   return (data ?? []) as Message[];
 }
 
 /** Only messages newer than `after` — the cheap incremental safety-net poll. */
-export async function listMessagesAfter(otherId: string, after: string): Promise<Message[]> {
+export async function listMessagesAfter(
+  otherId: string,
+  after: string,
+  expectedOwner?: string,
+): Promise<Message[]> {
   assertUuid(otherId);
-  const uid = await me();
+  const uid = expectedOwner ? await operationOwner(expectedOwner) : await me();
   if (!uid) return [];
   const { data, error } = await supabase
     .from('buddy_messages')
@@ -286,19 +310,24 @@ export async function listMessagesAfter(otherId: string, after: string): Promise
     .order('created_at', { ascending: false })
     .limit(CHAT_PAGE);
   if (error) throw error;
+  if (expectedOwner) await assertOperationOwner(expectedOwner);
   return (data ?? []) as Message[];
 }
 
-export async function sendMessage(otherId: string, body: string): Promise<Message> {
+export async function sendMessage(
+  otherId: string,
+  body: string,
+  expectedOwner?: string,
+): Promise<Message> {
   assertUuid(otherId);
-  const uid = await me();
-  if (!uid) throw new Error('Not signed in.');
+  const uid = await operationOwner(expectedOwner);
   const { data, error } = await supabase
     .from('buddy_messages')
     .insert({ sender: uid, recipient: otherId, body })
     .select('id,sender,body,created_at')
     .single();
   if (error) throw error;
+  await assertOperationOwner(uid);
   return data as Message;
 }
 
@@ -342,9 +371,12 @@ export async function unreadMessageCount(): Promise<number> {
 }
 
 /** Mark everything the other person sent me in this thread as read. */
-export async function markConversationRead(otherId: string): Promise<void> {
+export async function markConversationRead(
+  otherId: string,
+  expectedOwner?: string,
+): Promise<void> {
   assertUuid(otherId);
-  const uid = await me();
+  const uid = expectedOwner ? await operationOwner(expectedOwner) : await me();
   if (!uid) return;
   await supabase
     .from('buddy_messages')
@@ -352,22 +384,29 @@ export async function markConversationRead(otherId: string): Promise<void> {
     .eq('recipient', uid)
     .eq('sender', otherId)
     .is('read_at', null);
+  if (expectedOwner) await assertOperationOwner(expectedOwner);
 }
 
-export async function blockUser(id: string): Promise<void> {
-  const uid = await me();
-  if (!uid) throw new Error('Not signed in.');
+export async function blockUser(id: string, expectedOwner?: string): Promise<void> {
+  assertUuid(id);
+  const uid = await operationOwner(expectedOwner);
   const { error } = await supabase
     .from('buddy_blocks')
     .insert({ blocker: uid, blocked: id });
   if (error && error.code !== '23505') throw error;
+  await assertOperationOwner(uid);
 }
 
-export async function reportUser(id: string, reason: string): Promise<void> {
-  const uid = await me();
-  if (!uid) throw new Error('Not signed in.');
+export async function reportUser(
+  id: string,
+  reason: string,
+  expectedOwner?: string,
+): Promise<void> {
+  assertUuid(id);
+  const uid = await operationOwner(expectedOwner);
   const { error } = await supabase
     .from('buddy_reports')
     .insert({ reporter: uid, reported: id, reason });
   if (error) throw error;
+  await assertOperationOwner(uid);
 }

@@ -14,6 +14,7 @@ import {
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../auth/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import {
   CHAT_PAGE,
@@ -46,16 +47,32 @@ type BuddyBrief = {
   presenceCheckedAt: number | null;
 };
 
+type ChatContext = Readonly<{
+  key: string;
+  ownerId: string;
+  targetId: string;
+}>;
+
+type ChatActionToken = ChatContext & Readonly<{ token: symbol }>;
+
+const EMPTY_BUDDY: BuddyBrief = {
+  name: null,
+  avatar: null,
+  lastActive: null,
+  presenceCheckedAt: null,
+};
+
+const chatContextKey = (ownerId: string, targetId: string) => `${ownerId}:${targetId}`;
+
 export default function BuddyChat() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  const { session, loading: authLoading } = useAuth();
+  const ownerId = session?.user.id ?? null;
   const insets = useSafeAreaInsets();
-  const [myId, setMyId] = useState<string | null>(null);
-  const [buddy, setBuddy] = useState<BuddyBrief>({
-    name: null,
-    avatar: null,
-    lastActive: null,
-    presenceCheckedAt: null,
-  });
+  const contextKey = ownerId && id ? chatContextKey(ownerId, id) : null;
+  const [dataContextKey, setDataContextKey] = useState<string | null>(null);
+  const [buddy, setBuddy] = useState<BuddyBrief>(EMPTY_BUDDY);
   const [expiredPresenceKey, setExpiredPresenceKey] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
   // newest-first — index 0 is the latest message (pairs with the inverted list)
@@ -63,127 +80,269 @@ export default function BuddyChat() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [text, setText] = useState('');
+  const [textContextKey, setTextContextKey] = useState<string | null>(contextKey);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  const [sendingContextKey, setSendingContextKey] = useState<string | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
-  const messagesRef = useRef<Message[]>(messages);
-  const presenceKey = id && buddy.lastActive ? `${id}:${buddy.lastActive}` : null;
+  const mountedRef = useRef(true);
+  const currentOwnerRef = useRef(ownerId);
+  const currentTargetRef = useRef(id);
+  const lifecycleGenerationRef = useRef(0);
+  const messageStateRef = useRef({ contextKey: dataContextKey, messages });
+  const olderTokenRef = useRef<ChatActionToken | null>(null);
+  const sendTokenRef = useRef<ChatActionToken | null>(null);
+  const reportTokenRef = useRef<(ChatActionToken & { started: boolean }) | null>(null);
+
+  // Route and auth values can change before effect cleanup; update these during
+  // render so every delayed callback observes the newest identity immediately.
+  /* eslint-disable react-hooks/refs -- identity guards must update before stale effect cleanup */
+  currentOwnerRef.current = ownerId;
+  currentTargetRef.current = id;
+  messageStateRef.current = { contextKey: dataContextKey, messages };
+  /* eslint-enable react-hooks/refs */
+
+  function currentContext(): ChatContext | null {
+    const currentOwner = currentOwnerRef.current;
+    const currentTarget = currentTargetRef.current;
+    if (!currentOwner || !currentTarget) return null;
+    return {
+      ownerId: currentOwner,
+      targetId: currentTarget,
+      key: chatContextKey(currentOwner, currentTarget),
+    };
+  }
+
+  function contextIsCurrent(context: ChatContext): boolean {
+    return (
+      mountedRef.current &&
+      currentOwnerRef.current === context.ownerId &&
+      currentTargetRef.current === context.targetId
+    );
+  }
+
+  function actionOwns(
+    ref: { current: ChatActionToken | null },
+    token: ChatActionToken,
+  ): boolean {
+    return ref.current === token && contextIsCurrent(token);
+  }
+
+  function acquireAction(
+    ref: { current: ChatActionToken | null },
+    context: ChatContext,
+  ): ChatActionToken | null {
+    if (ref.current && contextIsCurrent(ref.current)) return null;
+    const token = { ...context, token: Symbol('chat-action') };
+    ref.current = token;
+    return token;
+  }
 
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      lifecycleGenerationRef.current += 1;
+      olderTokenRef.current = null;
+      sendTokenRef.current = null;
+      reportTokenRef.current = null;
+    };
+  }, []);
+
+  // Drafts belong to one exact owner/conversation. The render-time context
+  // gate below hides the previous value immediately, while this clears it for
+  // the new conversation after commit.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset private draft at identity boundary
+    setText('');
+    setTextContextKey(contextKey);
+    setSendingContextKey(null);
+    if (sendTokenRef.current && !contextIsCurrent(sendTokenRef.current)) {
+      sendTokenRef.current = null;
+    }
+    if (reportTokenRef.current && !contextIsCurrent(reportTokenRef.current)) {
+      reportTokenRef.current = null;
+    }
+  }, [contextKey]);
+
+  const ownsData = !!contextKey && dataContextKey === contextKey;
+  const visibleBuddy = ownsData ? buddy : EMPTY_BUDDY;
+  const visibleDeleted = ownsData && deleted;
+  const visibleMessages = ownsData ? messages : [];
+  const visibleHasMore = ownsData && hasMore;
+  const visibleLoadingOlder = ownsData && loadingOlder;
+  const visibleText = textContextKey === contextKey ? text : '';
+  const sending = !!contextKey && sendingContextKey === contextKey;
+  const visibleLoading = authLoading || (!!contextKey && (!ownsData || loading));
+  const presenceKey = id && visibleBuddy.lastActive ? `${id}:${visibleBuddy.lastActive}` : null;
 
   useEffect(() => {
-    if (!presenceKey || !buddy.lastActive || buddy.presenceCheckedAt == null) return;
+    const context = currentContext();
+    if (
+      !context ||
+      !presenceKey ||
+      !visibleBuddy.lastActive ||
+      visibleBuddy.presenceCheckedAt == null
+    ) return;
     const expiresIn =
-      new Date(buddy.lastActive).getTime() + ONLINE_WINDOW_MS - buddy.presenceCheckedAt;
+      new Date(visibleBuddy.lastActive).getTime() +
+      ONLINE_WINDOW_MS -
+      visibleBuddy.presenceCheckedAt;
     if (!Number.isFinite(expiresIn) || expiresIn <= 0) return;
-    const timer = setTimeout(() => setExpiredPresenceKey(presenceKey), expiresIn);
+    const timer = setTimeout(() => {
+      if (contextIsCurrent(context)) setExpiredPresenceKey(presenceKey);
+    }, expiresIn);
     return () => clearTimeout(timer);
-  }, [buddy.lastActive, buddy.presenceCheckedAt, presenceKey]);
-
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      setMyId(data.user?.id ?? null);
-      if (!id) return;
-      // no profile row → the person deleted their account (or is otherwise gone)
-      const { data: prof } = await supabase
-        .from('public_profiles')
-        .select('display_name,avatar_url,last_active_at')
-        .eq('id', id)
-        .maybeSingle();
-      if (!prof) {
-        setDeleted(true);
-      } else {
-        setBuddy({
-          name: prof.display_name ?? null,
-          avatar: prof.avatar_url ?? null,
-          lastActive: prof.last_active_at ?? null,
-          presenceCheckedAt: Date.now(),
-        });
-      }
-    })();
-  }, [id]);
-
-  /** Fresh newest window (open/focus). One 50-row query — never the full thread. */
-  const load = useCallback(async () => {
-    if (!id) return;
-    try {
-      const page = await listMessages(id);
-      setMessages(page);
-      setHasMore(page.length === CHAT_PAGE);
-      markConversationRead(id).catch(() => {});
-    } catch (e) {
-      Alert.alert('Could not load chat', String((e as Error).message ?? e));
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  /** Incremental poll — only fetches messages newer than what's on screen. */
-  const pollNew = useCallback(async () => {
-    if (!id) return;
-    const newest = messagesRef.current[0];
-    if (!newest) return load();
-    try {
-      const fresh = await listMessagesAfter(id, newest.created_at);
-      if (fresh.length) {
-        setMessages((cur) => mergeNewer(cur, fresh));
-        markConversationRead(id).catch(() => {});
-      }
-    } catch {
-      // a dropped poll is fine — realtime and the next tick cover it
-    }
-  }, [id, load]);
+  }, [presenceKey, visibleBuddy.lastActive, visibleBuddy.presenceCheckedAt]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-      if (!id || !myId) return;
+      if (!ownerId || !id) {
+        setDataContextKey(null);
+        setBuddy(EMPTY_BUDDY);
+        setDeleted(false);
+        setMessages([]);
+        setHasMore(false);
+        setLoadingOlder(false);
+        setLoading(false);
+        return;
+      }
+      const context: ChatContext = {
+        ownerId,
+        targetId: id,
+        key: chatContextKey(ownerId, id),
+      };
+      const generation = ++lifecycleGenerationRef.current;
+      const requestIsCurrent = () =>
+        generation === lifecycleGenerationRef.current && contextIsCurrent(context);
+
+      setDataContextKey(context.key);
+      setBuddy(EMPTY_BUDDY);
+      setDeleted(false);
+      setMessages([]);
+      setHasMore(false);
+      setLoadingOlder(false);
+      setLoading(true);
+
+      // Profile and messages load independently, but both commit only to this
+      // immutable owner/target generation.
+      void Promise.resolve(
+        supabase
+          .from('public_profiles')
+          .select('display_name,avatar_url,last_active_at')
+          .eq('id', context.targetId)
+          .maybeSingle(),
+      )
+        .then(({ data: prof }) => {
+          if (!requestIsCurrent()) return;
+          if (!prof) {
+            setDeleted(true);
+            setBuddy(EMPTY_BUDDY);
+            return;
+          }
+          setBuddy({
+            name: prof.display_name ?? null,
+            avatar: prof.avatar_url ?? null,
+            lastActive: prof.last_active_at ?? null,
+            presenceCheckedAt: Date.now(),
+          });
+        })
+        .catch(() => {
+          // A profile refresh failure must not overwrite a newer conversation.
+        });
+
+      void listMessages(context.targetId, undefined, context.ownerId)
+        .then((page) => {
+          if (!requestIsCurrent()) return;
+          setMessages(page);
+          setHasMore(page.length === CHAT_PAGE);
+          void markConversationRead(context.targetId, context.ownerId).catch(() => {});
+        })
+        .catch((e) => {
+          if (!requestIsCurrent()) return;
+          Alert.alert('Could not load chat', String((e as Error).message ?? e));
+        })
+        .finally(() => {
+          if (requestIsCurrent()) setLoading(false);
+        });
+
+      const pollNew = async () => {
+        if (!requestIsCurrent()) return;
+        const state = messageStateRef.current;
+        const newest = state.contextKey === context.key ? state.messages[0] : undefined;
+        try {
+          const fresh = newest
+            ? await listMessagesAfter(
+                context.targetId,
+                newest.created_at,
+                context.ownerId,
+              )
+            : await listMessages(context.targetId, undefined, context.ownerId);
+          if (!requestIsCurrent() || !fresh.length) return;
+          setMessages((cur) => mergeNewer(cur, fresh));
+          void markConversationRead(context.targetId, context.ownerId).catch(() => {});
+        } catch {
+          // A dropped poll is fine — realtime and the next tick cover it.
+        }
+      };
 
       // Realtime: new messages addressed to me appear instantly.
       const channel = supabase
-        .channel(`chat-${id}`)
+        .channel(`chat-${context.ownerId}-${context.targetId}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'buddy_messages',
-            filter: `recipient=eq.${myId}`,
+            filter: `recipient=eq.${context.ownerId}`,
           },
           (payload) => {
             const m = payload.new as Message & { recipient: string };
-            if (m.sender !== id) return; // a different conversation
+            if (
+              !requestIsCurrent() ||
+              m.sender !== context.targetId ||
+              m.recipient !== context.ownerId
+            ) return;
             setMessages((cur) =>
               mergeNewer(cur, [
                 { id: m.id, sender: m.sender, body: m.body, created_at: m.created_at },
               ]),
             );
-            markConversationRead(id).catch(() => {});
+            void markConversationRead(context.targetId, context.ownerId).catch(() => {});
           },
         )
         .subscribe();
 
       // Slow safety-net poll in case the realtime socket drops (incremental —
       // it asks only for messages newer than the one on screen).
-      const t = setInterval(pollNew, 20000);
+      const t = setInterval(() => void pollNew(), 20000);
       return () => {
+        if (generation === lifecycleGenerationRef.current) {
+          lifecycleGenerationRef.current += 1;
+        }
         clearInterval(t);
-        supabase.removeChannel(channel);
+        void supabase.removeChannel(channel);
       };
-    }, [load, pollNew, id, myId]),
+    }, [id, ownerId]),
   );
 
   /** Page further back when the reader scrolls to the top of the history. */
   async function loadOlder() {
-    if (!id || loadingOlder || !hasMore) return;
-    const oldest = messagesRef.current[messagesRef.current.length - 1];
-    if (!oldest) return;
+    const context = currentContext();
+    if (!context || dataContextKey !== context.key || !visibleHasMore) return;
+    const token = acquireAction(olderTokenRef, context);
+    if (!token) return;
+    const state = messageStateRef.current;
+    const ownedMessages = state.contextKey === context.key ? state.messages : [];
+    const oldest = ownedMessages[ownedMessages.length - 1];
+    if (!oldest) {
+      if (olderTokenRef.current === token) olderTokenRef.current = null;
+      return;
+    }
     setLoadingOlder(true);
     try {
-      const older = await listMessages(id, oldest.created_at);
+      const older = await listMessages(context.targetId, oldest.created_at, context.ownerId);
+      if (!actionOwns(olderTokenRef, token)) return;
       setMessages((cur) => {
         const seen = new Set(cur.map((m) => m.id));
         return [...cur, ...older.filter((m) => !seen.has(m.id))];
@@ -192,59 +351,88 @@ export default function BuddyChat() {
     } catch {
       // leave hasMore as-is; the next scroll retries
     } finally {
-      setLoadingOlder(false);
+      if (actionOwns(olderTokenRef, token)) setLoadingOlder(false);
+      if (olderTokenRef.current === token) olderTokenRef.current = null;
     }
   }
 
   async function onSend() {
-    if (!id || !text.trim() || sending) return;
-    const body = text.trim();
+    const context = currentContext();
+    const body = visibleText.trim();
+    if (!context || !body) return;
+    const token = acquireAction(sendTokenRef, context);
+    if (!token) return;
     setText('');
-    setSending(true);
+    setTextContextKey(context.key);
+    setSendingContextKey(context.key);
     try {
-      const sent = await sendMessage(id, body);
+      const sent = await sendMessage(context.targetId, body, context.ownerId);
+      if (!actionOwns(sendTokenRef, token)) return;
       setMessages((cur) => mergeNewer(cur, [sent]));
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
     } catch (e) {
-      setText(body); // give their words back so nothing is lost
+      if (!actionOwns(sendTokenRef, token)) return;
+      // Give their words back without overwriting anything typed while the
+      // first message was in flight.
+      setTextContextKey(context.key);
+      setText((current) => (current.trim() ? `${body}\n${current}` : body));
       Alert.alert('Could not send', String((e as Error).message ?? e));
     } finally {
-      setSending(false);
+      if (actionOwns(sendTokenRef, token)) setSendingContextKey(null);
+      if (sendTokenRef.current === token) sendTokenRef.current = null;
     }
   }
 
   function onReport() {
-    if (!id) return;
-    Alert.alert('Report or block', `Report ${authorLabel(buddy.name)}?`, [
-      { text: 'Cancel', style: 'cancel' },
+    const context = currentContext();
+    if (!context) return;
+    const baseToken = acquireAction(reportTokenRef, context);
+    if (!baseToken) return;
+    const token = { ...baseToken, started: false };
+    reportTokenRef.current = token;
+    const release = () => {
+      if (reportTokenRef.current === token) reportTokenRef.current = null;
+    };
+    Alert.alert('Report or block', `Report ${authorLabel(visibleBuddy.name)}?`, [
+      { text: 'Cancel', style: 'cancel', onPress: release },
       {
         text: 'Report & block',
         style: 'destructive',
         onPress: async () => {
+          if (!actionOwns(reportTokenRef, token) || token.started) {
+            release();
+            return;
+          }
+          token.started = true;
           try {
-            await reportUser(id, 'Reported from chat');
-            await blockUser(id);
+            await reportUser(context.targetId, 'Reported from chat', context.ownerId);
+            if (!actionOwns(reportTokenRef, token)) return;
+            await blockUser(context.targetId, context.ownerId);
+            if (!actionOwns(reportTokenRef, token)) return;
             Alert.alert('Done', 'Thanks — they’ve been reported and blocked.');
           } catch (e) {
+            if (!actionOwns(reportTokenRef, token)) return;
             Alert.alert('Could not report', String((e as Error).message ?? e));
+          } finally {
+            release();
           }
         },
       },
-    ]);
+    ], { cancelable: true, onDismiss: release });
   }
 
   const online =
-    !deleted &&
-    !!buddy.lastActive &&
-    buddy.presenceCheckedAt != null &&
+    !visibleDeleted &&
+    !!visibleBuddy.lastActive &&
+    visibleBuddy.presenceCheckedAt != null &&
     expiredPresenceKey !== presenceKey &&
-    buddy.presenceCheckedAt - new Date(buddy.lastActive).getTime() < ONLINE_WINDOW_MS;
-  const presence = deleted
+    visibleBuddy.presenceCheckedAt - new Date(visibleBuddy.lastActive).getTime() < ONLINE_WINDOW_MS;
+  const presence = visibleDeleted
     ? null
     : online
       ? 'Active now'
-      : buddy.lastActive
-        ? `Active ${timeAgo(buddy.lastActive)}`
+      : visibleBuddy.lastActive
+        ? `Active ${timeAgo(visibleBuddy.lastActive)}`
         : null;
 
   return (
@@ -258,18 +446,18 @@ export default function BuddyChat() {
         <View style={[styles.topBar, contentMax]}>
           <View style={styles.topIdentity}>
             <View>
-              {deleted || !buddy.avatar ? (
+              {visibleDeleted || !visibleBuddy.avatar ? (
                 <View style={[styles.topAvatar, styles.topAvatarFallback]}>
                   <Ionicons name="person" size={16} color={colors.textFaint} />
                 </View>
               ) : (
-                <CachedImage uri={buddy.avatar} style={styles.topAvatar} />
+                <CachedImage uri={visibleBuddy.avatar} style={styles.topAvatar} />
               )}
               {online ? <View style={styles.onlineDot} /> : null}
             </View>
             <View style={styles.topText}>
               <Text style={styles.topName} numberOfLines={1}>
-                {deleted ? 'Deleted Account' : authorLabel(buddy.name)}
+                {visibleDeleted ? 'Deleted Account' : authorLabel(visibleBuddy.name)}
               </Text>
               {presence ? (
                 <Text
@@ -281,7 +469,7 @@ export default function BuddyChat() {
               ) : null}
             </View>
           </View>
-          {!deleted ? (
+          {!visibleDeleted ? (
             <Pressable
               onPress={onReport}
               hitSlop={8}
@@ -294,7 +482,7 @@ export default function BuddyChat() {
         </View>
       </View>
 
-      {deleted ? (
+      {visibleDeleted ? (
         <View style={[styles.goneBanner, contentMax]}>
           <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
           <Text style={styles.goneText}>
@@ -305,7 +493,7 @@ export default function BuddyChat() {
         </View>
       ) : null}
 
-      {loading ? (
+      {visibleLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -313,14 +501,14 @@ export default function BuddyChat() {
         <FlatList
           ref={listRef}
           inverted
-          data={messages}
+          data={visibleMessages}
           keyExtractor={(m) => m.id}
           style={contentMax}
           contentContainerStyle={styles.list}
           onEndReached={loadOlder}
           onEndReachedThreshold={0.4}
           ListFooterComponent={
-            loadingOlder ? (
+            visibleLoadingOlder ? (
               <ActivityIndicator
                 size="small"
                 color={colors.textFaint}
@@ -337,17 +525,17 @@ export default function BuddyChat() {
           renderItem={({ item, index }) => (
             <MessageRow
               item={item}
-              newer={messages[index - 1]}
-              older={messages[index + 1]}
-              mine={item.sender === myId}
-              hasMore={hasMore}
-              avatar={deleted ? null : buddy.avatar}
+              newer={visibleMessages[index - 1]}
+              older={visibleMessages[index + 1]}
+              mine={item.sender === ownerId}
+              hasMore={visibleHasMore}
+              avatar={visibleDeleted ? null : visibleBuddy.avatar}
             />
           )}
         />
       )}
 
-      {deleted ? (
+      {visibleDeleted ? (
         <Text style={[styles.goneComposer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
           You can&apos;t reply to a deleted account.
         </Text>
@@ -364,18 +552,23 @@ export default function BuddyChat() {
               style={styles.input}
               placeholder="Message…"
               placeholderTextColor={colors.textFaint}
-              value={text}
-              onChangeText={setText}
+              value={visibleText}
+              onChangeText={(value) => {
+                const context = currentContext();
+                if (!context) return;
+                setTextContextKey(context.key);
+                setText(value);
+              }}
               multiline
             />
             <Pressable
               style={({ pressed }) => [
                 styles.sendBtn,
-                (!text.trim() || sending) && styles.sendDisabled,
-                pressed && text.trim() && styles.pressed,
+                (!visibleText.trim() || sending) && styles.sendDisabled,
+                pressed && visibleText.trim() && styles.pressed,
               ]}
               onPress={onSend}
-              disabled={!text.trim() || sending}
+              disabled={!visibleText.trim() || sending}
               accessibilityLabel="Send message"
             >
               {sending ? (
