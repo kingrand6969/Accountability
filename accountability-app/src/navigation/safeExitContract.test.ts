@@ -51,4 +51,24 @@ describe('history-aware screen exit contract', () => {
       closeBody.indexOf('Keyboard.dismiss()'),
     );
   });
+
+  test('successful food logging returns to Diet even from a cold link', () => {
+    const screen = source('src/app/food-search.tsx');
+
+    expect(screen).toContain('function exitFoodSearch()');
+    expect(screen).toMatch(
+      /function exitFoodSearch\(\) \{\s*if \(router\.canGoBack\(\)\) router\.back\(\);\s*else router\.replace\('\/diet' as never\);\s*\}/,
+    );
+    expect(screen.match(/router\.back\(\)/g)).toHaveLength(1);
+  });
+
+  test.each([
+    ['Buddy Card moderation', 'src/app/buddy-card/[id].tsx'],
+    ['Buddy Card editor save', 'src/app/buddy-card-edit.tsx'],
+  ])('%s never exits through raw history', (_name, file) => {
+    const screen = source(file);
+
+    expect(screen).toContain('navigateBackSafely');
+    expect(screen).not.toContain('router.back()');
+  });
 });

@@ -51,6 +51,7 @@ import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
 import { colors, font, radius, shadow, spacing, contentMax } from '../../ui/theme';
+import { navigateBackSafely } from '../../navigation/routeAccessContract';
 
 type ModerationContext = Readonly<{
   loadToken: BuddyCardLoadToken;
@@ -420,7 +421,7 @@ export default function BuddyCardScreen() {
       showToast('Blocked');
       moderationLockRef.current.release(actionToken);
       if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
-      router.back();
+      navigateBackSafely(router);
     } catch (e) {
       if (!moderationContextIsCurrent(context, actionToken)) return;
       if (/account changed/i.test(String((e as Error).message ?? e))) return;
@@ -473,7 +474,7 @@ export default function BuddyCardScreen() {
       showToast('Reported - thank you');
       moderationLockRef.current.release(actionToken);
       if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
-      router.back();
+      navigateBackSafely(router);
     } catch (e) {
       if (!moderationContextIsCurrent(context, actionToken)) return;
       if (/account changed/i.test(String((e as Error).message ?? e))) return;

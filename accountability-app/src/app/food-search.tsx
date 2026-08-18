@@ -44,6 +44,11 @@ export default function FoodSearch() {
   const g = parseFloat(grams) || 0;
   const previewKcal = selected ? scaleNutrient(selected.per100.kcal, g) : 0;
 
+  function exitFoodSearch() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/diet' as never);
+  }
+
   async function onAddSelected() {
     if (!selected) return;
     setSaving(true);
@@ -58,7 +63,7 @@ export default function FoodSearch() {
         quantity_g: g,
         log_date: todayString(),
       });
-      router.back();
+      exitFoodSearch();
     } catch (e) {
       Alert.alert('Could not add', String((e as Error).message ?? e));
     } finally {
@@ -83,7 +88,7 @@ export default function FoodSearch() {
         calories: kcal,
         log_date: todayString(),
       });
-      router.back();
+      exitFoodSearch();
     } catch (e) {
       Alert.alert('Could not add', String((e as Error).message ?? e));
     } finally {

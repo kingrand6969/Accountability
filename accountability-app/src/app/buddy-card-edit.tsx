@@ -54,6 +54,7 @@ import { getMyProfile } from '../profiles/api';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import { font, radius, shadow, spacing } from '../ui/theme';
+import { navigateBackSafely } from '../navigation/routeAccessContract';
 import {
   presentationTraitName,
   traitOptionSelected,
@@ -291,7 +292,7 @@ export default function BuddyCardEdit() {
       setSaving(false);
       savingRef.current.release();
       requestAnimationFrame(() => {
-        if (lifecycleRef.current.isCurrent(token)) router.back();
+        if (lifecycleRef.current.isCurrent(token)) navigateBackSafely(router);
       });
     } catch (error) {
       const { data: authAfterFailure } = await supabase.auth.getUser();
