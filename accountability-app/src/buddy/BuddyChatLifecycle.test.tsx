@@ -30,6 +30,12 @@ jest.mock('../auth/AuthProvider', () => ({
     loading: false,
   }),
 }));
+jest.mock('../ui/AppThemeProvider', () => {
+  const { themeColors } = require('../ui/theme') as typeof import('../ui/theme');
+  return {
+    useAppTheme: () => ({ colors: themeColors('light'), mode: 'light', setMode: () => {} }),
+  };
+});
 jest.mock('expo-router', () => {
   const ReactModule = require('react') as typeof React;
   return {

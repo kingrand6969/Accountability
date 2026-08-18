@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthProvider';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { supabase } from '../../lib/supabase';
 import {
   CHAT_PAGE,
@@ -29,7 +30,13 @@ import {
 import { MessageRow } from '../../buddy/ChatMessages';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { CachedImage } from '../../ui/CachedImage';
-import { colors, contentMax, font, radius, spacing } from '../../ui/theme';
+import {
+  contentMax,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../../ui/theme';
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -68,6 +75,8 @@ export default function BuddyChat() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const { session, loading: authLoading } = useAuth();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const ownerId = session?.user.id ?? null;
   const insets = useSafeAreaInsets();
   const contextKey = ownerId && id ? chatContextKey(ownerId, id) : null;
@@ -448,7 +457,7 @@ export default function BuddyChat() {
             <View>
               {visibleDeleted || !visibleBuddy.avatar ? (
                 <View style={[styles.topAvatar, styles.topAvatarFallback]}>
-                  <Ionicons name="person" size={16} color={colors.textFaint} />
+                  <Ionicons name="person" size={16} color={theme.ink.muted} />
                 </View>
               ) : (
                 <CachedImage uri={visibleBuddy.avatar} style={styles.topAvatar} />
@@ -476,7 +485,7 @@ export default function BuddyChat() {
               style={({ pressed }) => [styles.reportBtn, pressed && styles.pressed]}
               accessibilityLabel="Report or block this user"
             >
-              <Ionicons name="flag-outline" size={16} color={colors.textMuted} />
+              <Ionicons name="flag-outline" size={18} color={theme.ink.muted} />
             </Pressable>
           ) : null}
         </View>
@@ -484,7 +493,7 @@ export default function BuddyChat() {
 
       {visibleDeleted ? (
         <View style={[styles.goneBanner, contentMax]}>
-          <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
+          <Ionicons name="information-circle-outline" size={16} color={theme.ink.muted} />
           <Text style={styles.goneText}>
             This account is no longer available — they may have deleted their account, been removed,
             or blocked you. Their details are gone, but your conversation stays here unless you
@@ -495,7 +504,7 @@ export default function BuddyChat() {
 
       {visibleLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={theme.ink.action} />
         </View>
       ) : (
         <FlatList
@@ -511,7 +520,7 @@ export default function BuddyChat() {
             visibleLoadingOlder ? (
               <ActivityIndicator
                 size="small"
-                color={colors.textFaint}
+                color={theme.ink.muted}
                 style={styles.olderSpinner}
               />
             ) : null
@@ -530,6 +539,7 @@ export default function BuddyChat() {
               mine={item.sender === ownerId}
               hasMore={visibleHasMore}
               avatar={visibleDeleted ? null : visibleBuddy.avatar}
+              theme={theme}
             />
           )}
         />
@@ -551,7 +561,8 @@ export default function BuddyChat() {
             <TextInput
               style={styles.input}
               placeholder="Message…"
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={theme.ink.muted}
+              selectionColor={theme.ink.action}
               value={visibleText}
               onChangeText={(value) => {
                 const context = currentContext();
@@ -572,9 +583,9 @@ export default function BuddyChat() {
               accessibilityLabel="Send message"
             >
               {sending ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={theme.ink.inverse} size="small" />
               ) : (
-                <Ionicons name="arrow-up" size={19} color="#fff" />
+                <Ionicons name="arrow-up" size={19} color={theme.ink.inverse} />
               )}
             </Pressable>
           </View>
@@ -584,16 +595,16 @@ export default function BuddyChat() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.7 },
 
   // header
   topBarWrap: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.background,
+    borderBottomColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
   },
   topBar: {
     flexDirection: 'row',
@@ -611,7 +622,7 @@ const styles = StyleSheet.create({
   },
   topAvatar: { width: 34, height: 34, borderRadius: 17 },
   topAvatarFallback: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -622,20 +633,20 @@ const styles = StyleSheet.create({
     width: 11,
     height: 11,
     borderRadius: 6,
-    backgroundColor: '#16a34a',
+    backgroundColor: theme.status.success,
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: theme.surface.card,
   },
   topText: { flex: 1, minWidth: 0 },
-  topName: { fontFamily: font.bold, fontSize: 15.5, color: colors.text },
-  topPresence: { fontFamily: font.medium, fontSize: 12, color: colors.textMuted, marginTop: 1 },
-  topPresenceOn: { color: '#16a34a' },
+  topName: { fontFamily: font.bold, fontSize: 15.5, color: theme.ink.primary },
+  topPresence: { fontFamily: font.medium, fontSize: 12, color: theme.ink.muted, marginTop: 1 },
+  topPresenceOn: { color: theme.status.success },
   reportBtn: {
-    width: 40,
-    height: 40,
+    width: spacing.touch,
+    height: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
+    borderRadius: radius.pill,
   },
 
   // deleted-account notices
@@ -647,25 +658,26 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
   },
   goneText: {
     flex: 1,
-    color: colors.textMuted,
+    color: theme.ink.secondary,
     fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
   },
   goneComposer: {
     textAlign: 'center',
-    color: colors.textFaint,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     fontSize: 13,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
   },
 
   // messages
@@ -673,14 +685,14 @@ const styles = StyleSheet.create({
   olderSpinner: { paddingVertical: spacing.md },
   // counter-flip: the list is inverted, so the empty state needs flipping back
   emptyFlip: { transform: [{ scaleY: -1 }], alignItems: 'center', paddingVertical: 48, gap: 4 },
-  emptyTitle: { fontFamily: font.bold, fontSize: 17, color: colors.text },
-  empty: { textAlign: 'center', color: colors.textMuted, fontFamily: font.regular, fontSize: 13.5 },
+  emptyTitle: { fontFamily: font.bold, fontSize: 17, color: theme.ink.primary },
+  empty: { textAlign: 'center', color: theme.ink.muted, fontFamily: font.regular, fontSize: 13.5 },
 
   // composer
   inputBarWrap: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.background,
+    borderTopColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
   },
   inputBar: {
     flexDirection: 'row',
@@ -692,23 +704,24 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.xl,
     paddingHorizontal: 15,
     paddingVertical: 10,
     maxHeight: 100,
     fontSize: 15,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: theme.ink.primary,
+    backgroundColor: theme.surface.muted,
+    minHeight: spacing.touch,
   },
   sendBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
-    width: 42,
-    height: 42,
+    width: spacing.touch,
+    height: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendDisabled: { opacity: 0.4 },
+  sendDisabled: { opacity: theme.interaction.disabledOpacity },
 });
