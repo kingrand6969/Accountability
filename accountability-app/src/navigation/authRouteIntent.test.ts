@@ -13,12 +13,16 @@ describe('protected Group 3 route intent validation', () => {
     ['/story/restored_user-2026', '/story/restored_user-2026'],
     ['/notifications', '/notifications'],
     ['/search', '/search'],
+    ['/body', '/body'],
+    ['/journey-path', '/journey-path'],
     ['/compose?event=1&text=Show%20up', '/compose?event=1&text=Show+up'],
-      ['/win-card?buddyName=Maya', '/win-card?buddyName=Maya'],
+    ['/win-card?buddyName=Maya', '/win-card?buddyName=Maya'],
     [
       'accountabilityapp://story/restored_user-2026',
       '/story/restored_user-2026',
     ],
+    ['accountabilityapp-staging://body', '/body'],
+    ['accountabilityapp://journey-path', '/journey-path'],
   ])('accepts and canonicalizes %s', (input, expected) => {
     expect(normalizeProtectedRouteIntent(input)).toBe(expected);
   });
@@ -34,14 +38,18 @@ describe('protected Group 3 route intent validation', () => {
     '/story/a%5Cb',
     '/story/user id',
     '/notifications/extra',
+    '/body/extra',
+    '/journey-path/extra',
     '/search?redirect=%2Fstory%2Fsecret',
     '/compose?event=1&redirect=%2Fprivate',
     '/compose?event=0',
     '/compose?event=1&event=1',
     '/compose?text=%0Ainjected',
-        '/win-card?buddyName=a%0D%0Ab',
-        '/win-card?amount=%2450',
+    '/win-card?buddyName=a%0D%0Ab',
+    '/win-card?amount=%2450',
     '/groups#fragment',
+    'accountabilityapp-preview://body',
+    'accountabilityapp-staging://post/private',
     'https://evil.example/story/restored-user',
     'javascript:alert(1)',
   ])('rejects malformed, out-of-scope, or injectable intent %s', (input) => {
@@ -60,6 +68,19 @@ describe('protected Group 3 route intent validation', () => {
 });
 
 describe('one-shot authentication route intent lifecycle', () => {
+  test.each([
+    ['accountabilityapp-staging://body', '/body'],
+    ['accountabilityapp://journey-path', '/journey-path'],
+  ])('captures a signed-out cold link from either app scheme and resumes %s once', (href, expected) => {
+    const controller = createAuthRouteIntentController();
+    const ticket = controller.beginAsyncCapture();
+
+    expect(controller.completeAsyncCapture(ticket, href)).toBe(true);
+    expect(controller.peek()).toBe(expected);
+    expect(controller.transitionToOwner('owner-a')).toBe(expected);
+    expect(controller.transitionToOwner('owner-a')).toBeNull();
+  });
+
   test('captures while signed out and consumes exactly once on sign-in', () => {
     const controller = createAuthRouteIntentController();
     expect(controller.capture('/story/restored-user')).toBe(true);

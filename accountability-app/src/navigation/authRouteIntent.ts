@@ -1,6 +1,8 @@
 export type RouteQuery = Record<string, string | string[] | undefined>;
 
 const STATIC_ROUTES = new Set([
+  '/body',
+  '/journey-path',
   '/groups',
   '/group-new',
   '/pages',
@@ -8,6 +10,7 @@ const STATIC_ROUTES = new Set([
   '/notifications',
   '/search',
 ]);
+const APP_PROTOCOLS = new Set(['accountabilityapp:', 'accountabilityapp-staging:']);
 const ENTITY_ROUTE = /^\/(?:group|page|story)\/[A-Za-z0-9_-]+$/;
 const SAFE_VALUE = /^[^\u0000-\u001f\u007f]*$/;
 const SAFE_EDIT_ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -41,7 +44,7 @@ function pathAndQuery(input: string): { pathname: string; search: string; hash: 
     }
     const url = new URL(input);
     if (url.protocol === 'javascript:' || url.username || url.password) return null;
-    if (url.protocol === 'accountabilityapp:') {
+    if (APP_PROTOCOLS.has(url.protocol)) {
       return {
         pathname: `/${url.hostname}${url.pathname}`.replace(/\/+/g, '/'),
         search: url.search,
