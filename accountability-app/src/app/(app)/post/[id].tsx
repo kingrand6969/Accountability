@@ -6,7 +6,6 @@ import {
   AppState,
   BackHandler,
   FlatList,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -55,7 +54,9 @@ import {
 import { navigateBackSafely } from '../../../navigation/routeAccessContract';
 
 export default function PostDetailRoute() {
-  const { id, encouragement } = useLocalSearchParams<{ id: string; encouragement?: string }>();
+  const params = useLocalSearchParams<{ id: string; encouragement?: string }>();
+  const { id, encouragement } = params;
+  const { comment } = params as typeof params & { comment?: string };
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
   const viewKey = `${id ?? ''}:${myId ?? ''}`;
@@ -64,6 +65,7 @@ export default function PostDetailRoute() {
       key={viewKey}
       id={id}
       encouragement={encouragement}
+      comment={comment}
       myId={myId}
     />
   );
@@ -72,10 +74,12 @@ export default function PostDetailRoute() {
 function PostDetailView({
   id,
   encouragement,
+  comment,
   myId,
 }: {
   id: string;
   encouragement?: string;
+  comment?: string;
   myId: string | null;
 }) {
   const router = useRouter();
@@ -103,9 +107,8 @@ function PostDetailView({
   const commentsLoading = visibleSnapshot?.commentsLoading ?? false;
   const commentsError = visibleSnapshot?.commentsError ?? false;
   const [online, setOnline] = useState(true);
-    const [text, setText] = useState('');
-    const [keyboardInset, setKeyboardInset] = useState(0);
-    const [sending, setSending] = useState(false);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
   const [encouragementOpen, setEncouragementOpen] = useState(encouragement === '1');
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [sendingVoice, setSendingVoice] = useState(false);
@@ -113,6 +116,7 @@ function PostDetailView({
   const [reportingCommentIds, setReportingCommentIds] = useState<Set<string>>(() => new Set());
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const inputRef = useRef<TextInput>(null);
+  const commentIntentHandledRef = useRef(false);
   const mountedRef = useRef(true);
   const focusedRef = useRef(false);
 
@@ -124,16 +128,13 @@ function PostDetailView({
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const show = Keyboard.addListener('keyboardDidShow', (event) => {
-      setKeyboardInset(Math.max(0, event.endCoordinates.height));
+    if (comment !== '1' || !post || !isFocused || commentIntentHandledRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      commentIntentHandledRef.current = true;
+      inputRef.current?.focus();
     });
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardInset(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
+    return () => cancelAnimationFrame(frame);
+  }, [comment, isFocused, post]);
   const requestGeneration = useRef(0);
   const viewGeneration = useRef(0);
   const operations = useRef(new ImmersiveOperationCoordinator());
@@ -610,7 +611,6 @@ function PostDetailView({
         style={[
           styles.inputBar,
           { paddingBottom: Math.max(insets.bottom, spacing.sm) },
-          keyboardInset > 0 && { transform: [{ translateY: -keyboardInset }] },
         ]}
       >
         <TextInput

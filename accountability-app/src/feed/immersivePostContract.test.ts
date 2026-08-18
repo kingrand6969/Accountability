@@ -19,6 +19,9 @@ jest.mock('./PostVideo', () => ({ PostVideo: () => null }));
 
 const routeSource = readFileSync(require.resolve('../app/(app)/post/[id]'), 'utf8');
 const componentSource = readFileSync(require.resolve('./ImmersivePost'), 'utf8');
+const appConfig = JSON.parse(
+  readFileSync(require.resolve('../../app.json'), 'utf8'),
+) as { expo?: { android?: { softwareKeyboardLayoutMode?: string } } };
 
 function jsxCalls(componentSource: string, componentName: string): string[] {
   return [
@@ -255,6 +258,24 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(navigate).toHaveBeenCalledTimes(1);
   });
 
+  test('lets native Android resize move the comment composer exactly once', () => {
+    expect(appConfig.expo?.android?.softwareKeyboardLayoutMode).toBe('resize');
+    expect(routeSource).toContain('<KeyboardAvoidingView');
+    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : undefined}");
+    expect(routeSource).toContain("keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}");
+    expect(routeSource).not.toContain("Keyboard.addListener('keyboardDidShow'");
+    expect(routeSource).not.toContain("Keyboard.addListener('keyboardDidHide'");
+    expect(routeSource).not.toContain('keyboardInset');
+    expect(routeSource).not.toContain('translateY: -keyboardInset');
+  });
+
+  test('focuses the comment composer only for an explicit comment route intent', () => {
+    expect(routeSource).toContain('comment?: string');
+    expect(routeSource).toContain("comment !== '1'");
+    expect(routeSource).toContain('inputRef.current?.focus()');
+    expect(routeSource).not.toMatch(/<TextInput[\s\S]{0,300}\bautoFocus\b/);
+  });
+
   test('matches the approved immersive first viewport visual contract', () => {
     expect(componentSource).toContain('minHeight: height');
     expect(componentSource).toContain('label="Back"');
@@ -270,12 +291,6 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(componentSource).toContain('chevron-forward');
     expect(componentSource).toContain('actionBar');
     expect(componentSource).toContain("backgroundColor: 'rgba(2,8,20,.78)'");
-    expect(routeSource).toContain('<KeyboardAvoidingView');
-    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : undefined}");
-    expect(routeSource).toContain("Keyboard.addListener('keyboardDidShow'");
-    expect(routeSource).toContain("Keyboard.addListener('keyboardDidHide'");
-    expect(routeSource).toContain('translateY: -keyboardInset');
-    expect(routeSource).toContain("keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}");
     expect(routeSource).not.toContain('ListFooterComponent={');
     expect(routeSource).toMatch(/<FlatList[\s\S]*?\/>\s*<View[\s\S]*?styles\.inputBar[\s\S]*?<TextInput/);
     expect(routeSource).toContain('Math.max(insets.bottom, spacing.sm)');
