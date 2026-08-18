@@ -50,7 +50,7 @@ export const spacing = {
   xxl: 24,
   section: 32,
   screen: 16,
-  touch: 44,
+  touch: 48,
 } as const;
 
 export const radius = {
@@ -96,6 +96,69 @@ export const semanticColors = {
     attention: colors.accent,
   },
 } as const;
+
+export type AppThemeMode = 'light' | 'dark';
+
+const lightInteraction = {
+  pressedOverlay: 'rgba(8,26,58,0.08)',
+  disabledOpacity: 0.48,
+  skeleton: '#E8EDF3',
+  scrim: 'rgba(8,26,58,0.48)',
+  touchTarget: spacing.touch,
+} as const;
+
+const darkSemanticColors = {
+  surface: {
+    canvas: '#07111F',
+    card: '#0D1B2E',
+    raised: '#12233A',
+    muted: '#172A43',
+    inverse: '#F8FAFC',
+  },
+  ink: {
+    primary: '#F8FAFC',
+    secondary: '#CBD5E1',
+    muted: '#94A3B8',
+    inverse: colors.navy,
+    action: '#60A5FA',
+  },
+  border: {
+    subtle: '#243B55',
+    strong: '#475569',
+    action: '#60A5FA',
+    danger: '#F87171',
+  },
+  status: {
+    success: '#4ADE80',
+    successSoft: '#0D2A20',
+    danger: '#F87171',
+    dangerSoft: '#32151B',
+    attention: '#FBBF24',
+  },
+  interaction: {
+    pressedOverlay: 'rgba(255,255,255,0.10)',
+    disabledOpacity: 0.48,
+    skeleton: '#1E334D',
+    scrim: 'rgba(0,0,0,0.64)',
+    touchTarget: spacing.touch,
+  },
+} as const;
+
+const lightSemanticTheme = {
+  ...semanticColors,
+  interaction: lightInteraction,
+} as const;
+
+export type AppThemeColors = typeof lightSemanticTheme | typeof darkSemanticColors;
+
+/** Manual appearance only: AccountAbility intentionally offers Light or Dark. */
+export function resolveAppThemeMode(value: unknown): AppThemeMode {
+  return value === 'dark' ? 'dark' : 'light';
+}
+
+export function themeColors(mode: AppThemeMode): AppThemeColors {
+  return mode === 'dark' ? darkSemanticColors : lightSemanticTheme;
+}
 
 export const category = {
   body: semanticColors.status.success,

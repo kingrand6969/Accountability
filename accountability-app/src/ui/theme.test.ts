@@ -8,9 +8,11 @@ import {
   icon,
   motion,
   radius,
+  resolveAppThemeMode,
   semanticColors,
   shadow,
   spacing,
+  themeColors,
   type,
 } from './theme';
 import { font, typography } from './typography';
@@ -33,7 +35,7 @@ describe('AccountAbility semantic theme contract', () => {
   });
 
   it('provides layout, interaction, elevation, icon, and motion roles', () => {
-    expect(spacing.touch).toBeGreaterThanOrEqual(44);
+    expect(spacing.touch).toBe(48);
     expect(spacing.screen).toBe(spacing.lg);
     expect(radius.card).toBe(radius.lg);
     expect(radius.sheet).toBe(radius.xl);
@@ -42,6 +44,31 @@ describe('AccountAbility semantic theme contract', () => {
     expect(icon.size.md).toBe(24);
     expect(motion.duration.fast).toBeLessThan(motion.duration.standard);
     expect(motion.reduced.duration).toBe(0);
+  });
+
+  it('provides complete approved light and dark semantic palettes', () => {
+    const light = themeColors('light');
+    const dark = themeColors('dark');
+
+    expect(light.surface.canvas).toBe('#F7F4EC');
+    expect(light.ink.primary).toBe('#081A3A');
+    expect(dark.surface.canvas).toBe('#07111F');
+    expect(dark.surface.card).toBe('#0D1B2E');
+    expect(dark.ink.primary).toBe('#F8FAFC');
+    expect(dark.ink.action).toBe('#60A5FA');
+    expect(light.interaction.touchTarget).toBe(48);
+    expect(dark.interaction.touchTarget).toBe(48);
+    expect(light.interaction.disabledOpacity).toBeGreaterThan(0);
+    expect(light.interaction.disabledOpacity).toBeLessThan(1);
+    expect(dark.interaction.skeleton).not.toBe(light.interaction.skeleton);
+  });
+
+  it('defaults invalid and legacy appearance values to the approved light mode', () => {
+    expect(resolveAppThemeMode('light')).toBe('light');
+    expect(resolveAppThemeMode('dark')).toBe('dark');
+    expect(resolveAppThemeMode('system')).toBe('light');
+    expect(resolveAppThemeMode(null)).toBe('light');
+    expect(resolveAppThemeMode({ mode: 'dark' })).toBe('light');
   });
 
   it('uses only approved typography families for semantic roles', () => {
