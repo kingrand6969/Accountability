@@ -364,7 +364,7 @@ export default function Compose() {
       suppressNextDebounce.current = false;
       return;
     }
-    const timer = setTimeout(() => { void flushDraft(); }, 500);
+    const timer = setTimeout(() => { if (!postingRef.current) void flushDraft(); }, 500);
     return () => clearTimeout(timer);
     // Every persisted field intentionally triggers the debounce.
   }, [draftReady, body, audience, showOnCard, draftMedia, eventOpen, evTitle, evDate, evTime, evLocation, taggedIds, keepInMemories]);
@@ -747,8 +747,9 @@ export default function Compose() {
     const submittedOwner = ownerRef.current;
     const submittedToken = mountTokenRef.current;
     const operationId = submittedDraft?.draftId ?? draftId;
+    postingRef.current = true;
+    setPosting(true);
     if (editingId) {
-      setPosting(true);
       try {
         const result = await completeRemoteSubmission(async () => {
           await updatePost(editingId, body.trim());
@@ -757,6 +758,7 @@ export default function Compose() {
         finishAfterRemoteSuccess('Post updated', result.cleanupError, submittedDraft, submittedOwner, submittedToken);
       } catch (e) {
         if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
+          postingRef.current = false;
           Alert.alert('Could not update post', String((e as Error).message ?? e));
           setPosting(false);
         }
@@ -764,7 +766,6 @@ export default function Compose() {
       return;
     }
     if (eventOpen) {
-      setPosting(true);
       try {
         if (!submittedOwner) throw new Error('Sign in again before announcing this event.');
         const result = await completeRemoteSubmission(() => createEvent({
@@ -788,13 +789,13 @@ export default function Compose() {
         }
       } catch (e) {
         if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
+          postingRef.current = false;
           Alert.alert('Could not announce event', String((e as Error).message ?? e));
           setPosting(false);
         }
       }
       return;
     }
-    setPosting(true);
     const postedText = body.trim();
     const postedImageUri = previewUri;
     const submittedMedia = submittedDraft?.media ?? draftMedia;
@@ -874,6 +875,7 @@ export default function Compose() {
       }
     } catch (e) {
       if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
+        postingRef.current = false;
         Alert.alert('Could not post', String((e as Error).message ?? e));
         setPosting(false);
       }

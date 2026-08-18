@@ -219,11 +219,22 @@ describe('Compose production binding', () => {
   const source = readFileSync(require.resolve('../app/compose'), 'utf8');
 
   test('binds debounced field saves and immediate background flush', () => {
-    expect(source).toContain('setTimeout(() => { void flushDraft(); }, 500)');
+    expect(source).toContain(
+      'setTimeout(() => { if (!postingRef.current) void flushDraft(); }, 500)',
+    );
     expect(source).toContain(
       "if (state !== 'active' && !postingRef.current) void flushDraft()",
     );
     expect(source).toContain('[draftReady, body, audience, showOnCard, draftMedia');
+  });
+
+  test('closes the draft-save gate synchronously before submission begins', () => {
+    const submitIndex = source.indexOf('async function onPost()');
+    const gateIndex = source.indexOf('postingRef.current = true', submitIndex);
+    const stateIndex = source.indexOf('setPosting(true)', submitIndex);
+
+    expect(gateIndex).toBeGreaterThan(submitIndex);
+    expect(stateIndex).toBeGreaterThan(gateIndex);
   });
 
   test('binds owner-guarded Restore and Discard plus truthful notices', () => {
