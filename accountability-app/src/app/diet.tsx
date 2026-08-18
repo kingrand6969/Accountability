@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,9 +26,20 @@ import { FoodScanSheet } from '../scan/FoodScanSheet';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function Diet() {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => dietPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const router = useRouter();
   const { isPro, loading: proLoading } = useIsPro();
   const [logs, setLogs] = useState<FoodLog[]>([]);
@@ -150,7 +161,7 @@ export default function Diet() {
   if (proLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -159,7 +170,7 @@ export default function Diet() {
     return (
       <View style={styles.upsell}>
         <View style={styles.upsellIconCircle}>
-          <Ionicons name="nutrition-outline" size={48} color={colors.pro} />
+          <Ionicons name="nutrition-outline" size={48} color={palette.pro} />
         </View>
         <Text style={styles.upsellTitle}>Diet & Calorie Tracker</Text>
         <Text style={styles.upsellText}>
@@ -183,7 +194,7 @@ export default function Diet() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -203,9 +214,9 @@ export default function Diet() {
                 {remaining >= 0 ? `${remaining} left` : `${-remaining} over`}
               </Text>
               <View style={styles.macros}>
-                <Macro label="Protein" value={protein} />
-                <Macro label="Carbs" value={carbs} />
-                <Macro label="Fat" value={fat} />
+                <Macro label="Protein" value={protein} styles={styles} />
+                <Macro label="Carbs" value={carbs} styles={styles} />
+                <Macro label="Fat" value={fat} styles={styles} />
               </View>
             </View>
 
@@ -214,7 +225,7 @@ export default function Diet() {
               <TextInput
                 style={styles.targetInput}
                 keyboardType="number-pad"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={palette.placeholder}
                 value={targetText}
                 onChangeText={setTargetText}
                 onEndEditing={onSaveTarget}
@@ -249,7 +260,7 @@ export default function Diet() {
               accessibilityLabel={`Remove ${item.name}`}
               style={({ pressed }) => [styles.delete, pressed && styles.pressed]}
             >
-              <Ionicons name="close" size={20} color={colors.textFaint} />
+              <Ionicons name="close" size={20} color={palette.placeholder} />
             </Pressable>
           </View>
         )}
@@ -264,10 +275,10 @@ export default function Diet() {
           accessibilityLabel="Scan a meal with the camera"
         >
           {scanning ? (
-            <ActivityIndicator color={colors.primary} />
+            <ActivityIndicator color={palette.action} />
           ) : (
             <>
-              <Ionicons name="camera" size={19} color={colors.primary} />
+              <Ionicons name="camera" size={19} color={palette.action} />
               <Text style={styles.scanFabText}>Scan meal</Text>
             </>
           )}
@@ -278,7 +289,7 @@ export default function Diet() {
           accessibilityRole="button"
           accessibilityLabel="Add food"
         >
-          <Ionicons name="add" size={20} color={colors.onPrimary} />
+          <Ionicons name="add" size={20} color={palette.onAction} />
           <Text style={styles.fabText}>Add food</Text>
         </Pressable>
       </View>
@@ -293,7 +304,15 @@ export default function Diet() {
   );
 }
 
-function Macro({ label, value }: { label: string; value: number }) {
+function Macro({
+  label,
+  value,
+  styles,
+}: {
+  label: string;
+  value: number;
+  styles: ReturnType<typeof createStyles>;
+}) {
   return (
     <View style={styles.macro}>
       <Text style={styles.macroValue}>{Math.round(value)}g</Text>
@@ -302,72 +321,92 @@ function Macro({ label, value }: { label: string; value: number }) {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function dietPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    success: mode === 'light' ? legacyColors.success : theme.status.success,
+    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
+    pro: mode === 'light' ? legacyColors.pro : theme.ink.action,
+    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = dietPalette(theme, mode);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   pressed: { opacity: 0.7 },
   listContent: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 90 },
   summary: { alignItems: 'center', paddingVertical: spacing.md },
-  consumed: { fontSize: 44, fontFamily: font.extrabold, color: colors.success },
-  ofTarget: { color: colors.textMuted, fontFamily: font.regular, marginTop: -2 },
-  remaining: { marginTop: spacing.xs, fontFamily: font.bold, color: colors.primary },
-  over: { color: colors.danger },
+  consumed: { fontSize: 44, fontFamily: font.extrabold, color: palette.success },
+  ofTarget: { color: palette.muted, fontFamily: font.regular, marginTop: -2 },
+  remaining: { marginTop: spacing.xs, fontFamily: font.bold, color: palette.action },
+  over: { color: palette.danger },
   macros: { flexDirection: 'row', gap: 28, marginTop: 14 },
   macro: { alignItems: 'center' },
-  macroValue: { fontSize: 16, fontFamily: font.bold, color: colors.text },
-  macroLabel: { color: colors.textFaint, fontFamily: font.medium, fontSize: 12 },
+  macroValue: { fontSize: 16, fontFamily: font.bold, color: palette.ink },
+  macroLabel: { color: palette.placeholder, fontFamily: font.medium, fontSize: 12 },
   targetRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: 14,
     marginTop: spacing.sm,
   },
-  targetLabel: { fontFamily: font.semibold, color: colors.text },
+  targetLabel: { fontFamily: font.semibold, color: palette.ink },
   targetInput: {
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: palette.border,
+    backgroundColor: palette.card,
     borderRadius: radius.sm,
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
     minWidth: 80,
-    minHeight: 44,
+    minHeight: spacing.touch,
     textAlign: 'right',
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
+    color: palette.ink,
   },
   todayHeading: {
     fontSize: 16,
     fontFamily: font.bold,
-    color: colors.text,
+    color: palette.ink,
     marginTop: spacing.lg,
     marginBottom: spacing.xs,
   },
   foodRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: 14,
   },
-  foodName: { fontSize: 15, fontFamily: font.semibold, color: colors.text },
-  foodMeta: { color: colors.textMuted, fontFamily: font.regular, marginTop: 2, fontSize: 13 },
+  foodName: { fontSize: 15, fontFamily: font.semibold, color: palette.ink },
+  foodMeta: { color: palette.muted, fontFamily: font.regular, marginTop: 2, fontSize: 13 },
   delete: {
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: spacing.touch,
+    minHeight: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -380,9 +419,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   scanFab: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderRadius: 28,
-    minHeight: 48,
+    minHeight: spacing.touch,
     minWidth: 128,
     paddingVertical: 14,
     paddingHorizontal: 18,
@@ -391,19 +430,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  scanFabText: { color: colors.primary, fontFamily: font.bold, fontSize: 14.5 },
+  scanFabText: { color: palette.action, fontFamily: font.bold, fontSize: 14.5 },
   fabBusy: { opacity: 0.8 },
   fab: {
-    backgroundColor: colors.success,
+    backgroundColor: palette.success,
     borderRadius: 28,
-    minHeight: 48,
+    minHeight: spacing.touch,
     paddingVertical: 14,
     paddingHorizontal: 22,
     flexDirection: 'row',
@@ -415,25 +454,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
-  fabText: { color: colors.onPrimary, fontSize: 16, fontFamily: font.bold },
+  fabText: { color: palette.onAction, fontSize: 16, fontFamily: font.bold },
   upsell: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
     gap: 10,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   upsellIconCircle: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: colors.proSoft,
+    backgroundColor: palette.proSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
   },
-  upsellTitle: { fontSize: 22, fontFamily: font.extrabold, color: colors.text },
-  upsellText: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
+  upsellTitle: { fontSize: 22, fontFamily: font.extrabold, color: palette.ink },
+  upsellText: { color: palette.muted, fontFamily: font.regular, textAlign: 'center' },
   upsellBtn: { marginTop: spacing.sm, minWidth: 200 },
-});
+  });
+}

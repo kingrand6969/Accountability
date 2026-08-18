@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -11,7 +11,15 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { FoodItem, FoodScan } from './api';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 /**
  * Review sheet for a scanned meal.
@@ -33,6 +41,9 @@ export function FoodScanSheet({
   onCancel: () => void;
   onSave: (items: FoodItem[]) => void;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => foodScanPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [items, setItems] = useState<FoodItem[]>(scan?.items ?? []);
   const [dropped, setDropped] = useState<Set<number>>(new Set());
 
@@ -82,13 +93,13 @@ export function FoodScanSheet({
           <View style={styles.handle} />
           <View style={styles.head}>
             <Text style={styles.title}>Scanned meal</Text>
-            <Pressable onPress={onCancel} hitSlop={10} accessibilityLabel="Close">
-              <Ionicons name="close" size={22} color={colors.textFaint} />
+            <Pressable onPress={onCancel} hitSlop={13} accessibilityLabel="Close">
+              <Ionicons name="close" size={22} color={palette.placeholder} />
             </Pressable>
           </View>
 
           <Text style={styles.disclaimer}>
-            <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} /> These
+            <Ionicons name="information-circle-outline" size={13} color={palette.muted} /> These
             are estimates from your photo — tap a portion to correct it before saving.
           </Text>
 
@@ -111,14 +122,14 @@ export function FoodScanSheet({
                           return next;
                         })
                       }
-                      hitSlop={8}
+                      hitSlop={11}
                       accessibilityLabel={off ? `Include ${it.name}` : `Remove ${it.name}`}
                       style={styles.check}
                     >
                       <Ionicons
                         name={off ? 'ellipse-outline' : 'checkmark-circle'}
                         size={22}
-                        color={off ? colors.textFaint : colors.success}
+                        color={off ? palette.placeholder : palette.success}
                       />
                     </Pressable>
                     <View style={{ flex: 1 }}>
@@ -166,7 +177,7 @@ export function FoodScanSheet({
             accessibilityLabel="Add to today's food log"
           >
             {saving ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={palette.onAction} />
             ) : (
               <Text style={styles.saveText}>
                 Add {kept.length > 0 ? `${kept.length} item${kept.length === 1 ? '' : 's'}` : ''} to
@@ -180,10 +191,27 @@ export function FoodScanSheet({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' },
+function foodScanPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    success: mode === 'light' ? legacyColors.success : theme.status.success,
+    scrim: mode === 'light' ? 'rgba(15,23,42,0.45)' : theme.interaction.scrim,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = foodScanPalette(theme, mode);
+  return StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: palette.scrim, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: spacing.lg,
@@ -197,68 +225,69 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.border,
+    backgroundColor: palette.border,
     marginBottom: 4,
   },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontFamily: font.extrabold, fontSize: 18, color: colors.text },
+  title: { fontFamily: font.extrabold, fontSize: 18, color: palette.ink },
   disclaimer: {
     fontFamily: font.regular,
     fontSize: 12.5,
     lineHeight: 18,
-    color: colors.textMuted,
+    color: palette.muted,
   },
   list: { maxHeight: 320 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
   },
   rowOff: { opacity: 0.45 },
   check: { width: 26, alignItems: 'center' },
-  name: { fontFamily: font.semibold, fontSize: 14.5, color: colors.text },
-  macros: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  name: { fontFamily: font.semibold, fontSize: 14.5, color: palette.ink },
+  macros: { fontFamily: font.regular, fontSize: 12, color: palette.muted, marginTop: 2 },
   gramsWrap: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   grams: {
     minWidth: 54,
     textAlign: 'right',
     fontFamily: font.bold,
     fontSize: 15,
-    color: colors.text,
+    color: palette.ink,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: palette.border,
     paddingVertical: 2,
   },
-  gramsUnit: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted },
+  gramsUnit: { fontFamily: font.medium, fontSize: 13, color: palette.muted },
   totals: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
     paddingTop: 6,
   },
-  totalKcal: { fontFamily: font.extrabold, fontSize: 20, color: colors.text },
-  totalMacros: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted },
+  totalKcal: { fontFamily: font.extrabold, fontSize: 20, color: palette.ink },
+  totalMacros: { fontFamily: font.medium, fontSize: 13, color: palette.muted },
   empty: {
     fontFamily: font.regular,
     fontSize: 13.5,
     lineHeight: 20,
-    color: colors.textMuted,
+    color: palette.muted,
     paddingVertical: spacing.lg,
   },
   save: {
     minHeight: 52,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
   },
   saveOff: { opacity: 0.5 },
-  saveText: { fontFamily: font.bold, fontSize: 15.5, color: colors.onPrimary },
-});
+  saveText: { fontFamily: font.bold, fontSize: 15.5, color: palette.onAction },
+  });
+}
