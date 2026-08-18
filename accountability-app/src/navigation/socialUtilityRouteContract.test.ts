@@ -424,12 +424,10 @@ describe('notification behavioral safety', () => {
     },
   );
 
-  test.each([
-    ['missing', () => Promise.resolve(null)],
-    ['private', () => Promise.reject({ code: '42501', message: 'row level policy' })],
-  ])('uses one generic fallback for a %s post target', async (_label, target) => {
+  test('opens a post immediately without fetching it twice', async () => {
     mockListNotifications.mockResolvedValueOnce([notification]);
-    mockGetPost.mockImplementationOnce(target);
+    const pending = deferred<object | null>();
+    mockGetPost.mockReturnValueOnce(pending.promise);
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = render(React.createElement(Notifications));
@@ -437,19 +435,19 @@ describe('notification behavioral safety', () => {
     await flush();
     expect(mockMarkAllRead).toHaveBeenCalledWith('owner-a');
     const row = renderer.root.findByProps({ accessibilityLabel: 'Maya cheered you' });
-    await act(async () => row.props.onPress());
-    await flush();
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Unavailable',
-      'This notification target is no longer available.',
-    );
-    expect(mockRouter.push).not.toHaveBeenCalled();
+    act(() => {
+      void row.props.onPress();
+    });
+    expect(mockRouter.push).toHaveBeenCalledWith({
+      pathname: '/post/[id]',
+      params: { id: notification.post_id },
+    });
+    expect(mockGetPost).not.toHaveBeenCalled();
+    expect(Alert.alert).not.toHaveBeenCalled();
   });
 
-  test('does not navigate when account A target lookup resolves after switching to B', async () => {
-    const pending = deferred<object | null>();
+  test('collapses same-tick duplicate notification taps into one navigation', async () => {
     mockListNotifications.mockResolvedValue([notification]);
-    mockGetPost.mockReturnValueOnce(pending.promise);
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = render(React.createElement(Notifications));
@@ -458,13 +456,9 @@ describe('notification behavioral safety', () => {
     const row = renderer.root.findByProps({ accessibilityLabel: 'Maya cheered you' });
     act(() => {
       void row.props.onPress();
+      void row.props.onPress();
     });
-    mockOwnerId = 'owner-b';
-    await act(async () => renderer.update(React.createElement(Notifications)));
-    pending.resolve({ id: notification.post_id });
-    await flush();
-    expect(mockRouter.push).not.toHaveBeenCalled();
-    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(mockRouter.push).toHaveBeenCalledTimes(1);
   });
 });
 

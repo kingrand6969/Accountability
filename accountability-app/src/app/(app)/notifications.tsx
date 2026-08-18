@@ -22,7 +22,6 @@ import {
 import { EmptyState } from '../../ui/EmptyState';
 import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
 import { useAuth } from '../../auth/AuthProvider';
-import { getPost } from '../../feed/api';
 
 const TYPE_ICON: Record<AppNotification['type'], { icon: string; tint: string }> = {
   like: { icon: 'flame', tint: colors.cheer },
@@ -98,35 +97,25 @@ export default function Notifications() {
     }, [load]),
   );
 
-  async function open(n: AppNotification) {
+  function open(n: AppNotification) {
     const requestOwner = ownerId;
-    const lifecycle = lifecycleGeneration.current;
-    if (!requestOwner || opensInFlight.current.has(n.id)) return;
+    if (
+      !requestOwner ||
+      requestOwner !== currentOwnerRef.current ||
+      opensInFlight.current.has(n.id)
+    )
+      return;
+    opensInFlight.current.add(n.id);
     if (!n.post_id) {
       if ((n.type === 'buddy_request' || n.type === 'buddy_accept') && n.actor_id) {
         router.push({ pathname: '/buddy-card/[id]', params: { id: n.actor_id } });
       } else {
+        opensInFlight.current.delete(n.id);
         Alert.alert('Unavailable', 'This notification target is no longer available.');
       }
       return;
     }
-    opensInFlight.current.add(n.id);
-    try {
-      const target = await getPost(n.post_id);
-      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current) return;
-      if (!target) {
-        Alert.alert('Unavailable', 'This notification target is no longer available.');
-        return;
-      }
-      router.push({ pathname: '/post/[id]', params: { id: n.post_id } });
-    } catch {
-      if (lifecycle !== lifecycleGeneration.current || requestOwner !== currentOwnerRef.current) return;
-      Alert.alert('Unavailable', 'This notification target is no longer available.');
-    } finally {
-      if (lifecycle === lifecycleGeneration.current && requestOwner === currentOwnerRef.current) {
-        opensInFlight.current.delete(n.id);
-      }
-    }
+    router.push({ pathname: '/post/[id]', params: { id: n.post_id } });
   }
 
   return (
