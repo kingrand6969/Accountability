@@ -16,7 +16,6 @@ import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import * as Crypto from 'expo-crypto';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { createPost } from '../feed/api';
 import { addStoryIdempotent } from '../stories/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { saveImageToMemories } from '../memories/api';
@@ -63,7 +62,8 @@ import {
   type AchievementCompletion,
   type AchievementStoryOperation,
 } from '../entry/achievementCompletion';
-import { parseFlexContext, type FlexKind } from '../entry/flexContext';
+import { parseFlexContext } from '../entry/flexContext';
+import { publishFlexFeedPost } from '../entry/flexFeedPost';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
@@ -254,7 +254,7 @@ export default function WinCard() {
   const cardModel = captureContext.dto;
   const proofCardSummary = buildProofCardSummary(cardModel);
   const completionPayload: AchievementCompletion = {
-    kind: achievementCompletionKind(flexContext.kind),
+    kind: flexContext.kind,
     sourceId: flexContext.sourceId,
     text: message,
     mediaUri: null,
@@ -293,6 +293,7 @@ export default function WinCard() {
   async function onShareToFeed() {
     const token = beginAction('post-feed');
     if (!token) throw new Error('Another share is already in progress.');
+    const expectedOwnerId = expectedProofOwner(token);
     let pending: PendingProofActionV1 | null = null;
     let dispatched = false;
     try {
@@ -305,8 +306,6 @@ export default function WinCard() {
         throw new Error('Could not prepare the Daily Proof image. Please try again.');
       }
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      const imageUrl = await uploadPostImage(base64, 'png');
-      if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
       pending = await journalDurableAction(token, 'post-feed', base64, message);
       if (!await requireCurrentActionOwner(token)) {
         await confirmDurableAction(pending);
@@ -314,10 +313,18 @@ export default function WinCard() {
         throw new Error('Account changed.');
       }
       dispatched = true;
+      const imageUrl = await uploadPostImage(base64, 'png', pending.operationId, expectedOwnerId);
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      await createPost(message, imageUrl);
+      await publishFlexFeedPost({
+        context: flexContext,
+        mediaRef: imageUrl,
+        mediaSha256: pending.match.imageSha256,
+        operationId: pending.operationId,
+        expectedOwnerId,
+      });
       const ownerStayedCurrent = await requireCurrentActionOwner(token);
       await confirmDurableAction(pending);
+      pending = null;
       if (!ownerStayedCurrent) throw new Error('Account changed.');
       mutateForToken(token, () => {
         dispatchAction({ type: 'success', action: 'post-feed' });
@@ -327,6 +334,10 @@ export default function WinCard() {
       if (pending && dispatched) {
         retainAmbiguous(token, pending, 'The post may have completed. Check Feed before trying again.');
       } else {
+        if (pending) {
+          await confirmDurableAction(pending);
+          pending = null;
+        }
         mutateForToken(token, () => {
           dispatchAction({ type: 'error', action: 'post-feed', message: safeProofActionMessage('dispatch') });
           Alert.alert('Could not post Daily Proof', 'Nothing was posted. Please try again.');
@@ -648,12 +659,6 @@ export default function WinCard() {
       if (isRetryCurrent()) markLoadError();
     }
   }
-}
-
-function achievementCompletionKind(kind: FlexKind): AchievementCompletion['kind'] {
-  return kind === 'run' || kind === 'workout' || kind === 'challenge' || kind === 'streak'
-    ? kind
-    : 'streak';
 }
 
 function ScreenHeader({ onBack }: { onBack: () => void }) {
