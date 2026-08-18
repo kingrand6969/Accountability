@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase';
-import { joinGroup } from '../groups/api';
 
 export type PostEvent = {
   id: string;
@@ -65,7 +64,11 @@ export async function createEvent(input: {
   };
 }
 
-/** "Yes, I'll attend" — joins the event's group automatically. */
-export async function attendEvent(groupId: string): Promise<void> {
-  await joinGroup(groupId);
+/** "Yes, I'll attend" — joins only through the event announcement's visibility boundary. */
+export async function attendEvent(eventId: string, expectedOwner: string): Promise<void> {
+  const { error } = await supabase.rpc('attend_event', {
+    p_event_id: eventId,
+    p_expected_owner: expectedOwner,
+  });
+  if (error) throw error;
 }

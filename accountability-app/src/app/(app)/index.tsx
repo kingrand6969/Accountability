@@ -165,6 +165,8 @@ export default function Feed() {
   const connectivityRef = useRef(true);
   const profileGeneration = useRef(0);
   const currentUserIdRef = useRef(myId);
+  const attendanceIdentity = useMemo(() => ({ ownerId: myId }), [myId]);
+  const attendanceIdentityRef = useRef(attendanceIdentity);
   const dataOwnerIdRef = useRef(dataOwnerId);
   const postCountRef = useRef(posts.length);
   const [viewabilityConfig] = useState({ itemVisiblePercentThreshold: 65, minimumViewTime: 180 });
@@ -176,6 +178,8 @@ export default function Feed() {
   // Latest-value refs prevent stale owner work during the render-to-effect gap and keep load stable.
   // eslint-disable-next-line react-hooks/refs
   currentUserIdRef.current = myId;
+  // eslint-disable-next-line react-hooks/refs
+  attendanceIdentityRef.current = attendanceIdentity;
   const pendingCreateAction = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { unread } = useUnreadNotifications();
   const { isPro, loading: proLoading } = useIsPro();
@@ -424,15 +428,34 @@ export default function Feed() {
   }
 
   async function onAttend(post: FeedPost) {
-    if (!post.event || attending.has(post.event.group_id)) return;
-    setAttending((current) => new Set(current).add(post.event!.group_id));
+    const requestedViewer = myId;
+    if (!post.event) return;
+    const eventId = post.event.id;
+    const expectedOwner = post.user_id;
+    const eventTitle = post.event.title;
+    const requestedIdentity = attendanceIdentity;
+    if (
+      !requestedViewer
+      || currentUserIdRef.current !== requestedViewer
+      || !feedRowsBelongToView(dataOwnerIdRef.current, requestedViewer)
+      || attending.has(eventId)
+    ) return;
+    setAttending((current) => new Set(current).add(eventId));
     try {
-      await attendEvent(post.event.group_id);
-      showToast(`You're in! Added to the "${post.event.title}" group 🎉`);
+      await attendEvent(eventId, expectedOwner);
+      if (
+        currentUserIdRef.current !== requestedViewer
+        || attendanceIdentityRef.current !== requestedIdentity
+      ) return;
+      showToast(`You're in! Added to the "${eventTitle}" group 🎉`);
     } catch (error) {
+      if (
+        currentUserIdRef.current !== requestedViewer
+        || attendanceIdentityRef.current !== requestedIdentity
+      ) return;
       setAttending((current) => {
         const next = new Set(current);
-        next.delete(post.event!.group_id);
+        next.delete(eventId);
         return next;
       });
       Alert.alert('Could not join', String((error as Error).message ?? error));
@@ -682,7 +705,7 @@ export default function Feed() {
                   mediaActive={activeVideoId === item.id}
                   currentUserId={myId}
                   preview={encouragementPreviews.get(item.id)}
-                  attending={!!item.event && attending.has(item.event.group_id)}
+                  attending={!!item.event && attending.has(item.event.id)}
                   onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}
                   onComment={() => router.push({ pathname: '/post/[id]', params: { id: item.id, comment: '1' } } as never)}
                   onOpenMedia={item.post_type === 'video' || !item.image_url ? undefined : () => setPreviewPhoto(item.image_url)}

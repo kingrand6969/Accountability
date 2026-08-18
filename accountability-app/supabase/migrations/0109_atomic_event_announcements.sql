@@ -5,6 +5,60 @@
 
 begin;
 
+-- Event groups follow the announcement audience. Public event groups remain
+-- discoverable, while a Buddies-only event never leaks its title, place or
+-- description through the general groups directory.
+drop policy if exists groups_select on public.groups;
+create policy groups_select on public.groups
+  for select to authenticated
+  using (
+    privacy = 'public'
+    or created_by = auth.uid()
+    or exists (
+      select 1
+      from public.group_members gm
+      where gm.group_id = groups.id
+        and gm.user_id = auth.uid()
+    )
+  );
+
+-- Event metadata inherits the centralized post boundary, including Buddies,
+-- Public, moderation and two-way block checks. Owners retain direct access.
+drop policy if exists events_select on public.events;
+create policy events_select on public.events
+  for select to authenticated
+  using (
+    created_by = auth.uid()
+    or exists (
+      select 1
+      from public.posts p
+      where p.event_id = events.id
+        and public.can_view_post(p.id, auth.uid())
+    )
+  );
+
+-- Repair event groups created by the legacy multi-step flow before applying
+-- the privacy policy above. A group is public only when its owner published an
+-- associated Public event announcement.
+update public.groups g
+set privacy = case
+  when exists (
+    select 1
+    from public.events e
+    join public.posts p on p.event_id = e.id
+    where e.group_id = g.id
+      and p.user_id = e.created_by
+      and p.post_type = 'event'
+      and p.audience = 'public'
+  ) then 'public'
+  else 'private'
+end
+where exists (
+  select 1
+  from public.events e
+  where e.group_id = g.id
+);
+
 create or replace function public.create_event_announcement(
   p_expected_owner uuid,
   p_operation_id uuid,
@@ -136,7 +190,7 @@ begin
     return;
   end if;
 
-  insert into public.groups (name, description, created_by)
+  insert into public.groups (name, description, created_by, privacy)
   values (
     v_title,
     pg_catalog.concat(
@@ -144,7 +198,8 @@ begin
       coalesce(v_location, 'meet-up'),
       ' — auto-created when the event was announced.'
     ),
-    p_expected_owner
+    p_expected_owner,
+    case when p_audience = 'public' then 'public' else 'private' end
   )
   returning id into v_group_id;
 
@@ -178,6 +233,54 @@ begin
 end;
 $$;
 
+-- Attendance is authorized by the same post the viewer actually saw. The
+-- immutable expected owner prevents a retained event id from being rebound to
+-- another creator, and ON CONFLICT makes repeated taps/retries harmless.
+create or replace function public.attend_event(
+  p_event_id uuid,
+  p_expected_owner uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_viewer uuid := auth.uid();
+  v_group_id uuid;
+begin
+  if v_viewer is null
+    or p_event_id is null
+    or p_expected_owner is null
+  then
+    raise exception 'Event is not available.' using errcode = '42501';
+  end if;
+
+  select e.group_id
+  into v_group_id
+  from public.events e
+  where e.id = p_event_id
+    and e.created_by = p_expected_owner
+    and exists (
+      select 1
+      from public.posts p
+      where p.event_id = e.id
+        and p.user_id = p_expected_owner
+        and p.post_type = 'event'
+        and public.can_view_post(p.id, v_viewer)
+    )
+  limit 1;
+
+  if v_group_id is null then
+    raise exception 'Event is not available.' using errcode = '42501';
+  end if;
+
+  insert into public.group_members (group_id, user_id)
+  values (v_group_id, v_viewer)
+  on conflict (group_id, user_id) do nothing;
+end;
+$$;
+
 revoke all on function public.create_event_announcement(
   uuid,
   uuid,
@@ -200,6 +303,12 @@ grant execute on function public.create_event_announcement(
   boolean
 ) to authenticated;
 
+revoke all on function public.attend_event(uuid, uuid)
+  from public, anon, authenticated, service_role;
+
+grant execute on function public.attend_event(uuid, uuid)
+  to authenticated;
+
 comment on function public.create_event_announcement(
   uuid,
   uuid,
@@ -210,6 +319,9 @@ comment on function public.create_event_announcement(
   text,
   boolean
 ) is 'Atomically creates an owner-bound, replay-safe event group, event and feed announcement.';
+
+comment on function public.attend_event(uuid, uuid)
+  is 'Replay-safely joins an event group only when its owner-bound announcement is currently viewable.';
 
 notify pgrst, 'reload schema';
 

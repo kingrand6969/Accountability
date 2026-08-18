@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { createEvent } from './api';
+import { attendEvent, createEvent } from './api';
 
 const mockRpc = jest.fn<(
   name: string,
@@ -95,5 +95,30 @@ describe('createEvent', () => {
     mockRpc.mockResolvedValue({ data: null, error });
 
     await expect(createEvent(input)).rejects.toBe(error);
+  });
+});
+
+describe('attendEvent', () => {
+  test('joins only through the owner-bound event visibility RPC', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+
+    await expect(attendEvent('event-1', 'post-owner-1')).resolves.toBeUndefined();
+
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith('attend_event', {
+      p_event_id: 'event-1',
+      p_expected_owner: 'post-owner-1',
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  test('surfaces an event visibility rejection without falling back to a direct group join', async () => {
+    const error = { code: '42501', message: 'Event is not available.' };
+    mockRpc.mockResolvedValue({ data: null, error });
+
+    await expect(attendEvent('event-private', 'owner-private')).rejects.toBe(error);
+
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 });
