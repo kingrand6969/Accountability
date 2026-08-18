@@ -38,7 +38,6 @@ import { AppLaunchState } from '../ui/AppLaunchState';
  */
 function HeaderBack() {
   const router = useRouter();
-  const pathname = usePathname();
   return (
     <Pressable
       onPress={() => navigateBackSafely(router)}
@@ -59,6 +58,7 @@ function RootNavigator() {
   const query = useGlobalSearchParams() as RouteQuery;
   const ownerId = session?.user.id ?? null;
   const ownerRef = useRef(ownerId);
+  const initialLinkCaptureStartedRef = useRef(false);
   const [intentController] = useState(createAuthRouteIntentController);
   const currentIntent = routeIntentFromPath(pathname, query);
 
@@ -67,7 +67,9 @@ function RootNavigator() {
   }, [currentIntent, intentController, session]);
 
   useEffect(() => {
-    if (session) return;
+    if (initialLinkCaptureStartedRef.current) return;
+    initialLinkCaptureStartedRef.current = true;
+    if (ownerRef.current) return;
     const controller = intentController;
     const ticket = controller.beginAsyncCapture();
     Linking.getInitialURL()
@@ -75,7 +77,7 @@ function RootNavigator() {
         if (href) controller.completeAsyncCapture(ticket, href);
       })
       .catch(() => {});
-  }, [intentController, session]);
+  }, [intentController]);
 
   useEffect(() => {
     ownerRef.current = ownerId;
