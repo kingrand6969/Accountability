@@ -3,6 +3,7 @@ import { Stack, useGlobalSearchParams, usePathname, useRouter } from 'expo-route
 import { Linking, Platform, Pressable } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFonts } from 'expo-font';
+import { StatusBar } from 'expo-status-bar';
 import { Anton_400Regular } from '@expo-google-fonts/anton/400Regular';
 import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
 import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
@@ -18,7 +19,6 @@ import { ToastHost } from '../ui/Toast';
 import { ConfirmHost } from '../ui/ConfirmDialog';
 import { PostMenuHost } from '../feed/PostMenu';
 import { ModerationGate } from '../moderation/ModerationGate';
-import { colors } from '../ui/theme';
 import { cleanupAbandonedRunMedia } from '../activity/runMediaCache';
 import { ActivitySyncProvider } from '../activity/ActivitySyncProvider';
 import '../notifications/handler';
@@ -30,6 +30,7 @@ import {
 } from '../navigation/authRouteIntent';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
 import { AppLaunchState } from '../ui/AppLaunchState';
+import { AppThemeProvider, useAppTheme } from '../ui/AppThemeProvider';
 
 /**
  * A back control that never dead-ends: it pops the stack when there's somewhere
@@ -38,6 +39,7 @@ import { AppLaunchState } from '../ui/AppLaunchState';
  */
 function HeaderBack() {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       onPress={() => navigateBackSafely(router)}
@@ -46,13 +48,14 @@ function HeaderBack() {
       accessibilityLabel="Go back"
       style={({ pressed }) => [{ paddingRight: 14, paddingVertical: 4 }, pressed && { opacity: 0.6 }]}
     >
-      <Ionicons name="chevron-back" size={26} color={colors.text} />
+      <Ionicons name="chevron-back" size={26} color={theme.ink.primary} />
     </Pressable>
   );
 }
 
 function RootNavigator() {
   const { session, loading } = useAuth();
+  const { colors: theme, mode } = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
   const query = useGlobalSearchParams() as RouteQuery;
@@ -113,7 +116,18 @@ function RootNavigator() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, headerLeft: () => <HeaderBack /> }}>
+    <>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          headerLeft: () => <HeaderBack />,
+          headerStyle: { backgroundColor: theme.surface.raised },
+          headerTintColor: theme.ink.primary,
+          headerTitleStyle: { color: theme.ink.primary },
+          contentStyle: { backgroundColor: theme.surface.canvas },
+        }}
+      >
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="(app)" />
         <Stack.Screen name="onboarding" />
@@ -180,7 +194,8 @@ function RootNavigator() {
       <Stack.Screen name="share/[id]" options={{ headerShown: true, title: 'Shared update' }} />
       {/* Legal docs are reachable both signed-out (sign-up consent) and in-app (settings). */}
       <Stack.Screen name="legal/[doc]" options={{ headerShown: true, title: 'Legal' }} />
-    </Stack>
+      </Stack>
+    </>
   );
 }
 
@@ -193,16 +208,18 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <ActivitySyncProvider>
-        <ProProvider>
-          <RootNavigator />
-          <ModerationGate />
-          <ToastHost />
-          <ConfirmHost />
-          <PostMenuHost />
-        </ProProvider>
-      </ActivitySyncProvider>
-    </AuthProvider>
+    <AppThemeProvider>
+      <AuthProvider>
+        <ActivitySyncProvider>
+          <ProProvider>
+            <RootNavigator />
+            <ModerationGate />
+            <ToastHost />
+            <ConfirmHost />
+            <PostMenuHost />
+          </ProProvider>
+        </ActivitySyncProvider>
+      </AuthProvider>
+    </AppThemeProvider>
   );
 }

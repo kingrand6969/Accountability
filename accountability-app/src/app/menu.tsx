@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Image,
   Pressable,
@@ -16,7 +16,16 @@ import { listPages, type Page } from '../pages/api';
 import { getRank } from '../achievements/api';
 import { RankBadge } from '../achievements/RankBadge';
 import { useAuth } from '../auth/AuthProvider';
-import { colors, font, radius, shadow, spacing, contentMax } from '../ui/theme';
+import {
+  colors,
+  font,
+  radius,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type GridItem = {
@@ -26,6 +35,17 @@ type GridItem = {
   route?: string;
   action?: 'owner-buddy-card';
 };
+
+type AppearanceOption = {
+  mode: AppThemeMode;
+  label: string;
+  icon: IoniconName;
+};
+
+const APPEARANCE_OPTIONS: AppearanceOption[] = [
+  { mode: 'light', label: 'Light', icon: 'sunny-outline' },
+  { mode: 'dark', label: 'Dark', icon: 'moon-outline' },
+];
 
 const GRID: GridItem[] = [
   { icon: 'podium-outline', tint: '#1d4ed8', title: 'Leaderboards & Wins', route: '/compete' },
@@ -47,8 +67,12 @@ const GRID: GridItem[] = [
 export default function Menu() {
   const router = useRouter();
   const { session } = useAuth();
+  const { colors: theme, mode, setMode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const ownerId = session?.user.id ?? null;
   const currentOwnerIdRef = useRef(ownerId);
+  // The press handler must never retain the previous signed-in account.
+  // eslint-disable-next-line react-hooks/refs
   currentOwnerIdRef.current = ownerId;
   const [name, setName] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -160,7 +184,7 @@ export default function Menu() {
           <Text style={styles.inviteTitle}>Invite friends</Text>
           <Text style={styles.inviteSub}>Share via Messenger, WhatsApp, TikTok…</Text>
         </View>
-        <Ionicons name="share-social-outline" size={18} color={colors.primary} />
+        <Ionicons name="share-social-outline" size={18} color={theme.ink.action} />
       </Pressable>
 
       {/* shortcuts */}
@@ -184,7 +208,7 @@ export default function Menu() {
                   <Image source={{ uri: s.image }} style={styles.shortcutImage} />
                 ) : (
                   <View style={[styles.shortcutImage, styles.shortcutFallback]}>
-                    <Ionicons name={s.icon} size={22} color={colors.primary} />
+                    <Ionicons name={s.icon} size={22} color={theme.ink.action} />
                   </View>
                 )}
                 <Text style={styles.shortcutName} numberOfLines={2}>
@@ -218,6 +242,43 @@ export default function Menu() {
         ))}
       </View>
 
+      <Text style={styles.sectionTitle}>Appearance</Text>
+      <View
+        style={styles.appearanceGroup}
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Appearance"
+      >
+        {APPEARANCE_OPTIONS.map((option) => {
+          const selected = mode === option.mode;
+          return (
+            <Pressable
+              key={option.mode}
+              style={({ pressed }) => [
+                styles.appearanceOption,
+                selected && styles.appearanceOptionSelected,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => setMode(option.mode)}
+              accessibilityRole="radio"
+              accessibilityLabel={`${option.label} appearance`}
+              accessibilityState={{ selected }}
+            >
+              <View style={[styles.appearanceIcon, selected && styles.appearanceIconSelected]}>
+                <Ionicons
+                  name={option.icon}
+                  size={20}
+                  color={selected ? theme.ink.action : theme.ink.muted}
+                />
+              </View>
+              <Text style={styles.appearanceLabel}>{option.label}</Text>
+              <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
+                {selected ? <View style={styles.radioInner} /> : null}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <Pressable
         style={({ pressed }) => [styles.helpRow, pressed && styles.pressed]}
         onPress={() => router.push('/help')}
@@ -225,13 +286,13 @@ export default function Menu() {
         accessibilityLabel="Help and Support"
       >
         <View style={styles.helpIcon}>
-          <Ionicons name="help-buoy-outline" size={20} color={colors.primary} />
+          <Ionicons name="help-buoy-outline" size={20} color={theme.ink.action} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.helpLabel}>Help &amp; Support</Text>
           <Text style={styles.helpSub}>Contact us, report a problem, Terms &amp; Privacy</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+        <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
       </Pressable>
 
       <View style={styles.legalRow}>
@@ -257,12 +318,12 @@ export default function Menu() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   container: {
     ...contentMax,
     padding: spacing.lg,
     gap: spacing.sm,
-    backgroundColor: colors.background,
+    backgroundColor: theme.surface.canvas,
     paddingBottom: 40,
   },
   pressed: { opacity: 0.75 },
@@ -274,19 +335,19 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
   },
   helpIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  helpLabel: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  helpSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
+  helpLabel: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
+  helpSub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted, marginTop: 1 },
   legalRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -295,8 +356,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingTop: spacing.sm,
   },
-  legalLink: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted },
-  legalDot: { color: colors.textFaint },
+  legalLink: { fontFamily: font.medium, fontSize: 12.5, color: theme.ink.muted },
+  legalDot: { color: theme.ink.muted },
   profileWrap: {
     borderRadius: radius.md,
     overflow: 'hidden',
@@ -331,9 +392,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: theme.border.action,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 60,
@@ -346,15 +407,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  inviteTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  inviteSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  inviteTitle: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
+  inviteSub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted },
   trophyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: '#fff8ec',
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: '#f4d9a6',
+    borderColor: theme.status.attention,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 60,
@@ -367,12 +428,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trophyTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  trophySub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  trophyTitle: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
+  trophySub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted },
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: theme.ink.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: spacing.md,
@@ -381,28 +442,32 @@ const styles = StyleSheet.create({
   shortcut: { alignItems: 'center', gap: 5, width: 72 },
   shortcutImage: { width: 60, height: 60, borderRadius: radius.md },
   shortcutFallback: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shortcutName: {
     fontFamily: font.medium,
     fontSize: 11.5,
-    color: colors.textSecondary,
+    color: theme.ink.secondary,
     textAlign: 'center',
     lineHeight: 14,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   card: {
     width: '48.4%',
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.md,
     padding: spacing.md,
     gap: 8,
     minHeight: 84,
-    ...shadow.card,
+    shadowColor: theme.ink.primary,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   cardPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
   cardIcon: {
@@ -412,5 +477,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { fontFamily: font.bold, fontSize: 14.5, color: colors.text },
+  cardTitle: { fontFamily: font.bold, fontSize: 14.5, color: theme.ink.primary },
+  appearanceGroup: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  appearanceOption: {
+    flex: 1,
+    minHeight: spacing.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
+  },
+  appearanceOptionSelected: {
+    borderColor: theme.border.action,
+  },
+  appearanceIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.surface.muted,
+  },
+  appearanceIconSelected: {
+    backgroundColor: theme.surface.raised,
+  },
+  appearanceLabel: {
+    flex: 1,
+    fontFamily: font.semibold,
+    fontSize: 14,
+    color: theme.ink.primary,
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: theme.border.strong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterSelected: {
+    borderColor: theme.border.action,
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.ink.action,
+  },
 });
