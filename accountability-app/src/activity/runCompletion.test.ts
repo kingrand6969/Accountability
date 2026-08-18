@@ -1,4 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createActivitySynchronizer } from './activitySynchronizer';
 import { ActivityUploadError } from './activityUpload';
 import {
@@ -61,6 +63,19 @@ const OWNER_A = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const OWNER_B = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 const ACTIVITY_ID = '11111111-1111-4111-8111-111111111111';
 const STARTED_AT = '2026-07-26T01:00:00.000Z';
+
+describe('RunShareSheet Memories ownership', () => {
+  it('passes the immutable recording owner through the long-running Memories save', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/activity/RunShareSheet.tsx'),
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /saveToMemories:\s*\(uri\)\s*=>[\s\S]{0,180}saveImageToMemories\(uri,\s*null,\s*null,\s*run\.ownerId!\)/,
+    );
+  });
+});
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

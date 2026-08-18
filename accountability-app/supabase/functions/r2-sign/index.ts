@@ -13,6 +13,7 @@
 // Deploy:  supabase functions deploy r2-sign
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { AwsClient } from 'npm:aws4fetch@1.0.20';
+import { digestObjectFilename } from '../_shared/r2ObjectKey.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -155,7 +156,7 @@ Deno.serve(async (req) => {
     const filename = cfg.stable
       ? `${cfg.folder}.${safeExt}`
       : operationId
-        ? `${operationId}-${sha256}.${safeExt}`
+        ? digestObjectFilename(sha256, safeExt)
         : `${crypto.randomUUID()}.${safeExt}`;
     const key = `${cfg.folder}/${user.id}/${filename}`;
 

@@ -476,7 +476,7 @@ export default function WinCard() {
       }
       dispatched = true;
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      await saveImageToMemories(uri);
+      await saveImageToMemories(uri, null, null, expectedProofOwner(token));
       const ownerStayedCurrent = await requireCurrentActionOwner(token);
       await confirmDurableAction(pending);
       if (!ownerStayedCurrent) return;

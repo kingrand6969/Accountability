@@ -292,7 +292,7 @@ describe('proof action state', () => {
       'publishFlexFeedPost({',
       'Sharing.shareAsync(uri',
       'MediaLibrary.createAssetAsync(uri)',
-      'saveImageToMemories(uri)',
+      'saveImageToMemories(uri, null, null, expectedProofOwner(token))',
     ]) {
       const index = source.indexOf(destinationCall);
       expect(index).toBeGreaterThan(0);

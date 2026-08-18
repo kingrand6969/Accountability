@@ -17,6 +17,47 @@ export const R2_UPLOAD_MAX_BYTES: Readonly<Record<R2Kind, number>> = {
   share: 4 * 1024 * 1024,
 };
 
+const R2_FOLDER: Readonly<Record<R2Kind, string>> = {
+  avatar: 'avatars',
+  cover: 'covers',
+  post: 'post-images',
+  video: 'post-videos',
+  voice: 'voice-encouragements',
+  share: 'share-cards',
+};
+
+function extensionForContentType(contentType: string): string | null {
+  switch (contentType) {
+    case 'image/jpeg': return 'jpg';
+    case 'image/png': return 'png';
+    case 'video/mp4': return 'mp4';
+    case 'video/quicktime': return 'mov';
+    case 'video/webm':
+    case 'audio/webm': return 'webm';
+    case 'audio/mp4':
+    case 'audio/m4a': return 'm4a';
+    default: return null;
+  }
+}
+
+/** Rejects stale or malformed signer responses before any private bytes leave the device. */
+export function isExpectedDigestMediaRef(
+  mediaRef: string,
+  kind: R2Kind,
+  sha256: string,
+  contentType: string,
+): boolean {
+  if (!/^[a-f0-9]{64}$/.test(sha256)) return false;
+  const extension = extensionForContentType(contentType);
+  if (!extension) return false;
+  const prefix = `r2://${R2_FOLDER[kind]}/`;
+  if (!mediaRef.startsWith(prefix)) return false;
+  const [ownerId, filename, extra] = mediaRef.slice(prefix.length).split('/');
+  return extra === undefined
+    && /^[0-9a-f-]{36}$/i.test(ownerId ?? '')
+    && filename === `${sha256}.${extension}`;
+}
+
 /**
  * Upload a base64 image straight to Cloudflare R2 (zero-egress delivery).
  *
@@ -99,7 +140,7 @@ async function uploadArrayBufferToR2(
   if (error) throw error;
   const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };
   if (!uploadUrl || !mediaRef) throw new Error('Could not get an upload URL.');
-  if (options.operationId && !mediaRef.includes(`${options.operationId}-${sha256}.`)) {
+  if (options.operationId && !isExpectedDigestMediaRef(mediaRef, kind, sha256, contentType)) {
     throw new Error('Upload service is out of date. Please try again shortly.');
   }
   const put = await fetch(uploadUrl, {

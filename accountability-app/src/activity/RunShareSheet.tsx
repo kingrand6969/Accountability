@@ -677,7 +677,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           retain: runMediaCache.retain,
           release: runMediaCache.release,
           saveToMemories: (uri) =>
-            boundary.runSideEffect(() => saveImageToMemories(uri)),
+            boundary.runSideEffect(() =>
+              saveImageToMemories(uri, null, null, run.ownerId!),
+            ),
           requestPhonePermission: () =>
             boundary.runSideEffect(() =>
               MediaLibrary.requestPermissionsAsync(true, ['photo']),

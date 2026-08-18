@@ -12,7 +12,7 @@ describe('R2 signer security contract', () => {
   });
 
   test('uses a digest-addressed immutable key for operation retries', () => {
-    expect(source).toContain('`${operationId}-${sha256}.${safeExt}`');
+    expect(source).toContain('digestObjectFilename(sha256, safeExt)');
     expect(source).toContain("'if-none-match': '*'");
     expect(source).toMatch(/operationId\s*\?\s*\{[^}]*'if-none-match'/s);
   });

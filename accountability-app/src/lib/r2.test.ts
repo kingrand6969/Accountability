@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { supabase } from './supabase';
-import { uploadToR2WithDigest } from './r2';
+import { isExpectedDigestMediaRef, uploadToR2WithDigest } from './r2';
 
 jest.mock('./supabase', () => ({
   supabase: {
@@ -19,6 +19,7 @@ jest.mock('base64-arraybuffer', () => ({
 }));
 
 const operationId = '123e4567-e89b-42d3-a456-426614174000';
+const memberId = '00000000-0000-4000-8000-000000000001';
 const sha256 = Array.from({ length: 32 }, (_, index) => index.toString(16).padStart(2, '0')).join('');
 const invoke = supabase.functions.invoke as jest.MockedFunction<typeof supabase.functions.invoke>;
 
@@ -28,7 +29,7 @@ describe('immutable R2 uploads', () => {
     invoke.mockResolvedValue({
       data: {
         uploadUrl: 'https://uploads.example/signed',
-        mediaRef: `r2://post-images/member/${operationId}-${sha256}.jpg`,
+        mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
       },
       error: null,
     } as never);
@@ -41,7 +42,7 @@ describe('immutable R2 uploads', () => {
       operationId,
       expectedOwnerId: 'member-1',
     })).resolves.toEqual({
-      mediaRef: `r2://post-images/member/${operationId}-${sha256}.jpg`,
+      mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
       sha256,
     });
 
@@ -71,7 +72,7 @@ describe('immutable R2 uploads', () => {
     global.fetch = jest.fn(async () => ({ ok: false, status: 412 })) as unknown as typeof fetch;
 
     await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', { operationId })).resolves.toEqual({
-      mediaRef: `r2://post-images/member/${operationId}-${sha256}.jpg`,
+      mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
       sha256,
     });
   });
@@ -80,7 +81,7 @@ describe('immutable R2 uploads', () => {
     invoke.mockResolvedValue({
       data: {
         uploadUrl: 'https://uploads.example/legacy',
-        mediaRef: `r2://post-images/member/${operationId}.jpg`,
+        mediaRef: `r2://post-images/${memberId}/${operationId}.jpg`,
       },
       error: null,
     } as never);
@@ -95,5 +96,22 @@ describe('immutable R2 uploads', () => {
     global.fetch = jest.fn(async () => ({ ok: false, status: 412 })) as unknown as typeof fetch;
 
     await expect(uploadToR2WithDigest('AQID', 'avatar', 'jpg')).rejects.toThrow('Upload failed (412).');
+  });
+
+  const exactDigestRefs: [
+    'post' | 'video' | 'voice' | 'share',
+    string,
+    string,
+  ][] = [
+    ['post', 'image/jpeg', `r2://post-images/${memberId}/${sha256}.jpg`],
+    ['video', 'video/webm', `r2://post-videos/${memberId}/${sha256}.webm`],
+    ['voice', 'audio/webm', `r2://voice-encouragements/${memberId}/${sha256}.webm`],
+    ['share', 'image/png', `r2://share-cards/${memberId}/${sha256}.png`],
+  ];
+
+  test.each(exactDigestRefs)('accepts only the exact digest-addressed %s reference', (kind, contentType, mediaRef) => {
+    expect(isExpectedDigestMediaRef(mediaRef, kind, sha256, contentType)).toBe(true);
+    expect(isExpectedDigestMediaRef(mediaRef.replace(sha256, 'f'.repeat(64)), kind, sha256, contentType)).toBe(false);
+    expect(isExpectedDigestMediaRef(mediaRef.replace(`/${sha256}.`, `/prefix-${sha256}.`), kind, sha256, contentType)).toBe(false);
   });
 });

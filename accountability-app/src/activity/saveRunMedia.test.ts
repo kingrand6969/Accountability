@@ -61,6 +61,12 @@ jest.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg' },
 }));
 
+const imageManipulatorMocks = (
+  jest.requireMock('expo-image-manipulator') as {
+    manipulateAsync: jest.Mock<(...args: any[]) => Promise<any>>;
+  }
+);
+
 const memoryApiMocks = (
   jest.requireMock('../lib/supabase') as {
     memoryApiMocks: {
@@ -93,6 +99,8 @@ beforeEach(() => {
   memoryApiMocks.rpc.mockResolvedValue({ data: 0, error: null });
   memoryApiMocks.upload.mockResolvedValue({ error: null });
   memoryApiMocks.remove.mockResolvedValue({ error: null });
+  imageManipulatorMocks.manipulateAsync.mockReset();
+  imageManipulatorMocks.manipulateAsync.mockResolvedValue({ base64: 'AQ==' });
 });
 
 function deferred<T>() {
@@ -608,19 +616,53 @@ describe('run-media Feed operation identity', () => {
 });
 
 describe('ambiguous Memories row insertion', () => {
-  test('does not insert into a new account when the account changes after upload', async () => {
-    memoryApiMocks.getUser
-      .mockResolvedValueOnce({ data: { user: { id: 'member-1' } }, error: null })
-      .mockResolvedValueOnce({ data: { user: { id: 'member-1' } }, error: null })
-      .mockResolvedValueOnce({ data: { user: { id: 'member-2' } }, error: null });
-    memoryApiMocks.insert.mockResolvedValue({ error: null });
+  test('does not upload when the account changes while image manipulation is in flight', async () => {
+    const manipulation = deferred<{ base64: string }>();
+    imageManipulatorMocks.manipulateAsync.mockReturnValue(manipulation.promise);
 
-    await expect(saveImageToMemories(
+    const saving = saveImageToMemories(
       'file:///run.jpg',
       null,
       null,
       'member-1',
-    )).rejects.toThrow('Account changed.');
+    );
+    await Promise.resolve();
+    memoryApiMocks.getUser.mockResolvedValue({
+      data: { user: { id: 'member-2' } },
+      error: null,
+    });
+    manipulation.resolve({ base64: 'AQ==' });
+
+    await expect(saving).rejects.toThrow('Account changed.');
+    expect(memoryApiMocks.upload).not.toHaveBeenCalled();
+    expect(memoryApiMocks.insert).not.toHaveBeenCalled();
+  });
+
+  test('does not insert into a new account when the account changes during upload', async () => {
+    let currentOwner = 'member-1';
+    memoryApiMocks.getUser.mockImplementation(async () => ({
+      data: { user: { id: currentOwner } },
+      error: null,
+    }));
+    const uploadStarted = deferred<void>();
+    const upload = deferred<{ error: null }>();
+    memoryApiMocks.upload.mockImplementation(() => {
+      uploadStarted.resolve();
+      return upload.promise;
+    });
+    memoryApiMocks.insert.mockResolvedValue({ error: null });
+
+    const saving = saveImageToMemories(
+      'file:///run.jpg',
+      null,
+      null,
+      'member-1',
+    );
+    await uploadStarted.promise;
+    currentOwner = 'member-2';
+    upload.resolve({ error: null });
+
+    await expect(saving).rejects.toThrow('Account changed.');
     expect(memoryApiMocks.upload).toHaveBeenCalledTimes(1);
     expect(memoryApiMocks.insert).not.toHaveBeenCalled();
   });
