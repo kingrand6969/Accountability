@@ -15,30 +15,41 @@ export function promptCrossShare(
   message: string,
   mediaUri: string | null,
   mediaMimeType = 'image/jpeg',
-): void {
-  if (Platform.OS === 'web') return;
-  Alert.alert(
-    'Posted 🎉',
-    'Share it to Facebook or Instagram too?',
-    [
-      { text: 'Not now', style: 'cancel' },
-      {
-        text: 'Share…',
-        onPress: async () => {
-          try {
-            if (mediaUri && (await Sharing.isAvailableAsync())) {
-              await Sharing.shareAsync(mediaUri, {
-                mimeType: mediaMimeType,
-                dialogTitle: 'Share your post',
-              });
-              return;
+): Promise<void> {
+  if (Platform.OS === 'web') return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    Alert.alert(
+      'Posted 🎉',
+      'Share it to Facebook or Instagram too?',
+      [
+        { text: 'Not now', style: 'cancel', onPress: finish },
+        {
+          text: 'Share…',
+          onPress: async () => {
+            try {
+              if (mediaUri && (await Sharing.isAvailableAsync())) {
+                await Sharing.shareAsync(mediaUri, {
+                  mimeType: mediaMimeType,
+                  dialogTitle: 'Share your post',
+                });
+                return;
+              }
+              await Share.share({ message: `${message}\n\n#accountability` });
+            } catch {
+              // user dismissed the sheet — nothing to do
+            } finally {
+              finish();
             }
-            await Share.share({ message: `${message}\n\n#accountability` });
-          } catch {
-            // user dismissed the sheet — nothing to do
-          }
+          },
         },
-      },
-    ],
-  );
+      ],
+      { cancelable: true, onDismiss: finish },
+    );
+  });
 }

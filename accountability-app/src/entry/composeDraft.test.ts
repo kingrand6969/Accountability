@@ -260,6 +260,15 @@ describe('Compose production binding', () => {
     expect(source).toMatch(/createPost\([\s\S]*?operationId,[\s\S]*?\);/);
     expect(source).toMatch(/createPost\([\s\S]*?expectedOwnerId: submittedOwner,[\s\S]*?\);/);
   });
+
+  test('keeps draft media alive until the native cross-share decision finishes', () => {
+    const source = readFileSync(require.resolve('../app/compose'), 'utf8');
+    const shareIndex = source.indexOf('await promptCrossShare(postedText, postedImageUri');
+    const cleanupIndex = source.indexOf('await clearSavedDraft(true, submittedDraft)', shareIndex);
+
+    expect(shareIndex).toBeGreaterThan(-1);
+    expect(cleanupIndex).toBeGreaterThan(shareIndex);
+  });
 });
 
 describe('durable media path and transaction', () => {

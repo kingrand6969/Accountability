@@ -835,6 +835,13 @@ export default function Compose() {
           // a Memories hiccup must never fail the post
         }
       }
+      if (
+        Platform.OS !== 'web'
+        && ownerRef.current === submittedOwner
+        && mountTokenRef.current === submittedToken
+      ) {
+        await promptCrossShare(postedText, postedImageUri, pickedVideo?.mimeType);
+      }
       try {
         await clearSavedDraft(true, submittedDraft);
       } catch (cleanupError) {
@@ -843,7 +850,6 @@ export default function Compose() {
       }
       if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
         if (Platform.OS === 'web') showToast('Posted to your feed 🎉');
-        else promptCrossShare(postedText, postedImageUri, pickedVideo?.mimeType);
         exitCompose();
       }
     } catch (e) {
