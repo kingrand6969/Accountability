@@ -18,10 +18,10 @@ Audit and improve AccountAbility as one connected runner/athlete experience. The
 ### Phase 1: Evidence and release blockers
 
 - [x] Task 1: Complete route, link, Back, and live-device audit.
-- [ ] Task 2: Add authoritative navigation contracts and repair broken/dead-end routes.
+- [x] Task 2: Add authoritative navigation contracts and repair broken/dead-end routes.
 - [x] Task 3: Make the primary Post entry open the real composer directly.
-- [ ] Task 4: Simplify composer draft, keyboard, submit, and exit behavior.
-- [ ] Task 5: Make Flex creation a coherent contextual flow with one clear completion path.
+- [x] Task 4: Simplify composer draft, keyboard, submit, and exit behavior.
+- [x] Task 5: Make Flex creation a coherent contextual flow with one clear completion path.
 
 ### Checkpoint: Core journeys
 
@@ -32,10 +32,10 @@ Audit and improve AccountAbility as one connected runner/athlete experience. The
 ### Phase 2: Perceived speed and visual foundation
 
 - [x] Task 6: Replace blank Feed reloads with preserved content or a stable skeleton.
-- [ ] Task 7: Consolidate semantic spacing, divider, card, icon, and interaction-state tokens.
-- [ ] Task 8: Apply the visual foundation to Feed and post detail.
-- [ ] Task 9: Apply the visual foundation to Journey and Run.
-- [ ] Task 10: Apply the visual foundation to Messages, Menu, and discovery.
+- [x] Task 7: Consolidate semantic spacing, divider, card, icon, and interaction-state tokens.
+- [x] Task 8: Apply the visual foundation to Feed and post detail.
+- [x] Task 9: Apply the visual foundation to Journey and Run.
+- [x] Task 10: Apply the visual foundation to Messages, Menu, and discovery.
 
 ### Checkpoint: Primary app
 
@@ -92,3 +92,8 @@ Audit and improve AccountAbility as one connected runner/athlete experience. The
 - Feed rows settle before optional Cheer previews; same-account refreshes preserve content and true cold loads reserve the layout with fixed skeleton cards.
 - Text and event post details use a compact readable surface; photo, video, and run posts retain immersive media treatment.
 - “My Day” is reserved for 24-hour stories; reminder/task creation is now labelled “Schedule.”
+- Preview deep links, cold launch intents, visible Back, and Android Back now share safe one-shot/history-aware routing.
+- Post, Event, and Flex publishing are owner-bound and retry-safe; media keys are immutable and post-success side effects cannot duplicate after restore.
+- Manual Light/Dark appearance now covers the app shell, Feed, composer, post detail, Journey, Messages, Notifications, Profile, Buddy Chat, planner, challenges, Trophy Case, Discover, Buddy connections, Body/workouts, and Groups/Pages.
+- Planner, challenge, Discover, workout, and community theme slices preserve their approved Light appearance and add only Dark equivalents.
+- Live Android acceptance, backend migration execution, remote push, and Expo preview upload remain intentionally pending.

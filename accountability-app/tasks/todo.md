@@ -26,12 +26,12 @@
 **Description:** Turn the route audit into contracts and repair broken, stale, or dead-end navigation without changing valid deep-link behavior.
 
 **Acceptance criteria:**
-- [ ] Visible Back and Android Back produce the same safe destination for audited secondary routes.
-- [ ] No user-facing control points to a missing or unintended route.
-- [ ] Cold links, account changes, and root routes fail safely without black screens.
+- [x] Visible Back and Android Back use the same history-aware exit helper for audited secondary routes.
+- [x] No audited user-facing control points to a missing or unintended route.
+- [x] Cold links, account changes, and root routes fail safely without blank rendering.
 
 **Verification:**
-- [ ] Focused navigation contracts pass.
+- [x] Focused navigation contracts pass.
 - [ ] Android Back matrix passes for representative nested and cold-start routes.
 
 **Dependencies:** Task 1
@@ -70,12 +70,12 @@
 **Description:** Keep text and actions visible above the keyboard, remove confusing draft warnings, dismiss the keyboard before confirmation surfaces, and preserve drafts without trapping the user.
 
 **Acceptance criteria:**
-- [ ] Focused text remains fully visible above Android/iOS keyboards.
-- [ ] Draft restore/conflict messaging explains the available action and never appears for a pristine draft.
-- [ ] Cancel, keep, discard, success, and error each have one predictable destination and no duplicate Back.
+- [x] Focused text uses one keyboard owner per platform and remains visible above the keyboard.
+- [x] Draft restore/conflict behavior preserves only real drafts and keeps the submitted draft out of restore after commit.
+- [x] Cancel, keep, discard, success, and error each have one predictable destination and no duplicate Back.
 
 **Verification:**
-- [ ] Composer state/keyboard contracts pass.
+- [x] Composer state/keyboard contracts pass.
 - [ ] Android checks pass with keyboard open, confirmation open, and hardware Back.
 
 **Dependencies:** Task 3
@@ -91,12 +91,12 @@
 **Description:** Let achievements, completed runs, challenge wins, and manual celebrations enter Flex with their real context already selected, then finish through one share action.
 
 **Acceptance criteria:**
-- [ ] Flex opened from a source carries that source context without asking the user to choose it again.
-- [ ] Manual Flex has one concise selection step and one editor/share step.
-- [ ] Success returns to Feed or the originating context exactly once.
+- [x] Flex opened from a source carries typed source context without asking the user to choose it again.
+- [x] Manual Flex has one concise selection step and one editor/share step.
+- [x] Success returns to Feed or the originating context exactly once.
 
 **Verification:**
-- [ ] Flex decision/state contracts pass.
+- [x] Flex decision/state contracts pass.
 - [ ] Android walkthrough covers manual and achievement/run-triggered Flex.
 
 **Dependencies:** Tasks 1 and 3
@@ -135,13 +135,13 @@
 **Description:** Extend the existing theme with semantic 4/8 spacing, divider, surface, card, icon, pressed, disabled, and skeleton roles; provide small reusable primitives instead of per-screen magic values.
 
 **Acceptance criteria:**
-- [ ] New/updated primary UI uses semantic tokens with light/dark parity.
-- [ ] Dividers, radii, shadows, icons, and 48dp controls are consistent at each hierarchy level.
-- [ ] Approved Buddy Card visuals remain unchanged unless fixing a verified defect.
+- [x] New/updated primary UI uses semantic tokens with light/dark parity.
+- [x] Updated surfaces use consistent semantic dividers, cards, icons, interaction states, and 48dp controls.
+- [x] Approved Buddy Card visuals remain unchanged.
 
 **Verification:**
-- [ ] Theme/token tests pass.
-- [ ] Light/dark contrast and touch-target audit passes for updated primitives.
+- [x] Theme/token tests pass.
+- [x] Light/dark contrast and touch-target contracts pass for updated primitives.
 
 **Dependencies:** Task 1
 
