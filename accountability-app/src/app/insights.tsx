@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,10 +17,15 @@ import { useIsPro } from '../pro/ProProvider';
 import { GlassBackdrop, GlassCard } from '../ui/Glass';
 import { ProgressRing } from '../ui/ProgressRing';
 import { contentMaxWidth } from '../ui/responsive';
-import { colors, font, radius, spacing } from '../ui/theme';
-
-const INK = '#1e1b4b';
-const INK_SOFT = 'rgba(30,27,75,0.72)';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  colors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -33,6 +38,9 @@ const PERIODS: { value: Period; label: string }[] = [
 export default function InsightsScreen() {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => progressPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -73,11 +81,14 @@ export default function InsightsScreen() {
         {/* period toggle */}
         <View style={styles.toggle}>
           {PERIODS.map((p) => (
-            <Pressable
-              key={p.value}
-              style={[styles.toggleBtn, period === p.value && styles.toggleActive]}
-              onPress={() => setPeriod(p.value)}
-            >
+              <Pressable
+                key={p.value}
+                style={[styles.toggleBtn, period === p.value && styles.toggleActive]}
+                onPress={() => setPeriod(p.value)}
+                hitSlop={{ top: 5, bottom: 5 }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: period === p.value }}
+              >
               <Text style={[styles.toggleText, period === p.value && styles.toggleTextActive]}>
                 {p.label}
               </Text>
@@ -105,7 +116,7 @@ export default function InsightsScreen() {
           </GlassCard>
         ) : loading || !data ? (
           <View style={styles.center}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={theme.ink.action} />
           </View>
         ) : (
           <>
@@ -117,13 +128,17 @@ export default function InsightsScreen() {
                     <View
                       style={[
                         styles.dayBadge,
-                        { backgroundColor: data.daysActive > 0 ? 'rgba(4,120,87,0.12)' : 'rgba(30,27,75,0.08)' },
+                        {
+                          backgroundColor: data.daysActive > 0
+                            ? palette.daySuccessSoft
+                            : palette.dayIdleSoft,
+                        },
                       ]}
                     >
                       <Ionicons
                         name={data.daysActive > 0 ? 'checkmark-circle' : 'flame-outline'}
                         size={30}
-                        color={data.daysActive > 0 ? '#047857' : INK_SOFT}
+                        color={data.daysActive > 0 ? palette.daySuccess : palette.inkSoft}
                       />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -148,7 +163,7 @@ export default function InsightsScreen() {
                           size={150}
                           strokeWidth={9}
                           progress={consistency}
-                          trackColor="rgba(30,27,75,0.12)"
+                          trackColor={palette.ringTrack}
                           startColor="#f59e0b"
                           endColor="#fbbf24"
                         />
@@ -211,7 +226,12 @@ export default function InsightsScreen() {
                             <View
                               style={[
                                 styles.barFill,
-                                { height: `${h * 100}%`, backgroundColor: c.items > 0 ? '#2563eb' : 'rgba(30,27,75,0.12)' },
+                                {
+                                  height: `${h * 100}%`,
+                                  backgroundColor: c.items > 0
+                                    ? palette.chartBar
+                                    : palette.chartEmpty,
+                                },
                               ]}
                             />
                           </View>
@@ -242,6 +262,9 @@ function StatTile({
   value: string;
   label: string;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+
   return (
     <View style={styles.tile}>
       <View style={[styles.tileIcon, { backgroundColor: `${tint}1F` }]}>
@@ -255,8 +278,32 @@ function StatTile({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#E4DCF7' },
+function progressPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? '#E4DCF7' : theme.surface.canvas,
+    ink: mode === 'light' ? '#1e1b4b' : theme.ink.primary,
+    inkSoft: mode === 'light' ? 'rgba(30,27,75,0.72)' : theme.ink.muted,
+    toggle: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
+    glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
+    selected: mode === 'light' ? '#fff' : theme.surface.raised,
+    tile: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
+    tileBorder: mode === 'light' ? 'rgba(255,255,255,0.65)' : theme.border.subtle,
+    chartTrack: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.muted,
+    chartBar: mode === 'light' ? '#2563eb' : theme.ink.action,
+    chartEmpty: mode === 'light' ? 'rgba(30,27,75,0.12)' : theme.border.subtle,
+    ringTrack: mode === 'light' ? 'rgba(30,27,75,0.12)' : theme.border.subtle,
+    proSoft: mode === 'light' ? colors.proSoft : theme.surface.muted,
+    daySuccessSoft: mode === 'light' ? 'rgba(4,120,87,0.12)' : theme.status.successSoft,
+    dayIdleSoft: mode === 'light' ? 'rgba(30,27,75,0.08)' : theme.surface.muted,
+    daySuccess: mode === 'light' ? '#047857' : theme.status.success,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const palette = progressPalette(theme, mode);
+
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   container: {
     padding: spacing.lg,
     gap: spacing.md,
@@ -267,9 +314,9 @@ const styles = StyleSheet.create({
   toggle: {
     flexDirection: 'row',
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: palette.toggle,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.glassBorder,
     borderRadius: radius.pill,
     padding: 3,
   },
@@ -282,13 +329,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     minHeight: 38,
   },
-  toggleActive: { backgroundColor: '#fff' },
-  toggleText: { color: INK_SOFT, fontFamily: font.semibold, fontSize: 14 },
-  toggleTextActive: { color: INK, fontFamily: font.bold },
+  toggleActive: { backgroundColor: palette.selected },
+  toggleText: { color: palette.inkSoft, fontFamily: font.semibold, fontSize: 14 },
+  toggleTextActive: { color: palette.ink, fontFamily: font.bold },
   cardPad: { padding: spacing.lg },
   heroHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  kicker: { color: INK, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
-  kickerSoft: { color: INK_SOFT, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8 },
+  kicker: { color: palette.ink, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
+  kickerSoft: { color: palette.inkSoft, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8 },
   ringWrap: {
     alignSelf: 'center',
     width: 150,
@@ -299,15 +346,15 @@ const styles = StyleSheet.create({
   },
   ringSvg: { position: 'absolute', top: 0, left: 0 },
   ringDays: {
-    color: INK,
+    color: palette.ink,
     fontFamily: font.display,
     fontSize: 52,
     lineHeight: 56,
     includeFontPadding: false,
   },
-  ringOf: { color: INK_SOFT, fontFamily: font.medium, fontSize: 12.5 },
+  ringOf: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 12.5 },
   heroLine: {
-    color: INK,
+    color: palette.ink,
     fontFamily: font.bold,
     fontSize: 14.5,
     textAlign: 'center',
@@ -321,14 +368,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayHeroTitle: { color: INK, fontFamily: font.extrabold, fontSize: 17 },
-  dayHeroSub: { color: INK_SOFT, fontFamily: font.medium, fontSize: 13, marginTop: 3 },
+  dayHeroTitle: { color: palette.ink, fontFamily: font.extrabold, fontSize: 17 },
+  dayHeroSub: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 13, marginTop: 3 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   tile: {
     width: '48.2%',
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    backgroundColor: palette.tile,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
+    borderColor: palette.tileBorder,
     borderRadius: 18,
     padding: spacing.lg,
     gap: 4,
@@ -341,8 +388,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 2,
   },
-  tileValue: { fontSize: 20, fontFamily: font.extrabold, color: INK },
-  tileLabel: { fontSize: 12, fontFamily: font.medium, color: INK_SOFT },
+  tileValue: { fontSize: 20, fontFamily: font.extrabold, color: palette.ink },
+  tileLabel: { fontSize: 12, fontFamily: font.medium, color: palette.inkSoft },
   chart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -351,30 +398,30 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' },
-  barValue: { fontSize: 10, fontFamily: font.bold, color: INK_SOFT },
+  barValue: { fontSize: 10, fontFamily: font.bold, color: palette.inkSoft },
   barTrack: {
     flex: 1,
     width: '58%',
     borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: palette.chartTrack,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   barFill: { width: '100%', borderRadius: 6 },
-  barLabel: { fontSize: 10.5, fontFamily: font.semibold, color: INK_SOFT },
-  chartNote: { color: INK_SOFT, fontFamily: font.regular, fontSize: 11.5, marginTop: spacing.sm },
+  barLabel: { fontSize: 10.5, fontFamily: font.semibold, color: palette.inkSoft },
+  chartNote: { color: palette.inkSoft, fontFamily: font.regular, fontSize: 11.5, marginTop: spacing.sm },
   proGate: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg },
   proIcon: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.proSoft,
+    backgroundColor: palette.proSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  proTitle: { fontSize: 18, fontFamily: font.extrabold, color: INK },
+  proTitle: { fontSize: 18, fontFamily: font.extrabold, color: palette.ink },
   proText: {
-    color: INK_SOFT,
+    color: palette.inkSoft,
     fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: 20,
@@ -390,4 +437,5 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   proBtnText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
-});
+  });
+};

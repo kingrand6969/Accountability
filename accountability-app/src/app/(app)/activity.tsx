@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Image,
   Pressable,
@@ -23,13 +23,14 @@ import {
 import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { ProgressRing } from '../../ui/ProgressRing';
 import { contentMaxWidth } from '../../ui/responsive';
-import { font, spacing } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
+import {
+  font,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../../ui/theme';
 import JourneyMomentum from '../../journey/MomentumScreen';
-
-const INK = '#081A3A';
-const INK_SOFT = 'rgba(8,26,58,0.70)';
-const ACCENT = '#155EEF';
-const PRIMARY = '#155EEF';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -78,6 +79,9 @@ function weekDayDate(index: number): string {
 function TrackLegacy() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => activityPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const {
     queued,
     issueCount,
@@ -168,11 +172,12 @@ function TrackLegacy() {
             onPress={() => router.push('/profile')}
             style={({ pressed }) => [styles.avatarBtn, pressed && styles.pressed]}
             accessibilityLabel="Your profile"
+            hitSlop={4}
           >
             {avatar ? (
               <Image source={{ uri: avatar }} style={styles.avatarImg} />
             ) : (
-              <Ionicons name="person" size={16} color={INK_SOFT} />
+              <Ionicons name="person" size={16} color={palette.inkSoft} />
             )}
           </Pressable>
         </View>
@@ -183,7 +188,7 @@ function TrackLegacy() {
             accessibilityRole="tab"
             accessibilityState={{ selected: true }}
           >
-            <Ionicons name="pulse-outline" size={16} color={INK} />
+            <Ionicons name="pulse-outline" size={16} color={palette.ink} />
             <Text style={[styles.journeyTabText, styles.journeyTabTextActive]}>Momentum</Text>
             <View style={styles.journeyIndicator} />
           </View>
@@ -193,7 +198,7 @@ function TrackLegacy() {
             accessibilityRole="tab"
             accessibilityLabel="Open your Journey path"
           >
-            <Ionicons name="trail-sign-outline" size={16} color={INK_SOFT} />
+            <Ionicons name="trail-sign-outline" size={16} color={palette.inkSoft} />
             <Text style={styles.journeyTabText}>Path</Text>
           </Pressable>
           <Pressable
@@ -202,7 +207,7 @@ function TrackLegacy() {
             accessibilityRole="tab"
             accessibilityLabel="Open your Journal"
           >
-            <Ionicons name="book-outline" size={16} color={INK_SOFT} />
+            <Ionicons name="book-outline" size={16} color={palette.inkSoft} />
             <Text style={styles.journeyTabText}>Journal</Text>
           </Pressable>
         </View>
@@ -226,7 +231,7 @@ function TrackLegacy() {
                   size={172}
                   strokeWidth={9}
                   progress={(score ?? 0) / 100}
-                  trackColor="rgba(30,27,75,0.12)"
+                  trackColor={palette.ringTrack}
                   startColor="#f59e0b"
                   endColor="#fbbf24"
                 />
@@ -260,6 +265,7 @@ function TrackLegacy() {
                     d.isToday && styles.dayToday,
                     pressed && styles.dayPressed,
                   ]}
+                  hitSlop={6}
                 >
                   <Text
                     style={[
@@ -307,8 +313,9 @@ function TrackLegacy() {
                 onPress={() => router.push('/today')}
                 style={({ pressed }) => [styles.calendarBtn, pressed && styles.pressed]}
                 accessibilityLabel="Open your day"
+                hitSlop={4}
               >
-                <Ionicons name="calendar-outline" size={18} color={ACCENT} />
+                <Ionicons name="calendar-outline" size={18} color={palette.action} />
               </Pressable>
             </View>
 
@@ -327,7 +334,7 @@ function TrackLegacy() {
                     <Text style={styles.pillarTitle}>{p.title}</Text>
                     <Text style={styles.pillarSub}>{p.sub}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={17} color={INK_SOFT} />
+                  <Ionicons name="chevron-forward" size={17} color={palette.inkSoft} />
                 </Pressable>
               ))}
             </View>
@@ -338,8 +345,31 @@ function TrackLegacy() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F4EC' },
+function activityPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? '#F7F4EC' : theme.surface.canvas,
+    ink: mode === 'light' ? '#081A3A' : theme.ink.primary,
+    inkSoft: mode === 'light' ? 'rgba(8,26,58,0.70)' : theme.ink.muted,
+    action: mode === 'light' ? '#155EEF' : theme.ink.action,
+    avatar: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
+    glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
+    navBorder: mode === 'light' ? 'rgba(8,26,58,0.12)' : theme.border.subtle,
+    ringTrack: mode === 'light' ? 'rgba(30,27,75,0.12)' : theme.border.subtle,
+    day: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.muted,
+    dayActive: mode === 'light' ? 'rgba(37,99,235,0.14)' : theme.surface.raised,
+    dayActiveBorder: mode === 'light' ? 'rgba(37,99,235,0.25)' : theme.border.action,
+    calendar: mode === 'light' ? 'rgba(37,99,235,0.10)' : theme.surface.muted,
+    row: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
+    rowBorder: mode === 'light' ? 'rgba(255,255,255,0.65)' : theme.border.subtle,
+    onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const palette = activityPalette(theme, mode);
+
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   scroll: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 110, // clear the floating tab bar
@@ -354,15 +384,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     marginBottom: spacing.xs,
   },
-  hello: { color: INK, fontFamily: font.extrabold, fontSize: 26 },
-  helloSub: { color: INK_SOFT, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
+  hello: { color: palette.ink, fontFamily: font.extrabold, fontSize: 26 },
+  helloSub: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
   avatarBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: palette.avatar,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.glassBorder,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -371,7 +401,7 @@ const styles = StyleSheet.create({
   journeyNav: {
     minHeight: 48,
     borderBottomWidth: 1,
-    borderColor: 'rgba(8,26,58,0.12)',
+    borderColor: palette.navBorder,
     flexDirection: 'row',
   },
   journeyTab: {
@@ -383,15 +413,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   journeyTabActive: { position: 'relative' },
-  journeyTabText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 12.5 },
-  journeyTabTextActive: { color: INK },
+  journeyTabText: { color: palette.inkSoft, fontFamily: font.bold, fontSize: 12.5 },
+  journeyTabTextActive: { color: palette.ink },
   journeyIndicator: {
     position: 'absolute',
     bottom: -1,
     width: 44,
     height: 2,
     borderRadius: 1,
-    backgroundColor: INK,
+    backgroundColor: palette.ink,
   },
   cardPad: { padding: spacing.lg },
   cardHeadRow: {
@@ -399,8 +429,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  kicker: { color: INK, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
-  kickerSoft: { color: INK_SOFT, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8 },
+  kicker: { color: palette.ink, fontFamily: font.extrabold, fontSize: 13, letterSpacing: 1.2 },
+  kickerSoft: { color: palette.inkSoft, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8 },
   dialWrap: {
     alignSelf: 'center',
     width: 172,
@@ -412,15 +442,15 @@ const styles = StyleSheet.create({
   },
   dialRing: { position: 'absolute', top: 0, left: 0 },
   dialScore: {
-    color: INK,
+    color: palette.ink,
     fontFamily: font.display,
     fontSize: 56,
     lineHeight: 60,
     includeFontPadding: false,
   },
-  dialLabel: { color: INK_SOFT, fontFamily: font.medium, fontSize: 11.5 },
+  dialLabel: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 11.5 },
   scoreLine: {
-    color: INK,
+    color: palette.ink,
     fontFamily: font.bold,
     fontSize: 14.5,
     textAlign: 'center',
@@ -436,24 +466,24 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: palette.day,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.glassBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayActive: { backgroundColor: 'rgba(37,99,235,0.14)', borderColor: 'rgba(37,99,235,0.25)' },
-  dayToday: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  dayActive: { backgroundColor: palette.dayActive, borderColor: palette.dayActiveBorder },
+  dayToday: { backgroundColor: palette.action, borderColor: palette.action },
   dayPressed: { opacity: 0.7, transform: [{ scale: 0.94 }] },
-  dayText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 13 },
-  dayTextActive: { color: ACCENT },
-  dayTextToday: { color: '#fff' },
-  pillarsMeta: { color: INK_SOFT, fontFamily: font.medium, fontSize: 12, marginTop: 2 },
+  dayText: { color: palette.inkSoft, fontFamily: font.bold, fontSize: 13 },
+  dayTextActive: { color: palette.action },
+  dayTextToday: { color: palette.onAction },
+  pillarsMeta: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 12, marginTop: 2 },
   calendarBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(37,99,235,0.10)',
+    backgroundColor: palette.calendar,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -463,9 +493,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    backgroundColor: palette.row,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
+    borderColor: palette.rowBorder,
     borderRadius: 16,
     padding: spacing.md,
     minHeight: 64,
@@ -478,9 +508,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pillarTitle: { fontSize: 15, fontFamily: font.bold, color: INK },
-  pillarSub: { color: INK_SOFT, fontFamily: font.regular, fontSize: 12.5, marginTop: 1 },
-});
+  pillarTitle: { fontSize: 15, fontFamily: font.bold, color: palette.ink },
+  pillarSub: { color: palette.inkSoft, fontFamily: font.regular, fontSize: 12.5, marginTop: 1 },
+  });
+};
 
 // Keep the prior implementation available during the visual migration so no
 // behavior is deleted; the route now renders the approved Journey experience.
