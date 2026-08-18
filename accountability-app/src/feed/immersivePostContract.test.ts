@@ -9,6 +9,7 @@ import {
   immersiveOperationOwnsCompletion,
   immersiveResultBelongsToView,
   presentImmersivePost,
+  usesImmersivePostSurface,
   visibleImmersiveSnapshot,
 } from './ImmersivePost';
 import type { FeedPost } from './types';
@@ -88,6 +89,27 @@ describe('Group 3 immersive Post Detail contract', () => {
       privacyLabel: 'Author details unavailable',
     });
     expect(presentImmersivePost({ ...post, post_type: 'photo' }, 'owner').run).toBe(false);
+  });
+
+  test('reserves the full-height immersive surface for media-first photo, video, and run posts', () => {
+    expect(usesImmersivePostSurface({ ...post, post_type: 'photo' })).toBe(true);
+    expect(usesImmersivePostSurface({ ...post, post_type: 'video' })).toBe(true);
+    expect(usesImmersivePostSurface(post)).toBe(true);
+    expect(usesImmersivePostSurface({ ...post, image_url: null })).toBe(false);
+    expect(usesImmersivePostSurface({ ...post, post_type: 'post' })).toBe(false);
+    expect(
+      usesImmersivePostSurface({
+        ...post,
+        post_type: 'event',
+        event: {
+          id: 'event-a',
+          title: 'Saturday long run',
+          starts_at: '2026-08-22T06:00:00Z',
+          location: 'Kings Park',
+          group_id: 'group-a',
+        },
+      }),
+    ).toBe(false);
   });
 
   test('operation tokens synchronously reject duplicates and stale completions', () => {
@@ -274,6 +296,44 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain("comment !== '1'");
     expect(routeSource).toContain('inputRef.current?.focus()');
     expect(routeSource).not.toMatch(/<TextInput[\s\S]{0,300}\bautoFocus\b/);
+  });
+
+  test('keeps a visible safe Back action in every pre-content state', () => {
+    expect(routeSource.match(/<PostDetailState\b/g)).toHaveLength(2);
+    expect(routeSource).toContain('accessibilityLabel="Back"');
+    expect(routeSource).toContain('onBack={() => navigateBackSafely(router)}');
+  });
+
+  test('renders text and event details as one compact normal post instead of a fake media hero', () => {
+    expect(componentSource).toContain('if (!usesImmersivePostSurface(post))');
+    expect(componentSource).toContain('<CompactPostSurface');
+    expect(componentSource).toContain('post.event.title');
+    expect(componentSource).toContain('post.event.starts_at');
+    expect(componentSource).toContain('post.event.location');
+    expect(componentSource).not.toContain('Media unavailable');
+    expect(componentSource).not.toContain('minHeight: 720');
+    expect(componentSource).not.toContain('presentation.privacyLabel || post.body');
+  });
+
+  test('uses the approved clap for Cheer and truthful empty-comment copy', () => {
+    expect(componentSource).toContain('<Action icon="clap"');
+    expect(componentSource).toContain('name="hand-left-outline"');
+    expect(componentSource).toContain('name="hand-right-outline"');
+    expect(componentSource).not.toContain("icon={post.liked_by_me ? 'flame' : 'flame-outline'}");
+    expect(routeSource).toContain('title="Be the first to comment"');
+    expect(routeSource).toContain('subtitle="Share something supportive about this post."');
+    expect(routeSource).not.toContain('Be the first to Cheer');
+  });
+
+  test('uses one authoritative header and 48dp detail action targets', () => {
+    expect(componentSource).toContain('iconButton: { width: 48, height: 48');
+    expect(componentSource).toContain('action: { flex: 1, minHeight: 48');
+    expect(componentSource).toContain('plainIconButton: {');
+    expect(componentSource).toContain('width: 48');
+    expect(componentSource).toContain('height: 48');
+    expect(componentSource).toContain('useSafeAreaInsets()');
+    expect(componentSource).toContain('topInset={insets.top}');
+    expect(componentSource).toContain('Math.max(insets.top + spacing.xs, spacing.xxl)');
   });
 
   test('matches the approved immersive first viewport visual contract', () => {

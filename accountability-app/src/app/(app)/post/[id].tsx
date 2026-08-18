@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
   AccessibilityInfo,
@@ -473,16 +474,22 @@ function PostDetailView({
 
   if (viewState === 'loading') {
     return (
-      <View style={styles.center}>
+      <PostDetailState
+        topInset={insets.top}
+        onBack={() => navigateBackSafely(router)}
+      >
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.stateText}>Loading post…</Text>
-      </View>
+      </PostDetailState>
     );
   }
 
   if (!post) {
     return (
-      <View style={styles.center}>
+      <PostDetailState
+        topInset={insets.top}
+        onBack={() => navigateBackSafely(router)}
+      >
         <Text style={styles.stateTitle}>
           {viewState === 'offline-uncached'
             ? 'You are offline'
@@ -508,7 +515,7 @@ function PostDetailView({
             <Text style={styles.retryText}>Try again</Text>
           </Pressable>
         ) : null}
-      </View>
+      </PostDetailState>
     );
   }
 
@@ -572,9 +579,9 @@ function PostDetailView({
             </View>
           ) : (
             <EmptyState
-            icon="chatbubble-ellipses-outline"
-            title={`Be the first to Cheer ${authorLabel(post.author_name)}`}
-            subtitle="A little support can keep a streak going."
+              icon="chatbubble-ellipses-outline"
+              title="Be the first to comment"
+              subtitle="Share something supportive about this post."
             />
           )
         }
@@ -669,8 +676,46 @@ function PostDetailView({
   );
 }
 
+function PostDetailState({
+  topInset,
+  onBack,
+  children,
+}: {
+  topInset: number;
+  onBack(): void;
+  children: ReactNode;
+}) {
+  return (
+    <View style={[styles.stateScreen, { paddingTop: Math.max(topInset, spacing.sm) }]}>
+      <Pressable
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        style={({ pressed }) => [styles.stateBack, pressed && styles.pressed]}
+      >
+        <Ionicons name="arrow-back" size={22} color={colors.navy} />
+        <Text style={styles.stateBackText}>Back</Text>
+      </Pressable>
+      <View style={styles.center}>{children}</View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  stateScreen: { flex: 1, backgroundColor: colors.background },
+  stateBack: {
+    minWidth: 88,
+    minHeight: 48,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  stateBackText: { color: colors.navy, fontFamily: font.semibold, fontSize: 15 },
   offlineBanner: { position: 'absolute', zIndex: 5, top: spacing.sm, alignSelf: 'center', borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: 'rgba(247,244,236,.94)' },
   offlineText: { color: colors.navy, fontFamily: font.semibold, fontSize: 11 },
   center: {

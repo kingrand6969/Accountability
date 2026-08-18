@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteTrace } from '../activity/RouteTrace';
 import { formatDuration, formatKm, formatPace, type Pt } from '../activity/geo';
-import { authorLabel } from './format';
+import { authorLabel, timeAgo } from './format';
 import { Avatar } from './Avatar';
 import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
@@ -204,6 +205,15 @@ export function presentImmersivePost(post: FeedPost, viewerId: string | null) {
   };
 }
 
+export function usesImmersivePostSurface(
+  post: FeedPost,
+): post is FeedPost & { image_url: string } {
+  return (
+    Boolean(post.image_url) &&
+    (post.post_type === 'photo' || post.post_type === 'video' || post.post_type === 'run')
+  );
+}
+
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -246,12 +256,31 @@ export function ImmersivePost({
   onOpenEncouragement(): void;
 }) {
   const { height, width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  if (!usesImmersivePostSurface(post)) {
+    return (
+      <CompactPostSurface
+        post={post}
+        viewerId={viewerId}
+        supporterCount={supporterCount}
+        supporterNames={supporterNames}
+        supporterAvatars={supporterAvatars}
+        onBack={onBack}
+        onOptions={onOptions}
+        onEncourage={onEncourage}
+        onComment={onComment}
+        onShare={onShare}
+        onOpenEncouragement={onOpenEncouragement}
+        topInset={insets.top}
+      />
+    );
+  }
   const presentation = presentImmersivePost(post, viewerId);
   const distance = numberValue(post.share_data.distance_m);
   const duration = numberValue(post.share_data.duration_s);
   const route = routeValue(post.share_data.route);
   const verified = post.share_data.verified === true;
-  const mediaSummary = `${presentation.run ? 'Run proof' : 'Post media'} by ${authorLabel(post.author_name)}. ${presentation.ownerLabel}. ${presentation.audienceLabel}. ${presentation.mediaAvailable ? post.body || 'No caption.' : 'Media unavailable.'}${presentation.privacyLabel ? ` ${presentation.privacyLabel}.` : ''}`;
+  const mediaSummary = `${presentation.run ? 'Run proof' : 'Post media'} by ${authorLabel(post.author_name)}. ${presentation.ownerLabel}. ${presentation.audienceLabel}. ${post.body || 'No caption.'}${presentation.privacyLabel ? ` ${presentation.privacyLabel}.` : ''}`;
 
   return (
     <View style={[styles.hero, { minHeight: height }]}>
@@ -260,25 +289,18 @@ export function ImmersivePost({
         accessibilityRole="image"
         accessibilityLabel={mediaSummary}
       >
-        {post.image_url ? (
-          post.post_type === 'video' ? (
-            <View
-              style={[
-                styles.photoFill,
-                { transform: [{ scale: Math.max(1, height / Math.max(width * (16 / 9), 1)) }] },
-              ]}
-            >
-              <PostVideo url={post.image_url} detail active={mediaActive} />
-            </View>
-          ) : (
-            <View style={styles.photoContain}>
-              <PostImage url={post.image_url} immersive />
-            </View>
-          )
+        {post.post_type === 'video' ? (
+          <View
+            style={[
+              styles.photoFill,
+              { transform: [{ scale: Math.max(1, height / Math.max(width * (16 / 9), 1)) }] },
+            ]}
+          >
+            <PostVideo url={post.image_url} detail active={mediaActive} />
+          </View>
         ) : (
-          <View style={styles.mediaUnavailable}>
-            <Ionicons name="image-outline" size={38} color="rgba(255,255,255,.8)" />
-            <Text style={styles.mediaUnavailableText}>Media unavailable</Text>
+          <View style={styles.photoContain}>
+            <PostImage url={post.image_url} immersive />
           </View>
         )}
       </View>
@@ -290,7 +312,12 @@ export function ImmersivePost({
         importantForAccessibility="no-hide-descendants"
       />
 
-      <View style={styles.topControls}>
+      <View
+        style={[
+          styles.topControls,
+          { top: Math.max(insets.top + spacing.xs, spacing.xxl) },
+        ]}
+      >
         <IconButton icon="arrow-back" label="Back" onPress={onBack} />
         <IconButton icon="ellipsis-horizontal" label="Post options" onPress={onOptions} />
       </View>
@@ -329,41 +356,23 @@ export function ImmersivePost({
           <View style={styles.authorCopy}>
             <Text style={styles.author}>{authorLabel(post.author_name)}</Text>
             <Text style={styles.accessLabel}>{presentation.ownerLabel} · {presentation.audienceLabel}</Text>
-            <Text style={styles.caption} numberOfLines={2}>
-              {presentation.privacyLabel || post.body}
-            </Text>
+            {presentation.privacyLabel ? (
+              <Text style={styles.caption} numberOfLines={2}>
+                {presentation.privacyLabel}
+              </Text>
+            ) : null}
           </View>
         </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.encouragementCard, pressed && styles.pressed]}
+        <EncouragementCard
+          supporterCount={supporterCount}
+          supporterNames={supporterNames}
+          supporterAvatars={supporterAvatars}
           onPress={onOpenEncouragement}
-          accessibilityRole="button"
-          accessibilityLabel={`${supporterCount} supporters. Open Cheers.`}
-        >
-          <View style={styles.faces}>
-            {supporterAvatars.slice(0, 3).map((person, index) => (
-              <View key={person.id} style={[styles.face, { marginLeft: index ? -10 : 0 }]}>
-                <Avatar url={person.avatar_url} name={person.name} size={30} />
-              </View>
-            ))}
-          </View>
-          <View style={styles.encouragementCopy}>
-            <Text style={styles.encouragementNames} numberOfLines={1}>
-              {supporterNames || 'Your buddies'}
-            </Text>
-            <Text style={styles.encouragementText}>are cheering you on</Text>
-            <View style={styles.miniWave} accessible={false} importantForAccessibility="no-hide-descendants">
-              {[5, 10, 7, 14, 9, 16, 6, 12, 8, 5].map((barHeight, index) => (
-                <View key={index} style={[styles.waveBar, { height: barHeight }]} />
-              ))}
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-        </Pressable>
+        />
 
         <View style={styles.actionBar}>
-          <Action icon={post.liked_by_me ? 'flame' : 'flame-outline'} label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
+          <Action icon="clap" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
           <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
         </View>
@@ -372,10 +381,194 @@ export function ImmersivePost({
   );
 }
 
+function CompactPostSurface({
+  post,
+  viewerId,
+  supporterCount,
+  supporterNames,
+  supporterAvatars,
+  onBack,
+  onOptions,
+  onEncourage,
+  onComment,
+  onShare,
+  onOpenEncouragement,
+  topInset,
+}: {
+  post: FeedPost;
+  viewerId: string | null;
+  supporterCount: number;
+  supporterNames: string;
+  supporterAvatars: { id: string; name: string | null; avatar_url: string | null }[];
+  onBack(): void;
+  onOptions(): void;
+  onEncourage(): void;
+  onComment(): void;
+  onShare(): void;
+  onOpenEncouragement(): void;
+  topInset: number;
+}) {
+  const presentation = presentImmersivePost(post, viewerId);
+  const typeLabel = compactPostTypeLabel(post);
+  const body = post.body.trim();
+
+  return (
+    <View style={styles.compactSurface}>
+      <View
+        style={[
+          styles.compactTop,
+          { minHeight: 58 + topInset, paddingTop: topInset },
+        ]}
+      >
+        <PlainIconButton icon="arrow-back" label="Back" onPress={onBack} />
+        <Text style={styles.compactTitle}>Post</Text>
+        <PlainIconButton icon="ellipsis-horizontal" label="Post options" onPress={onOptions} />
+      </View>
+
+      <View style={styles.compactAuthorLine}>
+        <Avatar url={post.author_avatar} name={post.author_name} size={44} />
+        <View style={styles.compactAuthorCopy}>
+          <Text style={styles.compactAuthor}>{authorLabel(post.author_name)}</Text>
+          <Text style={styles.compactMeta}>
+            {timeAgo(post.created_at)} · {presentation.ownerLabel} · {presentation.audienceLabel}
+            {typeLabel ? ` · ${typeLabel}` : ''}
+          </Text>
+        </View>
+      </View>
+
+      {body ? <Text style={styles.compactBody}>{body}</Text> : null}
+
+      {post.event ? (
+        <View style={styles.compactEvent}>
+          <View style={styles.compactEventIcon} accessible={false}>
+            <Ionicons name="calendar" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.compactEventCopy}>
+            <Text style={styles.compactEventEyebrow}>EVENT</Text>
+            <Text style={styles.compactEventTitle}>{post.event.title}</Text>
+            <Text style={styles.compactEventMeta}>
+              {formatEventDate(post.event.starts_at)}
+              {post.event.location ? ` · ${post.event.location}` : ''}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {post.image_url ? (
+        <View
+          style={styles.compactMedia}
+          accessibilityRole="image"
+          accessibilityLabel={`Post media by ${authorLabel(post.author_name)}`}
+        >
+          {post.post_type === 'video' ? (
+            <PostVideo url={post.image_url} detail />
+          ) : (
+            <PostImage url={post.image_url} capTall />
+          )}
+        </View>
+      ) : null}
+
+      <View style={styles.compactEngagement}>
+        <EncouragementCard
+          supporterCount={supporterCount}
+          supporterNames={supporterNames}
+          supporterAvatars={supporterAvatars}
+          onPress={onOpenEncouragement}
+        />
+        <View style={styles.actionBar}>
+          <Action icon="clap" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
+          <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
+          <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function compactPostTypeLabel(post: FeedPost) {
+  const labels: Partial<Record<FeedPost['post_type'], string>> = {
+    workout: 'Workout',
+    milestone: 'Milestone',
+    event: 'Event',
+    memory: 'Memory',
+  };
+  return labels[post.post_type] ?? null;
+}
+
+function formatEventDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Date to be confirmed';
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function EncouragementCard({
+  supporterCount,
+  supporterNames,
+  supporterAvatars,
+  onPress,
+}: {
+  supporterCount: number;
+  supporterNames: string;
+  supporterAvatars: { id: string; name: string | null; avatar_url: string | null }[];
+  onPress(): void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.encouragementCard, pressed && styles.pressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${supporterCount} supporters. Open Cheers.`}
+    >
+      <View style={styles.faces}>
+        {supporterAvatars.slice(0, 3).map((person, index) => (
+          <View key={person.id} style={[styles.face, { marginLeft: index ? -10 : 0 }]}>
+            <Avatar url={person.avatar_url} name={person.name} size={30} />
+          </View>
+        ))}
+      </View>
+      <View style={styles.encouragementCopy}>
+        <Text style={styles.encouragementNames} numberOfLines={1}>
+          {supporterNames || 'Your buddies'}
+        </Text>
+        <Text style={styles.encouragementText}>are cheering you on</Text>
+        <View
+          style={styles.miniWave}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+        >
+          {[5, 10, 7, 14, 9, 16, 6, 12, 8, 5].map((barHeight, index) => (
+            <View key={index} style={[styles.waveBar, { height: barHeight }]} />
+          ))}
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+    </Pressable>
+  );
+}
+
 function IconButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress(): void }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.iconButton}>
       <Ionicons name={icon} size={24} color="#fff" />
+    </Pressable>
+  );
+}
+
+function PlainIconButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress(): void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.plainIconButton, pressed && styles.pressed]}
+    >
+      <Ionicons name={icon} size={24} color={colors.navy} />
     </Pressable>
   );
 }
@@ -389,10 +582,24 @@ function Metric({ value, label }: { value: string; label: string }) {
   );
 }
 
-function Action({ icon, label, shortLabel, active = false, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; shortLabel: string; active?: boolean; onPress(): void }) {
+function CheerIcon({ color }: { color: string }) {
+  return (
+    <View style={styles.cheerIcon} accessibilityElementsHidden>
+      <Ionicons name="hand-left-outline" size={19} color={color} style={styles.cheerLeft} />
+      <Ionicons name="hand-right-outline" size={19} color={color} style={styles.cheerRight} />
+    </View>
+  );
+}
+
+function Action({ icon, label, shortLabel, active = false, onPress }: { icon: 'clap' | keyof typeof Ionicons.glyphMap; label: string; shortLabel: string; active?: boolean; onPress(): void }) {
+  const color = active ? '#76A5FF' : '#fff';
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.action}>
-      <Ionicons name={icon} size={18} color={active ? '#76A5FF' : '#fff'} />
+      {icon === 'clap' ? (
+        <CheerIcon color={color} />
+      ) : (
+        <Ionicons name={icon} size={18} color={color} />
+      )}
       <Text style={[styles.actionText, active && styles.actionActive]}>{shortLabel}</Text>
     </Pressable>
   );
@@ -402,10 +609,77 @@ const styles = StyleSheet.create({
   hero: { width: '100%', backgroundColor: colors.navy, overflow: 'hidden' },
   photoFill: { width: '100%', alignSelf: 'center' },
   photoContain: { position: 'absolute', inset: 0, justifyContent: 'center' },
-  mediaUnavailable: { flex: 1, minHeight: 720, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.navy },
-  mediaUnavailableText: { color: 'rgba(255,255,255,.8)', fontFamily: font.medium },
-  topControls: { position: 'absolute', top: spacing.xxl, left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between', zIndex: 3 },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(2,8,20,.24)' },
+  compactSurface: {
+    width: '100%',
+    backgroundColor: colors.card,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  compactTop: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  compactTitle: { color: colors.navy, fontFamily: font.bold, fontSize: 18 },
+  plainIconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactAuthorLine: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  compactAuthorCopy: { flex: 1, gap: 2 },
+  compactAuthor: { color: colors.text, fontFamily: font.bold, fontSize: 15 },
+  compactMeta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  compactBody: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    color: colors.text,
+    fontFamily: font.regular,
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  compactEvent: {
+    minHeight: 84,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  compactEventIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+  },
+  compactEventCopy: { flex: 1, gap: 2 },
+  compactEventEyebrow: { color: colors.primary, fontFamily: font.bold, fontSize: 11 },
+  compactEventTitle: { color: colors.text, fontFamily: font.bold, fontSize: 15, lineHeight: 20 },
+  compactEventMeta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  compactMedia: { minHeight: 220, overflow: 'hidden', backgroundColor: colors.navy },
+  compactEngagement: { gap: spacing.sm, padding: spacing.md },
+  topControls: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between', zIndex: 3 },
+  iconButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(2,8,20,.24)' },
   story: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg, gap: spacing.md },
   headlineRow: { minHeight: 98, flexDirection: 'row', alignItems: 'flex-start' },
   headline: { flex: 1, color: '#fff', fontFamily: font.serif, fontSize: 34, lineHeight: 37, textShadowColor: 'rgba(0,0,0,.65)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
@@ -430,7 +704,10 @@ const styles = StyleSheet.create({
   miniWave: { height: 18, flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 3 },
   waveBar: { width: 2, borderRadius: 1, backgroundColor: colors.primary },
   actionBar: { minHeight: 48, borderRadius: radius.pill, backgroundColor: 'rgba(2,8,20,.78)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
-  action: { flex: 1, minHeight: 44, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' },
+  action: { flex: 1, minHeight: 48, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' },
+  cheerIcon: { width: 25, height: 21, position: 'relative' },
+  cheerLeft: { position: 'absolute', left: 0, top: 0 },
+  cheerRight: { position: 'absolute', right: 0, top: 2 },
   actionText: { color: '#fff', fontFamily: font.semibold, fontSize: 11 },
   actionActive: { color: '#76A5FF' },
   pressed: { opacity: 0.72 },
