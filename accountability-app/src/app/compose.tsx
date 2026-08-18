@@ -101,6 +101,8 @@ export default function Compose() {
   const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
   const [editorUri, setEditorUri] = useState<string | null>(null);
   const [eventOpen, setEventOpen] = useState(params.event === '1');
+  const eventOpenRef = useRef(eventOpen);
+  eventOpenRef.current = eventOpen;
   const [evTitle, setEvTitle] = useState('');
   const [evDate, setEvDate] = useState(() => toLocalDateString(new Date()));
   const [evTime, setEvTime] = useState('18:00');
@@ -112,6 +114,7 @@ export default function Compose() {
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [screenFocused, setScreenFocused] = useState(false);
+  const hasAttachedMedia = Boolean(draftMedia || previewUri || pickedBase64 || pickedVideo);
   const draftRef = useRef<ComposeDraftV1 | null>(null);
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = ownerId;
@@ -210,13 +213,14 @@ export default function Compose() {
       setShowOnCard(false);
       setTaggedIds(new Set());
       setKeepInMemories(false);
+      setEventOpen(params.event === '1');
       setOwnerId(nextOwner);
       if (ownerId) {
         pickerReadinessGate.clear();
       }
     });
     return () => data.subscription.unsubscribe();
-  }, [ownerId, params.text, pickerReadinessGate]);
+  }, [ownerId, params.event, params.text, pickerReadinessGate]);
 
   useEffect(() => {
     if (!ownerId) return;
@@ -259,6 +263,7 @@ export default function Compose() {
                     : null,
                 }),
                 ({ draft, base64 }) => {
+                  const restoredEventOpen = draft.event.open && !draft.media;
                   restoreChosenRef.current = true;
                   setDraftId(draft.draftId);
                   setBody(draft.body);
@@ -270,13 +275,16 @@ export default function Compose() {
                     ? { uri: draft.media.uri, mimeType: draft.media.mimeType }
                     : null);
                   setPickedBase64(base64);
-                  setEventOpen(draft.event.open);
+                  setEventOpen(restoredEventOpen);
                   setEvTitle(draft.event.title);
                   setEvDate(draft.event.date);
                   setEvTime(draft.event.time);
                   setEvLocation(draft.event.location);
-                  setTaggedIds(new Set(draft.tagIds));
-                  setKeepInMemories(draft.keepInMemories);
+                  setTaggedIds(restoredEventOpen ? new Set() : new Set(draft.tagIds));
+                  setKeepInMemories(restoredEventOpen ? false : draft.keepInMemories);
+                  if (draft.event.open && draft.media) {
+                    setDraftNotice('Event mode was turned off because this draft contains media.');
+                  }
                   setShowCreateHub(false);
                   setDraftReady(true);
                 },
@@ -469,6 +477,7 @@ export default function Compose() {
   }
 
   async function makeMediaDurable(uri: string, extension: string, mimeType: string, kind: 'photo' | 'video') {
+    if (eventOpenRef.current) throw new Error('Turn off Event before attaching media.');
     if (!ownerId) throw new Error('Sign in again before attaching media.');
     const expectedOwner = ownerId;
     const expectedToken = mountTokenRef.current;
@@ -577,6 +586,7 @@ export default function Compose() {
   attachRecoveredVideoRef.current = attachRecoveredVideo;
 
   async function onPickPhoto() {
+    if (eventOpenRef.current) return;
     if (Platform.OS !== 'web') {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
@@ -590,6 +600,7 @@ export default function Compose() {
       base64: true,
     });
     const normalized = normalizePickedAsset(res, 'image');
+    if (eventOpenRef.current) return;
     if (normalized.status === 'canceled') return;
     if (normalized.status === 'invalid') {
       Alert.alert('Photo not added', normalized.message);
@@ -610,6 +621,7 @@ export default function Compose() {
   }
 
   async function onPickVideo() {
+    if (eventOpenRef.current) return;
     if (Platform.OS !== 'web') {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
@@ -623,6 +635,7 @@ export default function Compose() {
       quality: ImagePicker.UIImagePickerControllerQualityType.Medium,
     });
     const normalized = normalizePickedAsset(res, 'video');
+    if (eventOpenRef.current) return;
     if (normalized.status === 'canceled') return;
     if (normalized.status === 'invalid') {
       Alert.alert('Video not added', normalized.message);
@@ -645,6 +658,7 @@ export default function Compose() {
   }
 
   function requestMediaPicker(media: CreateMedia) {
+    if (eventOpenRef.current) return;
     const ready = Boolean(ownerRef.current && draftReadyRef.current);
     const launch = pickerReadinessGate.request(media, ready);
     if (launch) void launchMediaPicker(launch);
@@ -705,10 +719,25 @@ export default function Compose() {
     });
   }
 
+  function toggleEventMode() {
+    if (eventOpen) {
+      setEventOpen(false);
+      return;
+    }
+    if (hasAttachedMedia) return;
+    setTaggedIds(new Set());
+    setKeepInMemories(false);
+    setEventOpen(true);
+  }
+
   const canPost = editingId
     ? body.trim().length > 0 && !posting
     : eventOpen
-    ? evTitle.trim().length >= 3 && !posting
+    ? evTitle.trim().length >= 3
+      && !hasAttachedMedia
+      && taggedIds.size === 0
+      && !keepInMemories
+      && !posting
     : (body.trim().length > 0 || !!pickedBase64 || !!pickedVideo) && !posting;
 
   async function onPost() {
@@ -716,6 +745,7 @@ export default function Compose() {
     const submittedDraft = currentDraft();
     const submittedOwner = ownerRef.current;
     const submittedToken = mountTokenRef.current;
+    const operationId = submittedDraft?.draftId ?? draftId;
     if (editingId) {
       setPosting(true);
       try {
@@ -735,11 +765,16 @@ export default function Compose() {
     if (eventOpen) {
       setPosting(true);
       try {
+        if (!submittedOwner) throw new Error('Sign in again before announcing this event.');
         const result = await completeRemoteSubmission(() => createEvent({
+          expectedOwnerId: submittedOwner,
+          operationId,
           title: evTitle,
           startsAtIso: toIsoFromLocal(evDate, evTime),
           location: evLocation,
           message: body.trim(),
+          audience,
+          showOnCard: normalizeBuddyCardFeature(audience, showOnCard),
         }), () => clearSavedDraft(true, submittedDraft));
         if (result.cleanupError) {
           finishAfterRemoteSuccess('Event announced', result.cleanupError, submittedDraft, submittedOwner, submittedToken);
@@ -757,7 +792,6 @@ export default function Compose() {
       }
       return;
     }
-    const operationId = submittedDraft?.draftId ?? draftId;
     setPosting(true);
     const postedText = body.trim();
     const postedImageUri = previewUri;
@@ -1046,12 +1080,14 @@ export default function Compose() {
           icon="image-outline"
           tint={colors.primary}
           label="Photo"
+          disabled={eventOpen}
           onPress={() => requestMediaPicker('photo')}
         />
         <Action
           icon="videocam-outline"
           tint={colors.danger}
           label="Video"
+          disabled={eventOpen}
           onPress={() => requestMediaPicker('video')}
         />
         <Action
@@ -1059,7 +1095,8 @@ export default function Compose() {
           tint={colors.success}
           label="Event"
           active={eventOpen}
-          onPress={() => setEventOpen((v) => !v)}
+          disabled={hasAttachedMedia}
+          onPress={toggleEventMode}
         />
       </View>
 
@@ -1117,19 +1154,28 @@ function Action({
   tint,
   label,
   active,
+  disabled = false,
   onPress,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   tint: string;
   label: string;
   active?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.action, active && styles.actionActive, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.action,
+        active && styles.actionActive,
+        disabled && styles.actionDisabled,
+        pressed && !disabled && styles.pressed,
+      ]}
       onPress={onPress}
+      disabled={disabled}
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
     >
       <Ionicons name={icon} size={20} color={tint} />
       <Text style={styles.actionLabel}>{label}</Text>
@@ -1252,6 +1298,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   actionActive: { backgroundColor: colors.successSoft, borderColor: colors.success },
+  actionDisabled: { opacity: 0.42 },
   actionLabel: { fontFamily: font.bold, fontSize: 14, color: colors.text },
   sheetBackdrop: {
     flex: 1,
