@@ -404,6 +404,20 @@ describe('Group 3 social Feed contract', () => {
     expect(focusBlock).not.toContain('setLoading(true)');
   });
 
+  test('prepends newly committed owner posts on focus without replacing the current Feed', () => {
+    expect(feedSource).toContain('reconcileFeedPostsPublished');
+    expect(feedSource).toContain('fetchPost: getPost');
+    expect(feedSource).toContain('currentUserIdRef.current === requestedOwnerId');
+    expect(feedSource).toContain("feed_source: 'self'");
+    expect(feedSource).toContain('suggested: false');
+    expect(feedSource).toMatch(
+      /setPosts\(\(current\) => \[\s*\.\.\.published,\s*\.\.\.current\.filter\(\(post\) => !publishedIds\.has\(post\.id\)\),\s*\]\)/,
+    );
+    const focusBlock = feedSource.match(/useFocusEffect\([\s\S]*?\n\s*\);/)?.[0] ?? '';
+    expect(focusBlock).toContain('void reconcilePublishedPosts()');
+    expect(focusBlock).not.toContain('void load()');
+  });
+
   test('clears pending offset only after a real list scroll call', () => {
     const scrollIndex = feedSource.indexOf('list.scrollToOffset({ offset, animated: false })');
     const clearIndex = feedSource.indexOf('pendingFeedOffset.current = null', scrollIndex);

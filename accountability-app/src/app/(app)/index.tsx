@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import {
   FEED_PAGE_SIZE,
+  getPost,
   listEncouragementPreviews,
   listPersonalFeed,
   setLiked,
@@ -54,6 +55,7 @@ import { FeedProofCard } from '../../feed/FeedProofCard';
 import { PostImage } from '../../feed/PostImage';
 import { activeVideoPost } from '../../feed/videoPolicy';
 import { runFeedCriticalLoad } from '../../feed/feedLoadCoordinator';
+import { reconcileFeedPostsPublished } from '../../feed/feedPublishSignal';
 import { DIRECT_POST_HREF, type DirectPostHref } from '../../entry/createFlow';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -364,14 +366,54 @@ export default function Feed() {
     }
   }, [load, restored]);
 
+  const reconcilePublishedPosts = useCallback(async () => {
+    const requestedOwnerId = myId;
+    if (!requestedOwnerId) return;
+    const generation = loadGeneration.current;
+    await reconcileFeedPostsPublished({
+      ownerId: requestedOwnerId,
+      fetchPost: getPost,
+      isCurrent: () =>
+        currentUserIdRef.current === requestedOwnerId
+        && loadGeneration.current === generation,
+      onPosts: (rows) => {
+        // The authoritative single-row result wins over any older page request
+        // that may still be resolving behind the composer.
+        loadGeneration.current += 1;
+        const published = [...rows]
+          .sort((left, right) => right.created_at.localeCompare(left.created_at))
+          .map((post, index): UnifiedFeedPost => ({
+            ...post,
+            feed_source: 'self',
+            suggested: false,
+            feed_position: -(index + 1),
+            feed_session_id: `published:${post.id}`,
+          }));
+        const publishedIds = new Set(published.map(({ id }) => id));
+        setPosts((current) => [
+          ...published,
+          ...current.filter((post) => !publishedIds.has(post.id)),
+        ]);
+        setDataOwnerId(requestedOwnerId);
+        setLoadError(null);
+        setLoading(false);
+        setRefreshing(false);
+        feedOffset.current = 0;
+        pendingFeedOffset.current = 0;
+        listContentReady.current = false;
+      },
+    });
+  }, [myId]);
+
   useFocusEffect(
     useCallback(() => {
+      void reconcilePublishedPosts();
       return () => {
         pendingFeedOffset.current = feedOffset.current;
         listContentReady.current = false;
         persistFeedPosition();
       };
-    }, [persistFeedPosition]),
+    }, [persistFeedPosition, reconcilePublishedPosts]),
   );
 
   function rememberFeedOffset(event: NativeSyntheticEvent<NativeScrollEvent>) {
