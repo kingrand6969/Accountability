@@ -30,6 +30,12 @@ jest.mock('../auth/AuthProvider', () => ({
     session: mockOwnerId ? { user: { id: mockOwnerId } } : null,
   }),
 }));
+jest.mock('../ui/AppThemeProvider', () => {
+  const { themeColors } = require('../ui/theme') as typeof import('../ui/theme');
+  return {
+    useAppTheme: () => ({ mode: 'light', colors: themeColors('light'), setMode: jest.fn() }),
+  };
+});
 jest.mock('expo-router', () => {
   const ReactModule = require('react') as typeof React;
   return {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -34,13 +34,27 @@ import { Avatar } from '../../feed/Avatar';
 import type { FeedPost } from '../../feed/types';
 import { EmptyState } from '../../ui/EmptyState';
 import { Button } from '../../ui/Button';
-import { colors, font, radius, spacing, shadow } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
+import {
+  colors,
+  font,
+  radius,
+  spacing,
+  shadow,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../../ui/theme';
 
 export default function GroupDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [group, setGroup] = useState<Group | null>(null);
   const { session } = useAuth();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const actionColor = theme.ink.action;
+  const mutedColor = mode === 'light' ? colors.textMuted : theme.ink.muted;
+  const faintColor = mode === 'light' ? colors.textFaint : theme.ink.muted;
   const myId = session?.user.id ?? null;
   const currentOwnerRef = useRef(myId);
   const loadGeneration = useRef(0);
@@ -314,7 +328,7 @@ export default function GroupDetail() {
   if (loading || dataViewKey !== viewKey) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={actionColor} />
       </View>
     );
   }
@@ -332,13 +346,13 @@ export default function GroupDetail() {
       <View style={styles.groupCard}>
         <View style={styles.groupTitleRow}>
           <View style={styles.iconCircle}>
-            <Ionicons name="people" size={22} color={colors.primary} />
+            <Ionicons name="people" size={22} color={actionColor} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.groupName}>{group.name}</Text>
             <View style={styles.metaRow}>
               {group.privacy === 'private' ? (
-                <Ionicons name="lock-closed" size={12} color={colors.textMuted} />
+                <Ionicons name="lock-closed" size={12} color={mutedColor} />
               ) : null}
               <Text style={styles.groupMeta}>
                 {group.privacy === 'private' ? 'Private · ' : ''}
@@ -348,7 +362,7 @@ export default function GroupDetail() {
           </View>
           {group.is_admin ? (
             <View style={styles.adminChip}>
-              <Ionicons name="shield-checkmark" size={12} color={colors.primary} />
+              <Ionicons name="shield-checkmark" size={12} color={actionColor} />
               <Text style={styles.adminChipText}>Admin</Text>
             </View>
           ) : null}
@@ -362,7 +376,7 @@ export default function GroupDetail() {
               <TextInput
                 style={styles.keyInput}
                 placeholder="Enter the gatekey to join"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={faintColor}
                 value={keyInput}
                 onChangeText={setKeyInput}
                 autoCapitalize="none"
@@ -403,7 +417,7 @@ export default function GroupDetail() {
           <TextInput
             style={styles.composerInput}
             placeholder={`Share something with ${group.name}…`}
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={faintColor}
             value={body}
             onChangeText={setBody}
             multiline
@@ -416,10 +430,11 @@ export default function GroupDetail() {
             ]}
             onPress={onPost}
             disabled={!canPost}
+            hitSlop={2}
             accessibilityLabel="Post to the group"
           >
             {posting ? (
-              <ActivityIndicator color={colors.onPrimary} />
+              <ActivityIndicator color={theme.ink.inverse} />
             ) : (
               <Text style={styles.postBtnText}>Post</Text>
             )}
@@ -439,7 +454,7 @@ export default function GroupDetail() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={header}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={actionColor} />
         }
         ListEmptyComponent={
           group.is_member ? (
@@ -493,7 +508,7 @@ export default function GroupDetail() {
                 accessibilityLabel="Post options"
                 style={({ pressed }) => [styles.postMenuBtn, pressed && { opacity: 0.6 }]}
               >
-                <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
+                <Ionicons name="ellipsis-horizontal" size={18} color={mutedColor} />
               </Pressable>
             </View>
             {item.body ? (
@@ -532,7 +547,7 @@ export default function GroupDetail() {
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}
                   size={19}
-                  color={item.liked_by_me ? colors.cheer : colors.textMuted}
+                  color={item.liked_by_me ? colors.cheer : mutedColor}
                 />
                 <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
                   {item.like_count}
@@ -544,7 +559,7 @@ export default function GroupDetail() {
                 hitSlop={8}
                 accessibilityLabel="View comments"
               >
-                <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
+                <Ionicons name="chatbubble-outline" size={18} color={mutedColor} />
                 <Text style={styles.actionText}>{item.comment_count}</Text>
               </Pressable>
             </View>
@@ -556,23 +571,31 @@ export default function GroupDetail() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const primaryInk = mode === 'light' ? colors.text : theme.ink.primary;
+  const secondaryInk = mode === 'light' ? colors.textSecondary : theme.ink.secondary;
+  const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted;
+  const faintInk = mode === 'light' ? colors.textFaint : theme.ink.muted;
+  const softActionSurface = mode === 'light' ? colors.primarySoft : theme.surface.muted;
+  const neutralSurface = mode === 'light' ? colors.surface : theme.surface.muted;
+
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.raised },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xxl,
-    backgroundColor: colors.background,
+    backgroundColor: theme.surface.raised,
   },
-  notFound: { fontFamily: font.regular, color: colors.textMuted },
+  notFound: { fontFamily: font.regular, color: mutedInk },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   headerBlock: { gap: spacing.md },
   groupCard: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     padding: spacing.lg,
     gap: spacing.md,
     ...shadow.card,
@@ -582,58 +605,58 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: softActionSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  groupName: { fontFamily: font.extrabold, fontSize: 20, color: colors.text },
+  groupName: { fontFamily: font.extrabold, fontSize: 20, color: primaryInk },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  groupMeta: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted },
+  groupMeta: { fontFamily: font.medium, fontSize: 13, color: mutedInk },
   keyBlock: { gap: spacing.sm },
   keyInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
+    color: primaryInk,
     minHeight: 48,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
   },
-  keyHint: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  keyHint: { fontFamily: font.regular, fontSize: 12.5, color: mutedInk },
   memberActions: { flexDirection: 'row', gap: spacing.sm },
   adminChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: softActionSurface,
     borderRadius: radius.pill,
     paddingVertical: 5,
     paddingHorizontal: 10,
   },
-  adminChipText: { fontFamily: font.bold, fontSize: 12, color: colors.primary },
+  adminChipText: { fontFamily: font.bold, fontSize: 12, color: theme.ink.action },
   groupDescription: {
     fontFamily: font.regular,
     fontSize: 14.5,
     lineHeight: 21,
-    color: colors.textSecondary,
+    color: secondaryInk,
   },
   composer: { gap: spacing.sm },
   composerInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
+    color: primaryInk,
     minHeight: 48,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
   },
   postBtn: {
     alignSelf: 'flex-end',
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.sm,
     paddingVertical: 11,
     paddingHorizontal: 24,
@@ -641,15 +664,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   postBtnDisabled: { opacity: 0.5 },
-  postBtnText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  postBtnText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   pressed: { opacity: 0.7 },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderRadius: radius.md,
     padding: spacing.lg,
     gap: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     ...shadow.card,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -661,10 +684,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'flex-start',
   },
-  author: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
-  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: colors.text },
-  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: colors.surface },
+  author: { fontSize: 15, fontFamily: font.bold, color: primaryInk },
+  time: { color: faintInk, fontSize: 12, fontFamily: font.medium },
+  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: primaryInk },
+  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: neutralSurface },
   actions: { flexDirection: 'row', gap: spacing.xl, marginTop: 2 },
   action: {
     flexDirection: 'row',
@@ -673,6 +696,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     minHeight: 32,
   },
-  actionText: { fontSize: 14, color: colors.textMuted, fontFamily: font.semibold },
+  actionText: { fontSize: 14, color: mutedInk, fontFamily: font.semibold },
   liked: { color: colors.cheer },
-});
+  });
+};
