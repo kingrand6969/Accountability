@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -25,11 +25,23 @@ import { listGroups, type Group } from '../groups/api';
 import { listPages, type Page } from '../pages/api';
 import { Avatar } from '../feed/Avatar';
 import { EmptyState } from '../ui/EmptyState';
-import { colors, font, radius, spacing, contentMax } from '../ui/theme';
+import {
+  colors,
+  font,
+  radius,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { useAuth } from '../auth/AuthProvider';
 
 export default function Search() {
   const router = useRouter();
+  const { colors: theme, mode } = useAppTheme();
+  const appearance = useMemo(() => createSearchAppearance(theme, mode), [theme, mode]);
+  const { palette, styles } = appearance;
   const { isPro } = useIsPro();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
@@ -179,11 +191,11 @@ export default function Search() {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.searchWrap}>
-          <Ionicons name="search" size={17} color={colors.textFaint} />
+          <Ionicons name="search" size={17} color={palette.textFaint} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search people, groups, pages…"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={palette.textFaint}
             value={visibleQuery}
             onChangeText={onChange}
             onSubmitEditing={() => visibleQuery.trim().length >= 2 && commit(visibleQuery)}
@@ -192,7 +204,7 @@ export default function Search() {
             autoCapitalize="none"
             autoCorrect={false}
           />
-          {searching ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+          {searching ? <ActivityIndicator size="small" color={palette.action} /> : null}
         </View>
 
         {/* recent searches — shown before typing */}
@@ -215,7 +227,7 @@ export default function Search() {
                     })
                     .catch(() => {});
                 }}
-                hitSlop={8}
+                hitSlop={spacing.lg}
                 accessibilityLabel="Clear search history"
               >
                 <Text style={styles.clearAll}>Clear all</Text>
@@ -228,7 +240,7 @@ export default function Search() {
                 onPress={() => onChange(h.query)}
                 accessibilityLabel={`Search again for ${h.query}`}
               >
-                <Ionicons name="time-outline" size={16} color={colors.textFaint} />
+                <Ionicons name="time-outline" size={16} color={palette.textFaint} />
                 <Text style={styles.historyQuery} numberOfLines={1}>
                   {h.query}
                 </Text>
@@ -248,10 +260,10 @@ export default function Search() {
                       })
                       .catch(() => {});
                   }}
-                  hitSlop={10}
+                  hitSlop={spacing.lg}
                   accessibilityLabel={`Remove ${h.query} from history`}
                 >
-                  <Ionicons name="close" size={16} color={colors.textFaint} />
+                  <Ionicons name="close" size={16} color={palette.textFaint} />
                 </Pressable>
               </Pressable>
             ))}
@@ -266,6 +278,7 @@ export default function Search() {
         {visiblePeople.length > 0 ? <Text style={styles.section}>People</Text> : null}
         {visiblePeople.map((p) => (
           <Row
+            appearance={appearance}
             key={p.id}
             title={authorLabel(p.display_name)}
             sub={p.area ?? 'Accountability buddy'}
@@ -280,12 +293,13 @@ export default function Search() {
         {visibleGroups.length > 0 ? <Text style={styles.section}>Groups</Text> : null}
         {visibleGroups.map((g) => (
           <Row
+            appearance={appearance}
             key={g.id}
             title={g.name}
             sub={`${g.member_count} members`}
             left={
               <View style={styles.iconCircle}>
-                <Ionicons name="people" size={18} color={colors.primary} />
+                <Ionicons name="people" size={18} color={palette.action} />
               </View>
             }
             onPress={() => {
@@ -298,6 +312,7 @@ export default function Search() {
         {visiblePages.length > 0 ? <Text style={styles.section}>Pages</Text> : null}
         {visiblePages.map((p) => (
           <Row
+            appearance={appearance}
             key={p.id}
             title={p.name}
             sub={`@${p.handle} · ${p.follower_count} followers`}
@@ -306,7 +321,7 @@ export default function Search() {
                 <Image source={{ uri: p.avatar_url }} style={styles.pageAvatar} />
               ) : (
                 <View style={styles.iconCircle}>
-                  <Ionicons name="storefront-outline" size={17} color={colors.primary} />
+                  <Ionicons name="storefront-outline" size={17} color={palette.action} />
                 </View>
               )
             }
@@ -333,16 +348,19 @@ export default function Search() {
 }
 
 function Row({
+  appearance,
   title,
   sub,
   left,
   onPress,
 }: {
+  appearance: SearchAppearance;
   title: string;
   sub: string;
   left: React.ReactNode;
   onPress: () => void;
 }) {
+  const { palette, styles } = appearance;
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
@@ -358,22 +376,46 @@ function Row({
           {sub}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={17} color={colors.textFaint} />
+      <Ionicons name="chevron-forward" size={17} color={palette.textFaint} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function searchPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
+    card: mode === 'light' ? colors.card : theme.surface.card,
+    mutedSurface: mode === 'light' ? colors.surfaceAlt : theme.surface.muted,
+    imageFallback: mode === 'light' ? colors.surface : theme.surface.raised,
+    border: mode === 'light' ? colors.border : theme.border.subtle,
+    primarySoft: mode === 'light' ? colors.primarySoft : theme.surface.raised,
+    text: mode === 'light' ? colors.text : theme.ink.primary,
+    textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
+    textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
+    action: mode === 'light' ? colors.primary : theme.ink.action,
+  };
+}
+
+type SearchPalette = ReturnType<typeof searchPalette>;
+
+function createSearchAppearance(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = searchPalette(theme, mode);
+  return { palette, styles: createStyles(palette) };
+}
+
+type SearchAppearance = ReturnType<typeof createSearchAppearance>;
+
+const createStyles = (palette: SearchPalette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   scroll: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 40, ...contentMax },
   pressed: { opacity: 0.75 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.mutedSurface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.lg,
     minHeight: 48,
@@ -382,13 +424,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: font.regular,
-    color: colors.text,
+    color: palette.text,
     paddingVertical: 12,
   },
   section: {
     fontSize: 13,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: palette.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: spacing.md,
@@ -397,27 +439,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 60,
   },
-  rowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  rowSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
+  rowTitle: { fontFamily: font.bold, fontSize: 15, color: palette.text },
+  rowSub: { fontFamily: font.regular, fontSize: 12.5, color: palette.textMuted, marginTop: 1 },
   iconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pageAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface },
+  pageAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: palette.imageFallback },
   hint: {
     textAlign: 'center',
-    color: colors.textFaint,
+    color: palette.textFaint,
     fontFamily: font.regular,
     fontSize: 13,
     marginTop: spacing.xl,
@@ -427,7 +469,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  clearAll: { color: colors.primary, fontFamily: font.semibold, fontSize: 13, marginTop: spacing.md },
+  clearAll: { color: palette.action, fontFamily: font.semibold, fontSize: 13, marginTop: spacing.md },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -436,12 +478,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     minHeight: 44,
   },
-  historyQuery: { flex: 1, fontFamily: font.medium, fontSize: 14.5, color: colors.text },
-  historyTime: { fontFamily: font.regular, fontSize: 12, color: colors.textFaint },
+  historyQuery: { flex: 1, fontFamily: font.medium, fontSize: 14.5, color: palette.text },
+  historyTime: { fontFamily: font.regular, fontSize: 12, color: palette.textFaint },
   historyNote: {
     fontFamily: font.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: palette.textMuted,
     marginTop: spacing.xs,
   },
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -13,7 +13,16 @@ import { useAuth } from '../auth/AuthProvider';
 import { joinGroup, listGroups, type Group } from '../groups/api';
 import { followPage, listPages, type Page } from '../pages/api';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import {
+  colors,
+  font,
+  radius,
+  shadow,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { DiscoverExperience } from './DiscoverExperience';
 import {
   createDiscoverActionLock,
@@ -30,6 +39,7 @@ const SECTIONS: readonly { value: Section; label: string }[] = [
 ];
 
 export function DiscoverHub() {
+  const { styles } = useDiscoverHubAppearance();
   const [section, setSection] = useState<Section>('people');
   return (
     <View style={styles.screen}>
@@ -39,6 +49,7 @@ export function DiscoverHub() {
             key={item.value}
             style={[styles.tab, section === item.value && styles.tabActive]}
             onPress={() => setSection(item.value)}
+            hitSlop={spacing.xs}
             accessibilityRole="tab"
             accessibilityState={{ selected: section === item.value }}
           >
@@ -57,6 +68,7 @@ export function DiscoverHub() {
 }
 
 function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
+  const { palette, styles } = useDiscoverHubAppearance();
   const router = useRouter();
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
@@ -154,14 +166,14 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
 
   const visibleRows = dataOwnerId === ownerId ? rows : [];
   if (loading && visibleRows.length === 0) {
-    return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
+    return <View style={styles.center}><ActivityIndicator color={palette.action} /></View>;
   }
   if (error && visibleRows.length === 0) {
     return (
       <View style={styles.center}>
-        <Ionicons name="cloud-offline-outline" size={32} color={colors.textFaint} />
+        <Ionicons name="cloud-offline-outline" size={32} color={palette.textFaint} />
         <Text style={styles.emptyTitle}>{error}</Text>
-        <Pressable style={styles.retry} onPress={load} accessibilityRole="button" accessibilityLabel={`Retry loading ${kind}`}>
+        <Pressable style={styles.retry} onPress={load} hitSlop={2} accessibilityRole="button" accessibilityLabel={`Retry loading ${kind}`}>
           <Text style={styles.retryText}>Retry</Text>
         </Pressable>
       </View>
@@ -173,7 +185,7 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
       {error ? <Text style={styles.notice}>{error} Pull up this section again to retry.</Text> : null}
       {visibleRows.length === 0 ? (
         <View style={styles.center}>
-          <Ionicons name={kind === 'groups' ? 'people-outline' : 'flag-outline'} size={32} color={colors.textFaint} />
+          <Ionicons name={kind === 'groups' ? 'people-outline' : 'flag-outline'} size={32} color={palette.textFaint} />
           <Text style={styles.emptyTitle}>No public {kind} to suggest yet.</Text>
           <Text style={styles.emptyCopy}>New fitness communities will appear here when they are available.</Text>
         </View>
@@ -191,7 +203,7 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
           accessibilityLabel={`Open ${row.name}`}
         >
           <View style={styles.rowIcon}>
-            <Ionicons name={kind === 'groups' ? 'people' : 'flag'} size={20} color={colors.primary} />
+            <Ionicons name={kind === 'groups' ? 'people' : 'flag'} size={20} color={palette.action} />
           </View>
           <View style={styles.rowCopy}>
             <Text style={styles.rowTitle} numberOfLines={1}>{row.name}</Text>
@@ -202,12 +214,13 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
           <Pressable
             style={[styles.action, isBusy && styles.disabled]}
             onPress={() => void act(row)}
+            hitSlop={5}
             disabled={isBusy}
             accessibilityRole="button"
             accessibilityState={{ disabled: isBusy, busy: isBusy }}
             accessibilityLabel={`${kind === 'groups' ? 'Join' : 'Follow'} ${row.name}`}
           >
-            {isBusy ? <ActivityIndicator size="small" color={colors.onPrimary} /> : (
+            {isBusy ? <ActivityIndicator size="small" color={palette.onAction} /> : (
               <Text style={styles.actionText}>{kind === 'groups' ? 'Join' : 'Follow'}</Text>
             )}
           </Pressable>
@@ -219,6 +232,7 @@ function CommunityResults({ kind }: { kind: 'groups' | 'pages' }) {
 }
 
 function InterestResults() {
+  const { palette, styles } = useDiscoverHubAppearance();
   const router = useRouter();
   const interests = [
     { icon: 'walk-outline' as const, title: 'Running', copy: 'Runs, routes and local challenges', route: '/run' },
@@ -230,36 +244,60 @@ function InterestResults() {
       <Text style={styles.intro}>Explore fitness topics and public content you may like.</Text>
       {interests.map((item) => (
         <Pressable key={item.title} style={styles.row} onPress={() => router.push(item.route as never)} accessibilityRole="button" accessibilityLabel={`Explore ${item.title}`}>
-          <View style={styles.rowIcon}><Ionicons name={item.icon} size={20} color={colors.primary} /></View>
+          <View style={styles.rowIcon}><Ionicons name={item.icon} size={20} color={palette.action} /></View>
           <View style={styles.rowCopy}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowMeta}>{item.copy}</Text></View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+          <Ionicons name="chevron-forward" size={18} color={palette.textFaint} />
         </Pressable>
       ))}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  tabs: { flexDirection: 'row', gap: 4, padding: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card },
+function discoverHubPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
+    card: mode === 'light' ? colors.card : theme.surface.card,
+    border: mode === 'light' ? colors.border : theme.border.subtle,
+    primarySoft: mode === 'light' ? colors.primarySoft : theme.surface.raised,
+    text: mode === 'light' ? colors.text : theme.ink.primary,
+    textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
+    textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
+    action: mode === 'light' ? colors.primary : theme.ink.action,
+    onAction: mode === 'light' ? colors.onPrimary : theme.ink.inverse,
+    disabledOpacity: mode === 'light' ? 0.65 : theme.interaction.disabledOpacity,
+  };
+}
+
+function useDiscoverHubAppearance() {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => discoverHubPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  return { palette, styles };
+}
+
+type DiscoverHubPalette = ReturnType<typeof discoverHubPalette>;
+
+const createStyles = (palette: DiscoverHubPalette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
+  tabs: { flexDirection: 'row', gap: 4, padding: spacing.sm, borderBottomWidth: 1, borderBottomColor: palette.border, backgroundColor: palette.card },
   tab: { flex: 1, minHeight: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  tabActive: { backgroundColor: colors.primarySoft },
-  tabText: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted },
-  tabTextActive: { fontFamily: font.bold, color: colors.primary },
+  tabActive: { backgroundColor: palette.primarySoft },
+  tabText: { fontFamily: font.medium, fontSize: 12.5, color: palette.textMuted },
+  tabTextActive: { fontFamily: font.bold, color: palette.action },
   results: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
   center: { flex: 1, minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
-  emptyTitle: { fontFamily: font.bold, fontSize: 16, color: colors.text, textAlign: 'center' },
-  emptyCopy: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted, textAlign: 'center' },
-  retry: { minHeight: 44, borderRadius: radius.pill, backgroundColor: colors.primary, justifyContent: 'center', paddingHorizontal: spacing.xl },
-  retryText: { fontFamily: font.bold, color: colors.onPrimary },
-  notice: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted, padding: spacing.sm },
-  intro: { fontFamily: font.regular, color: colors.textMuted, marginBottom: spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 68, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, ...shadow.card },
-  rowIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontFamily: font.bold, fontSize: 16, color: palette.text, textAlign: 'center' },
+  emptyCopy: { fontFamily: font.regular, fontSize: 13, color: palette.textMuted, textAlign: 'center' },
+  retry: { minHeight: 44, borderRadius: radius.pill, backgroundColor: palette.action, justifyContent: 'center', paddingHorizontal: spacing.xl },
+  retryText: { fontFamily: font.bold, color: palette.onAction },
+  notice: { fontFamily: font.medium, fontSize: 13, color: palette.textMuted, padding: spacing.sm },
+  intro: { fontFamily: font.regular, color: palette.textMuted, marginBottom: spacing.xs },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 68, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, ...shadow.card },
+  rowIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: palette.primarySoft, alignItems: 'center', justifyContent: 'center' },
   rowCopy: { flex: 1, gap: 2 },
-  rowTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  rowMeta: { fontFamily: font.regular, fontSize: 12.5, lineHeight: 17, color: colors.textMuted },
-  action: { minWidth: 70, minHeight: 38, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  actionText: { fontFamily: font.bold, fontSize: 13, color: colors.onPrimary },
-  disabled: { opacity: 0.65 },
+  rowTitle: { fontFamily: font.bold, fontSize: 15, color: palette.text },
+  rowMeta: { fontFamily: font.regular, fontSize: 12.5, lineHeight: 17, color: palette.textMuted },
+  action: { minWidth: 70, minHeight: 38, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: palette.action, alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontFamily: font.bold, fontSize: 13, color: palette.onAction },
+  disabled: { opacity: palette.disabledOpacity },
 });
