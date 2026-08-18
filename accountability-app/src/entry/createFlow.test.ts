@@ -55,7 +55,12 @@ describe('CREATE_CHOICES', () => {
       route: null,
       action: 'choose-media',
     });
-    expect(CREATE_CHOICES.find((choice) => choice.id === 'my-day')?.route).toBe('/add');
+    expect(CREATE_CHOICES.find((choice) => choice.id === 'my-day')).toMatchObject({
+      title: 'Schedule',
+      detail: 'Add a promise, task, or reminder',
+      accessibilityLabel: 'Schedule. Add a promise, task, or reminder',
+      route: '/add',
+    });
     expect(CREATE_CHOICES.map((choice) => choice.route)).not.toContain('/today');
   });
 });
@@ -162,5 +167,14 @@ describe('production binding', () => {
     expect(hubSource).toContain('styles.previewArtwork');
     expect(hubSource).toContain('styles.audienceSegment');
     expect(hubSource).not.toContain('<BrandMark');
+  });
+
+  test('reserves My Day wording for 24-hour stories, not the scheduler', () => {
+    const addSource = readFileSync(require.resolve('../app/add'), 'utf8');
+
+    expect(CREATE_HUB_MODEL.choices.map((choice) => choice.title)).not.toContain('Add to My Day');
+    expect(CREATE_HUB_MODEL.choices.map((choice) => choice.title)).not.toContain('My Day');
+    expect(addSource).toContain('title="Add to schedule"');
+    expect(addSource).not.toContain('title="Add to my day"');
   });
 });

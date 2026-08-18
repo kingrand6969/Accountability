@@ -44,9 +44,9 @@ export const CREATE_CHOICES: readonly CreateChoice[] = [
   },
   {
     id: 'my-day',
-    title: 'Add to My Day',
-    detail: "Update today's promises",
-    accessibilityLabel: "Add to My Day. Update today's promises",
+    title: 'Schedule',
+    detail: 'Add a promise, task, or reminder',
+    accessibilityLabel: 'Schedule. Add a promise, task, or reminder',
     route: '/add',
     action: null,
   },

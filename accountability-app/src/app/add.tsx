@@ -366,7 +366,7 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
               ) : null}
 
               <Button
-                title="Add to my day"
+                title="Add to schedule"
                 onPress={onSave}
                 loading={saving}
                 style={styles.save}
