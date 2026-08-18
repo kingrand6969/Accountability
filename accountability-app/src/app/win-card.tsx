@@ -312,9 +312,9 @@ export default function WinCard() {
         pending = null;
         throw new Error('Account changed.');
       }
-      dispatched = true;
       const imageUrl = await uploadPostImage(base64, 'png', pending.operationId, expectedOwnerId);
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
+      dispatched = true;
       await publishFlexFeedPost({
         context: flexContext,
         mediaRef: imageUrl,

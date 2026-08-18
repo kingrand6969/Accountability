@@ -77,6 +77,65 @@ describe('immutable R2 uploads', () => {
     });
   });
 
+  test('re-signs and retries a conditional conflict instead of claiming an upload succeeded', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        data: {
+          uploadUrl: 'https://uploads.example/first',
+          mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
+        },
+        error: null,
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          uploadUrl: 'https://uploads.example/retry',
+          mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
+        },
+        error: null,
+      } as never);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 409 })
+      .mockResolvedValueOnce({ ok: true, status: 200 }) as unknown as typeof fetch;
+
+    await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', { operationId })).resolves.toEqual({
+      mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
+      sha256,
+    });
+
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls[1]?.[1]).toEqual(invoke.mock.calls[0]?.[1]);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://uploads.example/retry',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({ 'If-None-Match': '*' }),
+      }),
+    );
+  });
+
+  test('fails after bounded conditional-conflict retries and never reports a missing object', async () => {
+    global.fetch = jest.fn(async () => ({ ok: false, status: 409 })) as unknown as typeof fetch;
+
+    await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', { operationId }))
+      .rejects.toThrow('Upload failed (409).');
+
+    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(invoke.mock.calls.every((call) => call[1]?.body?.operationId === operationId)).toBe(true);
+  });
+
+  test('does not retry a conflict for a replaceable mutable upload', async () => {
+    global.fetch = jest.fn(async () => ({ ok: false, status: 409 })) as unknown as typeof fetch;
+
+    await expect(uploadToR2WithDigest('AQID', 'avatar', 'jpg')).rejects.toThrow(
+      'Upload failed (409).',
+    );
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('rejects a legacy mutable operation key before uploading', async () => {
     invoke.mockResolvedValue({
       data: {

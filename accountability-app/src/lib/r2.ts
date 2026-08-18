@@ -26,6 +26,8 @@ const R2_FOLDER: Readonly<Record<R2Kind, string>> = {
   share: 'share-cards',
 };
 
+const R2_CONDITIONAL_CONFLICT_RETRIES = 2;
+
 function extensionForContentType(contentType: string): string | null {
   switch (contentType) {
     case 'image/jpeg': return 'jpg';
@@ -126,36 +128,43 @@ async function uploadArrayBufferToR2(
   const sha256 = [...new Uint8Array(digest)]
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('');
-  const { data, error } = await supabase.functions.invoke('r2-sign', {
-    body: {
-      kind,
-      ext,
-      bytes: bytes.byteLength,
-      contentType,
-      sha256,
-      operationId: options.operationId,
-      expectedOwnerId: options.expectedOwnerId,
-    },
-  });
-  if (error) throw error;
-  const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };
-  if (!uploadUrl || !mediaRef) throw new Error('Could not get an upload URL.');
-  if (options.operationId && !isExpectedDigestMediaRef(mediaRef, kind, sha256, contentType)) {
-    throw new Error('Upload service is out of date. Please try again shortly.');
-  }
-  const put = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': contentType,
-      'Content-Length': String(bytes.byteLength),
-      'x-amz-content-sha256': sha256,
-      ...(options.operationId ? { 'If-None-Match': '*' } : {}),
-      'Cache-Control': 'private, max-age=0, no-store',
-    },
-    body: bytes,
-  });
-  if (!put.ok && !(options.operationId && (put.status === 409 || put.status === 412))) {
+  const maxAttempts = options.operationId ? R2_CONDITIONAL_CONFLICT_RETRIES + 1 : 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { data, error } = await supabase.functions.invoke('r2-sign', {
+      body: {
+        kind,
+        ext,
+        bytes: bytes.byteLength,
+        contentType,
+        sha256,
+        operationId: options.operationId,
+        expectedOwnerId: options.expectedOwnerId,
+      },
+    });
+    if (error) throw error;
+    const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };
+    if (!uploadUrl || !mediaRef) throw new Error('Could not get an upload URL.');
+    if (options.operationId && !isExpectedDigestMediaRef(mediaRef, kind, sha256, contentType)) {
+      throw new Error('Upload service is out of date. Please try again shortly.');
+    }
+    const put = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': String(bytes.byteLength),
+        'x-amz-content-sha256': sha256,
+        ...(options.operationId ? { 'If-None-Match': '*' } : {}),
+        'Cache-Control': 'private, max-age=0, no-store',
+      },
+      body: bytes,
+    });
+    if (put.ok || (options.operationId && put.status === 412)) {
+      return { mediaRef, sha256 };
+    }
+    if (options.operationId && put.status === 409 && attempt + 1 < maxAttempts) {
+      continue;
+    }
     throw new Error(`Upload failed (${put.status}).`);
   }
-  return { mediaRef, sha256 };
+  throw new Error('Upload failed after conditional conflict retries.');
 }
