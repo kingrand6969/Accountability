@@ -1,3 +1,5 @@
+import type { Href } from 'expo-router';
+
 export type CreateChoice = {
   id: 'post' | 'photo-video' | 'flex' | 'share-run' | 'my-day';
   title: string;
@@ -59,6 +61,13 @@ export const CREATE_HUB_MODEL = {
 export type CreateMedia = 'photo' | 'video';
 export type CreateAudience = 'buddies' | 'public';
 
+export const DIRECT_POST_HREF = {
+  pathname: '/compose',
+  params: { text: '' },
+} as const satisfies Href;
+
+export type DirectPostHref = typeof DIRECT_POST_HREF;
+
 export function createPickerReadinessGate(initial: CreateMedia | null = null) {
   let pending: CreateMedia | null = initial;
   return {
@@ -113,6 +122,6 @@ export function resolveComposeMode(params: ComposeParams): ComposeMode {
   if (typeof params.edit === 'string' && params.edit) return 'edit';
   if (params.event === '1') return 'event';
   if (params.photo === '1') return 'photo';
-  if (typeof params.text === 'string' && params.text) return 'post';
+  if (typeof params.text === 'string') return 'post';
   return 'hub';
 }

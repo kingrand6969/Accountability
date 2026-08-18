@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   CREATE_CHOICES,
   CREATE_HUB_MODEL,
+  DIRECT_POST_HREF,
   createPickerReadinessGate,
   decideCreateContinuation,
   resolveComposeMode,
@@ -62,6 +63,7 @@ describe('CREATE_CHOICES', () => {
 describe('resolveComposeMode', () => {
   test.each([
     [{}, 'hub'],
+    [{ text: '' }, 'post'],
     [{ text: 'hello' }, 'post'],
     [{ photo: '1' }, 'photo'],
     [{ event: '1' }, 'event'],
@@ -74,6 +76,14 @@ describe('resolveComposeMode', () => {
     expect(resolveComposeMode({ edit: 'post-1', photo: '1', event: '1', text: 'hello' })).toBe(
       'edit',
     );
+  });
+
+  test('exposes a typed empty-post destination that bypasses the create hub', () => {
+    expect(DIRECT_POST_HREF).toEqual({
+      pathname: '/compose',
+      params: { text: '' },
+    });
+    expect(resolveComposeMode(DIRECT_POST_HREF.params)).toBe('post');
   });
 });
 

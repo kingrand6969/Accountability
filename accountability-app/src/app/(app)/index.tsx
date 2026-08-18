@@ -53,6 +53,7 @@ import {
 import { FeedProofCard } from '../../feed/FeedProofCard';
 import { PostImage } from '../../feed/PostImage';
 import { activeVideoPost } from '../../feed/videoPolicy';
+import { DIRECT_POST_HREF, type DirectPostHref } from '../../entry/createFlow';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type CreateItem = {
@@ -60,7 +61,7 @@ type CreateItem = {
   tint: string;
   title: string;
   sub: string;
-} & ({ kind: 'story' } | { kind: 'route'; route: string });
+} & ({ kind: 'story' } | { kind: 'route'; route: string | DirectPostHref });
 type FeedRow =
   | { kind: 'post'; post: UnifiedFeedPost; generation: string }
   | { kind: 'ad'; id: string; generation: string };
@@ -68,7 +69,7 @@ type FeedRow =
 const AD_EVERY = 5;
 const FEED_SESSION_KEY = 'feed-session-v1';
 const CREATE_ITEMS: CreateItem[] = [
-  { icon: 'create-outline', tint: colors.primary, title: 'Post', sub: 'Share a win or an update', kind: 'route', route: '/compose' },
+  { icon: 'create-outline', tint: colors.primary, title: 'Post', sub: 'Share a win or an update', kind: 'route', route: DIRECT_POST_HREF },
   { icon: 'add-circle-outline', tint: '#db2777', title: 'My Day', sub: 'Share a photo for 24 hours', kind: 'story' },
   { icon: 'flame-outline', tint: '#f59e0b', title: 'Win card', sub: 'Share your streak as an image', kind: 'route', route: '/win-card' },
   { icon: 'people-outline', tint: '#16a34a', title: 'Group', sub: 'Start a community', kind: 'route', route: '/group-new' },
@@ -484,7 +485,7 @@ export default function Feed() {
           </Pressable>
           <Pressable
             style={({ pressed }) => [styles.promptAction, pressed && styles.pressed]}
-            onPress={() => router.push('/compose' as never)}
+            onPress={() => router.push(DIRECT_POST_HREF as never)}
             accessibilityRole="button"
             accessibilityLabel="Share a win — create a post"
           >
@@ -493,7 +494,7 @@ export default function Feed() {
         </View>
         <View style={styles.composerDivider} />
         <View style={styles.quickShareRow}>
-          <QuickShare icon="create-outline" label="Post" onPress={() => router.push('/compose' as never)} />
+          <QuickShare icon="create-outline" label="Post" onPress={() => router.push(DIRECT_POST_HREF as never)} />
           <View style={styles.quickShareDivider} />
           <QuickShare icon="images-outline" label="Photo" onPress={() => router.push('/compose?photo=1' as never)} />
           <View style={styles.quickShareDivider} />
@@ -617,7 +618,7 @@ export default function Feed() {
                 <Text style={styles.emptyTitle}>Your Feed is ready</Text>
                 <Text style={styles.emptySub}>Share a win or discover people and communities to follow.</Text>
                 <View style={styles.emptyActions}>
-                  <Pressable onPress={() => router.push('/compose' as never)} style={styles.emptyPrimary} accessibilityRole="button">
+                  <Pressable onPress={() => router.push(DIRECT_POST_HREF as never)} style={styles.emptyPrimary} accessibilityRole="button">
                     <Text style={styles.emptyPrimaryText}>Share a win</Text>
                   </Pressable>
                   <Pressable onPress={() => router.push('/buddy' as never)} style={styles.emptySecondary} accessibilityRole="button">

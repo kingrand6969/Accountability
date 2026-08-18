@@ -8,6 +8,7 @@ import {
   scheduleIdentityBoundAction,
 } from './SocialModeSelector';
 import type { FeedPost } from './types';
+import { DIRECT_POST_HREF } from '../entry/createFlow';
 
 const feedSource = readFileSync(require.resolve('../app/(app)/index'), 'utf8');
 function source(name: string) {
@@ -90,8 +91,12 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain('<Text style={styles.suggested}>Suggested for you</Text>');
   });
 
-  test('preserves composer, story, post-detail, and encouragement-preview handoffs', () => {
-    expect(feedSource).toContain("router.push('/compose' as never)");
+  test('opens every Feed text-post entry directly in the editor and preserves other handoffs', () => {
+    expect(DIRECT_POST_HREF).toEqual({ pathname: '/compose', params: { text: '' } });
+    expect(feedSource).toContain("from '../../entry/createFlow'");
+    expect(feedSource.match(/router\.push\(DIRECT_POST_HREF as never\)/g)).toHaveLength(3);
+    expect(feedSource).toContain('route: DIRECT_POST_HREF');
+    expect(feedSource).not.toContain("router.push('/compose' as never)");
     expect(feedSource).toContain("router.push('/compose?photo=1' as never)");
     expect(feedSource).toContain("router.push('/win-card' as never)");
     expect(feedSource).toContain('<StoryRail');
