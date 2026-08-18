@@ -372,7 +372,7 @@ export default function Compose() {
   useEffect(() => {
     const appState = AppState.addEventListener('change', (state) => {
       setAppActive(state === 'active');
-      if (state !== 'active') void flushDraft();
+      if (state !== 'active' && !postingRef.current) void flushDraft();
     });
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
       if (postingRef.current) return true;
@@ -797,6 +797,7 @@ export default function Compose() {
     setPosting(true);
     const postedText = body.trim();
     const postedImageUri = previewUri;
+    const submittedMedia = submittedDraft?.media ?? draftMedia;
     const keep = keepInMemories && !!previewUri;
     const tagIds = [...taggedIds];
     const tagNames = buddies.filter((b) => taggedIds.has(b.id)).map((b) => authorLabel(b.name));
@@ -832,6 +833,22 @@ export default function Compose() {
         },
       );
       markFeedPostPublished(submittedOwner, postId);
+      try {
+        // The post is now durable and retry-safe. Remove the draft from its
+        // restore index before optional side effects so a process restart can
+        // never repeat Memories or cross-share work. Keep the local media file
+        // until those side effects have finished using it.
+        await clearSavedDraft(false, submittedDraft);
+      } catch (cleanupError) {
+        finishAfterRemoteSuccess(
+          'Posted to your feed',
+          String((cleanupError as Error).message ?? cleanupError),
+          submittedDraft,
+          submittedOwner,
+          submittedToken,
+        );
+        return;
+      }
       if (tagIds.length > 0) await addPostTags(postId, tagIds).catch(() => {});
       if (keep && postedImageUri) {
         try {
@@ -848,12 +865,9 @@ export default function Compose() {
       ) {
         await promptCrossShare(postedText, postedImageUri, pickedVideo?.mimeType);
       }
-      try {
-        await clearSavedDraft(true, submittedDraft);
-      } catch (cleanupError) {
-        finishAfterRemoteSuccess('Posted to your feed', String((cleanupError as Error).message ?? cleanupError), submittedDraft, submittedOwner, submittedToken);
-        return;
-      }
+      await removeDurableMedia(submittedMedia, fileAdapter).catch(() => {
+        // The now-unindexed file is safe to remove during orphan cleanup.
+      });
       if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
         if (Platform.OS === 'web') showToast('Posted to your feed 🎉');
         exitCompose();

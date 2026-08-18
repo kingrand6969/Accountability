@@ -220,7 +220,9 @@ describe('Compose production binding', () => {
 
   test('binds debounced field saves and immediate background flush', () => {
     expect(source).toContain('setTimeout(() => { void flushDraft(); }, 500)');
-    expect(source).toContain("if (state !== 'active') void flushDraft()");
+    expect(source).toContain(
+      "if (state !== 'active' && !postingRef.current) void flushDraft()",
+    );
     expect(source).toContain('[draftReady, body, audience, showOnCard, draftMedia');
   });
 
@@ -263,13 +265,22 @@ describe('Compose production binding', () => {
     expect(source).toContain('saveImageToMemories(postedImageUri, place, tagNames, submittedOwner)');
   });
 
-  test('keeps draft media alive until the native cross-share decision finishes', () => {
+  test('de-indexes the committed draft before optional side effects but keeps media until sharing finishes', () => {
     const source = readFileSync(require.resolve('../app/compose'), 'utf8');
+    const createIndex = source.indexOf('const postId = await createPost');
+    const deindexIndex = source.indexOf('await clearSavedDraft(false, submittedDraft)', createIndex);
+    const memoryIndex = source.indexOf('await saveImageToMemories(postedImageUri', createIndex);
     const shareIndex = source.indexOf('await promptCrossShare(postedText, postedImageUri');
-    const cleanupIndex = source.indexOf('await clearSavedDraft(true, submittedDraft)', shareIndex);
+    const mediaCleanupIndex = source.indexOf('await removeDurableMedia(submittedMedia', shareIndex);
 
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(deindexIndex).toBeGreaterThan(createIndex);
+    expect(memoryIndex).toBeGreaterThan(deindexIndex);
     expect(shareIndex).toBeGreaterThan(-1);
-    expect(cleanupIndex).toBeGreaterThan(shareIndex);
+    expect(mediaCleanupIndex).toBeGreaterThan(shareIndex);
+    expect(source.slice(createIndex, mediaCleanupIndex)).not.toContain(
+      'await clearSavedDraft(true, submittedDraft)',
+    );
   });
 
   test('signals the initiating account after standard and event posts commit', () => {
