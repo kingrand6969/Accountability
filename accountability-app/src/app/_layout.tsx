@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Stack, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
-import { ActivityIndicator, Linking, Platform, Pressable, View } from 'react-native';
+import { Linking, Platform, Pressable } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFonts } from 'expo-font';
 import { Anton_400Regular } from '@expo-google-fonts/anton/400Regular';
@@ -29,6 +29,7 @@ import {
   type RouteQuery,
 } from '../navigation/authRouteIntent';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
+import { AppLaunchState } from '../ui/AppLaunchState';
 
 /**
  * A back control that never dead-ends: it pops the stack when there's somewhere
@@ -106,11 +107,7 @@ function RootNavigator() {
   });
 
   if (loading || (!fontsLoaded && !fontError)) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <AppLaunchState message="Opening AccountAbility" />;
   }
 
   return (

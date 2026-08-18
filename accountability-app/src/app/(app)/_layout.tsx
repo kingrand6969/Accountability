@@ -14,6 +14,7 @@ import { getMyProfile, touchLastActive } from '../../profiles/api';
 import { colors } from '../../ui/theme';
 import { statusBarStyleForPath } from '../../navigation/routeAccessContract';
 import { notificationHeaderOptions } from '../../navigation/SafeBackButton';
+import { AppLaunchState } from '../../ui/AppLaunchState';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -127,7 +128,7 @@ export default function AppLayout() {
     return () => clearInterval(t);
   }, [userId]);
 
-  if (onboarded === null) return <View style={{ flex: 1 }} />;
+  if (onboarded === null) return <AppLaunchState message="Getting your training ready" />;
   if (!onboarded) return <Redirect href="/onboarding" />;
 
   return (

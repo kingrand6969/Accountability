@@ -175,7 +175,7 @@ export default function ProfileOverview() {
       <View style={styles.settingsCard}>
         <SettingsRow icon="shield-checkmark-outline" label="Account & privacy" route="/menu" />
         <SettingsRow icon="notifications-outline" label="Notifications" route="/notifications" />
-        <SettingsRow icon="help-circle-outline" label="Help & support" route="/menu" last />
+        <SettingsRow icon="help-circle-outline" label="Help & support" route="/help" last />
       </View>
       <Text style={styles.footer}>Your private details stay in Edit profile and are never shown here.</Text>
     </ScrollView>
