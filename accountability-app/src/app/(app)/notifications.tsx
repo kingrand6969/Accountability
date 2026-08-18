@@ -103,7 +103,11 @@ export default function Notifications() {
     const lifecycle = lifecycleGeneration.current;
     if (!requestOwner || opensInFlight.current.has(n.id)) return;
     if (!n.post_id) {
-      router.push('/buddy' as never);
+      if ((n.type === 'buddy_request' || n.type === 'buddy_accept') && n.actor_id) {
+        router.push({ pathname: '/buddy-card/[id]', params: { id: n.actor_id } });
+      } else {
+        Alert.alert('Unavailable', 'This notification target is no longer available.');
+      }
       return;
     }
     opensInFlight.current.add(n.id);

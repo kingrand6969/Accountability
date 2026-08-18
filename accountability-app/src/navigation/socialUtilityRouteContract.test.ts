@@ -396,6 +396,34 @@ describe('story behavioral safety', () => {
 describe('notification behavioral safety', () => {
   const Notifications = require('../app/(app)/notifications').default as React.ComponentType;
 
+  test.each(['buddy_request', 'buddy_accept'] as const)(
+    'opens the %s actor Buddy Card directly',
+    async (type) => {
+      mockListNotifications.mockResolvedValueOnce([{
+        ...notification,
+        id: `notification-${type}`,
+        type,
+        post_id: null,
+        actor_id: 'actor-1',
+      }]);
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = render(React.createElement(Notifications));
+      });
+      await flush();
+
+      await act(async () => {
+        renderer.root.findByProps({ accessibilityLabel: 'Maya cheered you' }).props.onPress();
+      });
+
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/buddy-card/[id]',
+        params: { id: 'actor-1' },
+      });
+      expect(mockGetPost).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([
     ['missing', () => Promise.resolve(null)],
     ['private', () => Promise.reject({ code: '42501', message: 'row level policy' })],
