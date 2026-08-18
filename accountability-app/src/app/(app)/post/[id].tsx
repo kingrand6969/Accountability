@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
@@ -39,7 +39,8 @@ import { Avatar } from '../../../feed/Avatar';
 import type { FeedPost, PostComment } from '../../../feed/types';
 import { EmptyState } from '../../../ui/EmptyState';
 import { showToast } from '../../../ui/Toast';
-import { colors, font, radius, spacing } from '../../../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../../../ui/theme';
+import { useAppTheme } from '../../../ui/AppThemeProvider';
 import { EncouragementSheet } from '../../../feed/EncouragementSheet';
 import { VoiceEncouragementRecorder } from '../../../feed/VoiceEncouragementRecorder';
 import { BroadcastSheet } from '../../../feed/BroadcastSheet';
@@ -89,6 +90,8 @@ function PostDetailView({
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
+  const { mode, colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const renderViewKey = `${id ?? ''}:${myId ?? ''}`;
   const [snapshot, setSnapshot] = useState<
     ImmersiveSnapshot<FeedPost, PostComment, PostEncourager, VoiceEncouragement>
@@ -476,12 +479,12 @@ function PostDetailView({
   if (viewState === 'loading') {
     return (
       <>
-        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null}
         <PostDetailState
           topInset={insets.top}
           onBack={() => navigateBackSafely(router)}
         >
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={theme.ink.action} />
           <Text style={styles.stateText}>Loading post…</Text>
         </PostDetailState>
       </>
@@ -491,7 +494,7 @@ function PostDetailView({
   if (!post) {
     return (
       <>
-        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null}
         <PostDetailState
           topInset={insets.top}
           onBack={() => navigateBackSafely(router)}
@@ -532,7 +535,7 @@ function PostDetailView({
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
-      {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
+      {isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null}
       {viewState === 'offline-cached' ? (
         <View style={styles.offlineBanner} accessibilityRole="alert">
           <Text style={styles.offlineText}>Offline · showing this session’s last loaded copy</Text>
@@ -575,7 +578,7 @@ function PostDetailView({
         ListEmptyComponent={
           viewState === 'comments-loading' ? (
             <View style={styles.commentsState}>
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={theme.ink.action} />
               <Text style={styles.stateText}>Loading comments…</Text>
             </View>
           ) : viewState === 'comments-error' ? (
@@ -632,7 +635,7 @@ function PostDetailView({
           ref={inputRef}
           style={styles.input}
           placeholder="Write a supportive comment…"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={theme.ink.muted}
           value={text}
           onChangeText={setText}
           multiline
@@ -650,7 +653,7 @@ function PostDetailView({
           accessibilityRole="button"
           accessibilityState={{ disabled: !text.trim() || sending, busy: sending }}
         >
-          {sending ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.sendText}>Send</Text>}
+          {sending ? <ActivityIndicator color={theme.ink.inverse} /> : <Text style={styles.sendText}>Send</Text>}
         </Pressable>
       </View>
       <EncouragementSheet
@@ -693,6 +696,8 @@ function PostDetailState({
   onBack(): void;
   children: ReactNode;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={[styles.stateScreen, { paddingTop: Math.max(topInset, spacing.sm) }]}>
       <Pressable
@@ -701,7 +706,7 @@ function PostDetailState({
         accessibilityLabel="Back"
         style={({ pressed }) => [styles.stateBack, pressed && styles.pressed]}
       >
-        <Ionicons name="arrow-back" size={22} color={colors.navy} />
+        <Ionicons name="arrow-back" size={22} color={theme.ink.primary} />
         <Text style={styles.stateBackText}>Back</Text>
       </Pressable>
       <View style={styles.center}>{children}</View>
@@ -709,12 +714,12 @@ function PostDetailState({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  stateScreen: { flex: 1, backgroundColor: colors.background },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.card },
+  stateScreen: { flex: 1, backgroundColor: theme.surface.card },
   stateBack: {
     minWidth: 88,
-    minHeight: 48,
+    minHeight: spacing.touch,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
@@ -723,38 +728,38 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.sm,
     borderRadius: radius.pill,
   },
-  stateBackText: { color: colors.navy, fontFamily: font.semibold, fontSize: 15 },
-  offlineBanner: { position: 'absolute', zIndex: 5, top: spacing.sm, alignSelf: 'center', borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: 'rgba(247,244,236,.94)' },
-  offlineText: { color: colors.navy, fontFamily: font.semibold, fontSize: 11 },
+  stateBackText: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 15 },
+  offlineBanner: { position: 'absolute', zIndex: 5, top: spacing.sm, alignSelf: 'center', borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: theme.surface.canvas, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border.subtle },
+  offlineText: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 11 },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.md,
     padding: spacing.xxl,
-    backgroundColor: colors.background,
+    backgroundColor: theme.surface.card,
   },
-  stateTitle: { color: colors.text, fontFamily: font.bold, fontSize: 18, textAlign: 'center' },
-  stateText: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center', lineHeight: 20 },
-  retryButton: { minHeight: 44, borderRadius: radius.pill, paddingHorizontal: spacing.xl, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
-  retryText: { color: colors.onPrimary, fontFamily: font.bold },
+  stateTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18, textAlign: 'center' },
+  stateText: { color: theme.ink.muted, fontFamily: font.regular, textAlign: 'center', lineHeight: 20 },
+  retryButton: { minHeight: spacing.touch, borderRadius: radius.pill, paddingHorizontal: spacing.xl, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ink.action },
+  retryText: { color: theme.ink.inverse, fontFamily: font.bold },
   list: { paddingBottom: spacing.lg },
   memoryAction: { minHeight: 48, paddingHorizontal: spacing.lg, alignItems: 'flex-end', justifyContent: 'center' },
-  commentsHeading: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, color: colors.textMuted, fontFamily: font.bold, fontSize: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  commentsHeading: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, color: theme.ink.muted, fontFamily: font.bold, fontSize: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border.subtle },
   commentsState: { minHeight: 120, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg },
-  commentsRetry: { minHeight: 44, paddingHorizontal: spacing.lg, justifyContent: 'center' },
-  commentsRetryText: { color: colors.primary, fontFamily: font.bold },
+  commentsRetry: { minHeight: spacing.touch, paddingHorizontal: spacing.lg, justifyContent: 'center' },
+  commentsRetryText: { color: theme.ink.action, fontFamily: font.bold },
   comment: { flexDirection: 'row', gap: 10, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   commentBody: { flex: 1 },
-  commentAuthor: { color: colors.text, fontFamily: font.semibold },
-  commentTime: { color: colors.textFaint, fontFamily: font.regular, fontSize: 12 },
-  commentText: { marginTop: 2, color: colors.text, fontFamily: font.regular, lineHeight: 20 },
-  reportComment: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
-  reportCommentText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.background },
-  input: { flex: 1, maxHeight: 100, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, color: colors.text, backgroundColor: colors.surfaceAlt, fontFamily: font.regular, fontSize: 15 },
-  sendButton: { minHeight: 44, borderRadius: 22, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
-  sendDisabled: { opacity: 0.5 },
-  sendText: { color: colors.onPrimary, fontFamily: font.bold },
+  commentAuthor: { color: theme.ink.primary, fontFamily: font.semibold },
+  commentTime: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 12 },
+  commentText: { marginTop: 2, color: theme.ink.primary, fontFamily: font.regular, lineHeight: 20 },
+  reportComment: { alignSelf: 'flex-start', minHeight: spacing.touch, justifyContent: 'center' },
+  reportCommentText: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 13 },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border.subtle, backgroundColor: theme.surface.card },
+  input: { flex: 1, minHeight: 44, maxHeight: 100, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, color: theme.ink.primary, backgroundColor: theme.surface.muted, fontFamily: font.regular, fontSize: 15 },
+  sendButton: { minHeight: spacing.touch, borderRadius: 24, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ink.action },
+  sendDisabled: { opacity: theme.interaction.disabledOpacity },
+  sendText: { color: theme.ink.inverse, fontFamily: font.bold },
   pressed: { opacity: 0.7 },
 });

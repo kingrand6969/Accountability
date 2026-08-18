@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteTrace } from '../activity/RouteTrace';
@@ -9,7 +10,8 @@ import { Avatar } from './Avatar';
 import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
 import type { FeedPost } from './types';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { colors, font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export type ImmersivePostState =
   | 'loading'
@@ -245,8 +247,12 @@ export function usesImmersivePostSurface(
   );
 }
 
-export function postDetailStatusBarStyle(post: FeedPost | null): 'dark' | 'light' {
-  return post && usesImmersivePostSurface(post) ? 'light' : 'dark';
+export function postDetailStatusBarStyle(
+  post: FeedPost | null,
+  mode: AppThemeMode = 'light',
+): 'dark' | 'light' {
+  if (post && usesImmersivePostSurface(post)) return 'light';
+  return mode === 'dark' ? 'light' : 'dark';
 }
 
 function numberValue(value: unknown) {
@@ -318,7 +324,7 @@ export function ImmersivePost({
   const mediaSummary = `${presentation.run ? 'Run proof' : 'Post media'} by ${authorLabel(post.author_name)}. ${presentation.ownerLabel}. ${presentation.audienceLabel}. ${post.body || 'No caption.'}${presentation.privacyLabel ? ` ${presentation.privacyLabel}.` : ''}`;
 
   return (
-    <View style={[styles.hero, { minHeight: height }]}>
+    <View style={[immersiveStyles.hero, { minHeight: height }]}>
       <View
         style={StyleSheet.absoluteFill}
         accessibilityRole="image"
@@ -327,14 +333,14 @@ export function ImmersivePost({
         {post.post_type === 'video' ? (
           <View
             style={[
-              styles.photoFill,
+              immersiveStyles.photoFill,
               { transform: [{ scale: Math.max(1, height / Math.max(width * (16 / 9), 1)) }] },
             ]}
           >
             <PostVideo url={post.image_url} detail active={mediaActive} />
           </View>
         ) : (
-          <View style={styles.photoContain}>
+          <View style={immersiveStyles.photoContain}>
             <PostImage url={post.image_url} immersive />
           </View>
         )}
@@ -349,7 +355,7 @@ export function ImmersivePost({
 
       <View
         style={[
-          styles.topControls,
+          immersiveStyles.topControls,
           { top: Math.max(insets.top + spacing.xs, spacing.xxl) },
         ]}
       >
@@ -357,42 +363,42 @@ export function ImmersivePost({
         <IconButton icon="ellipsis-horizontal" label="Post options" onPress={onOptions} />
       </View>
 
-      <View style={styles.story}>
-        <View style={styles.headlineRow}>
-          {post.body ? <Text style={styles.headline} numberOfLines={3}>{post.body}</Text> : <View style={styles.headline} />}
+      <View style={immersiveStyles.story}>
+        <View style={immersiveStyles.headlineRow}>
+          {post.body ? <Text style={immersiveStyles.headline} numberOfLines={3}>{post.body}</Text> : <View style={immersiveStyles.headline} />}
           {verified ? (
             <View
-              style={styles.verified}
+              style={immersiveStyles.verified}
               accessible={false}
               importantForAccessibility="no-hide-descendants"
             >
-              <Text style={styles.verifiedText}>Verified</Text>
+              <Text style={immersiveStyles.verifiedText}>Verified</Text>
               <Ionicons name="checkmark-circle-outline" size={30} color="#4F8CFF" />
             </View>
           ) : null}
         </View>
 
         {route.length > 1 ? (
-          <View accessible={false} importantForAccessibility="no-hide-descendants" style={styles.route}>
+          <View accessible={false} importantForAccessibility="no-hide-descendants" style={immersiveStyles.route}>
             <RouteTrace points={route} width={118} height={80} stroke={3} accent="#4F8CFF" pad={7} />
           </View>
         ) : null}
 
         {presentation.run && distance != null && duration != null ? (
-          <View style={styles.metrics} accessibilityLabel={`${formatKm(distance)} kilometers, ${formatDuration(duration)} time, ${formatPace(distance, duration)} pace per kilometer`}>
+          <View style={immersiveStyles.metrics} accessibilityLabel={`${formatKm(distance)} kilometers, ${formatDuration(duration)} time, ${formatPace(distance, duration)} pace per kilometer`}>
             <Metric value={formatKm(distance)} label="km" />
             <Metric value={formatDuration(duration)} label="time" />
             <Metric value={formatPace(distance, duration)} label="pace /km" />
           </View>
         ) : null}
 
-        <View style={styles.authorLine}>
+        <View style={immersiveStyles.authorLine}>
           <Avatar url={post.author_avatar} name={post.author_name} size={34} />
-          <View style={styles.authorCopy}>
-            <Text style={styles.author}>{authorLabel(post.author_name)}</Text>
-            <Text style={styles.accessLabel}>{presentation.ownerLabel} · {presentation.audienceLabel}</Text>
+          <View style={immersiveStyles.authorCopy}>
+            <Text style={immersiveStyles.author}>{authorLabel(post.author_name)}</Text>
+            <Text style={immersiveStyles.accessLabel}>{presentation.ownerLabel} · {presentation.audienceLabel}</Text>
             {presentation.privacyLabel ? (
-              <Text style={styles.caption} numberOfLines={2}>
+              <Text style={immersiveStyles.caption} numberOfLines={2}>
                 {presentation.privacyLabel}
               </Text>
             ) : null}
@@ -406,7 +412,7 @@ export function ImmersivePost({
           onPress={onOpenEncouragement}
         />
 
-        <View style={styles.actionBar}>
+        <View style={immersiveStyles.actionBar}>
           <Action icon="clap" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
           <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
@@ -443,6 +449,8 @@ function CompactPostSurface({
   onOpenEncouragement(): void;
   topInset: number;
 }) {
+  const { mode, colors: theme } = useAppTheme();
+  const styles = useMemo(() => createCompactStyles(theme, mode), [mode, theme]);
   const presentation = presentImmersivePost(post, viewerId);
   const typeLabel = compactPostTypeLabel(post);
   const body = post.body.trim();
@@ -455,9 +463,9 @@ function CompactPostSurface({
           { minHeight: 58 + topInset, paddingTop: topInset },
         ]}
       >
-        <PlainIconButton icon="arrow-back" label="Back" onPress={onBack} />
+        <PlainIconButton icon="arrow-back" label="Back" color={theme.ink.primary} onPress={onBack} />
         <Text style={styles.compactTitle}>Post</Text>
-        <PlainIconButton icon="ellipsis-horizontal" label="Post options" onPress={onOptions} />
+        <PlainIconButton icon="ellipsis-horizontal" label="Post options" color={theme.ink.primary} onPress={onOptions} />
       </View>
 
       <View style={styles.compactAuthorLine}>
@@ -476,7 +484,7 @@ function CompactPostSurface({
       {post.event ? (
         <View style={styles.compactEvent}>
           <View style={styles.compactEventIcon} accessible={false}>
-            <Ionicons name="calendar" size={22} color={colors.primary} />
+            <Ionicons name="calendar" size={22} color={theme.ink.action} />
           </View>
           <View style={styles.compactEventCopy}>
             <Text style={styles.compactEventEyebrow}>EVENT</Text>
@@ -505,12 +513,13 @@ function CompactPostSurface({
 
       <View style={styles.compactEngagement}>
         <EncouragementCard
+          compact
           supporterCount={supporterCount}
           supporterNames={supporterNames}
           supporterAvatars={supporterAvatars}
           onPress={onOpenEncouragement}
         />
-        <View style={styles.actionBar}>
+        <View style={immersiveStyles.actionBar}>
           <Action icon="clap" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
           <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
@@ -543,85 +552,111 @@ function formatEventDate(value: string) {
 }
 
 function EncouragementCard({
+  compact = false,
   supporterCount,
   supporterNames,
   supporterAvatars,
   onPress,
 }: {
+  compact?: boolean;
   supporterCount: number;
   supporterNames: string;
   supporterAvatars: { id: string; name: string | null; avatar_url: string | null }[];
   onPress(): void;
 }) {
+  const { mode, colors: theme } = useAppTheme();
+  const compactStyles = useMemo(() => createCompactStyles(theme, mode), [mode, theme]);
   return (
     <Pressable
-      style={({ pressed }) => [styles.encouragementCard, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        compact ? compactStyles.encouragementCard : immersiveStyles.encouragementCard,
+        pressed && immersiveStyles.pressed,
+      ]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${supporterCount} supporters. Open Cheers.`}
     >
-      <View style={styles.faces}>
+      <View style={immersiveStyles.faces}>
         {supporterAvatars.slice(0, 3).map((person, index) => (
-          <View key={person.id} style={[styles.face, { marginLeft: index ? -10 : 0 }]}>
+          <View
+            key={person.id}
+            style={[
+              compact ? compactStyles.face : immersiveStyles.face,
+              { marginLeft: index ? -10 : 0 },
+            ]}
+          >
             <Avatar url={person.avatar_url} name={person.name} size={30} />
           </View>
         ))}
       </View>
-      <View style={styles.encouragementCopy}>
-        <Text style={styles.encouragementNames} numberOfLines={1}>
+      <View style={immersiveStyles.encouragementCopy}>
+        <Text
+          style={compact ? compactStyles.encouragementNames : immersiveStyles.encouragementNames}
+          numberOfLines={1}
+        >
           {supporterNames || 'Your buddies'}
         </Text>
-        <Text style={styles.encouragementText}>are cheering you on</Text>
+        <Text style={compact ? compactStyles.encouragementText : immersiveStyles.encouragementText}>are cheering you on</Text>
         <View
-          style={styles.miniWave}
+          style={immersiveStyles.miniWave}
           accessible={false}
           importantForAccessibility="no-hide-descendants"
         >
           {[5, 10, 7, 14, 9, 16, 6, 12, 8, 5].map((barHeight, index) => (
-            <View key={index} style={[styles.waveBar, { height: barHeight }]} />
+            <View
+              key={index}
+              style={[
+                compact ? compactStyles.waveBar : immersiveStyles.waveBar,
+                { height: barHeight },
+              ]}
+            />
           ))}
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+      <Ionicons
+        name="chevron-forward"
+        size={20}
+        color={compact ? theme.ink.muted : '#64748b'}
+      />
     </Pressable>
   );
 }
 
 function IconButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress(): void }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.iconButton}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={immersiveStyles.iconButton}>
       <Ionicons name={icon} size={24} color="#fff" />
     </Pressable>
   );
 }
 
-function PlainIconButton({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress(): void }) {
+function PlainIconButton({ icon, label, color, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string; onPress(): void }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.plainIconButton, pressed && styles.pressed]}
+      style={({ pressed }) => [immersiveStyles.plainIconButton, pressed && immersiveStyles.pressed]}
     >
-      <Ionicons name={icon} size={24} color={colors.navy} />
+      <Ionicons name={icon} size={24} color={color} />
     </Pressable>
   );
 }
 
 function Metric({ value, label }: { value: string; label: string }) {
   return (
-    <View style={styles.metric}>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
+    <View style={immersiveStyles.metric}>
+      <Text style={immersiveStyles.metricValue}>{value}</Text>
+      <Text style={immersiveStyles.metricLabel}>{label}</Text>
     </View>
   );
 }
 
 function CheerIcon({ color }: { color: string }) {
   return (
-    <View style={styles.cheerIcon} accessibilityElementsHidden>
-      <Ionicons name="hand-left-outline" size={19} color={color} style={styles.cheerLeft} />
-      <Ionicons name="hand-right-outline" size={19} color={color} style={styles.cheerRight} />
+    <View style={immersiveStyles.cheerIcon} accessibilityElementsHidden>
+      <Ionicons name="hand-left-outline" size={19} color={color} style={immersiveStyles.cheerLeft} />
+      <Ionicons name="hand-right-outline" size={19} color={color} style={immersiveStyles.cheerRight} />
     </View>
   );
 }
@@ -629,26 +664,23 @@ function CheerIcon({ color }: { color: string }) {
 function Action({ icon, label, shortLabel, active = false, onPress }: { icon: 'clap' | keyof typeof Ionicons.glyphMap; label: string; shortLabel: string; active?: boolean; onPress(): void }) {
   const color = active ? '#76A5FF' : '#fff';
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.action}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={immersiveStyles.action}>
       {icon === 'clap' ? (
         <CheerIcon color={color} />
       ) : (
         <Ionicons name={icon} size={18} color={color} />
       )}
-      <Text style={[styles.actionText, active && styles.actionActive]}>{shortLabel}</Text>
+      <Text style={[immersiveStyles.actionText, active && immersiveStyles.actionActive]}>{shortLabel}</Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  hero: { width: '100%', backgroundColor: colors.navy, overflow: 'hidden' },
-  photoFill: { width: '100%', alignSelf: 'center' },
-  photoContain: { position: 'absolute', inset: 0, justifyContent: 'center' },
+const createCompactStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
   compactSurface: {
     width: '100%',
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: theme.border.subtle,
   },
   compactTop: {
     minHeight: 58,
@@ -657,16 +689,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: theme.border.subtle,
   },
-  compactTitle: { color: colors.navy, fontFamily: font.bold, fontSize: 18 },
-  plainIconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  compactTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18 },
   compactAuthorLine: {
     minHeight: 72,
     flexDirection: 'row',
@@ -676,12 +701,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   compactAuthorCopy: { flex: 1, gap: 2 },
-  compactAuthor: { color: colors.text, fontFamily: font.bold, fontSize: 15 },
-  compactMeta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  compactAuthor: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15 },
+  compactMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
   compactBody: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
-    color: colors.text,
+    color: theme.ink.primary,
     fontFamily: font.regular,
     fontSize: 16,
     lineHeight: 24,
@@ -695,9 +720,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: mode === 'dark' ? theme.status.successSoft : colors.primarySoft,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
   },
   compactEventIcon: {
     width: 44,
@@ -705,16 +730,38 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
   },
   compactEventCopy: { flex: 1, gap: 2 },
-  compactEventEyebrow: { color: colors.primary, fontFamily: font.bold, fontSize: 11 },
-  compactEventTitle: { color: colors.text, fontFamily: font.bold, fontSize: 15, lineHeight: 20 },
-  compactEventMeta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
-  compactMedia: { minHeight: 220, overflow: 'hidden', backgroundColor: colors.navy },
+  compactEventEyebrow: { color: mode === 'dark' ? theme.ink.action : colors.primary, fontFamily: font.bold, fontSize: 11 },
+  compactEventTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15, lineHeight: 20 },
+  compactEventMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  compactMedia: {
+    minHeight: 220,
+    overflow: 'hidden',
+    backgroundColor: mode === 'dark' ? theme.surface.canvas : theme.surface.inverse,
+  },
   compactEngagement: { gap: spacing.sm, padding: spacing.md },
+  encouragementCard: { minHeight: 70, borderRadius: radius.lg, backgroundColor: theme.surface.canvas, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border.subtle },
+  face: { borderWidth: 2, borderColor: theme.surface.canvas, borderRadius: 17 },
+  encouragementNames: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 12 },
+  encouragementText: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 10.5 },
+  waveBar: { width: 2, borderRadius: 1, backgroundColor: theme.ink.action },
+});
+
+const immersiveStyles = StyleSheet.create({
+  hero: { width: '100%', backgroundColor: colors.navy, overflow: 'hidden' },
+  photoFill: { width: '100%', alignSelf: 'center' },
+  photoContain: { position: 'absolute', inset: 0, justifyContent: 'center' },
+  plainIconButton: {
+    width: spacing.touch,
+    height: spacing.touch,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   topControls: { position: 'absolute', left: spacing.md, right: spacing.md, flexDirection: 'row', justifyContent: 'space-between', zIndex: 3 },
-  iconButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(2,8,20,.24)' },
+  iconButton: { width: spacing.touch, height: spacing.touch, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(2,8,20,.24)' },
   story: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg, gap: spacing.md },
   headlineRow: { minHeight: 98, flexDirection: 'row', alignItems: 'flex-start' },
   headline: { flex: 1, color: '#fff', fontFamily: font.serif, fontSize: 34, lineHeight: 37, textShadowColor: 'rgba(0,0,0,.65)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },

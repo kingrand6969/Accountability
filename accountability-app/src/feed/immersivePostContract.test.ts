@@ -147,7 +147,7 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(postDetailStatusBarStyle(post)).toBe('light');
     expect(routeSource).toContain("import { StatusBar } from 'expo-status-bar'");
     expect(routeSource).toContain(
-      'isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null',
+      'isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null',
     );
   });
 
@@ -391,11 +391,11 @@ describe('Group 3 immersive Post Detail contract', () => {
   });
 
   test('uses one authoritative header and 48dp detail action targets', () => {
-    expect(componentSource).toContain('iconButton: { width: 48, height: 48');
+    expect(componentSource).toContain('iconButton: { width: spacing.touch, height: spacing.touch');
     expect(componentSource).toContain('action: { flex: 1, minHeight: 48');
     expect(componentSource).toContain('plainIconButton: {');
-    expect(componentSource).toContain('width: 48');
-    expect(componentSource).toContain('height: 48');
+    expect(componentSource).toContain('width: spacing.touch');
+    expect(componentSource).toContain('height: spacing.touch');
     expect(componentSource).toContain('useSafeAreaInsets()');
     expect(componentSource).toContain('topInset={insets.top}');
     expect(componentSource).toContain('Math.max(insets.top + spacing.xs, spacing.xxl)');
@@ -419,7 +419,7 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).not.toContain('ListFooterComponent={');
     expect(routeSource).toMatch(/<FlatList[\s\S]*?\/>\s*<View[\s\S]*?styles\.inputBar[\s\S]*?<TextInput/);
     expect(routeSource).toContain('Math.max(insets.bottom, spacing.sm)');
-    expect(componentSource).toContain('style={styles.photoContain}');
+    expect(componentSource).toContain('style={immersiveStyles.photoContain}');
     expect(componentSource).not.toMatch(/<PostImage[\s\S]{0,250}transform:/);
   });
 
