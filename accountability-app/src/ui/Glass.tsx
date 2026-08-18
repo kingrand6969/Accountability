@@ -1,8 +1,10 @@
-import { forwardRef, type ReactNode, type Ref } from 'react';
+import { forwardRef, useMemo, type ReactNode, type Ref } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import { BlurView, BlurTargetView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { useAppTheme } from './AppThemeProvider';
+import type { AppThemeColors, AppThemeMode } from './theme';
 
 /**
  * Real glassmorphism needs saturated shapes BEHIND the glass — blurring a flat
@@ -23,7 +25,7 @@ function Sphere({
 }: {
   id: string;
   size: number;
-  colors: [string, string];
+  colors: readonly [string, string];
   style: ViewStyle;
   opacity: number;
 }) {
@@ -46,10 +48,25 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
   { columnWidth = 600 }: { columnWidth?: number },
   ref: Ref<View>,
 ) {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const backdropColors = mode === 'light'
+    ? ['#EDF4FC', '#DEEAF8', '#C9DCF4'] as const
+    : [theme.surface.canvas, theme.surface.card, theme.surface.raised] as const;
+  const blobA = mode === 'light'
+    ? ['#DBEAFE', '#93C5FD'] as const
+    : [theme.ink.action, theme.surface.raised] as const;
+  const blobB = mode === 'light'
+    ? ['#FFE4F0', '#F4BCD8'] as const
+    : [theme.status.attention, theme.surface.muted] as const;
+  const blobC = mode === 'light'
+    ? ['#E1EEFF', '#B7D6F7'] as const
+    : [theme.ink.action, theme.surface.muted] as const;
+
   return (
     <BlurTargetView ref={ref as never} style={StyleSheet.absoluteFill}>
       <LinearGradient
-        colors={['#EDF4FC', '#DEEAF8', '#C9DCF4']}
+        colors={backdropColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -61,23 +78,23 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
         <Sphere
           id="blobA"
           size={460}
-          colors={['#DBEAFE', '#93C5FD']}
+          colors={blobA}
           style={{ top: -140, left: -160 }}
-          opacity={0.85}
+          opacity={mode === 'light' ? 0.85 : 0.22}
         />
         <Sphere
           id="blobB"
           size={380}
-          colors={['#FFE4F0', '#F4BCD8']}
+          colors={blobB}
           style={{ top: 220, right: -150 }}
-          opacity={0.7}
+          opacity={mode === 'light' ? 0.7 : 0.12}
         />
         <Sphere
           id="blobC"
           size={520}
-          colors={['#E1EEFF', '#B7D6F7']}
+          colors={blobC}
           style={{ top: 560, left: -190 }}
-          opacity={0.6}
+          opacity={mode === 'light' ? 0.6 : 0.16}
         />
       </View>
     </BlurTargetView>
@@ -96,13 +113,22 @@ export function GlassCard({
   /** 0.45 keeps ~4.5:1 ink contrast while letting the blobs glow through */
   plateOpacity?: number;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const borderColors = mode === 'light'
+    ? ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.7)'] as const
+    : [theme.border.strong, theme.border.subtle, theme.ink.action] as const;
+  const sheenColors = mode === 'light'
+    ? ['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)'] as const
+    : ['rgba(96,165,250,0.14)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0)'] as const;
+
   return (
     <View style={[styles.shadowWrap, style]}>
       {/* gradient BORDER — a 1.5px light edge that catches the light top-left and
           bottom-right, the signature glass rim. Renders identically on every
           platform, so the panel reads as glass even where native blur is weak. */}
       <LinearGradient
-        colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.7)']}
+        colors={borderColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.borderGrad}
@@ -112,7 +138,7 @@ export function GlassCard({
             actual glass effect. The white plate below guards text contrast. */}
         <BlurView
           intensity={Platform.select({ ios: 40, android: 45, web: 35, default: 45 })}
-          tint="light"
+          tint={mode === 'light' ? 'light' : 'dark'}
           blurMethod="dimezisBlurViewSdk31Plus"
           blurReductionFactor={2}
           blurTarget={(blurTarget as never) ?? undefined}
@@ -120,11 +146,16 @@ export function GlassCard({
         >
           {/* base plate keeps ink legible */}
           <View
-            style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(255,255,255,${plateOpacity})` }]}
+            style={[
+              StyleSheet.absoluteFill,
+              mode === 'light'
+                ? { backgroundColor: `rgba(255,255,255,${plateOpacity})` }
+                : { backgroundColor: theme.surface.card, opacity: Math.max(plateOpacity, 0.82) },
+            ]}
           />
           {/* diagonal sheen — the frosted-glass highlight */}
           <LinearGradient
-            colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
+            colors={sheenColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -137,7 +168,7 @@ export function GlassCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
   blobColumn: {
     position: 'absolute',
     top: 0,
@@ -152,7 +183,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'android'
       ? {} // elevation bleeds grey through translucent children — skip on Android
       : {
-          shadowColor: '#1E3A8A',
+          shadowColor: mode === 'light' ? '#1E3A8A' : theme.surface.canvas,
           shadowOffset: { width: 0, height: 16 },
           shadowOpacity: 0.16,
           shadowRadius: 32,

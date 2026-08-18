@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Avatar } from '../feed/Avatar';
-import { font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
 import { formatScore, type Metric } from './api';
 
 export const INK = '#1e1b4b';
@@ -10,6 +12,59 @@ export const ACCENT = '#2563eb';
 const GOLD = '#f59e0b';
 const SILVER = '#94a3b8';
 const BRONZE = '#b45309';
+
+export type CompetitionPalette = {
+  ink: string;
+  inkSoft: string;
+  accent: string;
+  onAccent: string;
+  segmentSurface: string;
+  segmentBorder: string;
+  chipSurface: string;
+  chipBorder: string;
+  selectedRow: string;
+  neutralRank: string;
+  subtleAccent: string;
+  faintAccent: string;
+  accentBorder: string;
+  accentBorderStrong: string;
+  faintInk: string;
+  quietInk: string;
+  inputSurface: string;
+  inputBorder: string;
+};
+
+function competitionPalette(
+  theme: AppThemeColors,
+  mode: AppThemeMode,
+): CompetitionPalette {
+  return {
+    ink: mode === 'light' ? INK : theme.ink.primary,
+    inkSoft: mode === 'light' ? INK_SOFT : theme.ink.secondary,
+    accent: mode === 'light' ? ACCENT : theme.ink.action,
+    onAccent: mode === 'light' ? '#fff' : theme.ink.inverse,
+    segmentSurface: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.card,
+    segmentBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
+    chipSurface: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.raised,
+    chipBorder: mode === 'light' ? 'rgba(255,255,255,0.75)' : theme.border.strong,
+    selectedRow: mode === 'light' ? 'rgba(37,99,235,0.10)' : theme.surface.muted,
+    neutralRank: mode === 'light' ? 'rgba(30,27,75,0.08)' : theme.surface.raised,
+    subtleAccent: mode === 'light' ? 'rgba(37,99,235,0.12)' : theme.surface.muted,
+    faintAccent: mode === 'light' ? 'rgba(37,99,235,0.08)' : theme.surface.raised,
+    accentBorder: mode === 'light' ? 'rgba(37,99,235,0.3)' : theme.border.action,
+    accentBorderStrong: mode === 'light' ? 'rgba(37,99,235,0.35)' : theme.border.action,
+    faintInk: mode === 'light' ? 'rgba(30,27,75,0.08)' : theme.surface.muted,
+    quietInk: mode === 'light' ? 'rgba(30,27,75,0.06)' : theme.surface.muted,
+    inputSurface: mode === 'light' ? 'rgba(255,255,255,0.6)' : theme.surface.raised,
+    inputBorder: mode === 'light' ? 'rgba(30,27,75,0.15)' : theme.border.strong,
+  };
+}
+
+export function useCompetitionTheme() {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => competitionPalette(theme, mode), [mode, theme]);
+  return { palette, mode, theme };
+}
 
 type Opt = { value: string; label: string; icon?: string };
 
@@ -23,6 +78,9 @@ export function Segmented({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { palette } = useCompetitionTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
   return (
     <View style={styles.seg}>
       {options.map((o) => {
@@ -36,7 +94,11 @@ export function Segmented({
             accessibilityState={{ selected: active }}
           >
             {o.icon ? (
-              <Ionicons name={o.icon as never} size={14} color={active ? '#fff' : INK_SOFT} />
+              <Ionicons
+                name={o.icon as never}
+                size={14}
+                color={active ? palette.onAccent : palette.inkSoft}
+              />
             ) : null}
             <Text style={[styles.segText, active && styles.segTextActive]}>{o.label}</Text>
           </Pressable>
@@ -56,6 +118,9 @@ export function Chips({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const { palette } = useCompetitionTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
   return (
     <View style={styles.chipRow}>
       {options.map((o) => {
@@ -69,7 +134,11 @@ export function Chips({
             accessibilityState={{ selected: active }}
           >
             {o.icon ? (
-              <Ionicons name={o.icon as never} size={13} color={active ? '#fff' : ACCENT} />
+              <Ionicons
+                name={o.icon as never}
+                size={13}
+                color={active ? palette.onAccent : palette.accent}
+              />
             ) : null}
             <Text style={[styles.chipText, active && styles.chipTextActive]}>{o.label}</Text>
           </Pressable>
@@ -99,6 +168,8 @@ export function RankRow({
   highlight?: boolean;
   subtitle?: string | null;
 }) {
+  const { palette } = useCompetitionTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const medal = rank <= 3 ? MEDALS[rank - 1] : null;
   return (
     <View style={[styles.row, highlight && styles.rowMe]}>
@@ -122,13 +193,13 @@ export function RankRow({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
   pressed: { opacity: 0.7 },
   seg: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: palette.segmentSurface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.segmentBorder,
     borderRadius: radius.pill,
     padding: 3,
   },
@@ -142,25 +213,25 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     minHeight: 38,
   },
-  segActive: { backgroundColor: ACCENT },
-  segText: { fontFamily: font.bold, fontSize: 13.5, color: INK_SOFT },
-  segTextActive: { color: '#fff' },
+  segActive: { backgroundColor: palette.accent },
+  segText: { fontFamily: font.bold, fontSize: 13.5, color: palette.inkSoft },
+  segTextActive: { color: palette.onAccent },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: palette.chipSurface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.75)',
+    borderColor: palette.chipBorder,
     borderRadius: radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 13,
     minHeight: 34,
   },
-  chipActive: { backgroundColor: ACCENT, borderColor: ACCENT },
-  chipText: { fontFamily: font.semibold, fontSize: 13, color: INK },
-  chipTextActive: { color: '#fff' },
+  chipActive: { backgroundColor: palette.accent, borderColor: palette.accent },
+  chipText: { fontFamily: font.semibold, fontSize: 13, color: palette.ink },
+  chipTextActive: { color: palette.onAccent },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -169,7 +240,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   rowMe: {
-    backgroundColor: 'rgba(37,99,235,0.10)',
+    backgroundColor: palette.selectedRow,
     borderRadius: radius.md,
     paddingHorizontal: 8,
   },
@@ -177,12 +248,12 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: 'rgba(30,27,75,0.08)',
+    backgroundColor: palette.neutralRank,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rankNum: { fontFamily: font.extrabold, fontSize: 13, color: INK_SOFT },
-  name: { fontFamily: font.bold, fontSize: 14.5, color: INK },
-  sub: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, marginTop: 1 },
-  score: { fontFamily: font.extrabold, fontSize: 15, color: ACCENT },
+  rankNum: { fontFamily: font.extrabold, fontSize: 13, color: palette.inkSoft },
+  name: { fontFamily: font.bold, fontSize: 14.5, color: palette.ink },
+  sub: { fontFamily: font.medium, fontSize: 12, color: palette.inkSoft, marginTop: 1 },
+  score: { fontFamily: font.extrabold, fontSize: 15, color: palette.accent },
 });
