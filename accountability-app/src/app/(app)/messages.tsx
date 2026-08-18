@@ -21,7 +21,8 @@ import {
 } from '../../buddy/api';
 import { useIsPro } from '../../pro/ProProvider';
 import { EmptyState } from '../../ui/EmptyState';
-import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
+import { font, radius, spacing, contentMax, type AppThemeColors } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { useAuth } from '../../auth/AuthProvider';
 
 function firstName(name: string | null): string {
@@ -31,6 +32,8 @@ function firstName(name: string | null): string {
 export default function Messages() {
   const router = useRouter();
   const { isPro } = useIsPro();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
   const currentOwnerRef = useRef(ownerId);
@@ -157,11 +160,11 @@ export default function Messages() {
     <View>
       {/* search */}
       <View style={styles.searchBar}>
-        <Ionicons name="search" size={18} color={colors.textMuted} />
+        <Ionicons name="search" size={18} color={theme.ink.muted} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search messages"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={theme.ink.muted}
           value={query}
           onChangeText={setQuery}
           returnKeyType="search"
@@ -173,7 +176,7 @@ export default function Messages() {
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
-            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            <Ionicons name="close-circle" size={18} color={theme.ink.muted} />
           </Pressable>
         ) : null}
       </View>
@@ -212,7 +215,7 @@ export default function Messages() {
 
       {!isPro && items && items.length > 0 ? (
         <View style={styles.retentionNote}>
-          <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+          <Ionicons name="time-outline" size={14} color={theme.ink.muted} />
           <Text style={styles.retentionText}>
             Messages are kept for 30 days on the free plan. Go Pro to keep them forever.
           </Text>
@@ -232,6 +235,9 @@ export default function Messages() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
+              tintColor={theme.ink.action}
+              colors={[theme.ink.action]}
+              progressBackgroundColor={theme.surface.card}
               onRefresh={() => {
                 setRefreshing(true);
                 void load();
@@ -305,23 +311,23 @@ export default function Messages() {
   );
 }
 
-const ONLINE = '#22c55e';
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   list: { padding: spacing.sm, paddingBottom: 120 },
   pressed: { opacity: 0.7 },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.muted,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     minHeight: spacing.touch,
     marginBottom: spacing.md,
   },
-  searchInput: { flex: 1, fontFamily: font.regular, fontSize: 15, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontFamily: font.regular, fontSize: 15, color: theme.ink.primary, paddingVertical: 0 },
   clearSearch: {
     width: spacing.touch,
     height: spacing.touch,
@@ -337,20 +343,20 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.sm,
   },
-  loadingAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.surface },
+  loadingAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: theme.interaction.skeleton },
   loadingCopy: { flex: 1, gap: spacing.sm },
-  loadingName: { width: '42%', height: 14, borderRadius: 7, backgroundColor: colors.surface },
-  loadingPreview: { width: '74%', height: 12, borderRadius: 6, backgroundColor: colors.surface },
+  loadingName: { width: '42%', height: 14, borderRadius: 7, backgroundColor: theme.interaction.skeleton },
+  loadingPreview: { width: '74%', height: 12, borderRadius: 6, backgroundColor: theme.interaction.skeleton },
   activeTitle: {
     fontFamily: font.bold,
     fontSize: 13,
-    color: colors.textSecondary,
+    color: theme.ink.secondary,
     marginBottom: spacing.sm,
     marginLeft: 4,
   },
   activeRow: { gap: spacing.md, paddingBottom: spacing.sm, paddingRight: spacing.md },
   activeItem: { alignItems: 'center', width: 64, gap: 5 },
-  activeName: { fontFamily: font.medium, fontSize: 12, color: colors.textSecondary },
+  activeName: { fontFamily: font.medium, fontSize: 12, color: theme.ink.secondary },
   onlineDot: {
     position: 'absolute',
     right: 1,
@@ -358,9 +364,9 @@ const styles = StyleSheet.create({
     width: 15,
     height: 15,
     borderRadius: 8,
-    backgroundColor: ONLINE,
+    backgroundColor: theme.status.success,
     borderWidth: 2.5,
-    borderColor: colors.background,
+    borderColor: theme.surface.canvas,
   },
   onlineDotSm: {
     position: 'absolute',
@@ -369,20 +375,22 @@ const styles = StyleSheet.create({
     width: 13,
     height: 13,
     borderRadius: 7,
-    backgroundColor: ONLINE,
+    backgroundColor: theme.status.success,
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: theme.surface.canvas,
   },
   retentionNote: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.card,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  retentionText: { flex: 1, fontFamily: font.medium, fontSize: 12, color: colors.textMuted, lineHeight: 16 },
+  retentionText: { flex: 1, fontFamily: font.medium, fontSize: 12, color: theme.ink.muted, lineHeight: 16 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,23 +398,25 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border.subtle,
   },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  name: { flex: 1, fontFamily: font.semibold, fontSize: 15.5, color: colors.text },
+  name: { flex: 1, fontFamily: font.semibold, fontSize: 15.5, color: theme.ink.primary },
   nameUnread: { fontFamily: font.extrabold },
-  time: { fontFamily: font.medium, fontSize: 12, color: colors.textMuted },
+  time: { fontFamily: font.medium, fontSize: 12, color: theme.ink.muted },
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  preview: { flex: 1, fontFamily: font.regular, fontSize: 13.5, color: colors.textMuted },
-  previewUnread: { fontFamily: font.semibold, color: colors.text },
+  preview: { flex: 1, fontFamily: font.regular, fontSize: 13.5, color: theme.ink.muted },
+  previewUnread: { fontFamily: font.semibold, color: theme.ink.primary },
   badge: {
     minWidth: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  badgeText: { color: '#fff', fontFamily: font.bold, fontSize: 11 },
-  noResults: { fontFamily: font.medium, fontSize: 14, color: colors.textMuted, textAlign: 'center', marginTop: 40 },
+  badgeText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 11 },
+  noResults: { fontFamily: font.medium, fontSize: 14, color: theme.ink.muted, textAlign: 'center', marginTop: 40 },
 });

@@ -2,7 +2,7 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { RefreshControl, Text } from 'react-native';
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 let mockOwnerId: string | null = 'owner-a';
 let mockFocusEpoch = 0;
@@ -27,6 +27,16 @@ jest.mock('./api', () => ({
   listActiveBuddies: () => mockListActiveBuddies(),
 }));
 jest.mock('../pro/ProProvider', () => ({ useIsPro: () => ({ isPro: true }) }));
+jest.mock('../ui/AppThemeProvider', () => {
+  const { themeColors } = jest.requireActual<typeof import('../ui/theme')>('../ui/theme');
+  return {
+    useAppTheme: () => ({
+      mode: 'light',
+      colors: themeColors('light'),
+      setMode: jest.fn(),
+    }),
+  };
+});
 jest.mock('../feed/Avatar', () => ({ Avatar: () => null }));
 jest.mock('../ui/EmptyState', () => {
   const ReactModule = require('react') as typeof React;
@@ -36,6 +46,8 @@ jest.mock('../ui/EmptyState', () => {
       ReactModule.createElement(NativeText, null, title),
   };
 });
+
+const Messages = require('../app/(app)/messages').default as React.ComponentType;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -74,8 +86,20 @@ function visibleText(renderer: TestRenderer.ReactTestRenderer) {
     .join(' ');
 }
 
+const activeRenderers: TestRenderer.ReactTestRenderer[] = [];
+
+function renderMessages() {
+  const renderer = TestRenderer.create(React.createElement(Messages));
+  activeRenderers.push(renderer);
+  return renderer;
+}
+
 describe('Messages account and refresh lifecycle', () => {
-  const Messages = require('../app/(app)/messages').default as React.ComponentType;
+  afterEach(() => {
+    for (const renderer of activeRenderers.splice(0)) {
+      act(() => renderer.unmount());
+    }
+  });
 
   beforeEach(() => {
     mockOwnerId = 'owner-a';
@@ -92,7 +116,7 @@ describe('Messages account and refresh lifecycle', () => {
       .mockResolvedValueOnce([conversation('Account B', 'buddy-b')]);
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(Messages));
+      renderer = renderMessages();
     });
 
     mockOwnerId = 'owner-b';
@@ -115,7 +139,7 @@ describe('Messages account and refresh lifecycle', () => {
     mockListConversations.mockResolvedValue([]);
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(Messages));
+      renderer = renderMessages();
     });
     mockOwnerId = 'owner-b';
     await act(async () => renderer.update(React.createElement(Messages)));
@@ -135,7 +159,7 @@ describe('Messages account and refresh lifecycle', () => {
       .mockRejectedValueOnce(new Error('offline'));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(Messages));
+      renderer = renderMessages();
     });
     await flush();
     expect(visibleText(renderer)).toContain('Training Buddy');
@@ -154,7 +178,7 @@ describe('Messages account and refresh lifecycle', () => {
       .mockResolvedValueOnce([conversation('Current B', 'current-b')]);
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(Messages));
+      renderer = renderMessages();
     });
     await flush();
 
@@ -173,7 +197,7 @@ describe('Messages account and refresh lifecycle', () => {
     mockListConversations.mockResolvedValueOnce([conversation('Maya', 'buddy-1')]);
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(Messages));
+      renderer = renderMessages();
     });
     await flush();
     const row = renderer.root.findByProps({ accessibilityLabel: 'Chat with Maya' });

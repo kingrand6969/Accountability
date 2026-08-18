@@ -81,6 +81,16 @@ jest.mock('../pages/api', () => ({
   listPages: () => mockListPages(),
 }));
 jest.mock('../pro/ProProvider', () => ({ useIsPro: () => ({ isPro: false }) }));
+jest.mock('../ui/AppThemeProvider', () => {
+  const { themeColors } = jest.requireActual<typeof import('../ui/theme')>('../ui/theme');
+  return {
+    useAppTheme: () => ({
+      mode: 'light',
+      colors: themeColors('light'),
+      setMode: jest.fn(),
+    }),
+  };
+});
 jest.mock('../feed/Avatar', () => ({ Avatar: () => null }));
 jest.mock('../ui/EmptyState', () => {
   const ReactModule = require('react') as typeof React;

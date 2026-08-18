@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,19 +20,46 @@ import {
   type AppNotification,
 } from '../../notify/api';
 import { EmptyState } from '../../ui/EmptyState';
-import { colors, font, radius, spacing, contentMax } from '../../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { useAuth } from '../../auth/AuthProvider';
 
-const TYPE_ICON: Record<AppNotification['type'], { icon: string; tint: string }> = {
-  like: { icon: 'flame', tint: colors.cheer },
-  comment: { icon: 'chatbubble', tint: '#2563eb' },
-  tag: { icon: 'pricetag', tint: '#0d9488' },
-  buddy_request: { icon: 'person-add', tint: '#ea580c' },
-  buddy_accept: { icon: 'people', tint: '#16a34a' },
+const TYPE_ICON: Record<AppNotification['type'], string> = {
+  like: 'flame',
+  comment: 'chatbubble',
+  tag: 'pricetag',
+  buddy_request: 'person-add',
+  buddy_accept: 'people',
 };
+
+function notificationBadge(
+  type: AppNotification['type'],
+  theme: AppThemeColors,
+  mode: AppThemeMode,
+): { background: string; foreground: string } {
+  if (type === 'like' || type === 'buddy_request') {
+    return {
+      background: theme.status.attention,
+      foreground: mode === 'dark' ? theme.ink.inverse : theme.ink.primary,
+    };
+  }
+  if (type === 'comment') {
+    return { background: theme.ink.action, foreground: theme.surface.canvas };
+  }
+  return { background: theme.status.success, foreground: theme.surface.canvas };
+}
 
 export default function Notifications() {
   const router = useRouter();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
   const currentOwnerRef = useRef(ownerId);
@@ -121,7 +148,7 @@ export default function Notifications() {
   return (
     <View style={styles.screen}>
       {items === null || (ownerId !== null && dataOwnerId !== ownerId) ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
+        <ActivityIndicator color={theme.ink.action} style={{ marginTop: 60 }} />
       ) : (
         <FlatList
           data={items}
@@ -130,6 +157,9 @@ export default function Notifications() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
+              tintColor={theme.ink.action}
+              colors={[theme.ink.action]}
+              progressBackgroundColor={theme.surface.card}
               onRefresh={() => {
                 setRefreshing(true);
                 void load();
@@ -144,7 +174,7 @@ export default function Notifications() {
             />
           }
           renderItem={({ item }) => {
-            const meta = TYPE_ICON[item.type];
+            const badge = notificationBadge(item.type, theme, mode);
             return (
               <Pressable
                 onPress={() => open(item)}
@@ -158,8 +188,12 @@ export default function Notifications() {
               >
                 <View>
                   <Avatar url={item.actor_avatar} name={item.actor_name} size={44} />
-                  <View style={[styles.typeBadge, { backgroundColor: meta.tint }]}>
-                    <Ionicons name={meta.icon as never} size={11} color="#fff" />
+                  <View style={[styles.typeBadge, { backgroundColor: badge.background }]}>
+                    <Ionicons
+                      name={TYPE_ICON[item.type] as never}
+                      size={11}
+                      color={badge.foreground}
+                    />
                   </View>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -176,8 +210,8 @@ export default function Notifications() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   list: { padding: spacing.md, paddingBottom: 120, gap: 4 },
   pressed: { opacity: 0.75 },
   row: {
@@ -186,8 +220,10 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border.subtle,
   },
-  rowUnread: { backgroundColor: colors.primarySoft },
+  rowUnread: { backgroundColor: theme.surface.muted },
   typeBadge: {
     position: 'absolute',
     right: -4,
@@ -198,9 +234,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: theme.surface.canvas,
   },
-  line: { fontFamily: font.semibold, fontSize: 14.5, color: colors.text, lineHeight: 20 },
-  time: { fontFamily: font.medium, fontSize: 12, color: colors.textMuted, marginTop: 1 },
-  dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.primary },
+  line: { fontFamily: font.semibold, fontSize: 14.5, color: theme.ink.primary, lineHeight: 20 },
+  time: { fontFamily: font.medium, fontSize: 12, color: theme.ink.muted, marginTop: 1 },
+  dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: theme.ink.action },
 });

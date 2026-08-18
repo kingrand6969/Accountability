@@ -1,8 +1,9 @@
-import type { ComponentProps } from 'react';
+import { useMemo, type ComponentProps } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button } from './Button';
-import { colors, font, spacing } from './theme';
+import { font, spacing, type AppThemeColors } from './theme';
+import { useAppTheme } from './AppThemeProvider';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -20,10 +21,12 @@ export function EmptyState({
   actionTitle?: string;
   onAction?: () => void;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.wrap}>
       <View style={styles.iconCircle}>
-        <Ionicons name={icon} size={30} color={colors.textFaint} />
+        <Ionicons name={icon} size={30} color={theme.ink.muted} />
       </View>
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.sub}>{subtitle}</Text> : null}
@@ -34,20 +37,20 @@ export function EmptyState({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   wrap: { alignItems: 'center', padding: spacing.xxl, gap: 6 },
   iconCircle: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
   },
-  title: { fontSize: 17, fontFamily: font.bold, color: colors.text },
+  title: { fontSize: 17, fontFamily: font.bold, color: theme.ink.primary },
   sub: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     fontSize: 14,
     textAlign: 'center',
