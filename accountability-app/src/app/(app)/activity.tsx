@@ -24,6 +24,7 @@ import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { ProgressRing } from '../../ui/ProgressRing';
 import { contentMaxWidth } from '../../ui/responsive';
 import { useAppTheme } from '../../ui/AppThemeProvider';
+import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
 import {
   font,
   spacing,
@@ -95,6 +96,7 @@ function TrackLegacy() {
   const bgRef = useRef<View>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [week, setWeek] = useState<WeekDay[]>([]);
 
@@ -174,8 +176,8 @@ function TrackLegacy() {
             accessibilityLabel="Your profile"
             hitSlop={4}
           >
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImg} />
+            {resolvedAvatar ? (
+              <Image source={{ uri: resolvedAvatar }} style={styles.avatarImg} />
             ) : (
               <Ionicons name="person" size={16} color={palette.inkSoft} />
             )}

@@ -18,6 +18,9 @@ describe('story viewer receipt contract', () => {
     expect(source).toContain('playback.show(displayedStoryId)');
     expect(source).not.toContain('playback.current');
     expect(source).not.toContain('setTimeout(goNext');
+    expect(source).toContain(
+      'dataReady: dataViewKey === viewKey && resolvedStoryImageUrl !== null',
+    );
   });
 
   test('cancels playback synchronously for foreground loss and manual navigation', () => {

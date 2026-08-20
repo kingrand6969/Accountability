@@ -1,11 +1,18 @@
 import { useState } from 'react';
-import { Image, type ImageContentFit, type ImageLoadEventData } from 'expo-image';
+import {
+  Image,
+  type ImageContentFit,
+  type ImageErrorEventData,
+  type ImageLoadEventData,
+} from 'expo-image';
 import {
   Image as NativeImage,
+  type ImageErrorEvent as NativeImageErrorEvent,
   type ImageLoadEvent as NativeImageLoadEvent,
   type ImageStyle,
   type StyleProp,
 } from 'react-native';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 
 type Props = {
   uri: string | null | undefined;
@@ -16,12 +23,9 @@ type Props = {
   priority?: 'low' | 'normal' | 'high';
   recyclingKey?: string | null;
   onLoad?: (e: ImageLoadEventData) => void;
+  onError?: (message: string) => void;
   accessibilityLabel?: string;
 };
-
-function isAwsSignedImageUrl(uri: string | null | undefined): boolean {
-  return Boolean(uri && /^https:\/\//i.test(uri) && /[?&]X-Amz-Algorithm=/i.test(uri));
-}
 
 /**
  * A remote image with on-device memory + disk caching (via expo-image).
@@ -39,20 +43,34 @@ export function CachedImage({ uri, ...props }: Props) {
 
 function CachedImageForUri({
   uri,
+  ...props
+}: Props) {
+  const resolvedUri = useResolvedImageUrl(uri);
+  return <CachedImageRenderer key={resolvedUri ?? ''} uri={resolvedUri} {...props} />;
+}
+
+function CachedImageRenderer({
+  uri: resolvedUri,
   style,
   contentFit = 'cover',
   transition = 120,
   priority,
   recyclingKey,
   onLoad,
+  onError,
   accessibilityLabel,
 }: Props) {
   const [useNativeFallback, setUseNativeFallback] = useState(false);
-  const useNativeRenderer = useNativeFallback || isAwsSignedImageUrl(uri);
+  const [failed, setFailed] = useState(false);
+  const displayUri = failed ? null : resolvedUri;
+  const handleTerminalError = (message: string) => {
+    setFailed(true);
+    onError?.(message);
+  };
 
   if (
-    useNativeRenderer &&
-    uri &&
+    useNativeFallback &&
+    displayUri &&
     (contentFit === 'cover' || contentFit === 'contain')
   ) {
     const resizeMode = contentFit === 'contain' ? 'contain' : 'cover';
@@ -68,13 +86,18 @@ function CachedImageForUri({
         },
       });
     };
+    const handleError = (event: NativeImageErrorEvent) => {
+      const message = String(event.nativeEvent.error || 'The image could not be displayed.');
+      handleTerminalError(message);
+    };
 
     return (
       <NativeImage
-        source={{ uri }}
+        source={{ uri: displayUri }}
         style={style}
         resizeMode={resizeMode}
         onLoad={handleLoad}
+        onError={handleError}
         accessibilityLabel={accessibilityLabel}
       />
     );
@@ -82,7 +105,7 @@ function CachedImageForUri({
 
   return (
     <Image
-      source={uri ? { uri } : undefined}
+      source={displayUri ? { uri: displayUri } : undefined}
       style={style}
       contentFit={contentFit}
       cachePolicy="memory-disk"
@@ -90,12 +113,14 @@ function CachedImageForUri({
       priority={priority}
       recyclingKey={recyclingKey ?? undefined}
       onLoad={onLoad}
-      onError={() => {
+      onError={(event: ImageErrorEventData) => {
         if (
-          uri?.toLowerCase().startsWith('https://') &&
+          displayUri &&
           (contentFit === 'cover' || contentFit === 'contain')
         ) {
           setUseNativeFallback(true);
+        } else {
+          handleTerminalError(event.error || 'The image could not be displayed.');
         }
       }}
       accessibilityLabel={accessibilityLabel}

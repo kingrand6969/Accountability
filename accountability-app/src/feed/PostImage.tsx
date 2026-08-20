@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CachedImage } from '../ui/CachedImage';
 import { colors, font, radius } from '../ui/theme';
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 
 /** Tallest frame the FEED shows — 4:5 portrait, like Instagram/Facebook.
  *  Anything taller is centre-cropped in the feed and shown in full on tap. */
@@ -25,7 +25,7 @@ export function PostImage({
   immersive?: boolean;
 }) {
   const [ratio, setRatio] = useState(16 / 9);
-  const resolvedUrl = useResolvedMediaUrl(url);
+  const resolvedUrl = useResolvedImageUrl(url);
 
   const capped = capTall && ratio < FEED_MIN_RATIO;
   const shown = immersive ? FEED_MIN_RATIO : capped ? FEED_MIN_RATIO : ratio;

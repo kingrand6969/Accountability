@@ -13,6 +13,7 @@ import { RankBadge } from '../achievements/RankBadge';
 import { Medal } from '../achievements/Medal';
 import { MEDALS, medalState, type MedalState } from '../achievements/catalog';
 import { authorLabel, timeAgo } from '../feed/format';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import { font, radius } from '../ui/theme';
 
 /** Rebuild displayable medal states from a card's snapshot (id + tier). */
@@ -69,6 +70,7 @@ export function BuddyCardFace({
 }) {
   const { width: winW } = useWindowDimensions();
   const [availW, setAvailW] = useState(0);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const w = availW || winW; // the card's own width once measured
   const wide = w >= 500;
   const avatarSize = wide ? 200 : 150;
@@ -103,9 +105,9 @@ export function BuddyCardFace({
         { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
       ]}
     >
-      {avatar ? (
+      {resolvedAvatar ? (
         <Image
-          source={{ uri: avatar }}
+          source={{ uri: resolvedAvatar }}
           style={{ width: avatarSize - 6, height: avatarSize - 6, borderRadius: avatarSize / 2 }}
         />
       ) : (

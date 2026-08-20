@@ -17,6 +17,7 @@ import * as Sharing from 'expo-sharing';
 import { useFocusEffect } from 'expo-router';
 import { getMyProfile } from '../profiles/api';
 import { useAppTheme } from '../ui/AppThemeProvider';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import {
   colors,
   font,
@@ -34,6 +35,7 @@ export default function InviteCard() {
   const cardRef = useRef<View>(null);
   const [name, setName] = useState('A friend');
   const [avatar, setAvatar] = useState<string | null>(null);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const [sharing, setSharing] = useState(false);
 
   useFocusEffect(
@@ -97,8 +99,8 @@ export default function InviteCard() {
           </View>
 
           <View style={styles.inviter}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatar} />
+            {resolvedAvatar ? (
+              <Image source={{ uri: resolvedAvatar }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
                 <Ionicons name="person" size={26} color="#fff" />

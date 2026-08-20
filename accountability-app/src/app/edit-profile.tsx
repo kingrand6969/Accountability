@@ -30,7 +30,8 @@ import { validateBirthday } from '../profiles/validation';
 import { uploadAvatar, uploadCover } from '../profiles/avatar';
 import { prepareUpload } from '../media/prepareUpload';
 import { CachedImage } from '../ui/CachedImage';
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
+import { clearPrivateMediaCache } from '../media/privateMedia';
 import { ChipSelector } from '../profiles/ChipSelector';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
@@ -117,8 +118,8 @@ export default function Profile() {
   const [joinedAt, setJoinedAt] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
-  const resolvedAvatarUrl = useResolvedMediaUrl(avatarUrl);
-  const resolvedCoverUrl = useResolvedMediaUrl(coverUrl);
+  const resolvedAvatarUrl = useResolvedImageUrl(avatarUrl);
+  const resolvedCoverUrl = useResolvedImageUrl(coverUrl);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [draftFileAdapter] = useState(() => createExpoDraftFileAdapter());
@@ -251,6 +252,7 @@ export default function Profile() {
       const base64 = await prepareUpload(img.uri, 512);
       const url = await uploadAvatar(base64, 'jpg');
       await updateMyProfile({ avatar_url: url });
+      clearPrivateMediaCache();
       setAvatarUrl(url);
       showToast('Photo updated');
     } catch (e) {
@@ -269,6 +271,7 @@ export default function Profile() {
       const base64 = await prepareUpload(img.uri, 1280);
       const url = await uploadCover(base64, 'jpg');
       await updateMyProfile({ cover_url: url });
+      clearPrivateMediaCache();
       setCoverUrl(url);
       showToast('Cover updated');
     } catch (e) {

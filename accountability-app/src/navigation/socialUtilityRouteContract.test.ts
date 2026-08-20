@@ -92,6 +92,9 @@ jest.mock('../ui/AppThemeProvider', () => {
   };
 });
 jest.mock('../feed/Avatar', () => ({ Avatar: () => null }));
+jest.mock('../media/useResolvedImageUrl', () => ({
+  useResolvedImageUrl: (value: string | null | undefined) => value ?? null,
+}));
 jest.mock('../ui/EmptyState', () => {
   const ReactModule = require('react') as typeof React;
   const { Text: NativeText } = require('react-native') as typeof import('react-native');

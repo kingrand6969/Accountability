@@ -11,7 +11,7 @@ describe('Buddy Card recent-post media contract', () => {
   test('authorizes opaque photos before cached rendering without changing card access or interaction', () => {
     expect(screenSource).toContain("import { CachedImage } from '../../ui/CachedImage';");
     expect(screenSource).toContain(
-      "import { useResolvedMediaUrl } from '../../media/useResolvedMediaUrl';",
+      "import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';",
     );
 
     const thumbnailStart = screenSource.indexOf('function BuddyCardPostThumbnail');
@@ -21,7 +21,7 @@ describe('Buddy Card recent-post media contract', () => {
     const thumbnailSource = screenSource.slice(thumbnailStart, screenStart);
 
     expect(thumbnailSource).toContain(
-      "useResolvedMediaUrl(post.post_type === 'video' ? null : post.image_url)",
+      "useResolvedImageUrl(post.post_type === 'video' ? null : post.image_url)",
     );
     expect(thumbnailSource).toContain('<CachedImage');
     expect(thumbnailSource).toContain('uri={resolvedImageUrl}');

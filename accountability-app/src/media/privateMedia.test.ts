@@ -9,9 +9,14 @@ import {
 } from './privateMedia';
 
 const mockInvoke = jest.fn<(...args: unknown[]) => Promise<{ data: any; error: any }>>();
+const mockClearPrivateImageFileCache = jest.fn();
 
 jest.mock('../lib/supabase', () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => mockInvoke(...args) } },
+}));
+
+jest.mock('./privateImageFileCache', () => ({
+  clearPrivateImageFileCache: () => mockClearPrivateImageFileCache(),
 }));
 
 function deferred<T>() {
@@ -26,6 +31,7 @@ describe('private media', () => {
   beforeEach(() => {
     clearPrivateMediaCache();
     mockInvoke.mockReset();
+    mockClearPrivateImageFileCache.mockClear();
   });
 
   it('passes legacy HTTPS media through without calling the signing function', async () => {
@@ -78,6 +84,18 @@ describe('private media', () => {
     unsubscribe();
     clearPrivateMediaCache();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('purges private image files once before notifying mounted consumers', () => {
+    const order: string[] = [];
+    mockClearPrivateImageFileCache.mockImplementation(() => order.push('files'));
+    const unsubscribe = subscribePrivateMediaCacheInvalidation(() => order.push('listener'));
+
+    clearPrivateMediaCache();
+
+    expect(order).toEqual(['files', 'listener']);
+    expect(mockClearPrivateImageFileCache).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 
   it('fails closed when no valid URL is returned', async () => {

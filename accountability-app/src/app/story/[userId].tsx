@@ -26,6 +26,7 @@ import {
   createStoryPlaybackLifecycle,
   isStoryPlaybackPlayable,
 } from '../../stories/storyPlaybackLifecycle';
+import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
 
 export default function StoryViewer() {
   const router = useRouter();
@@ -207,6 +208,7 @@ export default function StoryViewer() {
 
   const group: StoryGroup | undefined = groups[groupIndex];
   const story = group?.stories[storyIndex];
+  const resolvedStoryImageUrl = useResolvedImageUrl(story?.image_url);
   const displayedStoryId = story?.id ?? null;
 
   useLayoutEffect(() => {
@@ -262,9 +264,9 @@ export default function StoryViewer() {
       appActive,
       loading,
       paused,
-      dataReady: dataViewKey === viewKey,
+      dataReady: dataViewKey === viewKey && resolvedStoryImageUrl !== null,
     }));
-  }, [focused, appActive, loading, paused, dataViewKey, viewKey, playback]);
+  }, [focused, appActive, loading, paused, dataViewKey, viewKey, resolvedStoryImageUrl, playback]);
 
   function isCurrentMutation(requestOwner: string, lifecycle: number, requestViewKey: string) {
     return (
@@ -349,7 +351,11 @@ export default function StoryViewer() {
 
   return (
     <View style={styles.screen}>
-      <Image source={{ uri: story.image_url }} style={styles.image} resizeMode="contain" />
+      {resolvedStoryImageUrl ? (
+        <Image source={{ uri: resolvedStoryImageUrl }} style={styles.image} resizeMode="contain" />
+      ) : (
+        <ActivityIndicator size="large" color="#fff" style={styles.center} />
+      )}
 
       {/* Tap zones: left 25% = previous, right 40% = next */}
       <Pressable style={styles.tapLeft} onPress={goPrev} accessibilityLabel="Previous story" />

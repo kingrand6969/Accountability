@@ -1,11 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { CachedImage } from '../ui/CachedImage';
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 
 type Props = { url: string | null; name: string | null; size?: number };
 
 export function Avatar({ url, name, size = 40 }: Props) {
-  const resolvedUrl = useResolvedMediaUrl(url);
+  const resolvedUrl = useResolvedImageUrl(url);
   const initial = (name?.trim()?.charAt(0) ?? '?').toUpperCase();
   const radius = size / 2;
   if (resolvedUrl) {

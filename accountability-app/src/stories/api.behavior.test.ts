@@ -3,22 +3,33 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import {
   buildStoryGroups,
   insertStoryViewReceipt,
+  listStoryGroups,
   markStoryViewed,
   type Story,
 } from './api';
 
 const mockGetUser = jest.fn<() => Promise<{ data: { user: { id: string } | null } }>>();
-const mockFrom = jest.fn();
+const mockFrom = jest.fn<(table: string) => unknown>();
+const mockGetPublicProfiles = jest.fn<
+  () => Promise<Map<string, { display_name?: string | null; avatar_url?: string | null }>>
+>();
+const mockResolveMediaUrls = jest.fn<(refs: string[]) => Promise<Map<string, string>>>();
 jest.mock('../lib/supabase', () => ({
-  supabase: { auth: { getUser: () => mockGetUser() }, from: (...args: unknown[]) => mockFrom(...args) },
+  supabase: { auth: { getUser: () => mockGetUser() }, from: (table: string) => mockFrom(table) },
 }));
-jest.mock('../profiles/publicProfiles', () => ({ getPublicProfiles: jest.fn() }));
+jest.mock('../profiles/publicProfiles', () => ({
+  getPublicProfiles: () => mockGetPublicProfiles(),
+}));
 jest.mock('../feed/uploadPostImage', () => ({ uploadPostImage: jest.fn() }));
-jest.mock('../media/privateMedia', () => ({ resolveMediaUrls: jest.fn() }));
+jest.mock('../media/privateMedia', () => ({
+  resolveMediaUrls: (refs: string[]) => mockResolveMediaUrls(refs),
+}));
 
 beforeEach(() => {
   mockGetUser.mockReset();
   mockFrom.mockReset();
+  mockGetPublicProfiles.mockReset();
+  mockResolveMediaUrls.mockReset();
 });
 
 const stories: Story[] = [
@@ -42,6 +53,40 @@ describe('story receipt grouping', () => {
       ['a', false, '2026-08-10T00:00:00Z'],
       ['b', true, '2026-08-10T02:00:00Z'],
     ]);
+  });
+
+  test('warms story authorization without replacing the raw image reference', async () => {
+    const rawStory: Story = {
+      id: 'story-raw',
+      user_id: 'author',
+      image_url: 'r2://stories/author/story.jpg',
+      caption: null,
+      created_at: '2026-08-10T00:00:00Z',
+    };
+    const storyQuery = {
+      select: jest.fn().mockReturnThis(),
+      gt: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn(async () => ({ data: [rawStory], error: null })),
+    };
+    const receiptQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      in: jest.fn(async () => ({ data: [], error: null })),
+    };
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'viewer' } } });
+    mockFrom.mockImplementation((table: string) =>
+      table === 'stories' ? storyQuery : receiptQuery,
+    );
+    mockGetPublicProfiles.mockResolvedValue(new Map());
+    mockResolveMediaUrls.mockResolvedValue(
+      new Map([[rawStory.image_url, 'https://signed.example/story.jpg?X-Amz-Signature=secret']]),
+    );
+
+    const groups = await listStoryGroups();
+
+    expect(mockResolveMediaUrls).toHaveBeenCalledWith([rawStory.image_url]);
+    expect(groups[0].stories[0].image_url).toBe(rawStory.image_url);
   });
 });
 

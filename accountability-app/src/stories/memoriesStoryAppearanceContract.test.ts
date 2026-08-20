@@ -74,7 +74,10 @@ describe('Memories and Story appearance contract', () => {
     expect(story).toMatch(/progressTrack:\s*\{\s*flex: 1,/s);
     expect(story).toContain("backgroundColor: 'rgba(255,255,255,0.35)'");
     expect(story).toContain("backgroundColor: 'rgba(0,0,0,0.55)'");
-    expect(story).toContain('<Image source={{ uri: story.image_url }} style={styles.image} resizeMode="contain" />');
+    expect(story).toContain("import { useResolvedImageUrl } from '../../media/useResolvedImageUrl'");
+    expect(story).toContain('const resolvedStoryImageUrl = useResolvedImageUrl(story?.image_url)');
+    expect(story).toContain('<Image source={{ uri: resolvedStoryImageUrl }} style={styles.image} resizeMode="contain" />');
+    expect(story).not.toContain('<Image source={{ uri: story.image_url }}');
     expect(story).toContain('reporting && styles.reportBtnDisabled');
     expect(story).toContain('opacity: theme.interaction.disabledOpacity');
     expect(story).not.toContain('const styles = StyleSheet.create');

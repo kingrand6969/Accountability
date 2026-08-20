@@ -26,6 +26,7 @@ import {
   type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type GridItem = {
@@ -76,6 +77,7 @@ export default function Menu() {
   currentOwnerIdRef.current = ownerId;
   const [name, setName] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
   const [myPages, setMyPages] = useState<Page[]>([]);
   const [rank, setRank] = useState<string | null>(null);
@@ -138,8 +140,8 @@ export default function Menu() {
           end={{ x: 1, y: 1 }}
           style={styles.profileRow}
         >
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.profileAvatar} />
+          {resolvedAvatar ? (
+            <Image source={{ uri: resolvedAvatar }} style={styles.profileAvatar} />
           ) : (
             <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
               <Ionicons name="person" size={22} color="#fff" />

@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { PostImage } from './PostImage';
 import { CachedImage } from '../ui/CachedImage';
 
-jest.mock('../media/useResolvedMediaUrl', () => ({
-  useResolvedMediaUrl: (url: string) => url,
+jest.mock('../media/useResolvedImageUrl', () => ({
+  useResolvedImageUrl: (url: string) => url,
 }));
 jest.mock('../ui/CachedImage', () => ({
   CachedImage: jest.fn(() => null),

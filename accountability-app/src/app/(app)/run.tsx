@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -744,6 +745,7 @@ export default function ActivityTrack() {
   const timeLabel = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const visibleAvatar =
     avatar && avatar.ownerId === session?.user.id ? avatar.uri : null;
+  const resolvedVisibleAvatar = useResolvedImageUrl(visibleAvatar);
 
   return (
     <View style={styles.screen}>
@@ -840,8 +842,8 @@ export default function ActivityTrack() {
         ]}
       >
         <View style={styles.titleRow}>
-          {visibleAvatar ? (
-            <Image source={{ uri: visibleAvatar }} style={styles.avatar} />
+          {resolvedVisibleAvatar ? (
+            <Image source={{ uri: resolvedVisibleAvatar }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarFallback]}>
               <Ionicons name="person" size={14} color="#cbd5e1" />

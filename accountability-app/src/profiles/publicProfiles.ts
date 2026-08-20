@@ -24,11 +24,11 @@ export async function getPublicProfiles(
     .select(COLS)
     .in('id', unique);
   if (error) throw error;
-  const avatars = await resolveMediaUrls((data ?? []).flatMap((p: any) => p.avatar_url ? [p.avatar_url] : []));
-  const profiles = (data ?? []).map((p: any) => ({
-    ...p,
-    avatar_url: p.avatar_url ? (avatars.get(p.avatar_url) ?? p.avatar_url) : null,
-  } as PublicProfile));
+  // Warm the authorization cache in one request, but keep the durable media
+  // reference in profile data. Mounted image consumers own renewal and auth
+  // invalidation; replacing it with a short-lived signed URL loses both.
+  await resolveMediaUrls((data ?? []).flatMap((p: any) => p.avatar_url ? [p.avatar_url] : []));
+  const profiles = (data ?? []) as PublicProfile[];
   return new Map(profiles.map((p) => [p.id, p]));
 }
 
@@ -40,5 +40,6 @@ export async function getPublicProfile(id: string): Promise<PublicProfile | null
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return { ...data, avatar_url: data.avatar_url ? await resolveMediaUrl(data.avatar_url) : null } as PublicProfile;
+  if (data.avatar_url) await resolveMediaUrl(data.avatar_url);
+  return data as PublicProfile;
 }

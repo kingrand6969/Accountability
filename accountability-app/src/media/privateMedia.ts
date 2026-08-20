@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { clearPrivateImageFileCache } from './privateImageFileCache';
 
 export type ResolvedPrivateMedia = { url: string; expiresAt: string };
 type CacheEntry = ResolvedPrivateMedia & { expiresAtMs: number };
@@ -16,6 +17,7 @@ export function isPrivateMediaRef(value: string | null | undefined): value is st
 export function clearPrivateMediaCache(): void {
   cacheEpoch += 1;
   cache.clear();
+  clearPrivateImageFileCache();
   for (const listener of invalidationListeners) {
     try {
       listener();

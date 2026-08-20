@@ -23,6 +23,7 @@ import {
   type ChallengeCard,
 } from '../compete/api';
 import { showToast } from '../ui/Toast';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import {
   colors,
   font,
@@ -474,6 +475,9 @@ function PersonCard({
   onConnect: () => void;
 }) {
   const { palette, styles } = appearance;
+  const resolvedHeroImage = useResolvedImageUrl(
+    card?.card.bg_url || card?.avatar || person.avatar_url,
+  );
   const traits = comparisonFixture
     ? ['Consistent', 'Supportive', 'Runner']
     : (card?.card.traits ?? []).slice(0, 3);
@@ -486,9 +490,9 @@ function PersonCard({
         accessibilityLabel={`Open public profile for ${card?.name ?? person.display_name ?? 'AccountAbility member'}`}
         accessibilityHint="Shows their public accountability card"
       >
-        {card?.card.bg_url || card?.avatar || person.avatar_url ? (
+        {resolvedHeroImage ? (
           <ImageBackground
-            source={{ uri: card?.card.bg_url || card?.avatar || person.avatar_url! }}
+            source={{ uri: resolvedHeroImage }}
             style={[styles.personImage, largeText && styles.personImageLargeText]}
             imageStyle={styles.personImageRadius}
             accessibilityLabel={`Public profile image for ${card?.name ?? person.display_name ?? 'AccountAbility member'}`}

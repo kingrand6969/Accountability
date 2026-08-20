@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import { CachedImage } from '../ui/CachedImage';
 import { spacing } from '../ui/theme';
 import type { BuddyCardPaletteTokens } from './palette';
@@ -21,7 +21,7 @@ export function BuddyCardProfilePhoto({
   palette: BuddyCardPaletteTokens;
 }) {
   const [viewerOpen, setViewerOpen] = useState(false);
-  const resolvedAvatar = useResolvedMediaUrl(avatar);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const closeViewer = () => setViewerOpen(false);
 
   const photo = resolvedAvatar ? (

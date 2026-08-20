@@ -65,7 +65,7 @@ import {
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 import { CachedImage } from '../../ui/CachedImage';
-import { useResolvedMediaUrl } from '../../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
 
 type ModerationContext = Readonly<{
   loadToken: BuddyCardLoadToken;
@@ -87,7 +87,7 @@ function BuddyCardPostThumbnail({
   placeholderStyle,
   iconColor,
 }: BuddyCardPostThumbnailProps) {
-  const resolvedImageUrl = useResolvedMediaUrl(post.post_type === 'video' ? null : post.image_url);
+  const resolvedImageUrl = useResolvedImageUrl(post.post_type === 'video' ? null : post.image_url);
 
   if (resolvedImageUrl) {
     return <CachedImage uri={resolvedImageUrl} style={imageStyle} contentFit="cover" />;

@@ -19,7 +19,7 @@ import type { Profile as ProfileRecord } from '../../profiles/types';
 import { getMetrics, getRank } from '../../achievements/api';
 import type { Metrics } from '../../achievements/catalog';
 import { CachedImage } from '../../ui/CachedImage';
-import { useResolvedMediaUrl } from '../../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
 import { font, shadow, spacing, type AppThemeColors } from '../../ui/theme';
 
 const MOUNTAIN = require('../../../assets/images/auth-mountain-hero.png');
@@ -43,8 +43,8 @@ export default function ProfileOverview() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [rank, setRank] = useState<RankSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const resolvedAvatar = useResolvedMediaUrl(profile?.avatar_url ?? null);
-  const resolvedCover = useResolvedMediaUrl(profile?.cover_url ?? null);
+  const resolvedAvatar = useResolvedImageUrl(profile?.avatar_url ?? null);
+  const resolvedCover = useResolvedImageUrl(profile?.cover_url ?? null);
 
   useFocusEffect(
     useCallback(() => {
