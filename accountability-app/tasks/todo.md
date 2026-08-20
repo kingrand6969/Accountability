@@ -32,7 +32,7 @@
 
 **Verification:**
 - [x] Focused navigation contracts pass.
-- [ ] Android Back matrix passes for representative nested and cold-start routes.
+- [x] Android Back matrix passes for representative nested and cold-start routes.
 
 **Dependencies:** Task 1
 
@@ -54,7 +54,7 @@
 
 **Verification:**
 - [x] Feed/composer route contract begins RED and passes after implementation.
-- [ ] Android walkthrough confirms one tap from Feed prompt to editable Post.
+- [x] Android walkthrough confirms one tap from Feed prompt to editable Post.
 
 **Dependencies:** Task 1
 
@@ -76,7 +76,7 @@
 
 **Verification:**
 - [x] Composer state/keyboard contracts pass.
-- [ ] Android checks pass with keyboard open, confirmation open, and hardware Back.
+- [x] Android checks pass with keyboard open, confirmation open, and hardware Back.
 
 **Dependencies:** Task 3
 
@@ -197,12 +197,12 @@
 **Description:** Run the full quality gate and a representative end-to-end Android acceptance matrix before requesting permission to push/upload.
 
 **Acceptance criteria:**
-- [ ] Full Jest, TypeScript, lint, diff check, and Android Expo export pass.
+- [x] Full Jest, TypeScript, lint, diff check, and Android Expo export pass.
 - [ ] Core Post, Flex, navigation, Feed loading, Journey, Run, Messages, Menu, and Buddy Card paths pass on device.
-- [ ] Worktree contains no unintended or generated artifacts.
+- [x] Worktree contains no unintended or generated artifacts.
 
 **Verification:**
-- [ ] Final evidence table maps every goal requirement to automated and device proof.
+- [x] Final evidence table maps every goal requirement to automated and device proof.
 
 **Dependencies:** Tasks 1–12
 

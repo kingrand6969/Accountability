@@ -45,7 +45,7 @@ Audit and improve AccountAbility as one connected runner/athlete experience. The
 
 ### Phase 3: Secondary journeys and acceptance
 
-- [ ] Task 11: Audit and polish groups, pages, challenges, achievements, profile/Buddy Card, and supporting forms.
+- [x] Task 11: Audit and polish groups, pages, challenges, achievements, profile/Buddy Card, and supporting forms.
 - [ ] Task 12: Run accessibility, responsive-text, reduced-motion, and theme acceptance.
 - [ ] Task 13: Run full tests/export and live Android end-to-end acceptance.
 
@@ -96,4 +96,6 @@ Audit and improve AccountAbility as one connected runner/athlete experience. The
 - Post, Event, and Flex publishing are owner-bound and retry-safe; media keys are immutable and post-success side effects cannot duplicate after restore.
 - Manual Light/Dark appearance now covers the app shell, Feed, composer, post detail, Journey, Messages, Notifications, Profile, Buddy Chat, planner, challenges, Trophy Case, Discover, Buddy connections, Body/workouts, and Groups/Pages.
 - Planner, challenge, Discover, workout, and community theme slices preserve their approved Light appearance and add only Dark equivalents.
-- Live Android acceptance, backend migration execution, remote push, and Expo preview upload remain intentionally pending.
+- Backend migrations through 0113 and the Android staging preview are deployed
+  and receipt-backed. Production, app-store submission, remote branch push, and
+  the challenge participant finalizer remain intentionally excluded.

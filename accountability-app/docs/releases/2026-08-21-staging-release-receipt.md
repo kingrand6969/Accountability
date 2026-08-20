@@ -4,7 +4,7 @@ Date: 2026-08-21
 Environment: Staging
 Platform: Android
 Source branch: `codex/fix-buddy-rank-header`
-Candidate commit: `5992b10`
+Candidate commit: `8d63258`
 Update profile: `preview`
 Runtime version: `1.0.0`
 
@@ -15,9 +15,12 @@ release, or the challenge participant privacy finalizer.**
 
 ## Release inventory
 
-- EAS update group: `8b5afbb1-35c4-4a0e-9f3b-40cb2ee471c8`
-- EAS update ID: `01a01ff7-2b99-7f56-98b1-3ac649080be3`
-- Update message: `Staging: hardened app flows 5992b10`
+- EAS update group: `ce7d6e2f-4d15-4ca3-9a1c-06136fc92a1b`
+- EAS update ID: `01a0206b-af6f-717e-af31-d15bcbd7eb22`
+- Update message: `Staging: quiet unrelated drafts 8d63258`
+- Superseded composer-canary update group:
+  `d0bc57f6-d82a-4dd3-9462-a1295071e63c`, update
+  `01a02065-8ed5-7198-a704-c73b7bc3a1f6`.
 - `media-read`: ACTIVE version 10, updated at
   `2026-08-20T16:13:21.152Z`
 - The local and staging migration ledgers matched through migration 0113.
@@ -25,10 +28,10 @@ release, or the challenge participant privacy finalizer.**
 
 ## Verification
 
-- Jest: 205 of 205 suites and 2,324 of 2,324 tests passed, including the one
+- Jest: 206 of 206 suites and 2,329 of 2,329 tests passed, including the one
   stored snapshot.
 - TypeScript: passed with no errors.
-- ESLint changed-code gate: passed.
+- ESLint: passed with no errors; two existing test-only warnings remain.
 - Dependency tree check: passed.
 - Release budget: passed with a 24.13 MiB Android update warning.
 - EAS publication completed successfully with exit code 0.
@@ -36,6 +39,21 @@ release, or the challenge participant privacy finalizer.**
 - Expo Updates reported no newer update after activation.
 - Existing and updated clients rendered private media against `media-read`
   version 10.
+- A fresh Android route sweep opened 31 static authenticated destinations. All
+  painted app content; Trophy Case, Compete, and Menu were verified by
+  screenshots because their continuous animation prevents UIAutomator from
+  reaching an idle state.
+
+## Goal coverage
+
+| Goal | Evidence | Result |
+| --- | --- | --- |
+| Links and navigation | 53 Expo routes and 175 navigation call sites audited; 31 static authenticated destinations painted on Android; deep-link and safe-Back contracts passed. | PASS |
+| Post flow | Feed opens the editor directly; text/comment keyboard, draft restore, empty-draft cleanup, untouched Close, retry-safe submit, and owner isolation are covered by tests and Android canaries. | PASS |
+| Flex flow | Manual Flex opens one contextual Share proof surface; achievement/run/challenge context and idempotent publishing contracts passed without a redundant chooser page. | PASS |
+| Athlete visual system | Feed, Journey, Run, competition, Trophy Case, Buddy Card shell, social, fitness, and support surfaces share the Light/Dark semantic theme and 48dp interaction contracts. | PASS |
+| Loading and truthful states | Feed snapshot reuse/skeletons and account-scoped Messages, Notifications, Profile, Post, and onboarding loading/error states passed focused and full-suite tests. | PASS |
+| Release integrity | Full Jest, TypeScript, lint, diff, Android export, OTA activation, cold launch, rollback receipt, and artifact-hygiene gates passed. | PASS |
 
 ## Device canary
 
@@ -58,6 +76,11 @@ release, or the challenge participant privacy finalizer.**
   post was published.
 - Navigation: PASS. Three settled Feed to Post to visible-Back cycles returned
   to the same painted Feed row and controls without a blank screen.
+- Composer follow-up: PASS. Legacy empty drafts no longer trigger Restore,
+  incompatible drafts stay stored without a non-actionable red warning, the
+  current member is labelled `You` when profile metadata is unavailable, and
+  visible Close exits an untouched post without a confirmation. No post was
+  published during this canary.
 - Private post-video and voice media: NOT DIRECTLY EXERCISED. A read-only
   staging inventory after the canary found zero video posts and zero voice
   encouragements, so there was no legitimate playback target. No test content
@@ -73,12 +96,17 @@ risk, not a claim of zero dependency advisories.
 The EAS command reported a transient asset-map upload 504, then continued and
 published successfully. Client activation was verified by the staging canary.
 
+One first-time Journey Path transition produced a blank frame and was retained
+as evidence. It did not recur on a direct relaunch, three controlled
+Momentum-to-Path transitions, or the later 31-route sweep. No unsupported code
+change was made without a reproducible cause.
+
 ## Rollback
 
 1. Stop further client rollout.
-2. Restore or republish previous preview group
-   `22f20f02-f805-4285-9b31-30cf692032c5`, update
-   `01a01ef1-df6a-7f63-b0e1-f1c6ca92eb5c`.
+2. Restore or republish the last broadly accepted preview group
+   `8b5afbb1-35c4-4a0e-9f3b-40cb2ee471c8`, update
+   `01a01ff7-2b99-7f56-98b1-3ac649080be3`.
 3. Verify launch, authentication, Feed rendering, and private media.
 4. Keep `media-read` version 10 unless evidence identifies it as causal; any
    server rollback follows client rollback validation.
