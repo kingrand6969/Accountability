@@ -250,11 +250,86 @@ describe('Compose production binding', () => {
     expect(source).toContain('Only local draft cleanup failed; do not submit again.');
   });
 
+  test('latches remote success so cleanup failures can never enable a second submission', () => {
+    expect(source).toContain('const remoteSucceededRef = useRef(false);');
+    expect(source).toContain('remoteSucceededRef.current = true;');
+    expect(source).toContain('if (!canPost || remoteSucceededRef.current) return;');
+    expect(source).toMatch(
+      /const canPost = !remoteSucceeded[\s\S]*?async function onPost\(\)/,
+    );
+    expect(source.match(/remoteSucceededRef\.current = false/g) ?? []).toHaveLength(1);
+  });
+
+  test('keeps safe Close and Retry cleanup actions visible after the first cleanup failure', () => {
+    expect(source).toContain('const [cleanupRecovery, setCleanupRecovery] = useState<CleanupRecovery | null>(null);');
+    expect(source).toContain('setCleanupRecovery(recovery);');
+    expect(source).toContain("setDraftNotice('Remote save succeeded, but the local draft could not be cleared')");
+    expect(source).toMatch(/cleanupRecovery \? \([\s\S]*?accessibilityLabel="Close composer"[\s\S]*?accessibilityLabel="Retry local draft cleanup"/);
+  });
+
+  test('a repeated cleanup failure preserves recovery mode and never reopens Post', () => {
+    const retryBody = source.match(
+      /async function retryRemoteCleanup\([\s\S]*?\n  \}/,
+    )?.[0] ?? '';
+
+    expect(retryBody).toContain('clearSavedDraft(true, recovery.submittedDraft)');
+    expect(retryBody).toContain("setDraftNotice('Local draft cleanup still needs retry')");
+    expect(retryBody).not.toContain('setCleanupRecovery(null)');
+    expect(retryBody).not.toContain('setPosting(false)');
+    expect(retryBody).not.toContain('postingRef.current = false');
+  });
+
   test('detaches all live media and draft state on account switch', () => {
     expect(source).toContain('draftRef.current = null');
     expect(source).toContain('setDraftMedia(null)');
     expect(source).toContain('setOwnerId(nextOwner)');
     expect(source).toContain('setShowOnCard(false)');
+  });
+
+  test('resets every mounted submission latch at the auth identity boundary without deleting the old draft', () => {
+    const boundary = source.match(
+      /onAuthStateChange\([\s\S]*?if \(nextOwner === ownerId\) return;([\s\S]*?)setOwnerId\(nextOwner\);/,
+    )?.[1] ?? '';
+
+    expect(boundary).toContain('mountTokenRef.current += 1');
+    expect(boundary).toContain('postingRef.current = false');
+    expect(boundary).toContain('setPosting(false)');
+    expect(boundary).toContain('remoteSucceededRef.current = false');
+    expect(boundary).toContain('setRemoteSucceeded(false)');
+    expect(boundary).toContain('setCleanupRecovery(null)');
+    expect(boundary).toContain('cleanupRetryingRef.current = false');
+    expect(boundary).toContain('setCleanupRetrying(false)');
+    expect(boundary).not.toContain('clearSavedDraft');
+    expect(boundary).not.toContain('clearComposeDraft');
+    expect(boundary).not.toContain('removeDurableMedia');
+  });
+
+  test('a deferred Account A submit cannot clean its preserved draft or reapply state after Account B attaches', () => {
+    expect(source).toContain('function submissionIsCurrent(');
+    expect(source).toContain('clearSavedDraftForSubmission(');
+    expect(source).toMatch(
+      /completeRemoteSubmission\([\s\S]*?clearSavedDraftForSubmission\(\s*true,\s*submittedDraft,\s*submittedOwner,\s*submittedToken,?\s*\)/,
+    );
+    expect(source).toMatch(
+      /const postId = await createPost[\s\S]*?if \(!submissionIsCurrent\(submittedOwner, submittedToken\)\) return;[\s\S]*?await clearSavedDraft\(false, submittedDraft\)/,
+    );
+  });
+
+  test('a deferred cleanup-recovery callback from Account A cannot close or mutate Account B', () => {
+    const retryBody = source.match(
+      /async function retryRemoteCleanup\([\s\S]*?\n  \}/,
+    )?.[0] ?? '';
+
+    expect(source).toContain('function closeRecoveryAfterRemoteSuccess(recovery: CleanupRecovery)');
+    expect(source).toContain('if (!submissionIsCurrent(recovery.expectedOwner, recovery.expectedToken)) return;');
+    expect(source).toContain("{ text: 'Close', onPress: () => closeRecoveryAfterRemoteSuccess(recovery) }");
+    expect(source).toContain('onPress={() => closeRecoveryAfterRemoteSuccess(cleanupRecovery)}');
+    expect(retryBody).toMatch(
+      /async function retryRemoteCleanup[\s\S]*?if \([\s\S]*?!== recovery\.expectedOwner[\s\S]*?!== recovery\.expectedToken[\s\S]*?\) return;/,
+    );
+    expect(retryBody).toMatch(
+      /finally \{\s*if \([\s\S]*?ownerRef\.current === recovery\.expectedOwner[\s\S]*?mountTokenRef\.current === recovery\.expectedToken[\s\S]*?\) \{\s*cleanupRetryingRef\.current = false;/,
+    );
   });
 
   test('persists and restores the approved Public Buddy Card feature intent', () => {

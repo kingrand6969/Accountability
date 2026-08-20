@@ -72,6 +72,13 @@ import {
 } from '../entry/composeDraft';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
 
+type CleanupRecovery = {
+  successMessage: string;
+  submittedDraft: ComposeDraftV1 | null;
+  expectedOwner: string | null;
+  expectedToken: number;
+};
+
 export default function Compose() {
   const router = useRouter();
   const { colors: theme } = useAppTheme();
@@ -93,6 +100,11 @@ export default function Compose() {
   const [posting, setPosting] = useState(false);
   const postingRef = useRef(posting);
   postingRef.current = posting;
+  const [remoteSucceeded, setRemoteSucceeded] = useState(false);
+  const remoteSucceededRef = useRef(false);
+  const [cleanupRecovery, setCleanupRecovery] = useState<CleanupRecovery | null>(null);
+  const [cleanupRetrying, setCleanupRetrying] = useState(false);
+  const cleanupRetryingRef = useRef(false);
   const [pickedBase64, setPickedBase64] = useState<string | null>(null);
   const [pickedExt, setPickedExt] = useState('jpg');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -205,6 +217,14 @@ export default function Compose() {
       // Detach live state and the old draft reference; never delete another account's files.
       draftRef.current = null;
       mountTokenRef.current += 1;
+      postingRef.current = false;
+      setPosting(false);
+      remoteSucceededRef.current = false;
+      setRemoteSucceeded(false);
+      setCleanupRecovery(null);
+      cleanupRetryingRef.current = false;
+      setCleanupRetrying(false);
+      setDraftNotice(null);
       suppressNextDebounce.current = true;
       setDraftReady(false);
       setDraftId(randomUUID());
@@ -356,6 +376,25 @@ export default function Compose() {
     navigateBackSafely(routerRef.current);
   }
 
+  function submissionIsCurrent(expectedOwner: string | null, expectedToken: number) {
+    return (
+      mountedRef.current
+      && ownerRef.current === expectedOwner
+      && mountTokenRef.current === expectedToken
+    );
+  }
+
+  function markRemoteSucceeded(expectedOwner: string | null, expectedToken: number) {
+    if (!submissionIsCurrent(expectedOwner, expectedToken)) return;
+    remoteSucceededRef.current = true;
+    setRemoteSucceeded(true);
+  }
+
+  function closeAfterRemoteSuccess() {
+    Keyboard.dismiss();
+    exitCompose();
+  }
+
   function selectAudience(nextAudience: Exclude<PostAudience, 'group'>) {
     setAudience(nextAudience);
     setShowOnCard((current) => normalizeBuddyCardFeature(nextAudience, current));
@@ -378,6 +417,11 @@ export default function Compose() {
       if (state !== 'active' && !postingRef.current) void flushDraft();
     });
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (remoteSucceededRef.current) {
+        Keyboard.dismiss();
+        exitCompose();
+        return true;
+      }
       if (postingRef.current) return true;
       Keyboard.dismiss();
       void flushDraft().finally(exitCompose);
@@ -444,6 +488,52 @@ export default function Compose() {
     }
   }
 
+  async function clearSavedDraftForSubmission(
+    deleteMedia: boolean,
+    submittedDraft: ComposeDraftV1 | null,
+    expectedOwner: string | null,
+    expectedToken: number,
+  ) {
+    if (!submissionIsCurrent(expectedOwner, expectedToken)) return;
+    await clearSavedDraft(deleteMedia, submittedDraft);
+  }
+
+  async function retryRemoteCleanup(recovery: CleanupRecovery) {
+    if (cleanupRetryingRef.current) return;
+    if (
+      ownerRef.current !== recovery.expectedOwner
+      || mountTokenRef.current !== recovery.expectedToken
+    ) return;
+    cleanupRetryingRef.current = true;
+    setCleanupRetrying(true);
+    try {
+      await clearSavedDraft(true, recovery.submittedDraft);
+      if (
+        ownerRef.current === recovery.expectedOwner
+        && mountTokenRef.current === recovery.expectedToken
+      ) {
+        showToast(recovery.successMessage);
+        exitCompose();
+      }
+    } catch {
+      if (
+        ownerRef.current === recovery.expectedOwner
+        && mountTokenRef.current === recovery.expectedToken
+      ) {
+        setDraftNotice('Local draft cleanup still needs retry');
+      }
+    } finally {
+      if (
+        mountedRef.current
+        && ownerRef.current === recovery.expectedOwner
+        && mountTokenRef.current === recovery.expectedToken
+      ) {
+        cleanupRetryingRef.current = false;
+        setCleanupRetrying(false);
+      }
+    }
+  }
+
   function finishAfterRemoteSuccess(
     successMessage: string,
     cleanupError: string | null,
@@ -451,33 +541,34 @@ export default function Compose() {
     expectedOwner: string | null,
     expectedToken: number,
   ) {
-    if (ownerRef.current !== expectedOwner || mountTokenRef.current !== expectedToken) return;
+    if (!submissionIsCurrent(expectedOwner, expectedToken)) return;
     if (!cleanupError) {
       showToast(successMessage);
       exitCompose();
       return;
     }
+    const recovery: CleanupRecovery = {
+      successMessage,
+      submittedDraft,
+      expectedOwner,
+      expectedToken,
+    };
+    setCleanupRecovery(recovery);
     setDraftNotice('Remote save succeeded, but the local draft could not be cleared');
-    Alert.alert('Saved successfully', 'Your post is live. Only local draft cleanup failed; do not submit again.', [
-      { text: 'Close', onPress: exitCompose },
+    Alert.alert('Saved successfully', 'Your update is live. Only local draft cleanup failed; do not submit again.', [
+      { text: 'Close', onPress: () => closeRecoveryAfterRemoteSuccess(recovery) },
       {
         text: 'Retry cleanup',
         onPress: () => {
-          void clearSavedDraft(true, submittedDraft)
-            .then(() => {
-              if (ownerRef.current === expectedOwner && mountTokenRef.current === expectedToken) {
-                showToast(successMessage);
-                exitCompose();
-              }
-            })
-            .catch(() => {
-              if (ownerRef.current === expectedOwner && mountTokenRef.current === expectedToken) {
-                setDraftNotice('Local draft cleanup still needs retry');
-              }
-            });
+          void retryRemoteCleanup(recovery);
         },
       },
     ]);
+  }
+
+  function closeRecoveryAfterRemoteSuccess(recovery: CleanupRecovery) {
+    if (!submissionIsCurrent(recovery.expectedOwner, recovery.expectedToken)) return;
+    closeAfterRemoteSuccess();
   }
 
   async function makeMediaDurable(uri: string, extension: string, mimeType: string, kind: 'photo' | 'video') {
@@ -510,6 +601,10 @@ export default function Compose() {
   }
 
   function onClose() {
+    if (remoteSucceededRef.current) {
+      closeAfterRemoteSuccess();
+      return;
+    }
     if (postingRef.current) return;
     Keyboard.dismiss();
     Alert.alert('Cancel this draft?', 'You can keep it for next time or discard it now.', [
@@ -734,7 +829,7 @@ export default function Compose() {
     setEventOpen(true);
   }
 
-  const canPost = editingId
+  const canPost = !remoteSucceeded && (editingId
     ? body.trim().length > 0 && !posting
     : eventOpen
     ? evTitle.trim().length >= 3
@@ -742,10 +837,10 @@ export default function Compose() {
       && taggedIds.size === 0
       && !keepInMemories
       && !posting
-    : (body.trim().length > 0 || !!pickedBase64 || !!pickedVideo) && !posting;
+    : (body.trim().length > 0 || !!pickedBase64 || !!pickedVideo) && !posting);
 
   async function onPost() {
-    if (!canPost) return;
+    if (!canPost || remoteSucceededRef.current) return;
     const submittedDraft = currentDraft();
     const submittedOwner = ownerRef.current;
     const submittedToken = mountTokenRef.current;
@@ -757,7 +852,13 @@ export default function Compose() {
         const result = await completeRemoteSubmission(async () => {
           await updatePost(editingId, body.trim());
           await updatePostAudience(editingId, audience);
-        }, () => clearSavedDraft(true, submittedDraft));
+        }, () => clearSavedDraftForSubmission(
+          true,
+          submittedDraft,
+          submittedOwner,
+          submittedToken,
+        ));
+        markRemoteSucceeded(submittedOwner, submittedToken);
         finishAfterRemoteSuccess('Post updated', result.cleanupError, submittedDraft, submittedOwner, submittedToken);
       } catch (e) {
         if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
@@ -780,8 +881,14 @@ export default function Compose() {
           message: body.trim(),
           audience,
           showOnCard: normalizeBuddyCardFeature(audience, showOnCard),
-        }), () => clearSavedDraft(true, submittedDraft));
+        }), () => clearSavedDraftForSubmission(
+          true,
+          submittedDraft,
+          submittedOwner,
+          submittedToken,
+        ));
         markFeedPostPublished(submittedOwner, result.value.postId);
+        markRemoteSucceeded(submittedOwner, submittedToken);
         if (result.cleanupError) {
           finishAfterRemoteSuccess('Event announced', result.cleanupError, submittedDraft, submittedOwner, submittedToken);
           return;
@@ -837,6 +944,8 @@ export default function Compose() {
         },
       );
       markFeedPostPublished(submittedOwner, postId);
+      if (!submissionIsCurrent(submittedOwner, submittedToken)) return;
+      markRemoteSucceeded(submittedOwner, submittedToken);
       try {
         // The post is now durable and retry-safe. Remove the draft from its
         // restore index before optional side effects so a process restart can
@@ -921,16 +1030,16 @@ export default function Compose() {
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
         <Pressable
           onPress={onClose}
-          disabled={posting}
+          disabled={posting && !remoteSucceeded}
           hitSlop={10}
           style={({ pressed }) => [
             styles.close,
-            posting && styles.closeDisabled,
-            pressed && !posting && styles.pressed,
+            posting && !remoteSucceeded && styles.closeDisabled,
+            pressed && (!posting || remoteSucceeded) && styles.pressed,
           ]}
           accessibilityRole="button"
           accessibilityLabel="Close"
-          accessibilityState={{ disabled: posting, busy: posting }}
+          accessibilityState={{ disabled: posting && !remoteSucceeded, busy: posting && !remoteSucceeded }}
         >
           <Ionicons name="close" size={26} color={theme.ink.primary} />
         </Pressable>
@@ -953,10 +1062,50 @@ export default function Compose() {
         </Pressable>
       </View>
 
+      {cleanupRecovery ? (
+        <View style={styles.cleanupRecovery} accessibilityLiveRegion="assertive">
+          <View style={styles.cleanupRecoveryCopy}>
+            <Text style={styles.cleanupRecoveryTitle}>{cleanupRecovery.successMessage}</Text>
+            <Text style={styles.cleanupRecoveryText}>
+              The server saved it. Only the copy on this phone still needs cleanup. Do not submit again.
+            </Text>
+          </View>
+          <View style={styles.cleanupRecoveryActions}>
+            <Pressable
+              onPress={() => closeRecoveryAfterRemoteSuccess(cleanupRecovery)}
+              style={({ pressed }) => [styles.cleanupClose, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Close composer"
+            >
+              <Text style={styles.cleanupCloseText}>Close</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { void retryRemoteCleanup(cleanupRecovery); }}
+              disabled={cleanupRetrying}
+              style={({ pressed }) => [
+                styles.cleanupRetry,
+                cleanupRetrying && styles.actionDisabled,
+                pressed && !cleanupRetrying && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Retry local draft cleanup"
+              accessibilityState={{ disabled: cleanupRetrying, busy: cleanupRetrying }}
+            >
+              {cleanupRetrying ? (
+                <ActivityIndicator size="small" color={theme.ink.inverse} />
+              ) : (
+                <Text style={styles.cleanupRetryText}>Retry cleanup</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
+        pointerEvents={remoteSucceeded ? 'none' : 'auto'}
       >
         {draftNotice ? <Text style={styles.draftNotice} accessibilityLiveRegion="polite">{draftNotice}</Text> : null}
         <View style={styles.authorRow}>
@@ -1117,7 +1266,7 @@ export default function Compose() {
       </ScrollView>
 
       {/* bottom action bar */}
-      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      {!remoteSucceeded ? <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <Action
           icon="image-outline"
           tint={theme.ink.action}
@@ -1140,7 +1289,7 @@ export default function Compose() {
           disabled={hasAttachedMedia}
           onPress={toggleEventMode}
         />
-      </View>
+      </View> : null}
 
       {/* buddy tag picker */}
       <Modal
@@ -1256,6 +1405,40 @@ function createStyles(theme: AppThemeColors) {
   postBtnText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   body: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   draftNotice: { color: theme.status.danger, fontFamily: font.semibold, fontSize: 13 },
+  cleanupRecovery: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    gap: spacing.md,
+    backgroundColor: theme.status.successSoft,
+    borderWidth: 1,
+    borderColor: theme.status.success,
+    borderRadius: radius.md,
+  },
+  cleanupRecoveryCopy: { gap: 3 },
+  cleanupRecoveryTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15 },
+  cleanupRecoveryText: { color: theme.ink.secondary, fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
+  cleanupRecoveryActions: { flexDirection: 'row', gap: spacing.sm },
+  cleanupClose: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+    borderRadius: radius.sm,
+    backgroundColor: theme.surface.card,
+  },
+  cleanupCloseText: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 14 },
+  cleanupRetry: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
+    backgroundColor: theme.ink.action,
+  },
+  cleanupRetryText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   author: { fontSize: 16, fontFamily: font.bold, color: theme.ink.primary },
   audiencePicker: { flexDirection: 'row', gap: 6, marginTop: 4 },

@@ -26,19 +26,39 @@ describe('history-aware screen exit contract', () => {
     expect(compose).toContain('flushDraft().finally(exitCompose)');
   });
 
-  test('Composer cannot be dismissed while a submission is in progress', () => {
+  test('Composer blocks dismissal only until the remote submission is committed', () => {
     const compose = source('src/app/compose.tsx');
 
     expect(compose).toContain('const postingRef = useRef(posting);');
     expect(compose).toContain('postingRef.current = posting;');
     expect(compose).toMatch(
-      /hardwareBackPress'[\s\S]*?if \(postingRef\.current\) return true;[\s\S]*?return true;/,
+      /hardwareBackPress'[\s\S]*?if \(remoteSucceededRef\.current\) \{[\s\S]*?exitCompose\(\);[\s\S]*?return true;[\s\S]*?if \(postingRef\.current\) return true;/,
     );
     expect(compose).toMatch(
-      /function onClose\(\) \{\s*if \(postingRef\.current\) return;/,
+      /function onClose\(\) \{\s*if \(remoteSucceededRef\.current\) \{[\s\S]*?closeAfterRemoteSuccess\(\);[\s\S]*?return;[\s\S]*?if \(postingRef\.current\) return;/,
     );
-    expect(compose).toContain('disabled={posting}');
-    expect(compose).toContain('accessibilityState={{ disabled: posting, busy: posting }}');
+    expect(compose).toContain('disabled={posting && !remoteSucceeded}');
+    expect(compose).toContain(
+      'accessibilityState={{ disabled: posting && !remoteSucceeded, busy: posting && !remoteSucceeded }}',
+    );
+  });
+
+  test('Composer remote-success Close and Android Back exit without saving the committed draft', () => {
+    const compose = source('src/app/compose.tsx');
+    const closeAfterSuccess = compose.match(
+      /function closeAfterRemoteSuccess\(\) \{([\s\S]*?)\n  \}/,
+    )?.[1] ?? '';
+    const hardwareBack = compose.match(
+      /hardwareBackPress', \(\) => \{([\s\S]*?)\n    \}\);/,
+    )?.[1] ?? '';
+
+    expect(closeAfterSuccess).toContain('Keyboard.dismiss()');
+    expect(closeAfterSuccess).toContain('exitCompose()');
+    expect(closeAfterSuccess).not.toContain('flushDraft');
+    expect(closeAfterSuccess).not.toContain('clearSavedDraft');
+    expect(hardwareBack).toMatch(
+      /if \(remoteSucceededRef\.current\) \{[\s\S]*?Keyboard\.dismiss\(\);[\s\S]*?exitCompose\(\);[\s\S]*?return true;/,
+    );
   });
 
   test('Composer hides the keypad before showing the draft-cancel decision', () => {
