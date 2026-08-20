@@ -92,16 +92,14 @@ export default function MomentumScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.glowOne} />
-      <View style={styles.glowTwo} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.sm }]}
       >
         <View style={styles.brandRow}>
           <View>
-            <Text style={styles.eyebrow}>YOUR JOURNEY</Text>
-            <Text style={styles.greeting}>Today is yours.</Text>
+            <Text style={styles.eyebrow}>JOURNEY</Text>
+            <Text style={styles.greeting}>Build momentum.</Text>
           </View>
           <Pressable
             onPress={() => router.push('/notifications' as never)}
@@ -124,72 +122,57 @@ export default function MomentumScreen() {
           </View>
         ) : (
           <>
-            {largeText ? (
-              <View style={styles.largeMomentum}>
-                <View style={styles.largeCore}>
-                  <Text style={styles.coreLabel}>Momentum</Text>
-                  <Text style={styles.coreValue}>{momentum}</Text>
+            <View style={styles.momentumPanel}>
+              <View style={styles.momentumHeader}>
+                <View style={styles.momentumCopy}>
+                  <Text style={styles.panelKicker}>7-DAY MOMENTUM</Text>
+                  <Text style={styles.panelHint}>
+                    {measuredPillars.length > 0
+                      ? `${measuredPillars.length} of ${pillarScores.length} areas active`
+                      : 'Log one action to get moving'}
+                  </Text>
                 </View>
-                <View style={styles.largePillarGrid}>
-                  {pillarScores.map((pillar) => (
-                    <Pressable
-                      key={pillar.key}
-                      style={({ pressed }) => [
-                        styles.largePillarCard,
-                        { borderColor: pillar.color },
-                        pressed && styles.pressed,
-                      ]}
-                      onPress={() =>
-                        router.push(
-                          (pillar.key === 'body'
-                            ? '/body'
-                            : pillar.key === 'focus'
-                              ? '/today'
-                              : '/messages') as never,
-                        )
-                      }
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        pillar.total > 0
-                          ? `${pillar.label} completion ${pillar.score} percent this week`
-                          : `${pillar.label}, no data this week`
-                      }
-                    >
-                      <Text style={[styles.pillarLabel, { color: pillar.color }]}>
-                        {pillar.label}
-                      </Text>
-                      <Text style={styles.largePillarValue}>
-                        {pillar.total > 0 ? pillar.score : '\u2014'}
-                      </Text>
-                    </Pressable>
-                  ))}
+                <View style={styles.scoreRow} accessible accessibilityLabel={`Momentum ${momentum} out of 100`}>
+                  <Text style={styles.score}>{momentum}</Text>
+                  <Text style={styles.scoreUnit}>/100</Text>
                 </View>
               </View>
-            ) : (
-              <View style={styles.orbit}>
-              <View style={styles.orbitOuter} />
-              <View style={styles.orbitInner} />
-              <View style={styles.core}>
-                <Text style={styles.coreLabel}>Momentum</Text>
-                <Text style={styles.coreValue}>{momentum}</Text>
-              </View>
-              {pillarScores.map((pillar, index) => {
-                const pos = [styles.pillarTopLeft, styles.pillarTopRight, styles.pillarBottomLeft, styles.pillarBottomRight][index];
-                return (
+              <View style={styles.pillarList}>
+                {pillarScores.map((pillar) => (
                   <Pressable
                     key={pillar.key}
-                    style={({ pressed }) => [styles.pillar, pos, { borderColor: pillar.color }, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.pillarRow, pressed && styles.panelPressed]}
                     onPress={() => router.push((pillar.key === 'body' ? '/body' : pillar.key === 'focus' ? '/today' : '/messages') as never)}
                     accessibilityRole="button"
                     accessibilityLabel={pillar.total > 0 ? `${pillar.label} completion ${pillar.score} percent this week` : `${pillar.label}, no data this week`}
                   >
-                    <Text style={[styles.pillarLabel, { color: pillar.color }]}>{pillar.label}</Text>
-                    <Text style={styles.pillarValue}>{pillar.total > 0 ? pillar.score : "\u2014"}</Text>
+                    <View style={[styles.pillarIcon, { backgroundColor: `${pillar.color}24` }]}>
+                      <Ionicons name={pillar.icon} size={18} color={pillar.color} />
+                    </View>
+                    <View style={styles.pillarContent}>
+                      <View style={styles.pillarLabelRow}>
+                        <Text style={styles.pillarName}>{pillar.label}</Text>
+                        <Text style={styles.pillarValue}>
+                          {pillar.total > 0 ? `${pillar.score}%` : 'No activity'}
+                        </Text>
+                      </View>
+                      <View style={styles.pillarTrack}>
+                        <View
+                          style={[
+                            styles.pillarProgress,
+                            {
+                              width: `${pillar.total > 0 ? pillar.score : 0}%` as `${number}%`,
+                              backgroundColor: pillar.color,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={17} color={theme.ink.muted} />
                   </Pressable>
-                );
-              })}
+                ))}
               </View>
-            )}
+            </View>
 
             <Pressable
               onPress={() => router.push(nextItem ? `/item/${nextItem.id}` as never : '/add' as never)}
@@ -264,27 +247,9 @@ export default function MomentumScreen() {
 const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.surface.canvas, overflow: 'hidden' },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 120, width: '100%', maxWidth: 720, alignSelf: 'center' },
-  glowOne: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: mode === 'dark' ? 'rgba(96,165,250,0.13)' : 'rgba(21,94,239,0.07)',
-    top: 90,
-    left: -150,
-  },
-  glowTwo: {
-    position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: mode === 'dark' ? 'rgba(129,140,248,0.12)' : 'rgba(124,58,237,0.06)',
-    top: 220,
-    right: -160,
-  },
   brandRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   eyebrow: { color: theme.ink.muted, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.4 },
-  greeting: { color: theme.ink.primary, fontFamily: 'Georgia', fontSize: 24, lineHeight: 30 },
+  greeting: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 24, lineHeight: 30 },
   iconButton: {
     width: 48,
     height: 48,
@@ -310,85 +275,32 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
     gap: 10,
   },
   errorText: { flex: 1, color: theme.ink.primary, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
-  orbit: { height: 308, marginTop: 20, alignItems: 'center', justifyContent: 'center' },
-  orbitOuter: {
-    position: 'absolute',
-    width: 270,
-    height: 190,
-    borderWidth: 1,
-    borderRadius: 150,
-    borderColor: mode === 'dark' ? 'rgba(96,165,250,0.46)' : 'rgba(21,94,239,0.28)',
-    transform: [{ rotate: '-8deg' }],
-  },
-  orbitInner: {
-    position: 'absolute',
-    width: 190,
-    height: 190,
-    borderWidth: 1,
-    borderRadius: 100,
-    borderColor: theme.border.strong,
-  },
-  core: {
-    width: 126,
-    height: 126,
-    borderRadius: 63,
-    borderWidth: 1,
-    borderColor: theme.border.strong,
-    backgroundColor: theme.surface.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coreLabel: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 14 },
-  coreValue: { color: theme.ink.primary, fontFamily: font.display, fontSize: 58, lineHeight: 62 },
-  pillar: {
-    position: 'absolute',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    borderWidth: 2,
-    backgroundColor: theme.surface.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pillarTopLeft: { top: 40, left: 18 },
-  pillarTopRight: { top: 40, right: 18 },
-  pillarBottomLeft: { bottom: 34, left: 18 },
-  pillarBottomRight: { bottom: 34, right: 18 },
-  pillarLabel: { fontFamily: font.bold, fontSize: 10.5 },
-  pillarValue: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 20 },
-  largeMomentum: { marginTop: 20, gap: spacing.md },
-  largeCore: {
-    minHeight: 148,
+  momentumPanel: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
     borderRadius: 18,
+    padding: spacing.lg,
+    backgroundColor: mode === 'dark' ? theme.surface.raised : '#081A3A',
     borderWidth: 1,
-    borderColor: theme.border.strong,
-    backgroundColor: theme.surface.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
+    borderColor: mode === 'dark' ? theme.border.strong : '#081A3A',
   },
-  largePillarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  largePillarCard: {
-    width: '48%',
-    minHeight: 112,
-    flexGrow: 1,
-    borderRadius: 16,
-    borderWidth: 2,
-    backgroundColor: theme.surface.card,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    padding: spacing.md,
-  },
-  largePillarValue: {
-    color: theme.ink.primary,
-    fontFamily: font.extrabold,
-    fontSize: 20,
-    marginTop: spacing.xs,
-  },
+  momentumHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md, marginBottom: spacing.md },
+  momentumCopy: { flex: 1, minWidth: 0 },
+  panelKicker: { color: mode === 'dark' ? theme.ink.action : '#8DB6FF', fontFamily: font.bold, fontSize: 10, letterSpacing: 1.2 },
+  panelHint: { color: mode === 'dark' ? theme.ink.secondary : '#D7E4F8', fontFamily: font.medium, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  scoreRow: { flexDirection: 'row', alignItems: 'baseline' },
+  score: { color: mode === 'dark' ? theme.ink.primary : '#FFFFFF', fontFamily: font.display, fontSize: 48, lineHeight: 50 },
+  scoreUnit: { color: mode === 'dark' ? theme.ink.muted : '#AFC8EA', fontFamily: font.bold, fontSize: 12, marginLeft: 3 },
+  pillarList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: mode === 'dark' ? theme.border.strong : 'rgba(255,255,255,0.18)' },
+  pillarRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: mode === 'dark' ? theme.border.strong : 'rgba(255,255,255,0.14)' },
+  panelPressed: { opacity: 0.78 },
+  pillarIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  pillarContent: { flex: 1, minWidth: 0 },
+  pillarLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  pillarName: { color: mode === 'dark' ? theme.ink.primary : '#FFFFFF', fontFamily: font.semibold, fontSize: 13 },
+  pillarValue: { color: mode === 'dark' ? theme.ink.secondary : '#D7E4F8', fontFamily: font.semibold, fontSize: 11.5 },
+  pillarTrack: { height: 4, marginTop: 7, borderRadius: 2, overflow: 'hidden', backgroundColor: mode === 'dark' ? theme.border.strong : 'rgba(255,255,255,0.18)' },
+  pillarProgress: { height: '100%', borderRadius: 2 },
   nextCard: {
     minHeight: 60,
     borderRadius: 14,
@@ -436,7 +348,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
   },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   sectionHeaderLargeText: { flexDirection: 'column', alignItems: 'flex-start' },
-  sectionTitle: { color: theme.ink.primary, fontFamily: 'Georgia', fontSize: 19 },
+  sectionTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 19 },
   sectionMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 11 },
   emptyText: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 13, lineHeight: 19, paddingVertical: 10 },
   todayRow: {
