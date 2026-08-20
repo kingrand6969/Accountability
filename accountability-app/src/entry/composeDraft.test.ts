@@ -292,6 +292,16 @@ describe('Compose production binding', () => {
     expect(source).toContain('Only local draft cleanup failed; do not submit again.');
   });
 
+  test('closes an untouched composer directly without a redundant draft prompt', () => {
+    const closeBody = source.match(/function onClose\(\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+
+    expect(closeBody).toContain('hasRestorableDraftContent');
+    expect(closeBody).toContain('void clearSavedDraft().finally(exitCompose)');
+    expect(closeBody.indexOf('hasRestorableDraftContent')).toBeLessThan(
+      closeBody.indexOf("Alert.alert('Cancel this draft?'")
+    );
+  });
+
   test('latches remote success so cleanup failures can never enable a second submission', () => {
     expect(source).toContain('const remoteSucceededRef = useRef(false);');
     expect(source).toContain('remoteSucceededRef.current = true;');

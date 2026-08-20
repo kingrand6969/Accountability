@@ -56,6 +56,7 @@ import {
   commitDraftMedia,
   completeRemoteSubmission,
   createExpoDraftFileAdapter,
+  hasRestorableDraftContent,
   isCompatibleDraft,
   loadComposeDrafts,
   normalizeBuddyCardFeature,
@@ -608,6 +609,11 @@ export default function Compose() {
     }
     if (postingRef.current) return;
     Keyboard.dismiss();
+    const draft = currentDraft();
+    if (!draft || !hasRestorableDraftContent(draft)) {
+      void clearSavedDraft().finally(exitCompose);
+      return;
+    }
     Alert.alert('Cancel this draft?', 'You can keep it for next time or discard it now.', [
       { text: 'Keep draft', onPress: () => { void flushDraft().finally(exitCompose); } },
       {
