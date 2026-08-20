@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AccessibilityInfo,
@@ -17,7 +17,8 @@ import { listStoryGroups, markStoryViewed, deleteStory, reportStory, type StoryG
 import { showToast } from '../../ui/Toast';
 import { timeAgo, authorLabel } from '../../feed/format';
 import { Avatar } from '../../feed/Avatar';
-import { font, spacing } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
+import { font, spacing, type AppThemeColors } from '../../ui/theme';
 import { useAuth } from '../../auth/AuthProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 import { canReportContent, createReportAction } from '../../moderation/reportAction';
@@ -31,6 +32,8 @@ export default function StoryViewer() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const ownerId = session?.user.id ?? null;
   const viewKey = `${ownerId ?? 'signed-out'}:${userId ?? 'missing'}`;
   const currentOwnerRef = useRef(ownerId);
@@ -332,7 +335,12 @@ export default function StoryViewer() {
     return (
       <View style={styles.unavailable}>
         <Text style={styles.unavailableTitle}>This story is no longer available.</Text>
-        <Pressable onPress={safeClose} accessibilityRole="button" accessibilityLabel="Close stories">
+        <Pressable
+          onPress={safeClose}
+          hitSlop={16}
+          accessibilityRole="button"
+          accessibilityLabel="Close stories"
+        >
           <Text style={styles.unavailableAction}>Go back</Text>
         </Pressable>
       </View>
@@ -412,6 +420,7 @@ export default function StoryViewer() {
           style={({ pressed }) => [
             styles.reportBtn,
             { bottom: insets.bottom + spacing.xl },
+            reporting && styles.reportBtnDisabled,
             pressed && styles.pressed,
           ]}
           onPress={onReport}
@@ -428,7 +437,7 @@ export default function StoryViewer() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#000' },
   unavailable: {
     flex: 1,
@@ -525,5 +534,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  reportBtnDisabled: { opacity: theme.interaction.disabledOpacity },
   pressed: { opacity: 0.7 },
 });

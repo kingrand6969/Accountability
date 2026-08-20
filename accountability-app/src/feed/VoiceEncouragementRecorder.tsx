@@ -18,7 +18,8 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { colors, font, radius, spacing, themeColors } from '../ui/theme';
 
 type Props = {
   visible: boolean;
@@ -193,6 +194,10 @@ export function VoiceEncouragementRecorder({
   onClose,
   onSend,
 }: Props) {
+  const { mode } = useAppTheme();
+  const dark = mode === 'dark';
+  const actionColor = dark ? theme.ink.action : colors.primary;
+  const actionInk = dark ? theme.ink.inverse : '#fff';
   const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 100);
   const player = useAudioPlayer(null);
@@ -432,14 +437,14 @@ export function VoiceEncouragementRecorder({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modal}>
         <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close recorder" />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, dark && darkStyles.sheet]}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Voice Cheer</Text>
-              <Text style={styles.subtitle}>A natural, private message · up to 10 seconds</Text>
+              <Text style={[styles.title, dark && darkStyles.title]}>Voice Cheer</Text>
+              <Text style={[styles.subtitle, dark && darkStyles.subtitle]}>A natural, private message · up to 10 seconds</Text>
             </View>
             <Pressable style={styles.iconButton} onPress={onClose} accessibilityLabel="Close recorder">
-              <Ionicons name="close" size={22} color={colors.navy} />
+              <Ionicons name="close" size={22} color={dark ? theme.ink.primary : colors.navy} />
             </Pressable>
           </View>
 
@@ -458,13 +463,14 @@ export function VoiceEncouragementRecorder({
                 key={index}
                 style={[
                   styles.bar,
+                  dark && darkStyles.bar,
                   { height: recorderState.isRecording ? height : Math.max(7, height * 0.7) },
                 ]}
               />
             ))}
           </View>
 
-          <Text style={styles.timer}>
+          <Text style={[styles.timer, dark && darkStyles.timer]}>
             {recorderState.isRecording
               ? `0:${String(seconds).padStart(2, '0')} / 0:10`
               : previewUri
@@ -473,7 +479,7 @@ export function VoiceEncouragementRecorder({
           </Text>
 
           {error ? (
-            <Text style={styles.error} accessibilityRole="alert">
+            <Text style={[styles.error, dark && darkStyles.error]} accessibilityRole="alert">
               {error}
             </Text>
           ) : null}
@@ -482,15 +488,15 @@ export function VoiceEncouragementRecorder({
             <Pressable
               onPress={recorderState.isRecording ? stop : start}
               disabled={interruptionPending}
-              style={({ pressed }) => [styles.record, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.record, dark && darkStyles.primaryAction, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={recorderState.isRecording ? 'Stop recording' : 'Start recording'}
               accessibilityState={{ disabled: interruptionPending, busy: interruptionPending }}
             >
               {interruptionPending
-                ? <ActivityIndicator color="#fff" />
-                : <Ionicons name={recorderState.isRecording ? 'stop' : 'mic'} size={24} color="#fff" />}
-              <Text style={styles.recordText}>
+                ? <ActivityIndicator color={actionInk} />
+                : <Ionicons name={recorderState.isRecording ? 'stop' : 'mic'} size={24} color={actionInk} />}
+              <Text style={[styles.recordText, dark && darkStyles.primaryActionText]}>
                 {recorderState.isRecording ? 'Stop and preview' : 'Start recording'}
               </Text>
             </Pressable>
@@ -499,25 +505,25 @@ export function VoiceEncouragementRecorder({
               <Pressable
                 onPress={() => (playerStatus.playing ? player.pause() : player.play())}
                 disabled={uploadPending}
-                style={styles.previewButton}
+                style={[styles.previewButton, dark && darkStyles.previewButton]}
                 accessibilityRole="button"
                 accessibilityLabel={playerStatus.playing ? 'Pause preview' : 'Play preview'}
               >
-                <Ionicons name={playerStatus.playing ? 'pause' : 'play'} size={20} color={colors.primary} />
-                <Text style={styles.previewText}>{playerStatus.playing ? 'Pause' : 'Preview'}</Text>
+                <Ionicons name={playerStatus.playing ? 'pause' : 'play'} size={20} color={actionColor} />
+                <Text style={[styles.previewText, dark && darkStyles.previewText]}>{playerStatus.playing ? 'Pause' : 'Preview'}</Text>
               </Pressable>
-              <Pressable disabled={uploadPending} onPress={discard} style={styles.previewButton} accessibilityLabel="Delete and re-record">
-                <Ionicons name="refresh" size={20} color={colors.navy} />
-                <Text style={styles.previewText}>Discard</Text>
+              <Pressable disabled={uploadPending} onPress={discard} style={[styles.previewButton, dark && darkStyles.previewButton]} accessibilityLabel="Delete and re-record">
+                <Ionicons name="refresh" size={20} color={dark ? theme.ink.primary : colors.navy} />
+                <Text style={[styles.previewText, dark && darkStyles.previewText]}>Discard</Text>
               </Pressable>
               <Pressable
                 onPress={send}
                 disabled={sending || uploadPending}
-                style={[styles.send, (sending || uploadPending) && styles.disabled]}
+                style={[styles.send, dark && darkStyles.primaryAction, (sending || uploadPending) && styles.disabled]}
                 accessibilityRole="button"
                 accessibilityState={{ busy: sending || uploadPending, disabled: sending || uploadPending }}
               >
-                {sending || uploadPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.sendText}>Send</Text>}
+                {sending || uploadPending ? <ActivityIndicator color={actionInk} /> : <Text style={[styles.sendText, dark && darkStyles.primaryActionText]}>Send</Text>}
               </Pressable>
             </View>
           )}
@@ -540,7 +546,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center' },
   title: { color: colors.navy, fontFamily: font.bold, fontSize: 23 },
   subtitle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12.5, marginTop: 2 },
-  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 48, height: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   waveform: {
     height: 72,
     marginTop: spacing.xl,
@@ -587,4 +593,21 @@ const styles = StyleSheet.create({
   sendText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.76 },
+});
+
+const theme = themeColors('dark');
+const darkStyles = StyleSheet.create({
+  sheet: { backgroundColor: theme.surface.canvas },
+  title: { color: theme.ink.primary },
+  subtitle: { color: theme.ink.muted },
+  bar: { backgroundColor: theme.ink.action },
+  timer: { color: theme.ink.primary },
+  error: { color: theme.status.danger },
+  previewButton: {
+    backgroundColor: theme.surface.card,
+    borderColor: theme.border.subtle,
+  },
+  previewText: { color: theme.ink.primary },
+  primaryAction: { backgroundColor: theme.border.action },
+  primaryActionText: { color: theme.ink.inverse },
 });

@@ -1,11 +1,22 @@
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { DOCS, EFFECTIVE_DATE, type LegalDocKey } from '../../legal/content';
-import { colors, contentMax, font, spacing } from '../../ui/theme';
+import {
+  colors as legacyColors,
+  contentMax,
+  font,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 
 /** Reader for the Terms of Service / Privacy Policy — reachable from the sign-up
  *  consent line and from Settings. Content lives in one place (legal/content). */
 export default function LegalScreen() {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const { doc } = useLocalSearchParams<{ doc: string }>();
   const key: LegalDocKey = doc === 'privacy' ? 'privacy' : 'terms';
   const d = DOCS[key];
@@ -39,21 +50,33 @@ export default function LegalScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function legalPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    faint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = legalPalette(theme, mode);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
   body: { padding: spacing.lg, paddingBottom: 48, gap: 4 },
-  title: { fontFamily: font.extrabold, fontSize: 24, color: colors.text },
-  meta: { fontFamily: font.medium, fontSize: 12.5, color: colors.textFaint, marginBottom: spacing.md },
-  intro: { fontFamily: font.regular, fontSize: 15, lineHeight: 22, color: colors.textMuted, marginBottom: spacing.md },
+  title: { fontFamily: font.extrabold, fontSize: 24, color: palette.ink },
+  meta: { fontFamily: font.medium, fontSize: 12.5, color: palette.faint, marginBottom: spacing.md },
+  intro: { fontFamily: font.regular, fontSize: 15, lineHeight: 22, color: palette.muted, marginBottom: spacing.md },
   section: { marginBottom: spacing.md, gap: 6 },
-  h: { fontFamily: font.bold, fontSize: 16, color: colors.text },
-  p: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 22, color: colors.textMuted },
+  h: { fontFamily: font.bold, fontSize: 16, color: palette.ink },
+  p: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 22, color: palette.muted },
   foot: {
     fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 20,
-    color: colors.textFaint,
+    color: palette.faint,
     marginTop: spacing.md,
     fontStyle: 'italic',
   },
-});
+  });
+}

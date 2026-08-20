@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -44,7 +44,15 @@ import {
   type ProofExportInput,
   type ProofExportOptIns,
 } from '../entry/proofExport';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  colors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
 import {
   useProofActionOrchestrator,
 } from '../entry/useProofActionOrchestrator';
@@ -70,6 +78,9 @@ type ProofFormat = 'portrait' | 'square' | 'landscape';
 export default function WinCard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const params = useLocalSearchParams<{
     location?: string | string[];
     route?: string | string[];
@@ -188,7 +199,7 @@ export default function WinCard() {
         <View style={styles.center}>
           {loadError ? (
             <>
-              <Ionicons name="cloud-offline-outline" size={32} color={colors.textSecondary} />
+              <Ionicons name="cloud-offline-outline" size={32} color={palette.secondary} />
               <Text accessibilityRole="header" style={styles.stateTitle}>
                 Could not load your proof
               </Text>
@@ -204,7 +215,7 @@ export default function WinCard() {
             </>
           ) : (
             <>
-              <ActivityIndicator size="large" color={colors.primary} />
+              <ActivityIndicator size="large" color={palette.action} />
               <Text accessibilityLiveRegion="polite" style={styles.stateMessage}>
                 Preparing your Daily Proof…
               </Text>
@@ -532,6 +543,7 @@ export default function WinCard() {
             style={[styles.formatChip, format === item && styles.formatChipActive]}
             accessibilityRole="radio"
             accessibilityState={{ selected: format === item }}
+            hitSlop={2}
           >
             <Text style={[styles.formatText, format === item && styles.formatTextActive]}>
               {item[0].toUpperCase() + item.slice(1)}
@@ -595,6 +607,7 @@ export default function WinCard() {
               style={styles.pendingButton}
               accessibilityRole="button"
               onPress={() => router.push(entry.action === 'save-memories' ? '/memories' : '/(app)')}
+              hitSlop={2}
             >
               <Text style={styles.pendingButtonText}>
                 {entry.action === 'save-memories' ? 'Check Memories' : 'Check Feed'}
@@ -604,6 +617,7 @@ export default function WinCard() {
               style={styles.pendingButton}
               accessibilityRole="button"
               onPress={() => void discardPending(entry)}
+              hitSlop={2}
             >
               <Text style={styles.pendingButtonText}>Discard pending</Text>
             </Pressable>
@@ -662,6 +676,10 @@ export default function WinCard() {
 }
 
 function ScreenHeader({ onBack }: { onBack: () => void }) {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+
   return (
     <View style={styles.screenHeader}>
       <Pressable
@@ -669,8 +687,9 @@ function ScreenHeader({ onBack }: { onBack: () => void }) {
         onPress={onBack}
         accessibilityRole="button"
         accessibilityLabel="Back"
+        hitSlop={2}
       >
-        <Ionicons name="chevron-back" size={24} color={colors.text} />
+        <Ionicons name="chevron-back" size={24} color={palette.ink} />
       </Pressable>
       <Text accessibilityRole="header" style={styles.screenTitle}>Share proof</Text>
       <View style={styles.headerSpacer} />
@@ -689,6 +708,10 @@ function ToggleRow({
   value: boolean;
   onPress: () => void;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+
   return (
     <Pressable
       style={({ pressed }) => [styles.toggleRow, pressed && styles.pressed]}
@@ -697,8 +720,9 @@ function ToggleRow({
       accessibilityState={{ checked: value }}
       accessibilityLabel={`${label.replace(/^Hide /, '')} ${value ? 'hidden' : 'shown'}`}
       accessibilityHint="Double tap to change whether this detail appears in the shared image"
+      hitSlop={2}
     >
-      <Ionicons name={icon} size={19} color={colors.textSecondary} />
+      <Ionicons name={icon} size={19} color={palette.secondary} />
       <Text style={styles.toggleLabel}>{label.replace(/^Hide /, '')}</Text>
       <View style={[styles.switchTrack, value && styles.switchTrackOn]}>
         <View style={[styles.switchThumb, value && styles.switchThumbOn]} />
@@ -708,11 +732,15 @@ function ToggleRow({
 }
 
 function ProofAction({ icon, label, onPress, busy, disabled }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+
   return (
     <Pressable style={({ pressed }) => [styles.actionRow, pressed && styles.pressed, disabled && styles.disabled]} onPress={onPress} disabled={busy || disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy: !!busy, disabled: !!disabled || !!busy }}>
-      {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name={icon} size={21} color={colors.primary} />}
+      {busy ? <ActivityIndicator size="small" color={palette.action} /> : <Ionicons name={icon} size={21} color={palette.action} />}
       <Text style={styles.actionLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      <Ionicons name="chevron-forward" size={18} color={palette.faint} />
     </Pressable>
   );
 }
@@ -735,25 +763,49 @@ function nextPaint(): Promise<void> {
   });
 }
 
-const styles = StyleSheet.create({
-  screen: { flexGrow: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 18, gap: 8, backgroundColor: '#F8F5EE' },
-  stateScreen: { flex: 1, paddingHorizontal: 14, backgroundColor: '#F8F5EE' },
+function winCardPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? '#F8F5EE' : theme.surface.canvas,
+    surface: mode === 'light' ? '#FFFFFF' : theme.surface.card,
+    ink: mode === 'light' ? colors.text : theme.ink.primary,
+    secondary: mode === 'light' ? colors.textSecondary : theme.ink.secondary,
+    muted: mode === 'light' ? colors.textMuted : theme.ink.muted,
+    faint: mode === 'light' ? colors.textFaint : theme.ink.muted,
+    action: mode === 'light' ? colors.primary : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
+    neutralBorder: mode === 'light' ? colors.border : theme.border.subtle,
+    panelBorder: mode === 'light' ? '#E5DFD4' : theme.border.subtle,
+    selected: mode === 'light' ? '#EEF4FF' : theme.surface.muted,
+    heading: mode === 'light' ? '#F3F6FC' : theme.surface.muted,
+    switchOff: mode === 'light' ? '#CBD5E1' : theme.border.strong,
+    pending: mode === 'light' ? '#FFF7E6' : theme.surface.muted,
+    pendingBorder: mode === 'light' ? '#F2C879' : theme.status.attention,
+    cardShadow: mode === 'light' ? '#000' : theme.surface.canvas,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const palette = winCardPalette(theme, mode);
+
+  return StyleSheet.create({
+  screen: { flexGrow: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 18, gap: 8, backgroundColor: palette.canvas },
+  stateScreen: { flex: 1, paddingHorizontal: 14, backgroundColor: palette.canvas },
   screenHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -8 },
-  screenTitle: { color: colors.text, fontFamily: font.extrabold, fontSize: 18 },
+  screenTitle: { color: palette.ink, fontFamily: font.extrabold, fontSize: 18 },
   headerSpacer: { width: 36 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: spacing.lg },
-  stateTitle: { color: colors.text, fontFamily: font.extrabold, fontSize: 20, textAlign: 'center' },
-  stateMessage: { color: colors.textMuted, fontFamily: font.regular, fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  retryButton: { minHeight: 48, minWidth: 128, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.primary, paddingHorizontal: spacing.lg },
-  retryText: { color: '#FFFFFF', fontFamily: font.semibold, fontSize: 15 },
+  stateTitle: { color: palette.ink, fontFamily: font.extrabold, fontSize: 20, textAlign: 'center' },
+  stateMessage: { color: palette.muted, fontFamily: font.regular, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  retryButton: { minHeight: spacing.touch, minWidth: 128, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.action, paddingHorizontal: spacing.lg },
+  retryText: { color: palette.onAction, fontFamily: font.semibold, fontSize: 15 },
   cardWrap: {
     borderRadius: 24,
     overflow: 'hidden',
     alignSelf: 'center',
     width: '100%',
     maxWidth: 340,
-    shadowColor: '#000',
+    shadowColor: palette.cardShadow,
     shadowOpacity: 0.3,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
@@ -763,29 +815,30 @@ const styles = StyleSheet.create({
   square: { aspectRatio: 1 },
   landscape: { aspectRatio: 16 / 9 },
   formatRow: { flexDirection: 'row', alignSelf: 'center', width: '100%', maxWidth: 340, gap: 6 },
-  formatChip: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FFFFFF' },
-  formatChipActive: { borderColor: colors.primary, backgroundColor: '#EEF4FF' },
-  formatText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
-  formatTextActive: { color: colors.primary },
-  privacyPanel: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5DFD4', overflow: 'hidden' },
-  privacyHeading: { paddingHorizontal: spacing.md, paddingVertical: 6, gap: 1, backgroundColor: '#F3F6FC' },
-  privacyTitle: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
-  privacyHelp: { color: colors.textMuted, fontFamily: font.regular, fontSize: 11, lineHeight: 14 },
+  formatChip: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: palette.neutralBorder, backgroundColor: palette.surface },
+  formatChipActive: { borderColor: palette.action, backgroundColor: palette.selected },
+  formatText: { color: palette.muted, fontFamily: font.semibold, fontSize: 13 },
+  formatTextActive: { color: palette.action },
+  privacyPanel: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.panelBorder, overflow: 'hidden' },
+  privacyHeading: { paddingHorizontal: spacing.md, paddingVertical: 6, gap: 1, backgroundColor: palette.heading },
+  privacyTitle: { color: palette.ink, fontFamily: font.semibold, fontSize: 14 },
+  privacyHelp: { color: palette.muted, fontFamily: font.regular, fontSize: 11, lineHeight: 14 },
   privacyControls: { flexDirection: 'row', flexWrap: 'wrap' },
-  toggleRow: { width: '50%', minHeight: 44, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: '#E5DFD4' },
-  toggleLabel: { flex: 1, color: colors.text, fontFamily: font.medium, fontSize: 13 },
-  switchTrack: { width: 42, height: 24, padding: 2, borderRadius: 12, backgroundColor: '#CBD5E1' },
-  switchTrackOn: { backgroundColor: colors.primary },
-  switchThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFFFFF' },
+  toggleRow: { width: '50%', minHeight: 44, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: palette.panelBorder },
+  toggleLabel: { flex: 1, color: palette.ink, fontFamily: font.medium, fontSize: 13 },
+  switchTrack: { width: 42, height: 24, padding: 2, borderRadius: 12, backgroundColor: palette.switchOff },
+  switchTrackOn: { backgroundColor: palette.action },
+  switchThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: palette.surface },
   switchThumbOn: { transform: [{ translateX: 18 }] },
-  actions: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5DFD4', overflow: 'hidden' },
-  actionRow: { minHeight: 48, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5DFD4' },
-  actionLabel: { flex: 1, color: colors.text, fontFamily: font.semibold, fontSize: 14 },
+  actions: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.panelBorder, overflow: 'hidden' },
+  actionRow: { minHeight: spacing.touch, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.panelBorder },
+  actionLabel: { flex: 1, color: palette.ink, fontFamily: font.semibold, fontSize: 14 },
   pressed: { opacity: 0.62 },
   disabled: { opacity: 0.48 },
-  pendingPanel: { alignSelf: 'center', width: '100%', maxWidth: 400, borderRadius: radius.md, backgroundColor: '#FFF7E6', borderWidth: 1, borderColor: '#F2C879', padding: spacing.md, gap: spacing.sm },
-  pendingText: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
+  pendingPanel: { alignSelf: 'center', width: '100%', maxWidth: 400, borderRadius: radius.md, backgroundColor: palette.pending, borderWidth: 1, borderColor: palette.pendingBorder, padding: spacing.md, gap: spacing.sm },
+  pendingText: { color: palette.ink, fontFamily: font.semibold, fontSize: 14 },
   pendingButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  pendingButton: { minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.primary, paddingHorizontal: spacing.md },
-  pendingButtonText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13 },
-});
+  pendingButton: { minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: palette.action, paddingHorizontal: spacing.md },
+  pendingButtonText: { color: palette.action, fontFamily: font.semibold, fontSize: 13 },
+  });
+};

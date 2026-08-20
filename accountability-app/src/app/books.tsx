@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,7 +23,16 @@ import {
 import { useBookFeed } from '../books/useBookFeed';
 import type { Cadence } from '../books/rotate';
 import { Button } from '../ui/Button';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  shadow,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 const CADENCES: { value: Cadence; label: string }[] = [
   { value: 'daily', label: 'Daily' },
@@ -32,6 +41,9 @@ const CADENCES: { value: Cadence; label: string }[] = [
 ];
 
 export default function Books() {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => booksPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const router = useRouter();
   const { isPro, loading: proLoading } = useIsPro();
   const [prefs, setPrefs] = useState<BookPrefs | null>(null);
@@ -72,7 +84,7 @@ export default function Books() {
   if (proLoading || !prefs) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -81,7 +93,7 @@ export default function Books() {
     return (
       <View style={styles.gate}>
         <View style={styles.gateIcon}>
-          <Ionicons name="book" size={40} color={colors.pro} />
+          <Ionicons name="book" size={40} color={palette.pro} />
         </View>
         <Text style={styles.gateTitle}>Daily Reads</Text>
         <Text style={styles.gateText}>
@@ -134,7 +146,7 @@ export default function Books() {
 
       {loading || !feed ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={palette.action} />
         </View>
       ) : (
         <>
@@ -150,12 +162,12 @@ export default function Books() {
               <Image source={{ uri: feed.pick.coverUrl }} style={styles.cover} resizeMode="cover" />
             ) : (
               <View style={[styles.cover, styles.coverFallback]}>
-                <Ionicons name="book-outline" size={34} color={colors.textFaint} />
+                <Ionicons name="book-outline" size={34} color={palette.placeholder} />
               </View>
             )}
             <View style={styles.pickBody}>
               <View style={styles.tag}>
-                <Ionicons name="sparkles" size={11} color={colors.pro} />
+                <Ionicons name="sparkles" size={11} color={palette.pro} />
                 <Text style={styles.tagText}>{feed.interestLabel}</Text>
               </View>
               <Text style={styles.pickTitle} numberOfLines={3}>
@@ -169,7 +181,7 @@ export default function Books() {
                 title="Read now"
                 onPress={() => openBook(feed.pick)}
                 style={styles.readBtn}
-                icon={<Ionicons name="book-outline" size={17} color="#fff" />}
+                icon={<Ionicons name="book-outline" size={17} color={palette.buttonInk} />}
               />
             </View>
           </View>
@@ -186,7 +198,7 @@ export default function Books() {
                 <Image source={{ uri: b.coverUrl }} style={styles.rowCover} resizeMode="cover" />
               ) : (
                 <View style={[styles.rowCover, styles.coverFallback]}>
-                  <Ionicons name="book-outline" size={18} color={colors.textFaint} />
+                  <Ionicons name="book-outline" size={18} color={palette.placeholder} />
                 </View>
               )}
               <View style={{ flex: 1 }}>
@@ -197,7 +209,7 @@ export default function Books() {
                   {b.author}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+              <Ionicons name="chevron-forward" size={18} color={palette.placeholder} />
             </Pressable>
           ))}
         </>
@@ -206,9 +218,30 @@ export default function Books() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background, paddingBottom: 40 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+function booksPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
+    mutedSurface: mode === 'light' ? legacyColors.surface : theme.surface.muted,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    pro: mode === 'light' ? legacyColors.pro : theme.ink.action,
+    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
+    buttonInk: legacyColors.onPrimary,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = booksPalette(theme, mode);
+  return StyleSheet.create({
+  container: { padding: spacing.lg, gap: spacing.sm, backgroundColor: palette.background, paddingBottom: 40 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60, backgroundColor: palette.background },
   pressed: { opacity: 0.75 },
   gate: {
     flex: 1,
@@ -216,19 +249,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
     gap: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   gateIcon: {
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: colors.proSoft,
+    backgroundColor: palette.proSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gateTitle: { fontSize: 22, fontFamily: font.extrabold, color: colors.text },
+  gateTitle: { fontSize: 22, fontFamily: font.extrabold, color: palette.ink },
   gateText: {
-    color: colors.textMuted,
+    color: palette.muted,
     fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: 21,
@@ -237,7 +270,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: palette.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: spacing.md,
@@ -245,33 +278,33 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: palette.action,
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 14,
-    minHeight: 40,
+    minHeight: spacing.touch,
     justifyContent: 'center',
   },
-  chipOn: { backgroundColor: colors.primary },
-  chipText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13 },
-  chipTextOn: { color: '#fff' },
+  chipOn: { backgroundColor: palette.action },
+  chipText: { color: palette.action, fontFamily: font.semibold, fontSize: 13 },
+  chipTextOn: { color: palette.onAction },
   toggle: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
-    backgroundColor: colors.surface,
+    backgroundColor: palette.mutedSurface,
     borderRadius: radius.sm,
     padding: 3,
   },
-  toggleBtn: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 8, minHeight: 38 },
-  toggleActive: { backgroundColor: colors.card },
-  toggleText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13.5 },
-  toggleTextActive: { color: colors.primary },
+  toggleBtn: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 8, minHeight: spacing.touch },
+  toggleActive: { backgroundColor: palette.card },
+  toggleText: { color: palette.muted, fontFamily: font.semibold, fontSize: 13.5 },
+  toggleTextActive: { color: palette.action },
   pickCard: {
     flexDirection: 'row',
     gap: spacing.lg,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.lg,
     padding: spacing.lg,
     ...shadow.card,
@@ -280,7 +313,7 @@ const styles = StyleSheet.create({
     width: 108,
     height: 160,
     borderRadius: radius.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.mutedSurface,
   },
   coverFallback: { alignItems: 'center', justifyContent: 'center' },
   pickBody: { flex: 1, gap: 4 },
@@ -289,28 +322,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     alignSelf: 'flex-start',
-    backgroundColor: colors.proSoft,
+    backgroundColor: palette.proSoft,
     borderRadius: radius.pill,
     paddingVertical: 3,
     paddingHorizontal: 9,
   },
-  tagText: { color: colors.pro, fontFamily: font.bold, fontSize: 11 },
-  pickTitle: { fontSize: 17, fontFamily: font.extrabold, color: colors.text, lineHeight: 22 },
-  pickAuthor: { fontSize: 13.5, fontFamily: font.medium, color: colors.textSecondary },
-  freeNote: { fontSize: 12, fontFamily: font.regular, color: colors.textFaint },
+  tagText: { color: palette.pro, fontFamily: font.bold, fontSize: 11 },
+  pickTitle: { fontSize: 17, fontFamily: font.extrabold, color: palette.ink, lineHeight: 22 },
+  pickAuthor: { fontSize: 13.5, fontFamily: font.medium, color: palette.secondary },
+  freeNote: { fontSize: 12, fontFamily: font.regular, color: palette.placeholder },
   readBtn: { marginTop: spacing.sm, alignSelf: 'stretch' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 64,
   },
-  rowCover: { width: 40, height: 58, borderRadius: 6, backgroundColor: colors.surface },
-  rowTitle: { fontSize: 14.5, fontFamily: font.semibold, color: colors.text },
-  rowAuthor: { fontSize: 12.5, fontFamily: font.regular, color: colors.textMuted, marginTop: 1 },
-});
+  rowCover: { width: 40, height: 58, borderRadius: 6, backgroundColor: palette.mutedSurface },
+  rowTitle: { fontSize: 14.5, fontFamily: font.semibold, color: palette.ink },
+  rowAuthor: { fontSize: 12.5, fontFamily: font.regular, color: palette.muted, marginTop: 1 },
+  });
+}

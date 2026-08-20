@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -12,7 +12,15 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { supabase } from '../lib/supabase';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { acknowledgeWarning, fetchModerationState, sessionPing, type ModerationState } from './api';
 
 const CONTACT_EMAIL = 'support@awldesk.com';
@@ -160,6 +168,8 @@ function BanWall({
   busy: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   return (
     <View style={[styles.wall, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
       <ScrollView
@@ -185,7 +195,7 @@ function BanWall({
         <Pressable
           onPress={onSignOut}
           disabled={busy}
-          style={({ pressed }) => [styles.wallBtn, pressed && { opacity: 0.85 }]}
+          style={({ pressed }) => [styles.wallBtn, pressed && styles.wallBtnPressed]}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
         >
@@ -215,7 +225,9 @@ function NoticeModal({
   cta: string;
   onClose: () => void;
 }) {
-  const accent = tone === 'warning' ? colors.accent : '#f97316';
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const accent = tone === 'warning' ? legacyColors.accent : '#f97316';
   const accentSoft = tone === 'warning' ? 'rgba(251,191,36,0.16)' : 'rgba(249,115,22,0.14)';
   return (
     <View style={styles.scrim}>
@@ -229,7 +241,7 @@ function NoticeModal({
         </ScrollView>
         <Pressable
           onPress={onClose}
-          style={({ pressed }) => [styles.sheetBtn, { backgroundColor: colors.text }, pressed && { opacity: 0.9 }]}
+          style={({ pressed }) => [styles.sheetBtn, pressed && styles.sheetBtnPressed]}
           accessibilityRole="button"
           accessibilityLabel={cta}
         >
@@ -240,7 +252,20 @@ function NoticeModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    sheet: mode === 'light' ? legacyColors.card : theme.surface.card,
+    sheetInk: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    sheetSecondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
+    sheetAction: mode === 'light' ? legacyColors.text : theme.ink.action,
+    sheetOnAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    scrim: mode === 'light' ? 'rgba(15,23,42,0.55)' : theme.interaction.scrim,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = createPalette(theme, mode);
+  return StyleSheet.create({
   // ---- ban wall ----
   wall: {
     position: 'absolute',
@@ -293,13 +318,15 @@ const styles = StyleSheet.create({
   },
   wallEmail: { fontFamily: font.semibold, color: '#93c5fd' },
   wallBtn: {
+    minHeight: spacing.touch,
     minWidth: 200,
-    backgroundColor: colors.primary,
+    backgroundColor: legacyColors.primary,
     borderRadius: radius.pill,
     paddingVertical: 14,
     paddingHorizontal: 28,
     alignItems: 'center',
   },
+  wallBtnPressed: { opacity: 0.85 },
   wallBtnText: { fontFamily: font.bold, fontSize: 16, color: '#fff' },
 
   // ---- notice modal (warning / restriction) ----
@@ -310,7 +337,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 9998,
-    backgroundColor: 'rgba(15,23,42,0.55)',
+    backgroundColor: palette.scrim,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
@@ -318,7 +345,7 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: colors.card,
+    backgroundColor: palette.sheet,
     borderRadius: radius.xl,
     padding: 24,
     alignItems: 'center',
@@ -334,7 +361,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: font.bold,
     fontSize: 19,
-    color: colors.text,
+    color: palette.sheetInk,
     textAlign: 'center',
     marginBottom: 10,
   },
@@ -343,15 +370,20 @@ const styles = StyleSheet.create({
     fontFamily: font.regular,
     fontSize: 15,
     lineHeight: 23,
-    color: colors.textSecondary,
+    color: palette.sheetSecondary,
     textAlign: 'center',
   },
   sheetBtn: {
+    minHeight: spacing.touch,
     alignSelf: 'stretch',
     borderRadius: radius.pill,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 20,
+    backgroundColor: palette.sheetAction,
   },
-  sheetBtnText: { fontFamily: font.bold, fontSize: 15.5, color: '#fff' },
-});
+  sheetBtnPressed: { opacity: 0.9 },
+  sheetBtnText: { fontFamily: font.bold, fontSize: 15.5, color: palette.sheetOnAction },
+  });
+}

@@ -23,7 +23,15 @@ import {
 } from '../memories/api';
 import { confirmDestructive } from '../ui/confirm';
 import { EmptyState } from '../ui/EmptyState';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  colors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
 import { BP } from '../ui/responsive';
 
 const GRID_GAP = 4;
@@ -53,6 +61,8 @@ function timeLabel(iso: string): string {
  *  bookmark on any post photo. */
 export default function Memories() {
   const { width } = useWindowDimensions();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
   const [items, setItems] = useState<Memory[]>([]);
   const [used, setUsed] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -115,7 +125,7 @@ export default function Memories() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={theme.ink.action} />
       </View>
     );
   }
@@ -149,6 +159,7 @@ export default function Memories() {
                     ]}
                     onPress={() => setViewer(m)}
                     onLongPress={() => onDelete(m)}
+                    accessibilityRole="button"
                     accessibilityLabel={`View memory from ${day}`}
                   >
                     <Image
@@ -207,6 +218,8 @@ export default function Memories() {
                 <Pressable
                   style={({ pressed }) => [styles.viewerBtn, pressed && styles.pressed]}
                   onPress={() => onDelete(viewer)}
+                  hitSlop={4}
+                  accessibilityRole="button"
                   accessibilityLabel="Delete this memory"
                 >
                   <Ionicons name="trash-outline" size={20} color="#fff" />
@@ -214,6 +227,8 @@ export default function Memories() {
                 <Pressable
                   style={({ pressed }) => [styles.viewerBtn, pressed && styles.pressed]}
                   onPress={() => setViewer(null)}
+                  hitSlop={4}
+                  accessibilityRole="button"
                   accessibilityLabel="Close"
                 >
                   <Ionicons name="close" size={22} color="#fff" />
@@ -227,72 +242,77 @@ export default function Memories() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-  },
-  scroll: {
-    padding: spacing.lg,
-    width: '100%',
-    alignSelf: 'center',
-    flexGrow: 1,
-    paddingBottom: 48,
-  },
-  usageLine: {
-    fontFamily: font.medium,
-    fontSize: 12.5,
-    color: colors.textMuted,
-    marginBottom: spacing.md,
-  },
-  emptyWrap: { flex: 1, justifyContent: 'center' },
-  section: { marginBottom: spacing.lg },
-  dayHeader: {
-    fontFamily: font.bold,
-    fontSize: 14.5,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
-  tilePin: {
-    position: 'absolute',
-    bottom: 6,
-    left: 6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pressed: { opacity: 0.8 },
-  viewerBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.94)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerImage: { width: '100%', height: '78%' },
-  viewerMeta: { position: 'absolute', bottom: 40, alignItems: 'center', gap: 4 },
-  viewerDate: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
-  viewerPlaceRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  viewerPlace: { color: '#e2e8f0', fontFamily: font.medium, fontSize: 13 },
-  viewerActions: {
-    position: 'absolute',
-    top: 48,
-    right: 20,
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  viewerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const primaryInk = mode === 'light' ? colors.text : theme.ink.primary;
+  const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted;
+
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.surface.raised },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surface.raised,
+    },
+    scroll: {
+      padding: spacing.lg,
+      width: '100%',
+      alignSelf: 'center',
+      flexGrow: 1,
+      paddingBottom: 48,
+    },
+    usageLine: {
+      fontFamily: font.medium,
+      fontSize: 12.5,
+      color: mutedInk,
+      marginBottom: spacing.md,
+    },
+    emptyWrap: { flex: 1, justifyContent: 'center' },
+    section: { marginBottom: spacing.lg },
+    dayHeader: {
+      fontFamily: font.bold,
+      fontSize: 14.5,
+      color: primaryInk,
+      marginBottom: spacing.sm,
+    },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
+    tilePin: {
+      position: 'absolute',
+      bottom: 6,
+      left: 6,
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: 'rgba(15,23,42,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pressed: { opacity: 0.8 },
+    viewerBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.94)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viewerImage: { width: '100%', height: '78%' },
+    viewerMeta: { position: 'absolute', bottom: 40, alignItems: 'center', gap: 4 },
+    viewerDate: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+    viewerPlaceRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    viewerPlace: { color: '#e2e8f0', fontFamily: font.medium, fontSize: 13 },
+    viewerActions: {
+      position: 'absolute',
+      top: 48,
+      right: 20,
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    viewerBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'rgba(255,255,255,0.15)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
+};

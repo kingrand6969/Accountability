@@ -7,7 +7,8 @@ import type { PostComment } from './types';
 import type { PostEncourager, VoiceEncouragement } from './api';
 import { authorLabel } from './format';
 import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { colors, font, radius, spacing, themeColors } from '../ui/theme';
 
 export type EncouragementViewState = 'loading' | 'empty' | 'retryable-error' | 'offline' | 'privacy-redacted' | 'populated';
 
@@ -166,6 +167,9 @@ type Props = {
 };
 
 export function EncouragementSheet(props: Props) {
+  const { mode } = useAppTheme();
+  const dark = mode === 'dark';
+  const actionColor = dark ? theme.ink.action : colors.primary;
   const {
     visible, encouragers, voices, comments, supporterCount, onClose, onReply,
     onThankEveryone, onRecordVoice, loading = false, online = true, error = null, redacted = false,
@@ -186,10 +190,10 @@ export function EncouragementSheet(props: Props) {
     <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modal}>
         <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close Cheers" />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, dark && darkStyles.sheet]}>
           <View style={styles.head}>
-            <Text style={styles.title}>Cheers</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, dark && darkStyles.title]}>Cheers</Text>
+            <Text style={[styles.subtitle, dark && darkStyles.subtitle]}>
               {state === 'privacy-redacted'
                 ? 'Support details unavailable'
                 : `${supporterCount} ${supporterCount === 1 ? 'buddy showed' : 'buddies showed'} up for you`}
@@ -232,17 +236,17 @@ export function EncouragementSheet(props: Props) {
           </ScrollView>
           {state !== 'privacy-redacted' ? <View style={styles.secondaryAction}>
             <Pressable onPress={onRecordVoice} style={styles.recordVoice} accessibilityRole="button" accessibilityLabel="Record a voice Cheer, up to 10 seconds">
-              <Ionicons name="mic-outline" size={18} color={colors.primary} />
-              <Text style={styles.recordVoiceText}>Send voice Cheer</Text>
+              <Ionicons name="mic-outline" size={18} color={actionColor} />
+              <Text style={[styles.recordVoiceText, dark && darkStyles.actionText]}>Send voice Cheer</Text>
             </Pressable>
           </View> : null}
           {state !== 'privacy-redacted' ? <Pressable
             onPress={() => void thankCoordinator.current.run(onThankEveryone)}
-            style={({ pressed }) => [styles.thank, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.thank, dark && darkStyles.primaryAction, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Thank everyone with one public comment"
           >
-            <Text style={styles.thankText}>Thank everyone</Text>
+            <Text style={[styles.thankText, dark && darkStyles.primaryActionText]}>Thank everyone</Text>
           </Pressable> : null}
         </View>
       </View>
@@ -251,10 +255,11 @@ export function EncouragementSheet(props: Props) {
 }
 
 function SheetState({ text, action, onAction }: { text: string; action?: string; onAction?(): void }) {
+  const dark = useAppTheme().mode === 'dark';
   return (
     <View style={styles.state}>
-      <Text style={styles.stateText}>{text}</Text>
-      {action && onAction ? <Pressable onPress={onAction} accessibilityRole="button"><Text style={styles.retry}>{action}</Text></Pressable> : null}
+      <Text style={[styles.stateText, dark && darkStyles.mutedText]}>{text}</Text>
+      {action && onAction ? <Pressable onPress={onAction} accessibilityRole="button"><Text style={[styles.retry, dark && darkStyles.actionText]}>{action}</Text></Pressable> : null}
     </View>
   );
 }
@@ -262,10 +267,11 @@ function SheetState({ text, action, onAction }: { text: string; action?: string;
 function MessageRow({ name, avatar, body, onReply }: {
   name: string; avatar: string | null; body: string; onReply(name: string): void;
 }) {
+  const dark = useAppTheme().mode === 'dark';
   return (
     <View style={styles.message}>
       <Avatar url={avatar} name={name} size={34} />
-      <View style={styles.bubble}><Text style={styles.messageBody}>{body}</Text><Text style={styles.messageName}>{name}</Text></View>
+      <View style={[styles.bubble, dark && darkStyles.bubble]}><Text style={[styles.messageBody, dark && darkStyles.primaryText]}>{body}</Text><Text style={[styles.messageName, dark && darkStyles.mutedText]}>{name}</Text></View>
       <Reply name={name} onReply={onReply} />
     </View>
   );
@@ -280,6 +286,8 @@ function VoiceMessage(props: {
   onReport?(voiceId: string): Promise<void>;
   onBlock?(voiceId: string): Promise<void>;
 }) {
+  const dark = useAppTheme().mode === 'dark';
+  const actionColor = dark ? theme.ink.action : colors.primary;
   const { voice, onReply, view, visibility } = props;
   const url = useResolvedMediaUrl(voice.voice_ref);
   const player = useAudioPlayer(url);
@@ -318,10 +326,10 @@ function VoiceMessage(props: {
     <View>
       <View style={styles.message}>
         <Avatar url={voice.avatar_url} name={voice.name} size={34} />
-        <Pressable disabled={!url} onPress={() => (status.playing ? player.pause() : player.play())} style={[styles.voiceBubble, !url && styles.loadingVoice]} accessibilityRole="button" accessibilityLabel={`${status.playing ? 'Pause' : 'Play'} ${seconds} second voice Cheer from ${name}`}>
-          <Ionicons name={status.playing ? 'pause-circle' : 'play-circle'} size={26} color={colors.primary} />
-          <View style={styles.voiceWave}>{[8, 15, 11, 20, 13, 18, 9, 16].map((height, index) => <View key={index} style={[styles.voiceBar, { height }]} />)}</View>
-          <Text style={styles.voiceDuration}>0:{String(seconds).padStart(2, '0')}</Text>
+        <Pressable disabled={!url} onPress={() => (status.playing ? player.pause() : player.play())} style={[styles.voiceBubble, dark && darkStyles.bubble, !url && styles.loadingVoice]} accessibilityRole="button" accessibilityLabel={`${status.playing ? 'Pause' : 'Play'} ${seconds} second voice Cheer from ${name}`}>
+          <Ionicons name={status.playing ? 'pause-circle' : 'play-circle'} size={26} color={actionColor} />
+          <View style={styles.voiceWave}>{[8, 15, 11, 20, 13, 18, 9, 16].map((height, index) => <View key={index} style={[styles.voiceBar, dark && darkStyles.voiceBar, { height }]} />)}</View>
+          <Text style={[styles.voiceDuration, dark && darkStyles.mutedText]}>0:{String(seconds).padStart(2, '0')}</Text>
         </Pressable>
         <Reply name={name} onReply={onReply} />
         {(visibility.delete || visibility.report || visibility.block) ? (
@@ -332,7 +340,7 @@ function VoiceMessage(props: {
             accessibilityLabel={`Voice options for ${name}`}
             accessibilityState={{ expanded: actionsExpanded }}
           >
-            <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
+            <Ionicons name="ellipsis-horizontal" size={18} color={dark ? theme.ink.muted : colors.textMuted} />
           </Pressable>
         ) : null}
       </View>
@@ -345,25 +353,27 @@ function VoiceMessage(props: {
       ) : null}
       {confirm ? (
         <View style={styles.confirm}>
-          <Text style={styles.confirmText}>Confirm {confirm === 'report' ? 'report abuse' : confirm}?</Text>
+          <Text style={[styles.confirmText, dark && darkStyles.primaryText]}>Confirm {confirm === 'report' ? 'report abuse' : confirm}?</Text>
           <SmallAction label="Cancel" onPress={() => setConfirm(null)} disabled={actionState === 'loading'} />
           <SmallAction label="Confirm" onPress={() => void runAction(confirm)} disabled={actionState === 'loading'} busy={actionState === 'loading'} />
         </View>
       ) : null}
-      {actionState === 'loading' ? <ActivityIndicator color={colors.primary} /> : null}
-      {actionState === 'success' ? <Text style={styles.actionMessage}>Done</Text> : null}
-      {actionState === 'retry' ? <Text style={styles.actionError}>Action failed. Confirm to retry.</Text> : null}
-      {actionState === 'forbidden' ? <Text style={styles.actionError}>This action is forbidden for this account.</Text> : null}
+      {actionState === 'loading' ? <ActivityIndicator color={actionColor} /> : null}
+      {actionState === 'success' ? <Text style={[styles.actionMessage, dark && darkStyles.successText]}>Done</Text> : null}
+      {actionState === 'retry' ? <Text style={[styles.actionError, dark && darkStyles.dangerText]}>Action failed. Confirm to retry.</Text> : null}
+      {actionState === 'forbidden' ? <Text style={[styles.actionError, dark && darkStyles.dangerText]}>This action is forbidden for this account.</Text> : null}
     </View>
   );
 }
 
 function Reply({ name, onReply }: { name: string; onReply(name: string): void }) {
-  return <Pressable onPress={() => onReply(name)} style={styles.reply} accessibilityRole="button" accessibilityLabel={`Reply to ${name}`}><Text style={styles.replyText}>Reply</Text></Pressable>;
+  const dark = useAppTheme().mode === 'dark';
+  return <Pressable onPress={() => onReply(name)} style={styles.reply} accessibilityRole="button" accessibilityLabel={`Reply to ${name}`}><Text style={[styles.replyText, dark && darkStyles.actionText]}>Reply</Text></Pressable>;
 }
 
 function SmallAction({ label, onPress, disabled = false, busy = false }: { label: string; onPress(): void; disabled?: boolean; busy?: boolean }) {
-  return <Pressable onPress={onPress} disabled={disabled} style={styles.smallActionButton} accessibilityRole="button" accessibilityState={{ disabled, busy }}><Text style={styles.smallAction}>{label}</Text></Pressable>;
+  const dark = useAppTheme().mode === 'dark';
+  return <Pressable onPress={onPress} disabled={disabled} style={styles.smallActionButton} accessibilityRole="button" accessibilityState={{ disabled, busy }}><Text style={[styles.smallAction, dark && darkStyles.actionText]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -374,32 +384,52 @@ const styles = StyleSheet.create({
   title: { color: colors.navy, fontFamily: font.serif, fontSize: 24, lineHeight: 30 },
   subtitle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, marginTop: 1 },
   list: { paddingHorizontal: spacing.xl, paddingBottom: spacing.sm, gap: 7 },
-  message: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  message: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
   bubble: { flex: 1, backgroundColor: colors.card, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
   messageName: { color: colors.textMuted, fontFamily: font.medium, fontSize: 9.5, marginTop: 1 },
   messageBody: { color: colors.navy, fontFamily: font.regular, fontSize: 12.5 },
-  voiceBubble: { flex: 1, minHeight: 40, borderRadius: radius.pill, backgroundColor: colors.card, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  voiceBubble: { flex: 1, minHeight: 48, borderRadius: radius.pill, backgroundColor: colors.card, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 6 },
   loadingVoice: { opacity: 0.55 },
   voiceWave: { flex: 1, height: 22, flexDirection: 'row', alignItems: 'center', gap: 2 },
   voiceBar: { width: 2.5, borderRadius: 2, backgroundColor: colors.primary },
   voiceDuration: { color: colors.textMuted, fontFamily: font.medium, fontSize: 10.5 },
-  reply: { minWidth: 48, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  reply: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   replyText: { color: colors.primary, fontFamily: font.semibold, fontSize: 10.5 },
   secondaryAction: { paddingHorizontal: spacing.xl, alignItems: 'flex-start' },
-  recordVoice: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  recordVoice: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 5 },
   recordVoiceText: { color: colors.primary, fontFamily: font.semibold, fontSize: 12 },
   thank: { minHeight: 48, marginHorizontal: spacing.xl, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   thankText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
   state: { minHeight: 110, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   stateText: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center' },
-  retry: { color: colors.primary, fontFamily: font.bold, minHeight: 44 },
+  retry: { color: colors.primary, fontFamily: font.bold, minHeight: 48 },
   rowActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md },
-  overflow: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  overflow: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   confirm: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.md },
   confirmText: { color: colors.text, fontFamily: font.medium, fontSize: 11 },
-  smallActionButton: { minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' },
+  smallActionButton: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   smallAction: { color: colors.primary, fontFamily: font.semibold, fontSize: 11 },
   actionMessage: { color: colors.success, textAlign: 'right', fontFamily: font.medium, fontSize: 11 },
   actionError: { color: colors.danger, textAlign: 'right', fontFamily: font.medium, fontSize: 11 },
   pressed: { opacity: 0.76 },
+});
+
+const theme = themeColors('dark');
+const darkStyles = StyleSheet.create({
+  sheet: { backgroundColor: theme.surface.canvas },
+  title: { color: theme.ink.primary },
+  subtitle: { color: theme.ink.muted },
+  bubble: {
+    backgroundColor: theme.surface.card,
+    borderColor: theme.border.subtle,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  primaryText: { color: theme.ink.primary },
+  mutedText: { color: theme.ink.muted },
+  actionText: { color: theme.ink.action },
+  voiceBar: { backgroundColor: theme.ink.action },
+  primaryAction: { backgroundColor: theme.border.action },
+  primaryActionText: { color: theme.ink.inverse },
+  successText: { color: theme.status.success },
+  dangerText: { color: theme.status.danger },
 });

@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PostAudience } from '../feed/types';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import {
   CREATE_HUB_MODEL,
   type CreateAudience,
@@ -33,6 +41,9 @@ export function CreateHub({
   onContinue: (choice: CreateChoice, media: MediaChoice, audience: Audience) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const palette = useMemo(() => createPalette(theme, mode), [theme, mode]);
   const [selectedId, setSelectedId] = useState<CreateChoice['id']>('post');
   const [media, setMedia] = useState<MediaChoice>('photo');
   const [audience, setAudience] = useState<Audience>('buddies');
@@ -55,7 +66,7 @@ export function CreateHub({
           accessibilityRole="button"
           accessibilityLabel="Close create menu"
         >
-          <Ionicons name="chevron-back" size={25} color={colors.text} />
+          <Ionicons name="chevron-back" size={25} color={palette.ink} />
         </Pressable>
         <Text accessibilityRole="header" style={styles.title}>
           Create
@@ -93,7 +104,7 @@ export function CreateHub({
                   <Ionicons
                     name={icons[choice.id]}
                     size={21}
-                    color={selectedChoice ? colors.onPrimary : colors.primary}
+                    color={selectedChoice ? palette.onAction : palette.action}
                   />
                 </View>
                 <View style={styles.copy}>
@@ -103,7 +114,7 @@ export function CreateHub({
                 <Ionicons
                   name="chevron-forward"
                   size={20}
-                  color={selectedChoice ? colors.primary : colors.textFaint}
+                  color={selectedChoice ? palette.action : palette.inkFaint}
                 />
               </Pressable>
             );
@@ -132,7 +143,7 @@ export function CreateHub({
                   <Ionicons
                     name={value === 'photo' ? 'image-outline' : 'videocam-outline'}
                     size={20}
-                    color={colors.text}
+                    color={palette.ink}
                   />
                   <Text style={styles.segmentText}>
                     {value === 'photo' ? 'Photo' : 'Video'}
@@ -157,7 +168,7 @@ export function CreateHub({
                     : icons[selected.id]
                 }
                 size={34}
-                color={colors.onPrimary}
+                color={palette.onAction}
               />
             </View>
             <View style={styles.copy}>
@@ -182,6 +193,7 @@ export function CreateHub({
                   accessibilityRole="radio"
                   accessibilityState={{ selected: audience === value }}
                   accessibilityLabel={value === 'buddies' ? 'Buddies only' : 'Public'}
+                  hitSlop={2}
                   onFocus={() => setFocusedControl(`audience-${value}`)}
                   onBlur={() => setFocusedControl(null)}
                   style={({ pressed }) => [
@@ -193,7 +205,7 @@ export function CreateHub({
                   <Ionicons
                     name={value === 'buddies' ? 'people-outline' : 'earth-outline'}
                     size={20}
-                    color={colors.text}
+                    color={palette.ink}
                   />
                   <Text style={styles.segmentText}>
                     {value === 'buddies' ? 'Buddies' : 'Public'}
@@ -219,15 +231,33 @@ export function CreateHub({
           ]}
         >
           <Text style={styles.continueText}>{CREATE_HUB_MODEL.continueLabel}</Text>
-          <Ionicons name="arrow-forward" size={20} color={colors.onPrimary} />
+          <Ionicons name="arrow-forward" size={20} color={palette.onAction} />
         </Pressable>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F4EC' },
+function createPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? '#F7F4EC' : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    divider: mode === 'light' ? '#E8E2D7' : theme.border.subtle,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    inkMuted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    inkFaint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.raised,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    flex: mode === 'light' ? '#7C3AED' : '#A78BFA',
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = createPalette(theme, mode);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   header: {
     minHeight: 52,
     paddingHorizontal: spacing.lg,
@@ -244,18 +274,18 @@ const styles = StyleSheet.create({
     marginLeft: -10,
     borderRadius: radius.pill,
   },
-  title: { color: colors.text, fontFamily: font.extrabold, fontSize: 20 },
+  title: { color: palette.ink, fontFamily: font.extrabold, fontSize: 20 },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md },
   eyebrow: {
-    color: colors.textMuted,
+    color: palette.inkMuted,
     fontFamily: font.semibold,
     fontSize: 13,
   },
   card: {
     borderRadius: radius.lg,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: '#E8E2D7',
+    borderColor: palette.divider,
     overflow: 'hidden',
   },
   row: {
@@ -266,28 +296,28 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     gap: 12,
   },
-  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E8E2D7' },
-  rowSelected: { backgroundColor: colors.primarySoft },
+  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.divider },
+  rowSelected: { backgroundColor: palette.actionSoft },
   destinationIcon: {
     width: 38,
     height: 38,
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.actionSoft,
   },
-  iconSelected: { backgroundColor: colors.primary },
+  iconSelected: { backgroundColor: palette.action },
   copy: { flex: 1, gap: 2, minWidth: 0 },
-  rowTitle: { color: colors.text, fontFamily: font.bold, fontSize: 16, flexShrink: 1 },
+  rowTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 16, flexShrink: 1 },
   rowDetail: {
-    color: colors.textMuted,
+    color: palette.inkMuted,
     fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 18,
     flexShrink: 1,
   },
   section: { gap: spacing.sm },
-  sectionTitle: { color: colors.text, fontFamily: font.bold, fontSize: 14 },
+  sectionTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 14 },
   segment: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   segmentButton: {
     flexGrow: 1,
@@ -295,8 +325,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: palette.border,
+    backgroundColor: palette.card,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     flexDirection: 'row',
@@ -304,15 +334,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  segmentSelected: { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  segmentText: { color: colors.text, fontFamily: font.semibold, fontSize: 14, flexShrink: 1 },
+  segmentSelected: { borderWidth: 2, borderColor: palette.action, backgroundColor: palette.actionSoft },
+  segmentText: { color: palette.ink, fontFamily: font.semibold, fontSize: 14, flexShrink: 1 },
   audienceSegment: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.pill,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     overflow: 'hidden',
   },
   audienceButton: {
@@ -330,24 +360,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#E8E2D7',
-    backgroundColor: colors.card,
+    borderColor: palette.divider,
+    backgroundColor: palette.card,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  previewText: { color: colors.text, fontFamily: font.semibold, fontSize: 15, flexShrink: 1 },
-  previewDetail: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12.5, lineHeight: 17 },
+  previewText: { color: palette.ink, fontFamily: font.semibold, fontSize: 15, flexShrink: 1 },
+  previewDetail: { color: palette.inkMuted, fontFamily: font.regular, fontSize: 12.5, lineHeight: 17 },
   previewArtwork: {
     width: 78,
     height: 70,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
   },
-  previewArtworkFlex: { backgroundColor: '#7C3AED' },
-  controlFocused: { opacity: 0.72, outlineColor: colors.primary, outlineWidth: 2 },
+  previewArtworkFlex: { backgroundColor: palette.flex },
+  controlFocused: { opacity: 0.72, outlineColor: palette.action, outlineWidth: 2 },
   footer: {
     position: 'absolute',
     left: 0,
@@ -355,19 +385,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    backgroundColor: '#F7F4EC',
+    backgroundColor: palette.canvas,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: palette.border,
   },
   continueButton: {
     minHeight: 52,
     borderRadius: radius.md,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  continueFocused: { opacity: 0.8, outlineColor: colors.text, outlineWidth: 2 },
-  continueText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 16 },
-});
+  continueFocused: { opacity: 0.8, outlineColor: palette.ink, outlineWidth: 2 },
+  continueText: { color: palette.onAction, fontFamily: font.bold, fontSize: 16 },
+  });
+}

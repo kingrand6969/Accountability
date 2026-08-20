@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,9 +16,21 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { useFocusEffect } from 'expo-router';
 import { getMyProfile } from '../profiles/api';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  colors,
+  font,
+  radius,
+  shadow,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
 
 export default function InviteCard() {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const palette = useMemo(() => invitePalette(theme, mode), [theme, mode]);
   const cardRef = useRef<View>(null);
   const [name, setName] = useState('A friend');
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -137,10 +149,10 @@ export default function InviteCard() {
         ]}
       >
         {sharing ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={palette.onAction} />
         ) : (
           <>
-            <Ionicons name="share-social" size={21} color="#fff" />
+            <Ionicons name="share-social" size={21} color={palette.onAction} />
             <Text style={styles.shareText}>Share invitation</Text>
           </>
         )}
@@ -152,23 +164,36 @@ export default function InviteCard() {
   );
 }
 
-const styles = StyleSheet.create({
+function invitePalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? '#f5f8ff' : theme.surface.canvas,
+    title: mode === 'light' ? '#0f172a' : theme.ink.primary,
+    muted: mode === 'light' ? '#64748b' : theme.ink.muted,
+    action: mode === 'light' ? colors.primary : theme.ink.action,
+    onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const palette = invitePalette(theme, mode);
+
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f5f8ff',
+    backgroundColor: palette.canvas,
     padding: spacing.lg,
     alignItems: 'center',
   },
   eyebrow: {
     marginTop: spacing.sm,
-    color: colors.primary,
+    color: palette.action,
     fontFamily: font.extrabold,
     fontSize: 12,
     letterSpacing: 1.5,
   },
-  title: { marginTop: 5, color: '#0f172a', fontFamily: font.extrabold, fontSize: 28 },
+  title: { marginTop: 5, color: palette.title, fontFamily: font.extrabold, fontSize: 28 },
   subtitle: {
-    color: '#64748b',
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 14,
     lineHeight: 21,
@@ -264,17 +289,17 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     marginTop: spacing.lg,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
   },
-  shareText: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
+  shareText: { color: palette.onAction, fontFamily: font.bold, fontSize: 16 },
   pressed: { opacity: 0.82 },
   disabled: { opacity: 0.6 },
   privacy: {
-    color: '#64748b',
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 12,
     lineHeight: 17,
@@ -282,4 +307,5 @@ const styles = StyleSheet.create({
     maxWidth: 330,
     marginTop: 12,
   },
-});
+  });
+};

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
-import { colors, font, radius, spacing } from './theme';
+import { useAppTheme } from './AppThemeProvider';
+import { colors, font, radius, spacing, themeColors } from './theme';
 
 type Options = {
   title: string;
@@ -22,6 +23,8 @@ export function confirmDialog(opts: Options): void {
 
 /** Mount once near the root (root _layout). */
 export function ConfirmHost() {
+  const { mode } = useAppTheme();
+  const dark = mode === 'dark';
   const [opts, setOpts] = useState<Options | null>(null);
 
   useEffect(() => {
@@ -45,43 +48,50 @@ export function ConfirmHost() {
   return (
     <Modal visible={!!opts} transparent animationType="fade" onRequestClose={close}>
       <Pressable style={styles.backdrop} onPress={close}>
-        <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={[styles.card, dark && darkStyles.card]} onPress={(e) => e.stopPropagation()}>
           <BlurView
             intensity={60}
-            tint="light"
+            tint={dark ? 'dark' : 'light'}
             style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
           />
-          <View style={styles.glass} />
-          <View style={[styles.iconWrap, destructive ? styles.iconDanger : styles.iconInfo]}>
+          <View style={[styles.glass, dark && darkStyles.glass]} />
+          <View style={[
+            styles.iconWrap,
+            destructive ? styles.iconDanger : styles.iconInfo,
+            dark && (destructive ? darkStyles.iconDanger : darkStyles.iconInfo),
+          ]}>
             <Ionicons
               name={destructive ? 'trash-outline' : 'help-circle-outline'}
               size={22}
-              color={destructive ? colors.danger : colors.primary}
+              color={destructive
+                ? (dark ? theme.status.danger : colors.danger)
+                : (dark ? theme.ink.action : colors.primary)}
             />
           </View>
-          <Text style={styles.title}>{opts?.title}</Text>
-          {opts?.message ? <Text style={styles.message}>{opts.message}</Text> : null}
+          <Text style={[styles.title, dark && darkStyles.title]}>{opts?.title}</Text>
+          {opts?.message ? <Text style={[styles.message, dark && darkStyles.message]}>{opts.message}</Text> : null}
 
           <View style={styles.actions}>
             <Pressable
               onPress={close}
-              style={({ pressed }) => [styles.btn, styles.cancel, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.btn, styles.cancel, dark && darkStyles.cancel, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
             >
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={[styles.cancelText, dark && darkStyles.cancelText]}>Cancel</Text>
             </Pressable>
             <Pressable
               onPress={confirm}
               style={({ pressed }) => [
                 styles.btn,
                 destructive ? styles.confirmDanger : styles.confirmPrimary,
+                dark && (destructive ? darkStyles.confirmDanger : darkStyles.confirmPrimary),
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
               accessibilityLabel={opts?.confirmLabel ?? 'Confirm'}
             >
-              <Text style={styles.confirmText}>{opts?.confirmLabel ?? 'Confirm'}</Text>
+              <Text style={[styles.confirmText, dark && darkStyles.confirmText]}>{opts?.confirmLabel ?? 'Confirm'}</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -149,4 +159,19 @@ const styles = StyleSheet.create({
   confirmPrimary: { backgroundColor: colors.primary },
   confirmText: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
   pressed: { opacity: 0.85 },
+});
+
+const theme = themeColors('dark');
+const darkStyles = StyleSheet.create({
+  card: { borderColor: theme.border.strong },
+  glass: { backgroundColor: theme.surface.card },
+  iconDanger: { backgroundColor: theme.status.dangerSoft },
+  iconInfo: { backgroundColor: theme.surface.muted },
+  title: { color: theme.ink.primary },
+  message: { color: theme.ink.muted },
+  cancel: { backgroundColor: theme.surface.raised },
+  cancelText: { color: theme.ink.secondary },
+  confirmDanger: { backgroundColor: theme.status.danger },
+  confirmPrimary: { backgroundColor: theme.border.action },
+  confirmText: { color: theme.ink.inverse },
 });

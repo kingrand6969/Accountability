@@ -327,7 +327,7 @@ describe('Group 3 encouragement contract', () => {
     expect(sheetSource).toContain('accessibilityLabel={`Voice options for ${name}`}');
     expect(sheetSource).toContain('{actionsExpanded ? (');
     expect(sheetSource).toContain('ellipsis-horizontal');
-    expect(sheetSource).toContain('minWidth: 44');
+    expect(sheetSource).toContain('minWidth: 48');
   });
 
   test('deferred old-row action cannot show success or unlock the replacement row', async () => {
@@ -348,8 +348,8 @@ describe('Group 3 encouragement contract', () => {
     expect(controller.complete(current, true)).toEqual({ apply: true, release: true });
   });
 
-  test('owned action controls expose 44-point disabled and busy semantics', () => {
-    expect(sheetSource).toContain('minHeight: 44');
+  test('owned action controls expose 48-point disabled and busy semantics', () => {
+    expect(sheetSource).toContain('minHeight: 48');
     expect(sheetSource).toContain('accessibilityState={{ disabled, busy }}');
     expect(sheetSource).toContain('disabled={disabled}');
   });

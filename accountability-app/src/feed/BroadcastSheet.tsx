@@ -19,7 +19,8 @@ import type { FeedPost } from './types';
 import { listBuddies, sendMessage, type Buddy } from '../buddy/api';
 import { hapticTap } from '../ui/haptics';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { colors, font, radius, spacing, themeColors } from '../ui/theme';
 import { listGroups, type Group } from '../groups/api';
 import { createPost } from './api';
 import { addStory } from '../stories/api';
@@ -41,6 +42,10 @@ function broadcastText(post: FeedPost): string {
  * it to any other app — Facebook, TikTok, WhatsApp… — via the system share sheet.
  */
 export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClose: () => void }) {
+  const { mode } = useAppTheme();
+  const dark = mode === 'dark';
+  const actionColor = dark ? theme.ink.action : colors.primary;
+  const actionInk = dark ? theme.ink.inverse : '#fff';
   const [buddies, setBuddies] = useState<Buddy[] | null>(null);
   const [sent, setSent] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -169,7 +174,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
   return (
     <Modal visible={!!post} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={[styles.sheet, dark && darkStyles.sheet]} onPress={(e) => e.stopPropagation()}>
           <View style={styles.captureOnly} pointerEvents="none">
             <ExternalShareCard
               ref={publicCardRef}
@@ -177,17 +182,17 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
               author={post?.author_name ?? null}
             />
           </View>
-          <View style={styles.grabber} />
+          <View style={[styles.grabber, dark && darkStyles.grabber]} />
           <View style={styles.titleRow}>
-            <Ionicons name="megaphone" size={18} color={colors.primary} />
-            <Text style={styles.title}>Broadcast</Text>
+            <Ionicons name="megaphone" size={18} color={actionColor} />
+            <Text style={[styles.title, dark && darkStyles.title]}>Broadcast</Text>
           </View>
 
-          <Text style={styles.section}>Send to a buddy</Text>
+          <Text style={[styles.section, dark && darkStyles.section]}>Send to a buddy</Text>
           {buddies === null ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 18 }} />
+            <ActivityIndicator color={actionColor} style={{ marginVertical: 18 }} />
           ) : buddies.length === 0 ? (
-            <Text style={styles.empty}>No buddies yet — add some to broadcast to them.</Text>
+            <Text style={[styles.empty, dark && darkStyles.empty]}>No buddies yet — add some to broadcast to them.</Text>
           ) : (
             <ScrollView
               horizontal
@@ -208,16 +213,16 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
                     <View>
                       <Avatar url={b.avatar} name={b.name} size={52} />
                       {done ? (
-                        <View style={styles.sentBadge}>
+                        <View style={[styles.sentBadge, dark && darkStyles.sentBadge]}>
                           <Ionicons name="checkmark" size={12} color="#fff" />
                         </View>
                       ) : sending === b.id ? (
-                        <View style={styles.sentBadge}>
+                        <View style={[styles.sentBadge, dark && darkStyles.sentBadge]}>
                           <ActivityIndicator size={10} color="#fff" />
                         </View>
                       ) : null}
                     </View>
-                    <Text style={styles.buddyName} numberOfLines={1}>
+                    <Text style={[styles.buddyName, dark && darkStyles.buddyName]} numberOfLines={1}>
                       {done ? 'Sent ✓' : (b.name ?? 'Buddy')}
                     </Text>
                   </Pressable>
@@ -226,13 +231,14 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
             </ScrollView>
           )}
 
-          <Text style={styles.section}>Share inside AccountAbility</Text>
+          <Text style={[styles.section, dark && darkStyles.section]}>Share inside AccountAbility</Text>
           <View style={styles.internalRow}>
             <Pressable
               onPress={onAddToMyDay}
               disabled={!post?.image_url || post?.post_type === 'video' || addingToDay || addedToDay}
               style={({ pressed }) => [
                 styles.internalBtn,
+                dark && darkStyles.internalBtn,
                 (!post?.image_url || post?.post_type === 'video') && styles.disabled,
                 pressed && styles.pressed,
               ]}
@@ -250,17 +256,17 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
               }}
             >
               {addingToDay ? (
-                <ActivityIndicator size="small" color={colors.primary} />
+                <ActivityIndicator size="small" color={actionColor} />
               ) : (
-                <Ionicons name={addedToDay ? 'checkmark-circle' : 'add-circle-outline'} size={20} color={colors.primary} />
+                <Ionicons name={addedToDay ? 'checkmark-circle' : 'add-circle-outline'} size={20} color={actionColor} />
               )}
-              <Text style={styles.internalText}>{addedToDay ? 'Added' : 'My Day'}</Text>
+              <Text style={[styles.internalText, dark && darkStyles.internalText]}>{addedToDay ? 'Added' : 'My Day'}</Text>
             </Pressable>
           </View>
 
           {groups && groups.length > 0 ? (
             <>
-              <Text style={styles.section}>Share to a group</Text>
+              <Text style={[styles.section, dark && darkStyles.section]}>Share to a group</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupRow}>
                 {groups.map((group) => {
                   const done = sharedGroups.has(group.id);
@@ -269,13 +275,13 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
                       key={group.id}
                       onPress={() => onShareToGroup(group)}
                       disabled={done || sending === group.id}
-                      style={({ pressed }) => [styles.groupBtn, pressed && styles.pressed]}
+                      style={({ pressed }) => [styles.groupBtn, dark && darkStyles.groupBtn, pressed && styles.pressed]}
                       accessibilityRole="button"
                       accessibilityLabel={`Share to ${group.name}`}
                       accessibilityState={{ disabled: done || sending === group.id, busy: sending === group.id }}
                     >
-                      <Ionicons name={done ? 'checkmark-circle' : 'people-circle-outline'} size={22} color={done ? colors.success : colors.primary} />
-                      <Text style={styles.groupName} numberOfLines={1}>{done ? 'Shared' : group.name}</Text>
+                      <Ionicons name={done ? 'checkmark-circle' : 'people-circle-outline'} size={22} color={done ? (dark ? theme.status.success : colors.success) : actionColor} />
+                      <Text style={[styles.groupName, dark && darkStyles.groupName]} numberOfLines={1}>{done ? 'Shared' : group.name}</Text>
                     </Pressable>
                   );
                 })}
@@ -283,21 +289,21 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
             </>
           ) : null}
 
-          <Text style={styles.section}>Everywhere else</Text>
+          <Text style={[styles.section, dark && darkStyles.section]}>Everywhere else</Text>
           <Pressable
             onPress={onShareExternal}
             disabled={sharingExternal}
-            style={({ pressed }) => [styles.externalBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.externalBtn, dark && darkStyles.externalBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Share to other apps"
             accessibilityState={{ disabled: sharingExternal, busy: sharingExternal }}
           >
-            <Ionicons name="share-social" size={19} color="#fff" />
-            <Text style={styles.externalText}>Facebook, TikTok, WhatsApp & more…</Text>
+            <Ionicons name="share-social" size={19} color={actionInk} />
+            <Text style={[styles.externalText, dark && darkStyles.externalText]}>Facebook, TikTok, WhatsApp & more…</Text>
           </Pressable>
 
           <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
-            <Text style={styles.closeText}>Done</Text>
+            <Text style={[styles.closeText, dark && darkStyles.closeText]}>Done</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -358,7 +364,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.45 },
   groupRow: { gap: spacing.sm, paddingVertical: 2 },
   groupBtn: {
-    minHeight: 46,
+    minHeight: 48,
     maxWidth: 150,
     flexDirection: 'row',
     alignItems: 'center',
@@ -394,6 +400,33 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   externalText: { fontFamily: font.bold, fontSize: 14.5, color: '#fff' },
-  closeBtn: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  closeBtn: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
   closeText: { fontFamily: font.bold, fontSize: 14, color: colors.textMuted },
+});
+
+const theme = themeColors('dark');
+const darkStyles = StyleSheet.create({
+  sheet: { backgroundColor: theme.surface.card },
+  grabber: { backgroundColor: theme.border.subtle },
+  title: { color: theme.ink.primary },
+  section: { color: theme.ink.muted },
+  empty: { color: theme.ink.muted },
+  buddyName: { color: theme.ink.secondary },
+  internalBtn: {
+    backgroundColor: theme.surface.muted,
+    borderColor: theme.border.subtle,
+  },
+  internalText: { color: theme.ink.primary },
+  groupBtn: {
+    backgroundColor: theme.surface.muted,
+    borderColor: theme.border.subtle,
+  },
+  groupName: { color: theme.ink.secondary },
+  sentBadge: {
+    backgroundColor: theme.status.success,
+    borderColor: theme.surface.card,
+  },
+  externalBtn: { backgroundColor: theme.border.action },
+  externalText: { color: theme.ink.inverse },
+  closeText: { color: theme.ink.muted },
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -6,7 +6,16 @@ import { sendSupportMessage, type SupportKind } from '../support/api';
 import { CONTACT_EMAIL } from '../legal/content';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
-import { colors, contentMax, font, radius, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  contentMax,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 const KINDS: { key: SupportKind; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'support', label: 'Question', icon: 'help-buoy-outline' },
@@ -15,6 +24,9 @@ const KINDS: { key: SupportKind; label: string; icon: keyof typeof Ionicons.glyp
 ];
 
 export default function HelpScreen() {
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => helpPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [kind, setKind] = useState<SupportKind>('support');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -64,7 +76,7 @@ export default function HelpScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
               >
-                <Ionicons name={k.icon} size={14} color={on ? '#fff' : colors.textMuted} />
+                <Ionicons name={k.icon} size={14} color={on ? palette.onAction : palette.muted} />
                 <Text style={[styles.pillText, on && styles.pillTextOn]}>{k.label}</Text>
               </Pressable>
             );
@@ -74,7 +86,7 @@ export default function HelpScreen() {
         <TextInput
           style={styles.input}
           placeholder="Subject (optional)"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           value={subject}
           onChangeText={setSubject}
           maxLength={140}
@@ -86,7 +98,7 @@ export default function HelpScreen() {
               ? 'Describe the problem or the content you’re reporting…'
               : 'How can we help?'
           }
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           value={body}
           onChangeText={setBody}
           multiline
@@ -95,16 +107,28 @@ export default function HelpScreen() {
         <Button title="Send message" onPress={onSend} loading={busy} disabled={!body.trim()} />
 
         <Pressable onPress={emailUs} style={styles.emailRow} accessibilityRole="link">
-          <Ionicons name="mail-outline" size={16} color={colors.primary} />
+          <Ionicons name="mail-outline" size={16} color={palette.action} />
           <Text style={styles.emailText}>Prefer email? Write to {CONTACT_EMAIL}</Text>
         </Pressable>
       </View>
 
       {/* policies */}
       <View style={styles.card}>
-        <LinkRow icon="document-text-outline" label="Terms of Service" onPress={() => router.push('/legal/terms')} />
+        <LinkRow
+          icon="document-text-outline"
+          label="Terms of Service"
+          onPress={() => router.push('/legal/terms')}
+          styles={styles}
+          palette={palette}
+        />
         <View style={styles.divider} />
-        <LinkRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => router.push('/legal/privacy')} />
+        <LinkRow
+          icon="shield-checkmark-outline"
+          label="Privacy Policy"
+          onPress={() => router.push('/legal/privacy')}
+          styles={styles}
+          palette={palette}
+        />
       </View>
 
       <Text style={styles.foot}>
@@ -118,34 +142,54 @@ function LinkRow({
   icon,
   label,
   onPress,
+  styles,
+  palette,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
+  styles: ReturnType<typeof createStyles>;
+  palette: ReturnType<typeof helpPalette>;
 }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}>
-      <Ionicons name={icon} size={19} color={colors.primary} />
+      <Ionicons name={icon} size={19} color={palette.action} />
       <Text style={styles.linkLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={17} color={colors.textFaint} />
+      <Ionicons name="chevron-forward" size={17} color={palette.placeholder} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function helpPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
+    card: mode === 'light' ? legacyColors.card : theme.surface.card,
+    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = helpPalette(theme, mode);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
   scroll: { ...contentMax, padding: spacing.lg, gap: spacing.md, paddingBottom: 48 },
-  intro: { fontSize: 14.5, lineHeight: 21, fontFamily: font.regular, color: colors.textMuted },
+  intro: { fontSize: 14.5, lineHeight: 21, fontFamily: font.regular, color: palette.muted },
   pressed: { opacity: 0.7 },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     padding: spacing.lg,
     gap: spacing.md,
   },
-  cardTitle: { fontSize: 16, fontFamily: font.bold, color: colors.text },
+  cardTitle: { fontSize: 16, fontFamily: font.bold, color: palette.ink },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {
     flexDirection: 'row',
@@ -155,27 +199,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: palette.border,
+    backgroundColor: palette.field,
+    minHeight: spacing.touch,
   },
-  pillOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pillText: { fontSize: 13, fontFamily: font.semibold, color: colors.textMuted },
-  pillTextOn: { color: '#fff' },
+  pillOn: { backgroundColor: palette.action, borderColor: palette.action },
+  pillText: { fontSize: 13, fontFamily: font.semibold, color: palette.muted },
+  pillTextOn: { color: palette.onAction },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
     padding: 13,
     fontSize: 15,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: palette.ink,
+    backgroundColor: palette.field,
+    minHeight: spacing.touch,
   },
   textarea: { minHeight: 110, textAlignVertical: 'top' },
-  emailRow: { flexDirection: 'row', alignItems: 'center', gap: 7, justifyContent: 'center', paddingTop: 2 },
-  emailText: { fontSize: 13.5, fontFamily: font.medium, color: colors.primary },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 12 },
-  linkLabel: { flex: 1, fontSize: 15.5, fontFamily: font.semibold, color: colors.text },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  foot: { fontSize: 12.5, lineHeight: 18, fontFamily: font.regular, color: colors.textFaint, textAlign: 'center', marginTop: 4 },
-});
+  emailRow: { flexDirection: 'row', alignItems: 'center', gap: 7, justifyContent: 'center', paddingTop: 2, minHeight: spacing.touch },
+  emailText: { fontSize: 13.5, fontFamily: font.medium, color: palette.action },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 12, minHeight: spacing.touch },
+  linkLabel: { flex: 1, fontSize: 15.5, fontFamily: font.semibold, color: palette.ink },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: palette.border },
+  foot: { fontSize: 12.5, lineHeight: 18, fontFamily: font.regular, color: palette.placeholder, textAlign: 'center', marginTop: 4 },
+  });
+}

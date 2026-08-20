@@ -10,7 +10,8 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from './Avatar';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { colors, font, radius, spacing, themeColors } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -43,6 +44,8 @@ export function openPostMenu(opts: Options): void {
 }
 
 export function PostMenuHost() {
+  const { mode } = useAppTheme();
+  const dark = mode === 'dark';
   const [opts, setOpts] = useState<Options | null>(null);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -82,60 +85,71 @@ export function PostMenuHost() {
         <Pressable
           style={[
             styles.sheet,
+            dark && darkStyles.sheet,
             wide
               ? styles.sheetWide
               : { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm },
           ]}
           onPress={(e) => e.stopPropagation()}
         >
-          {!wide ? <View style={styles.handle} /> : null}
+          {!wide ? <View style={[styles.handle, dark && darkStyles.handle]} /> : null}
 
           {/* which post this is about */}
           {preview ? (
             <View style={styles.preview}>
               <Avatar url={preview.avatar} name={preview.name} size={34} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.previewName} numberOfLines={1}>
+                <Text style={[styles.previewName, dark && darkStyles.previewName]} numberOfLines={1}>
                   {preview.name ?? 'Post'}
                 </Text>
                 {excerpt ? (
-                  <Text style={styles.previewBody} numberOfLines={1}>
+                  <Text style={[styles.previewBody, dark && darkStyles.previewBody]} numberOfLines={1}>
                     {excerpt}
                   </Text>
                 ) : (
-                  <Text style={styles.previewBody}>Photo post</Text>
+                  <Text style={[styles.previewBody, dark && darkStyles.previewBody]}>Photo post</Text>
                 )}
               </View>
             </View>
           ) : null}
 
-          <View style={styles.group}>
+          <View style={[styles.group, dark && darkStyles.group]}>
             {opts?.options.map((o, i) => (
               <View key={o.label}>
-                {i > 0 ? <View style={styles.divider} /> : null}
+                {i > 0 ? <View style={[styles.divider, dark && darkStyles.divider]} /> : null}
                 <Pressable
                   onPress={() => pick(o)}
-                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                  style={({ pressed }) => [styles.row, pressed && (dark ? darkStyles.rowPressed : styles.rowPressed)]}
                   accessibilityRole="button"
                   accessibilityLabel={o.label}
                   accessibilityHint={o.subtitle}
                 >
                   <View
-                    style={[styles.rowIcon, o.destructive ? styles.iconDanger : styles.iconPlain]}
+                    style={[
+                      styles.rowIcon,
+                      o.destructive ? styles.iconDanger : styles.iconPlain,
+                      dark && (o.destructive ? darkStyles.iconDanger : darkStyles.iconPlain),
+                    ]}
                   >
                     <Ionicons
                       name={o.icon}
                       size={17}
-                      color={o.destructive ? colors.danger : colors.textSecondary}
+                      color={o.destructive
+                        ? (dark ? theme.status.danger : colors.danger)
+                        : (dark ? theme.ink.secondary : colors.textSecondary)}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.rowLabel, o.destructive && { color: colors.danger }]}>
+                    <Text style={[
+                      styles.rowLabel,
+                      dark && darkStyles.rowLabel,
+                      o.destructive && { color: dark ? theme.status.danger : colors.danger },
+                    ]}>
                       {o.label}
                     </Text>
-                    {o.subtitle ? <Text style={styles.rowSub}>{o.subtitle}</Text> : null}
+                    {o.subtitle ? <Text style={[styles.rowSub, dark && darkStyles.rowSub]}>{o.subtitle}</Text> : null}
                   </View>
-                  <Ionicons name="chevron-forward" size={15} color={colors.textFaint} />
+                  <Ionicons name="chevron-forward" size={15} color={dark ? theme.ink.muted : colors.textFaint} />
                 </Pressable>
               </View>
             ))}
@@ -143,11 +157,11 @@ export function PostMenuHost() {
 
           <Pressable
             onPress={close}
-            style={({ pressed }) => [styles.cancel, pressed && { opacity: 0.75 }]}
+            style={({ pressed }) => [styles.cancel, dark && darkStyles.cancel, pressed && { opacity: 0.75 }]}
             accessibilityRole="button"
             accessibilityLabel="Cancel"
           >
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={[styles.cancelText, dark && darkStyles.cancelText]}>Cancel</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -227,4 +241,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   cancelText: { fontFamily: font.bold, fontSize: 15, color: colors.textSecondary },
+});
+
+const theme = themeColors('dark');
+const darkStyles = StyleSheet.create({
+  sheet: { backgroundColor: theme.surface.card },
+  handle: { backgroundColor: theme.border.subtle },
+  previewName: { color: theme.ink.primary },
+  previewBody: { color: theme.ink.muted },
+  group: {
+    backgroundColor: theme.surface.muted,
+    borderColor: theme.border.subtle,
+  },
+  divider: { backgroundColor: theme.border.subtle },
+  rowPressed: { backgroundColor: theme.interaction.pressedOverlay },
+  iconPlain: { backgroundColor: theme.surface.raised },
+  iconDanger: { backgroundColor: theme.status.dangerSoft },
+  rowLabel: { color: theme.ink.primary },
+  rowSub: { color: theme.ink.muted },
+  cancel: { backgroundColor: theme.surface.raised },
+  cancelText: { color: theme.ink.secondary },
 });

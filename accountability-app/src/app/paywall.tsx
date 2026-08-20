@@ -1,5 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -11,7 +20,16 @@ import {
 } from '../pro/billingAdapter';
 import { PRO_PRICING } from '../pro/monetization';
 import { Button } from '../ui/Button';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  colors,
+  font,
+  radius,
+  shadow,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
 
 const BENEFITS = [
   { icon: 'trending-up-outline' as const, text: 'Unlimited history + advanced insights' },
@@ -24,6 +42,9 @@ const BENEFITS = [
 
 export default function Paywall() {
   const { isPro, refresh } = useIsPro();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => paywallPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const [plan, setPlan] = useState<ProPlan>('yearly');
   const [availability, setAvailability] = useState<BillingAvailability | null>(null);
   const [busy, setBusy] = useState<'purchase' | 'restore' | null>(null);
@@ -117,9 +138,9 @@ export default function Paywall() {
       <View style={styles.card}>
         {BENEFITS.map((benefit) => (
           <View key={benefit.text} style={styles.benefitRow}>
-            <Ionicons name={benefit.icon} size={18} color={colors.pro} />
+            <Ionicons name={benefit.icon} size={18} color={palette.proAccent} />
             <Text style={styles.benefit}>{benefit.text}</Text>
-            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <Ionicons name="checkmark-circle" size={18} color={palette.success} />
           </View>
         ))}
       </View>
@@ -146,7 +167,7 @@ export default function Paywall() {
 
       {isPro ? (
         <View style={styles.proActive}>
-          <Ionicons name="star" size={17} color={colors.pro} />
+          <Ionicons name="star" size={17} color={palette.proAccent} />
           <Text style={styles.proActiveText}>You&apos;re on Pro</Text>
         </View>
       ) : (
@@ -165,7 +186,7 @@ export default function Paywall() {
             />
           ) : (
             <View style={styles.unavailable} accessibilityRole="alert">
-              <Ionicons name="construct-outline" size={18} color={colors.pro} />
+              <Ionicons name="construct-outline" size={18} color={palette.proAccent} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.unavailableTitle}>
                   {availability?.message ?? 'Checking store availability…'}
@@ -178,12 +199,11 @@ export default function Paywall() {
               </View>
             </View>
           )}
-          <Button
+          <PaywallRestoreButton
             title="Restore purchases"
             onPress={onRestore}
-            loading={busy === 'restore'}
+            busy={busy === 'restore'}
             disabled={!!busy}
-            variant="ghost"
           />
         </>
       )}
@@ -210,6 +230,9 @@ function PlanCard({
   badge?: string;
   onPress: () => void;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -234,12 +257,84 @@ function PlanCard({
   );
 }
 
-const styles = StyleSheet.create({
+function PaywallRestoreButton({
+  title,
+  onPress,
+  busy,
+  disabled,
+}: {
+  title: string;
+  onPress: () => void;
+  busy: boolean;
+  disabled: boolean;
+}) {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const palette = useMemo(() => paywallPalette(theme, mode), [theme, mode]);
+  const [scale] = useState(() => new Animated.Value(1));
+  const inactive = busy || disabled;
+
+  function pressTo(value: number) {
+    Animated.spring(scale, {
+      toValue: value,
+      speed: 40,
+      bounciness: value === 1 ? 8 : 0,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  return (
+    <Animated.View style={[styles.restoreWrap, { transform: [{ scale }] }]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => !inactive && pressTo(0.96)}
+        onPressOut={() => pressTo(1)}
+        disabled={inactive}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ busy, disabled: inactive }}
+        style={({ pressed }) => [
+          styles.restoreButton,
+          pressed && !inactive && styles.restorePressed,
+          inactive && styles.restoreDisabled,
+        ]}
+      >
+        {busy ? (
+          <ActivityIndicator color={palette.restoreText} />
+        ) : (
+          <Text style={styles.restoreText}>{title}</Text>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function paywallPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
+    surface: mode === 'light' ? colors.card : theme.surface.card,
+    border: mode === 'light' ? colors.border : theme.border.subtle,
+    ink: mode === 'light' ? colors.text : theme.ink.primary,
+    muted: mode === 'light' ? colors.textMuted : theme.ink.muted,
+    faint: mode === 'light' ? colors.textFaint : theme.ink.muted,
+    proAccent: mode === 'light' ? colors.pro : '#C4B5FD',
+    proSurface: mode === 'light' ? colors.proSoft : theme.surface.muted,
+    success: mode === 'light' ? colors.success : theme.status.success,
+    restoreSurface: mode === 'light' ? colors.surface : theme.surface.muted,
+    restoreText: mode === 'light' ? colors.text : theme.ink.primary,
+    cardShadow: mode === 'light' ? shadow.card.shadowColor : theme.surface.canvas,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const palette = paywallPalette(theme, mode);
+
+  return StyleSheet.create({
   container: {
     padding: spacing.xxl,
     paddingBottom: 48,
     gap: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: palette.canvas,
   },
   pressed: { opacity: 0.8 },
   heroWrap: {
@@ -267,31 +362,32 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontFamily: font.extrabold, color: '#fff' },
   subtitle: { color: '#ede9fe', fontFamily: font.medium, fontSize: 15 },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     gap: spacing.md,
     ...shadow.card,
+    shadowColor: palette.cardShadow,
   },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  benefit: { fontSize: 15, fontFamily: font.medium, color: colors.text, flex: 1 },
+  benefit: { fontSize: 15, fontFamily: font.medium, color: palette.ink, flex: 1 },
   prices: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   price: {
     flex: 1,
     minHeight: 112,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     paddingTop: 18,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
   },
-  priceSelected: { borderColor: colors.pro, backgroundColor: colors.proSoft },
+  priceSelected: { borderColor: palette.proAccent, backgroundColor: palette.proSurface },
   bestBadge: {
     position: 'absolute',
     top: -10,
@@ -301,48 +397,64 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   bestBadgeText: { color: '#fff', fontSize: 10, fontFamily: font.extrabold, letterSpacing: 0.6 },
-  priceLabel: { fontFamily: font.bold, color: colors.text },
-  priceValue: { fontSize: 24, fontFamily: font.extrabold, color: colors.text },
-  priceNote: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12 },
+  priceLabel: { fontFamily: font.bold, color: palette.ink },
+  priceValue: { fontSize: 24, fontFamily: font.extrabold, color: palette.ink },
+  priceNote: { color: palette.muted, fontFamily: font.medium, fontSize: 12 },
   cta: { marginTop: spacing.sm, backgroundColor: colors.pro },
   proActive: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.proSoft,
-    borderColor: colors.pro,
+    backgroundColor: palette.proSurface,
+    borderColor: palette.proAccent,
     borderWidth: 1,
     borderRadius: radius.md,
     padding: spacing.lg,
     alignItems: 'center',
     marginTop: spacing.sm,
   },
-  proActiveText: { fontSize: 16, fontFamily: font.bold, color: colors.pro },
+  proActiveText: { fontSize: 16, fontFamily: font.bold, color: palette.proAccent },
   unavailable: {
     minHeight: 62,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.proSoft,
-    borderColor: colors.pro,
+    backgroundColor: palette.proSurface,
+    borderColor: palette.proAccent,
     borderWidth: 1,
     borderRadius: radius.md,
     padding: spacing.md,
     marginTop: spacing.sm,
   },
-  unavailableTitle: { fontSize: 14, fontFamily: font.bold, color: colors.pro },
+  unavailableTitle: { fontSize: 14, fontFamily: font.bold, color: palette.proAccent },
   unavailableDetail: {
-    color: colors.textMuted,
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 12,
     lineHeight: 17,
     marginTop: 3,
   },
   devNote: {
-    color: colors.textFaint,
+    color: palette.faint,
     fontFamily: font.regular,
     fontSize: 12,
     marginTop: spacing.md,
     textAlign: 'center',
   },
-});
+  restoreWrap: { alignSelf: 'stretch' },
+  restoreButton: {
+    minHeight: spacing.touch,
+    borderRadius: radius.md,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: palette.restoreSurface,
+  },
+  restoreText: { color: palette.restoreText, fontFamily: font.bold, fontSize: 16 },
+  restorePressed: { opacity: 0.92 },
+  restoreDisabled: { opacity: 0.5 },
+  });
+};
