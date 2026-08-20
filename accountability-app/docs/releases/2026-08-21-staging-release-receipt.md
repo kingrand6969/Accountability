@@ -43,6 +43,10 @@ release, or the challenge participant privacy finalizer.**
   painted app content; Trophy Case, Compete, and Menu were verified by
   screenshots because their continuous animation prevents UIAutomator from
   reaching an idle state.
+- A physical Android responsive-text sweep at 130% covered Feed, Activity,
+  Run, Messages, Compete, and Menu. Primary copy and actions remained readable
+  and reachable; long competition and menu labels wrapped instead of clipping.
+  The device font scale was restored from 1.30 to its original 1.0 afterward.
 
 ## Goal coverage
 
@@ -81,6 +85,10 @@ release, or the challenge participant privacy finalizer.**
   current member is labelled `You` when profile metadata is unavailable, and
   visible Close exits an untouched post without a confirmation. No post was
   published during this canary.
+- Responsive text: PASS for the supported Android portrait presentation. Feed,
+  Activity, Run, Messages, Compete, and Menu were exercised at 130% system text;
+  controls stayed reachable and primary information did not clip. The app is
+  intentionally portrait-locked, so landscape is not a supported presentation.
 - Private post-video and voice media: NOT DIRECTLY EXERCISED. A read-only
   staging inventory after the canary found zero video posts and zero voice
   encouragements, so there was no legitimate playback target. No test content
