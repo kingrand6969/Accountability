@@ -10,7 +10,6 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/build/react-navigation/core/usePreventRemove';
@@ -52,6 +51,7 @@ import { PublicBuddyCardFace } from '../buddy/PublicBuddyCardFace';
 import { supabase } from '../lib/supabase';
 import { getMyProfile } from '../profiles/api';
 import { Button } from '../ui/Button';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { showToast } from '../ui/Toast';
 import { font, radius, shadow, spacing } from '../ui/theme';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
@@ -86,7 +86,7 @@ type MedalSnapshot = { id: string; tier: number };
 export default function BuddyCardEdit() {
   const router = useRouter();
   const navigation = useNavigation();
-  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const { mode: scheme } = useAppTheme();
   const editorPalette = resolveBuddyCardPalette('polar_blue', scheme);
 
   const lifecycleRef = useRef(createBuddyCardEditorLoadLifecycle());

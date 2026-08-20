@@ -112,7 +112,10 @@ describe('cold-link route access contract', () => {
   test('selects readable system-bar ink for light and dark primary destinations', () => {
     const statusBarStyleForPath = (
       routeAccessContract as typeof routeAccessContract & {
-        statusBarStyleForPath?: (path: string) => 'dark' | 'light';
+        statusBarStyleForPath?: (
+          path: string,
+          mode?: 'light' | 'dark',
+        ) => 'dark' | 'light';
       }
     ).statusBarStyleForPath;
 
@@ -120,7 +123,7 @@ describe('cold-link route access contract', () => {
     expect(statusBarStyleForPath?.('/')).toBe('dark');
     expect(statusBarStyleForPath?.('/finance')).toBe('dark');
     expect(statusBarStyleForPath?.('/messages')).toBe('dark');
-    expect(statusBarStyleForPath?.('/activity')).toBe('light');
+    expect(statusBarStyleForPath?.('/activity')).toBe('dark');
     expect(statusBarStyleForPath?.('/run')).toBe('light');
     expect(statusBarStyleForPath?.('/body')).toBe('dark');
     expect(statusBarStyleForPath?.('/', 'dark')).toBe('light');

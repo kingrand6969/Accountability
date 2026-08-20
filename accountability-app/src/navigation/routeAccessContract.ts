@@ -54,7 +54,7 @@ export function statusBarStyleForPath(
   path: string,
   mode: AppThemeMode = 'light',
 ): 'dark' | 'light' {
-  return mode === 'dark' || path === '/activity' || path === '/run'
+  return mode === 'dark' || path === '/run'
     ? 'light'
     : 'dark';
 }

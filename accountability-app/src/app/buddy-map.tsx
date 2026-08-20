@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +20,7 @@ import type { MapMarker } from '../ui/osmHtml';
 import { contentMaxWidth } from '../ui/responsive';
 import { font, radius, spacing } from '../ui/theme';
 import { showToast } from '../ui/Toast';
-import { INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
+import { useCompetitionTheme, type CompetitionPalette } from '../compete/CompeteUI';
 import {
   getBuddyLocations,
   pushLiveLocation,
@@ -47,6 +47,8 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 }
 
 export default function BuddyMap() {
+  const { palette } = useCompetitionTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -80,7 +82,7 @@ export default function BuddyMap() {
     lat: r.lat,
     lng: r.lng,
     label: r.user_id === uid ? 'You' : r.name?.trim() || 'Buddy',
-    color: r.user_id === uid ? '#2563eb' : ACCENT,
+    color: r.user_id === uid ? palette.accent : '#7D6E9D',
   }));
 
   async function onToggleShare(next: boolean) {
@@ -119,19 +121,19 @@ export default function BuddyMap() {
         <GlassCard style={styles.card}>
           <View style={styles.shareRow}>
             <View style={styles.iconWrap}>
-              <Ionicons name="navigate" size={20} color={ACCENT} />
+              <Ionicons name="navigate" size={20} color={palette.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.shareTitle}>Share my live location</Text>
               <Text style={styles.shareSub}>Only your accepted buddies can see it. Turn off any time.</Text>
             </View>
             {working ? (
-              <ActivityIndicator color={ACCENT} />
+              <ActivityIndicator color={palette.accent} />
             ) : (
               <Switch
                 value={sharing}
                 onValueChange={onToggleShare}
-                trackColor={{ true: ACCENT, false: 'rgba(30,27,75,0.2)' }}
+                trackColor={{ true: palette.accent, false: palette.inputBorder }}
               />
             )}
           </View>
@@ -142,7 +144,7 @@ export default function BuddyMap() {
         <Text style={styles.section}>Buddies sharing now</Text>
 
         {loading ? (
-          <ActivityIndicator color={ACCENT} style={{ marginTop: 24 }} />
+          <ActivityIndicator color={palette.accent} style={{ marginTop: 24 }} />
         ) : buddies.length === 0 ? (
           <GlassCard style={styles.card}>
             <Text style={styles.empty}>
@@ -186,7 +188,7 @@ export default function BuddyMap() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   card: {},
@@ -194,26 +196,26 @@ const styles = StyleSheet.create({
     height: 280,
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.segmentBorder,
   },
   shareRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
   iconWrap: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: palette.subtleAccent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shareTitle: { fontFamily: font.bold, fontSize: 15, color: INK },
-  shareSub: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, marginTop: 2, lineHeight: 16 },
-  section: { fontFamily: font.bold, fontSize: 15, color: INK, marginTop: 4, marginLeft: 4 },
+  shareTitle: { fontFamily: font.bold, fontSize: 15, color: palette.ink },
+  shareSub: { fontFamily: font.medium, fontSize: 12, color: palette.inkSoft, marginTop: 2, lineHeight: 16 },
+  section: { fontFamily: font.bold, fontSize: 15, color: palette.ink, marginTop: 4, marginLeft: 4 },
   listPad: { padding: spacing.sm, gap: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 8, paddingHorizontal: 4 },
-  name: { fontFamily: font.bold, fontSize: 14.5, color: INK },
-  rowSub: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, marginTop: 1 },
-  dist: { fontFamily: font.extrabold, fontSize: 14, color: ACCENT },
-  distHint: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, paddingHorizontal: 4, paddingBottom: 6, lineHeight: 16 },
-  empty: { fontFamily: font.medium, fontSize: 13.5, color: INK_SOFT, textAlign: 'center', padding: spacing.lg, lineHeight: 19 },
-  note: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, textAlign: 'center', lineHeight: 17, marginTop: 4 },
+  name: { fontFamily: font.bold, fontSize: 14.5, color: palette.ink },
+  rowSub: { fontFamily: font.medium, fontSize: 12, color: palette.inkSoft, marginTop: 1 },
+  dist: { fontFamily: font.extrabold, fontSize: 14, color: palette.accent },
+  distHint: { fontFamily: font.medium, fontSize: 12, color: palette.inkSoft, paddingHorizontal: 4, paddingBottom: 6, lineHeight: 16 },
+  empty: { fontFamily: font.medium, fontSize: 13.5, color: palette.inkSoft, textAlign: 'center', padding: spacing.lg, lineHeight: 19 },
+  note: { fontFamily: font.medium, fontSize: 12, color: palette.inkSoft, textAlign: 'center', lineHeight: 17, marginTop: 4 },
 });

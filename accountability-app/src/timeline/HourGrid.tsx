@@ -1,8 +1,16 @@
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Pressable, Text, View } from 'react-native';
 import { TimelineCard } from './TimelineCard';
 import { formatHourLabel } from './format';
 import type { TimelineItem } from './types';
-import { colors, font, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
@@ -15,6 +23,8 @@ export function HourGrid({
   onPressHour: (hour: number) => void;
   onDelete: (item: TimelineItem) => void;
 }) {
+  const { colors: theme, mode } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
   const byHour: Record<number, TimelineItem[]> = {};
   for (const item of items) {
     const h = new Date(item.starts_at).getHours();
@@ -30,6 +40,7 @@ export function HourGrid({
             key={h}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             onPress={() => onPressHour(h)}
+            accessibilityRole="button"
             accessibilityLabel={`Add at ${formatHourLabel(h)}`}
           >
             <Text style={styles.hour}>{formatHourLabel(h)}</Text>
@@ -51,13 +62,13 @@ export function HourGrid({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
   content: { padding: spacing.md, paddingBottom: 120 },
   row: { flexDirection: 'row', gap: 10, minHeight: 48, paddingVertical: 4 },
   pressed: { opacity: 0.7 },
   hour: {
     width: 56,
-    color: colors.textFaint,
+    color: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
     fontSize: 13,
     fontFamily: font.semibold,
     paddingTop: 6,
@@ -65,7 +76,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, justifyContent: 'center' },
   emptyLine: {
     height: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: mode === 'light' ? legacyColors.surface : theme.border.subtle,
     marginVertical: 16,
   },
   items: { gap: spacing.sm },

@@ -8,6 +8,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
+import { Appearance, Platform } from 'react-native';
 
 import {
   resolveAppThemeMode,
@@ -49,6 +50,14 @@ type AppThemeContextValue = {
 
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
+function syncNativeColorScheme(mode: AppThemeMode) {
+  if (Platform.OS === 'web') return;
+  const setter = (Appearance as typeof Appearance & {
+    setColorScheme?: (scheme: AppThemeMode) => void;
+  }).setColorScheme;
+  if (typeof setter === 'function') setter.call(Appearance, mode);
+}
+
 /**
  * Manual appearance preference. It intentionally renders Light immediately,
  * then hydrates in the background so theme storage can never block startup.
@@ -56,6 +65,10 @@ const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 export function AppThemeProvider({ children }: PropsWithChildren) {
   const [mode, setModeState] = useState<AppThemeMode>('light');
   const selectionRevision = useRef(0);
+
+  useEffect(() => {
+    syncNativeColorScheme(mode);
+  }, [mode]);
 
   useEffect(() => {
     let active = true;

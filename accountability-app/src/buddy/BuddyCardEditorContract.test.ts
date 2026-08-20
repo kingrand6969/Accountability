@@ -47,6 +47,14 @@ beforeEach(() => {
 });
 
 describe('Buddy Card editor presentation controls', () => {
+  test('follows the app manual appearance without changing the approved card palette', () => {
+    expect(editorSource).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
+    expect(editorSource).toContain('const { mode: scheme } = useAppTheme();');
+    expect(editorSource).not.toContain('useColorScheme');
+    expect(editorSource).toContain("resolveBuddyCardPalette('polar_blue', scheme)");
+    expect(editorSource).toContain('<PublicBuddyCardFace');
+  });
+
   test('uses exactly the four accessible palette radios and the reviewed palette tokens', () => {
     expect(editorSource).toContain('BUDDY_CARD_PALETTE_KEYS.map');
     expect(editorSource).toContain('accessibilityRole="radio"');

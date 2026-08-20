@@ -100,8 +100,9 @@ describe('complete Medals and Challenges gallery contract', () => {
   });
 
   test('offers accessible 48-point medal, retry, and challenge actions in both app schemes', () => {
-    expect(gallerySource).toContain('useColorScheme');
-    expect(gallerySource).toContain("=== 'dark' ? 'dark' : 'light'");
+    expect(gallerySource).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
+    expect(gallerySource).toContain('const { mode: scheme } = useAppTheme();');
+    expect(gallerySource).not.toContain('useColorScheme');
     expect(gallerySource).toContain('minHeight: 48');
     expect(gallerySource).toContain('accessibilityRole="button"');
     expect(gallerySource).toContain('accessibilityLabel={`Open challenge ${item.challenge.title}`}');

@@ -5,7 +5,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMetrics } from '../achievements/api';
 import type { Metrics } from '../achievements/catalog';
-import { colors, font, spacing } from '../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  spacing,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { EditorialBackdrop } from './EditorialBackdrop';
 import { JourneyTabs } from './JourneyTabs';
 import { listJourneyHistory, pillarActiveDays } from './data';
@@ -36,6 +43,9 @@ const MILESTONES = [
 export default function JourneyPathScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => pathPalette(theme, mode), [mode, theme]);
+  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
   const [metrics, setMetrics] = useState<Metrics>(ZERO);
   const [historyItems, setHistoryItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,7 +102,7 @@ export default function JourneyPathScreen() {
             accessibilityRole="button"
             accessibilityLabel="Journey options"
           >
-            <Ionicons name="ellipsis-horizontal" size={22} color={colors.navy} />
+            <Ionicons name="ellipsis-horizontal" size={22} color={palette.ink} />
           </Pressable>
         </View>
         <JourneyTabs active="path" />
@@ -105,10 +115,11 @@ export default function JourneyPathScreen() {
                 key={item.key}
                 onPress={() => setFilter(item.key)}
                 style={({ pressed }) => [styles.filter, selected && styles.filterSelected, pressed && styles.pressed]}
+                hitSlop={{ top: 2, bottom: 2 }}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
               >
-                <Ionicons name={item.icon} size={15} color={selected ? '#FFFFFF' : item.color} />
+                <Ionicons name={item.icon} size={15} color={selected ? palette.onAction : item.color} />
                 <Text style={[styles.filterText, selected && styles.filterTextSelected]}>{item.label}</Text>
               </Pressable>
             );
@@ -116,10 +127,10 @@ export default function JourneyPathScreen() {
         </ScrollView>
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={styles.loader} />
+          <ActivityIndicator color={palette.action} style={styles.loader} />
         ) : error ? (
           <View style={styles.errorCard}>
-            <Ionicons name="cloud-offline-outline" size={21} color={colors.primary} />
+            <Ionicons name="cloud-offline-outline" size={21} color={palette.action} />
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : (
@@ -140,7 +151,7 @@ export default function JourneyPathScreen() {
                     <Ionicons
                       name={current ? 'people' : milestone.icon}
                       size={current ? 24 : 20}
-                      color={reached ? '#FFFFFF' : '#766E61'}
+                      color={current ? palette.onAction : reached ? palette.medalReachedInk : palette.medalInk}
                     />
                   </View>
                   <View style={styles.copy} />
@@ -186,7 +197,7 @@ export default function JourneyPathScreen() {
           accessibilityRole="button"
           accessibilityLabel="Open medals and challenges"
         >
-          <Ionicons name="trophy-outline" size={18} color={colors.primary} />
+          <Ionicons name="trophy-outline" size={18} color={palette.action} />
           <Text style={styles.trophyText}>Medals and challenges grow alongside this path</Text>
         </Pressable>
           </>
@@ -196,43 +207,75 @@ export default function JourneyPathScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.cream },
+function pathPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? legacyColors.cream : theme.surface.canvas,
+    ink: mode === 'light' ? legacyColors.navy : theme.ink.primary,
+    inkSoft: mode === 'light' ? legacyColors.inkSoft : theme.ink.secondary,
+    mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
+    border: mode === 'light' ? 'rgba(8,26,58,0.13)' : theme.border.subtle,
+    filterSurface: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
+    errorSurface: mode === 'light' ? '#FFFFFF' : theme.status.dangerSoft,
+    errorBorder: mode === 'light' ? '#F3B4B4' : theme.border.danger,
+    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
+    pathRail: mode === 'light' ? 'rgba(106,104,97,0.25)' : theme.border.strong,
+    medalSurface: mode === 'light' ? '#D8D2C4' : theme.surface.muted,
+    medalBorder: mode === 'light' ? '#EBE5D8' : theme.border.strong,
+    medalInk: mode === 'light' ? '#766E61' : theme.ink.secondary,
+    medalReached: mode === 'light' ? '#87725A' : theme.surface.raised,
+    medalReachedBorder: mode === 'light' ? '#C9B697' : theme.border.strong,
+    medalReachedInk: mode === 'light' ? '#FFFFFF' : theme.ink.primary,
+    currentBorder: mode === 'light' ? '#A9C5FF' : theme.border.action,
+    currentSurface: mode === 'light' ? '#FFFFFF' : theme.surface.raised,
+    currentBorderSoft: mode === 'light' ? 'rgba(8,26,58,0.12)' : theme.border.subtle,
+    progressSurface: mode === 'light' ? 'rgba(255,255,255,0.72)' : theme.surface.card,
+    progressBorder: mode === 'light' ? 'rgba(8,26,58,0.10)' : theme.border.subtle,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const palette = pathPalette(theme, mode);
+
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: spacing.lg, paddingBottom: 120 },
   headingRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { color: colors.navy, fontFamily: 'Georgia', fontSize: 29, lineHeight: 34 },
-  subtitle: { color: colors.inkSoft, fontFamily: font.medium, fontSize: 12.5 },
+  title: { color: palette.ink, fontFamily: 'Georgia', fontSize: 29, lineHeight: 34 },
+  subtitle: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 12.5 },
   more: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.68 },
   filters: { paddingVertical: 14, gap: 8 },
-  filter: { minHeight: 44, paddingHorizontal: 15, borderRadius: 22, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(8,26,58,0.13)', backgroundColor: 'rgba(255,255,255,0.62)' },
-  filterSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterText: { color: colors.navy, fontFamily: font.bold, fontSize: 12 },
-  filterTextSelected: { color: '#FFFFFF' },
+  filter: { minHeight: 44, paddingHorizontal: 15, borderRadius: 22, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.filterSurface },
+  filterSelected: { backgroundColor: palette.action, borderColor: palette.action },
+  filterText: { color: palette.ink, fontFamily: font.bold, fontSize: 12 },
+  filterTextSelected: { color: palette.onAction },
   loader: { marginTop: 120 },
-  errorCard: { minHeight: 82, marginTop: 32, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F3B4B4', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  errorText: { flex: 1, color: colors.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
+  errorCard: { minHeight: 82, marginTop: 32, borderRadius: 14, backgroundColor: palette.errorSurface, borderWidth: 1, borderColor: palette.errorBorder, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  errorText: { flex: 1, color: palette.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
   path: { minHeight: 570, position: 'relative', paddingVertical: 16 },
-  pathRail: { position: 'absolute', top: 28, bottom: 28, left: '50%', width: 5, marginLeft: -2.5, borderRadius: 3, backgroundColor: 'rgba(106,104,97,0.25)', transform: [{ rotate: '2deg' }] },
-  pathProgress: { position: 'absolute', top: 28, left: '50%', width: 5, marginLeft: -2.5, borderRadius: 3, backgroundColor: colors.primary },
+  pathRail: { position: 'absolute', top: 28, bottom: 28, left: '50%', width: 5, marginLeft: -2.5, borderRadius: 3, backgroundColor: palette.pathRail, transform: [{ rotate: '2deg' }] },
+  pathProgress: { position: 'absolute', top: 28, left: '50%', width: 5, marginLeft: -2.5, borderRadius: 3, backgroundColor: palette.action },
   milestoneRow: { flex: 1, minHeight: 104, flexDirection: 'row', alignItems: 'center' },
   copy: { flex: 1, paddingHorizontal: 12 },
   copyRight: { alignItems: 'flex-end' },
-  milestoneShort: { color: colors.navy, fontFamily: 'Georgia', fontSize: 19 },
-  milestoneLabel: { color: colors.inkSoft, fontFamily: font.medium, fontSize: 11, marginTop: 2 },
-  medal: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#D8D2C4', borderWidth: 4, borderColor: '#EBE5D8', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  medalReached: { backgroundColor: '#87725A', borderColor: '#C9B697' },
-  medalCurrent: { width: 66, height: 66, borderRadius: 33, backgroundColor: colors.primary, borderColor: '#A9C5FF' },
-  currentBadge: { position: 'absolute', top: 212, left: '56%', backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(8,26,58,0.12)', paddingHorizontal: 10, paddingVertical: 7 },
-  currentBadgeLabel: { color: colors.textMuted, fontFamily: font.bold, fontSize: 8.5, letterSpacing: 1 },
-  currentBadgeValue: { color: colors.primary, fontFamily: font.extrabold, fontSize: 14, marginTop: 1 },
-  progressCard: { minHeight: 66, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(8,26,58,0.10)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  progressLabel: { color: colors.textMuted, fontFamily: font.bold, fontSize: 9, letterSpacing: 1 },
-  progressTitle: { color: colors.navy, fontFamily: 'Georgia', fontSize: 19, marginTop: 1 },
-  progressRemaining: { color: colors.inkSoft, fontFamily: font.medium, fontSize: 12 },
-  measureNote: { color: colors.textMuted, fontFamily: font.regular, fontSize: 10.5, lineHeight: 15, textAlign: 'center', marginTop: 6 },
-  cta: { minHeight: 52, marginTop: 14, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  ctaText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 15 },
+  milestoneShort: { color: palette.ink, fontFamily: 'Georgia', fontSize: 19 },
+  milestoneLabel: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 11, marginTop: 2 },
+  medal: { width: 58, height: 58, borderRadius: 29, backgroundColor: palette.medalSurface, borderWidth: 4, borderColor: palette.medalBorder, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  medalReached: { backgroundColor: palette.medalReached, borderColor: palette.medalReachedBorder },
+  medalCurrent: { width: 66, height: 66, borderRadius: 33, backgroundColor: palette.action, borderColor: palette.currentBorder },
+  currentBadge: { position: 'absolute', top: 212, left: '56%', backgroundColor: palette.currentSurface, borderRadius: 10, borderWidth: 1, borderColor: palette.currentBorderSoft, paddingHorizontal: 10, paddingVertical: 7 },
+  currentBadgeLabel: { color: palette.mutedInk, fontFamily: font.bold, fontSize: 8.5, letterSpacing: 1 },
+  currentBadgeValue: { color: palette.action, fontFamily: font.extrabold, fontSize: 14, marginTop: 1 },
+  progressCard: { minHeight: 66, borderRadius: 14, backgroundColor: palette.progressSurface, borderWidth: 1, borderColor: palette.progressBorder, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  progressLabel: { color: palette.mutedInk, fontFamily: font.bold, fontSize: 9, letterSpacing: 1 },
+  progressTitle: { color: palette.ink, fontFamily: 'Georgia', fontSize: 19, marginTop: 1 },
+  progressRemaining: { color: palette.inkSoft, fontFamily: font.medium, fontSize: 12 },
+  measureNote: { color: palette.mutedInk, fontFamily: font.regular, fontSize: 10.5, lineHeight: 15, textAlign: 'center', marginTop: 6 },
+  cta: { minHeight: 52, marginTop: 14, borderRadius: 12, backgroundColor: palette.action, alignItems: 'center', justifyContent: 'center' },
+  ctaText: { color: palette.onAction, fontFamily: font.bold, fontSize: 15 },
   trophyLink: { minHeight: 52, marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  trophyText: { color: colors.primary, fontFamily: font.bold, fontSize: 12 },
-});
+  trophyText: { color: palette.action, fontFamily: font.bold, fontSize: 12 },
+  });
+};

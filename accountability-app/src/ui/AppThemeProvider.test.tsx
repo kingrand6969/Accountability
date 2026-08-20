@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text } from 'react-native';
+import { Appearance, Platform, Pressable, Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
@@ -15,6 +15,14 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 const mockedStorage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
+const setColorSchemeSpy = jest
+  .spyOn(Appearance, 'setColorScheme')
+  .mockImplementation(() => undefined);
+const originalPlatformOS = Platform.OS;
+
+function setPlatformOS(os: typeof Platform.OS) {
+  Object.defineProperty(Platform, 'OS', { configurable: true, value: os });
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -40,7 +48,59 @@ function value(renderer: TestRenderer.ReactTestRenderer) {
 describe('AppThemeProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    setPlatformOS(originalPlatformOS === 'web' ? 'ios' : originalPlatformOS);
     mockedStorage.setItem.mockResolvedValue(undefined);
+  });
+
+  test('keeps manual theme context working on web without calling the native appearance setter', () => {
+    setPlatformOS('web');
+    mockedStorage.getItem.mockReturnValueOnce(deferred<string | null>().promise);
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    expect(() => {
+      act(() => {
+        renderer = TestRenderer.create(
+          <AppThemeProvider>
+            <Probe />
+          </AppThemeProvider>,
+        );
+      });
+    }).not.toThrow();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
+
+    expect(value(renderer)).toBe('dark:#07111F');
+    expect(setColorSchemeSpy).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+  });
+
+  test('keeps rendering natively when the appearance setter is unavailable', () => {
+    const setter = Appearance.setColorScheme;
+    Object.defineProperty(Appearance, 'setColorScheme', {
+      configurable: true,
+      value: undefined,
+    });
+    mockedStorage.getItem.mockReturnValueOnce(deferred<string | null>().promise);
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    try {
+      expect(() => {
+        act(() => {
+          renderer = TestRenderer.create(
+            <AppThemeProvider>
+              <Probe />
+            </AppThemeProvider>,
+          );
+        });
+      }).not.toThrow();
+      expect(value(renderer)).toBe('light:#F7F4EC');
+      act(() => renderer.unmount());
+    } finally {
+      Object.defineProperty(Appearance, 'setColorScheme', {
+        configurable: true,
+        value: setter,
+      });
+    }
   });
 
   test('renders immediately in the approved light mode while storage is still loading', () => {
@@ -58,7 +118,25 @@ describe('AppThemeProvider', () => {
 
     expect(value(renderer)).toBe('light:#F7F4EC');
     expect(mockedStorage.getItem).toHaveBeenCalledWith(APP_THEME_STORAGE_KEY);
+    expect(setColorSchemeSpy).toHaveBeenCalledWith('light');
     act(() => renderer.unmount());
+  });
+
+  test('synchronizes the native appearance after hydrating a saved dark preference', async () => {
+    mockedStorage.getItem.mockResolvedValueOnce('dark');
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <AppThemeProvider>
+          <Probe />
+        </AppThemeProvider>,
+      );
+    });
+
+    expect(value(renderer)).toBe('dark:#07111F');
+    expect(setColorSchemeSpy.mock.calls).toEqual([['light'], ['dark']]);
+    await act(async () => renderer.unmount());
   });
 
   test.each([
@@ -98,6 +176,28 @@ describe('AppThemeProvider', () => {
 
     expect(value(renderer)).toBe('dark:#07111F');
     expect(mockedStorage.setItem).toHaveBeenCalledWith(APP_THEME_STORAGE_KEY, 'dark');
+    expect(setColorSchemeSpy).toHaveBeenLastCalledWith('dark');
+    await act(async () => renderer.unmount());
+  });
+
+  test('does not let late hydration override a manual selection or its native appearance', async () => {
+    const pending = deferred<string | null>();
+    mockedStorage.getItem.mockReturnValueOnce(pending.promise);
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = TestRenderer.create(
+        <AppThemeProvider>
+          <Probe />
+        </AppThemeProvider>,
+      );
+    });
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
+    await act(async () => pending.resolve('light'));
+
+    expect(value(renderer)).toBe('dark:#07111F');
+    expect(setColorSchemeSpy.mock.calls).toEqual([['light'], ['dark']]);
     await act(async () => renderer.unmount());
   });
 });

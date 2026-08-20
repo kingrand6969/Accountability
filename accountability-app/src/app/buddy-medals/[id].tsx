@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -24,6 +23,7 @@ import { supabase } from '../../lib/supabase';
 import { BuddyCardLoadGuard, type BuddyCardLoadToken } from '../../buddy/BuddyCardLoadGuard';
 import { getAuthorizedBuddyCard, getBuddyCard, type BuddyCardView } from '../../buddy/card';
 import { getBuddyCardAccessMode } from '../../buddy/buddyCardRelationship';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { colors, contentMax, font, radius, spacing } from '../../ui/theme';
 
 type ChallengeLoad =
@@ -114,7 +114,7 @@ export default function BuddyMedals() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
-  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const { mode: scheme } = useAppTheme();
   const tone = scheme === 'dark' ? DARK : LIGHT;
   const [view, setView] = useState<BuddyCardView | null>(null);
   const [states, setStates] = useState<MedalState[] | null>(null);

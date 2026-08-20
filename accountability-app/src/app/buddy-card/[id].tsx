@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -50,7 +50,17 @@ import { supabase } from '../../lib/supabase';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
-import { colors, font, radius, shadow, spacing, contentMax } from '../../ui/theme';
+import {
+  colors as legacyColors,
+  font,
+  radius,
+  shadow,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+  type AppThemeMode,
+} from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 
 type ModerationContext = Readonly<{
@@ -64,6 +74,9 @@ export default function BuddyCardScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
+  const { colors: theme, mode } = useAppTheme();
+  const palette = useMemo(() => buddyCardShellPalette(theme, mode), [mode, theme]);
+  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
   const [view, setView] = useState<BuddyCardView | null>(null);
   const [stats, setStats] = useState<BuddyStats | null>(null);
   const [boardRank, setBoardRank] = useState<BoardRank | null>(null);
@@ -488,7 +501,7 @@ export default function BuddyCardScreen() {
   if (loading || (view != null && view.id !== id)) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
         <Text style={styles.loadingText}>Loading Buddy Card...</Text>
       </View>
     );
@@ -499,7 +512,7 @@ export default function BuddyCardScreen() {
         <Ionicons
           name={loadError ? 'cloud-offline-outline' : 'person-circle-outline'}
           size={42}
-          color={colors.textFaint}
+          color={palette.faintInk}
         />
         <Text style={styles.missing}>
           {loadError ? 'Could not load Buddy Card' : 'This Buddy Card is unavailable.'}
@@ -512,7 +525,7 @@ export default function BuddyCardScreen() {
             accessibilityLabel="Retry loading Buddy Card"
             style={({ pressed }) => [styles.retry, pressed && styles.retryPressed]}
           >
-            <Ionicons name="refresh" size={18} color="#fff" />
+            <Ionicons name="refresh" size={18} color={palette.onAction} />
             <Text style={styles.retryText}>Try again</Text>
           </Pressable>
         ) : null}
@@ -544,7 +557,7 @@ export default function BuddyCardScreen() {
                       accessibilityLabel="More options"
                       style={({ pressed }) => [styles.optionAction, pressed && { opacity: 0.6 }]}
                 >
-                  <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+                  <Ionicons name="ellipsis-vertical" size={20} color={palette.ink} />
                 </Pressable>
               ),
         }}
@@ -590,7 +603,7 @@ export default function BuddyCardScreen() {
 
       {accessMode === 'public' ? (
         <View style={styles.privacyRow}>
-          <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+          <Ionicons name="shield-checkmark-outline" size={20} color={palette.action} />
           <Text style={styles.privacyText}>
             {authorLabel(view.name)} chose everything shown on this card.
           </Text>
@@ -611,7 +624,7 @@ export default function BuddyCardScreen() {
             {ownerView || isBuddy ? 'Recent posts' : 'Shared publicly'}
           </Text>
           {posts === null ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
+            <ActivityIndicator color={palette.action} style={{ marginVertical: 12 }} />
           ) : posts.length === 0 ? (
             <Text style={styles.aboutText}>
               {ownerView || isBuddy ? 'No posts yet.' : 'No public Buddy Card posts selected.'}
@@ -644,14 +657,14 @@ export default function BuddyCardScreen() {
                       <Ionicons
                         name={p.post_type === 'video' ? 'videocam-outline' : 'chatbox-ellipses-outline'}
                         size={20}
-                        color={colors.textFaint}
+                        color={palette.faintInk}
                       />
                     </View>
                   )}
                   <View style={ownerView || isBuddy ? { flex: 1 } : styles.publicPostCopy}>
                     {!ownerView && !isBuddy ? (
                       <View style={styles.publicPostChip}>
-                        <Ionicons name="globe-outline" size={12} color={colors.primary} />
+                        <Ionicons name="globe-outline" size={12} color={palette.action} />
                         <Text style={styles.publicPostChipText}>PUBLIC POST</Text>
                       </View>
                     ) : null}
@@ -680,7 +693,7 @@ export default function BuddyCardScreen() {
       ) : isBuddy ? (
         <>
           <View style={styles.buddyRow}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <Ionicons name="checkmark-circle" size={18} color={palette.success} />
             <Text style={styles.buddyLabel}>You&apos;re buddies</Text>
           </View>
           <Button
@@ -715,23 +728,48 @@ export default function BuddyCardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.surface },
+function buddyCardShellPalette(theme: AppThemeColors, mode: AppThemeMode) {
+  return {
+    canvas: mode === 'light' ? legacyColors.surface : theme.surface.canvas,
+    stateCanvas: theme.surface.canvas,
+    surface: mode === 'light' ? legacyColors.card : theme.surface.card,
+    mutedSurface: mode === 'light' ? legacyColors.surface : theme.surface.muted,
+    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
+    secondaryInk: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
+    mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
+    faintInk: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
+    chipSurface: mode === 'light' ? '#eff6ff' : theme.surface.muted,
+    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
+    success: mode === 'light' ? legacyColors.success : theme.status.success,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
+  const palette = buddyCardShellPalette(theme, mode);
+  const panelFrame = mode === 'light'
+    ? shadow.card
+    : { borderWidth: 1, borderColor: palette.border };
+
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   center: {
     flex: 1,
+    backgroundColor: palette.stateCanvas,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
     gap: spacing.sm,
   },
-  missing: { fontFamily: font.bold, fontSize: 17, color: colors.text },
-  loadingText: { fontFamily: font.medium, fontSize: 14, color: colors.textMuted },
+  missing: { fontFamily: font.bold, fontSize: 17, color: palette.ink },
+  loadingText: { fontFamily: font.medium, fontSize: 14, color: palette.mutedInk },
   errorDetail: {
     maxWidth: 320,
     fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: colors.textMuted,
+    color: palette.mutedInk,
     textAlign: 'center',
   },
   retry: {
@@ -743,27 +781,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
   },
   retryPressed: { opacity: 0.75 },
-  retryText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  retryText: { color: palette.onAction, fontFamily: font.bold, fontSize: 14 },
   optionAction: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: 40, ...contentMax },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     borderRadius: radius.xl,
     padding: spacing.md,
-    ...shadow.card,
+    ...panelFrame,
   },
   publicCardShell: {
     width: '100%',
   },
   aboutCard: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     borderRadius: radius.lg,
     padding: spacing.lg,
     marginTop: spacing.md,
-    ...shadow.card,
+    ...panelFrame,
   },
   privacyRow: {
     minHeight: 48,
@@ -775,33 +813,33 @@ const styles = StyleSheet.create({
   },
   privacyText: {
     flex: 1,
-    color: colors.textSecondary,
+    color: palette.secondaryInk,
     fontFamily: font.medium,
     fontSize: 12.5,
     lineHeight: 18,
   },
-  aboutTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text, marginBottom: 6 },
-  aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: colors.textSecondary },
+  aboutTitle: { fontFamily: font.bold, fontSize: 15, color: palette.ink, marginBottom: 6 },
+  aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: palette.secondaryInk },
   postRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: 8,
   },
-  postThumb: { width: 48, height: 48, borderRadius: radius.sm, backgroundColor: colors.surface },
+  postThumb: { width: 48, height: 48, borderRadius: radius.sm, backgroundColor: palette.mutedSurface },
   postThumbFallback: { alignItems: 'center', justifyContent: 'center' },
   publicPostCard: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     overflow: 'hidden',
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     marginTop: spacing.sm,
   },
   publicPostImage: {
     width: '100%',
     aspectRatio: 16 / 9,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.mutedSurface,
   },
   publicPostCopy: { padding: spacing.md },
   publicPostChip: {
@@ -809,24 +847,24 @@ const styles = StyleSheet.create({
     minHeight: 26,
     borderRadius: radius.pill,
     paddingHorizontal: 8,
-    backgroundColor: '#eff6ff',
+    backgroundColor: palette.chipSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginBottom: 6,
   },
   publicPostChipText: {
-    color: colors.primary,
+    color: palette.action,
     fontFamily: font.extrabold,
     fontSize: 9.5,
     letterSpacing: 0.6,
   },
-  postBody: { fontFamily: font.medium, fontSize: 13.5, color: colors.text, lineHeight: 19 },
-  postTime: { fontFamily: font.regular, fontSize: 11.5, color: colors.textMuted, marginTop: 1 },
+  postBody: { fontFamily: font.medium, fontSize: 13.5, color: palette.ink, lineHeight: 19 },
+  postTime: { fontFamily: font.regular, fontSize: 11.5, color: palette.mutedInk, marginTop: 1 },
   postNote: {
     fontFamily: font.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: palette.mutedInk,
     marginTop: 8,
   },
   connect: { marginTop: spacing.md },
@@ -837,12 +875,13 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: spacing.lg,
   },
-  buddyLabel: { fontFamily: font.semibold, fontSize: 13.5, color: colors.success },
+  buddyLabel: { fontFamily: font.semibold, fontSize: 13.5, color: palette.success },
   hint: {
-    color: colors.textMuted,
+    color: palette.mutedInk,
     fontFamily: font.medium,
     fontSize: 12.5,
     textAlign: 'center',
     marginTop: spacing.sm,
   },
-});
+  });
+};
