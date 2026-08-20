@@ -27,7 +27,9 @@ export async function getPublicProfiles(
   // Warm the authorization cache in one request, but keep the durable media
   // reference in profile data. Mounted image consumers own renewal and auth
   // invalidation; replacing it with a short-lived signed URL loses both.
-  await resolveMediaUrls((data ?? []).flatMap((p: any) => p.avatar_url ? [p.avatar_url] : []));
+  await resolveMediaUrls(
+    (data ?? []).flatMap((p: any) => p.avatar_url ? [p.avatar_url] : []),
+  ).catch(() => undefined);
   const profiles = (data ?? []) as PublicProfile[];
   return new Map(profiles.map((p) => [p.id, p]));
 }
@@ -40,6 +42,6 @@ export async function getPublicProfile(id: string): Promise<PublicProfile | null
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  if (data.avatar_url) await resolveMediaUrl(data.avatar_url);
+  if (data.avatar_url) await resolveMediaUrl(data.avatar_url).catch(() => undefined);
   return data as PublicProfile;
 }
