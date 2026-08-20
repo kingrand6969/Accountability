@@ -2,12 +2,14 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type ImageStyle,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -62,6 +64,8 @@ import {
 } from '../../ui/theme';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
+import { CachedImage } from '../../ui/CachedImage';
+import { useResolvedMediaUrl } from '../../media/useResolvedMediaUrl';
 
 type ModerationContext = Readonly<{
   loadToken: BuddyCardLoadToken;
@@ -69,6 +73,36 @@ type ModerationContext = Readonly<{
   targetId: string;
   name: string | null;
 }>;
+
+type BuddyCardPostThumbnailProps = Readonly<{
+  post: CardPost;
+  imageStyle: StyleProp<ImageStyle>;
+  placeholderStyle: StyleProp<ViewStyle>;
+  iconColor: string;
+}>;
+
+function BuddyCardPostThumbnail({
+  post,
+  imageStyle,
+  placeholderStyle,
+  iconColor,
+}: BuddyCardPostThumbnailProps) {
+  const resolvedImageUrl = useResolvedMediaUrl(post.post_type === 'video' ? null : post.image_url);
+
+  if (resolvedImageUrl) {
+    return <CachedImage uri={resolvedImageUrl} style={imageStyle} contentFit="cover" />;
+  }
+
+  return (
+    <View style={placeholderStyle}>
+      <Ionicons
+        name={post.post_type === 'video' ? 'videocam-outline' : 'chatbox-ellipses-outline'}
+        size={20}
+        color={iconColor}
+      />
+    </View>
+  );
+}
 
 export default function BuddyCardScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
@@ -642,25 +676,15 @@ export default function BuddyCardScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Open post"
                 >
-                  {p.image_url && p.post_type !== 'video' ? (
-                    <Image
-                      source={{ uri: p.image_url }}
-                      style={ownerView || isBuddy ? styles.postThumb : styles.publicPostImage}
-                    />
-                  ) : (
-                    <View
-                      style={[
-                        ownerView || isBuddy ? styles.postThumb : styles.publicPostImage,
-                        styles.postThumbFallback,
-                      ]}
-                    >
-                      <Ionicons
-                        name={p.post_type === 'video' ? 'videocam-outline' : 'chatbox-ellipses-outline'}
-                        size={20}
-                        color={palette.faintInk}
-                      />
-                    </View>
-                  )}
+                  <BuddyCardPostThumbnail
+                    post={p}
+                    imageStyle={ownerView || isBuddy ? styles.postThumb : styles.publicPostImage}
+                    placeholderStyle={[
+                      ownerView || isBuddy ? styles.postThumb : styles.publicPostImage,
+                      styles.postThumbFallback,
+                    ]}
+                    iconColor={palette.faintInk}
+                  />
                   <View style={ownerView || isBuddy ? { flex: 1 } : styles.publicPostCopy}>
                     {!ownerView && !isBuddy ? (
                       <View style={styles.publicPostChip}>

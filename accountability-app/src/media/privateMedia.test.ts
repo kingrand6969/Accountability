@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-import { clearPrivateMediaCache, isPrivateMediaRef, resolveMediaUrl, resolveMediaUrls } from './privateMedia';
+import {
+  clearPrivateMediaCache,
+  isPrivateMediaRef,
+  resolveMediaUrl,
+  resolveMediaUrls,
+  subscribePrivateMediaCacheInvalidation,
+} from './privateMedia';
 
 const mockInvoke = jest.fn<(...args: unknown[]) => Promise<{ data: any; error: any }>>();
 
@@ -35,7 +41,7 @@ describe('private media', () => {
 
   it('requests and caches a short-lived authorized URL', async () => {
     mockInvoke.mockResolvedValue({
-      data: { url: 'https://signed.example/photo', expiresAt: new Date(Date.now() + 60_000).toISOString() },
+      data: { url: 'https://signed.example/photo', expiresAt: new Date(Date.now() + 120_000).toISOString() },
       error: null,
     });
     const ref = 'r2://post-images/00000000-0000-4000-8000-000000000000/photo.jpg';
@@ -43,6 +49,35 @@ describe('private media', () => {
     await expect(resolveMediaUrl(ref)).resolves.toBe('https://signed.example/photo');
     expect(mockInvoke).toHaveBeenCalledTimes(1);
     expect(mockInvoke).toHaveBeenCalledWith('media-read', { body: { ref } });
+  });
+
+  it('refreshes links that have less than one minute remaining', async () => {
+    const ref = 'r2://post-images/00000000-0000-4000-8000-000000000000/photo.jpg';
+    mockInvoke
+      .mockResolvedValueOnce({
+        data: { url: 'https://signed.example/almost-expired', expiresAt: new Date(Date.now() + 50_000).toISOString() },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { url: 'https://signed.example/fresh', expiresAt: new Date(Date.now() + 300_000).toISOString() },
+        error: null,
+      });
+
+    await expect(resolveMediaUrl(ref)).resolves.toBe('https://signed.example/almost-expired');
+    await expect(resolveMediaUrl(ref)).resolves.toBe('https://signed.example/fresh');
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('notifies mounted consumers when auth clears the private-media cache', () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribePrivateMediaCacheInvalidation(listener);
+
+    clearPrivateMediaCache();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    clearPrivateMediaCache();
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when no valid URL is returned', async () => {

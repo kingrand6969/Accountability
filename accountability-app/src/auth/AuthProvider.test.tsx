@@ -111,11 +111,11 @@ describe('AuthProvider bootstrap', () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
     mockInvoke
       .mockResolvedValueOnce({
-        data: { url: 'https://signed.example/owner-a', expiresAt: new Date(Date.now() + 60_000).toISOString() },
+        data: { url: 'https://signed.example/owner-a', expiresAt: new Date(Date.now() + 120_000).toISOString() },
         error: null,
       })
       .mockResolvedValueOnce({
-        data: { url: 'https://signed.example/owner-b', expiresAt: new Date(Date.now() + 60_000).toISOString() },
+        data: { url: 'https://signed.example/owner-b', expiresAt: new Date(Date.now() + 120_000).toISOString() },
         error: null,
       });
     const ref = 'r2://post-images/shared/photo.jpg';

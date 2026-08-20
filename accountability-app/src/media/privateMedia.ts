@@ -4,8 +4,9 @@ export type ResolvedPrivateMedia = { url: string; expiresAt: string };
 type CacheEntry = ResolvedPrivateMedia & { expiresAtMs: number };
 
 const PRIVATE_MEDIA_PREFIX = 'r2://';
-const REFRESH_EARLY_MS = 10_000;
+export const PRIVATE_MEDIA_REFRESH_HEADROOM_MS = 60_000;
 const cache = new Map<string, CacheEntry>();
+const invalidationListeners = new Set<() => void>();
 let cacheEpoch = 0;
 
 export function isPrivateMediaRef(value: string | null | undefined): value is string {
@@ -15,14 +16,33 @@ export function isPrivateMediaRef(value: string | null | undefined): value is st
 export function clearPrivateMediaCache(): void {
   cacheEpoch += 1;
   cache.clear();
+  for (const listener of invalidationListeners) {
+    try {
+      listener();
+    } catch {
+      // Cache invalidation must never be blocked by a mounted consumer.
+    }
+  }
 }
 
-export async function resolveMediaUrl(value: string): Promise<string> {
-  if (!isPrivateMediaRef(value)) return value;
+export function subscribePrivateMediaCacheInvalidation(listener: () => void): () => void {
+  invalidationListeners.add(listener);
+  return () => invalidationListeners.delete(listener);
+}
+
+export async function resolvePrivateMediaUrl(value: string): Promise<ResolvedPrivateMedia> {
+  if (!isPrivateMediaRef(value)) {
+    throw new Error('Expected a private media reference.');
+  }
   while (true) {
     const requestEpoch = cacheEpoch;
     const cached = cache.get(value);
-    if (cached && cached.expiresAtMs - REFRESH_EARLY_MS > Date.now()) return cached.url;
+    if (
+      cached &&
+      cached.expiresAtMs - PRIVATE_MEDIA_REFRESH_HEADROOM_MS > Date.now()
+    ) {
+      return { url: cached.url, expiresAt: cached.expiresAt };
+    }
     const { data, error } = await supabase.functions.invoke('media-read', { body: { ref: value } });
     if (requestEpoch !== cacheEpoch) continue;
     if (error) throw error;
@@ -30,8 +50,13 @@ export async function resolveMediaUrl(value: string): Promise<string> {
     const expiresAtMs = Date.parse(row.expiresAt ?? '');
     if (!row.url || !Number.isFinite(expiresAtMs)) throw new Error('Could not open this private image.');
     cache.set(value, { url: row.url, expiresAt: row.expiresAt!, expiresAtMs });
-    return row.url;
+    return { url: row.url, expiresAt: row.expiresAt! };
   }
+}
+
+export async function resolveMediaUrl(value: string): Promise<string> {
+  if (!isPrivateMediaRef(value)) return value;
+  return (await resolvePrivateMediaUrl(value)).url;
 }
 
 /** Resolve up to 50 refs with one authorization-aware Edge invocation. */
@@ -47,7 +72,12 @@ export async function resolveMediaUrls(values: string[]): Promise<Map<string, st
         continue;
       }
       const cached = cache.get(value);
-      if (cached && cached.expiresAtMs - REFRESH_EARLY_MS > Date.now()) result.set(value, cached.url);
+      if (
+        cached &&
+        cached.expiresAtMs - PRIVATE_MEDIA_REFRESH_HEADROOM_MS > Date.now()
+      ) {
+        result.set(value, cached.url);
+      }
       else missing.push(value);
     }
     if (missing.length === 0) return result;
