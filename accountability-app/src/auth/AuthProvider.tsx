@@ -7,6 +7,7 @@ import {
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { clearPrivateMediaCache } from '../media/privateMedia';
 
 type AuthContextValue = {
   session: Session | null;
@@ -26,10 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let alive = true;
     let authEventSeen = false;
 
+    clearPrivateMediaCache();
+
     void supabase.auth
       .getSession()
       .then(({ data }) => {
-        if (alive && !authEventSeen) setSession(data.session);
+        if (alive && !authEventSeen) {
+          clearPrivateMediaCache();
+          setSession(data.session);
+        }
       })
       .catch(() => {
         // A temporary storage/network failure must not leave the launch screen
@@ -42,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       authEventSeen = true;
       if (!alive) return;
+      clearPrivateMediaCache();
       setSession(next);
       setLoading(false);
     });

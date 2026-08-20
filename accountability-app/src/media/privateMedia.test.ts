@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-import { clearPrivateMediaCache, isPrivateMediaRef, resolveMediaUrl } from './privateMedia';
+import { clearPrivateMediaCache, isPrivateMediaRef, resolveMediaUrl, resolveMediaUrls } from './privateMedia';
 
 const mockInvoke = jest.fn<(...args: unknown[]) => Promise<{ data: any; error: any }>>();
 
 jest.mock('../lib/supabase', () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => mockInvoke(...args) } },
 }));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 describe('private media', () => {
   beforeEach(() => {
@@ -41,5 +49,31 @@ describe('private media', () => {
     mockInvoke.mockResolvedValue({ data: {}, error: null });
     await expect(resolveMediaUrl('r2://post-images/00000000-0000-4000-8000-000000000000/photo.jpg'))
       .rejects.toThrow('Could not open this private image.');
+  });
+
+  it('restarts a batch authorization when the auth cache changes in flight', async () => {
+    const ref = 'r2://post-images/shared/photo.jpg';
+    const ownerARequest = deferred<{ data: { items: { ref: string; url: string; expiresAt: string }[] }; error: null }>();
+    mockInvoke
+      .mockReturnValueOnce(ownerARequest.promise)
+      .mockResolvedValueOnce({
+        data: {
+          items: [{ ref, url: 'https://signed.example/owner-b', expiresAt: new Date(Date.now() + 60_000).toISOString() }],
+        },
+        error: null,
+      });
+
+    const resolved = resolveMediaUrls([ref]);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    clearPrivateMediaCache();
+    ownerARequest.resolve({
+      data: {
+        items: [{ ref, url: 'https://signed.example/owner-a', expiresAt: new Date(Date.now() + 60_000).toISOString() }],
+      },
+      error: null,
+    });
+
+    await expect(resolved).resolves.toEqual(new Map([[ref, 'https://signed.example/owner-b']]));
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
   });
 });
