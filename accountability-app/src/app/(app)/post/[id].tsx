@@ -532,7 +532,7 @@ function PostDetailView({
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       {isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null}

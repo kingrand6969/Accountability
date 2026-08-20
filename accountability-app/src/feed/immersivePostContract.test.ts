@@ -345,10 +345,10 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(navigate).toHaveBeenCalledTimes(1);
   });
 
-  test('lets native Android resize move the comment composer exactly once', () => {
+  test('keeps the comment composer above edge-to-edge Android keyboards exactly once', () => {
     expect(appConfig.expo?.android?.softwareKeyboardLayoutMode).toBe('resize');
     expect(routeSource).toContain('<KeyboardAvoidingView');
-    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : undefined}");
+    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : 'height'}");
     expect(routeSource).toContain("keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}");
     expect(routeSource).not.toContain("Keyboard.addListener('keyboardDidShow'");
     expect(routeSource).not.toContain("Keyboard.addListener('keyboardDidHide'");

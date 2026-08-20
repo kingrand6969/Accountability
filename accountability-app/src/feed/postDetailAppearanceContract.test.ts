@@ -43,7 +43,7 @@ describe('Post detail Light/Dark appearance contract', () => {
     expect(routeSource).toContain('placeholderTextColor={theme.ink.muted}');
     expect(routeSource).toContain('minHeight: spacing.touch');
     expect(routeSource).toContain('<KeyboardAvoidingView');
-    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : undefined}");
+    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : 'height'}");
   });
 
   test('themes compact text and event chrome without recoloring immersive media overlays', () => {
