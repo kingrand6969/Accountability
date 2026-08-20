@@ -23,6 +23,11 @@ export function authorLabel(name: string | null): string {
   return n && n.length > 0 ? n : 'Someone';
 }
 
+export function selfAuthorLabel(name: string | null): string {
+  const n = name?.trim();
+  return n && n.length > 0 ? n : 'You';
+}
+
 /** "with Alice", "with Alice and Bob", "with Alice, Bob and 2 others". */
 export function taggedLabel(tagged: { name: string | null }[]): string | null {
   const names = tagged.map((t) => authorLabel(t.name));

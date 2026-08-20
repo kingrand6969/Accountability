@@ -37,7 +37,7 @@ import { promptCrossShare } from '../feed/crossShare';
 import { PhotoEditor, type EditedPhoto } from '../media/PhotoEditor';
 import { getMyProfile } from '../profiles/api';
 import { showToast } from '../ui/Toast';
-import { authorLabel, taggedLabel } from '../feed/format';
+import { authorLabel, selfAuthorLabel, taggedLabel } from '../feed/format';
 import { Avatar } from '../feed/Avatar';
 import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
@@ -1110,9 +1110,9 @@ export default function Compose() {
       >
         {draftNotice ? <Text style={styles.draftNotice} accessibilityLiveRegion="polite">{draftNotice}</Text> : null}
         <View style={styles.authorRow}>
-          <Avatar url={me.avatar} name={me.name} size={44} />
+          <Avatar url={me.avatar} name={selfAuthorLabel(me.name)} size={44} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.author}>{authorLabel(me.name)}</Text>
+            <Text style={styles.author}>{selfAuthorLabel(me.name)}</Text>
             <View style={styles.audiencePicker} accessibilityRole="radiogroup">
               {(['buddies', 'public'] as const).map((value) => (
                 <Pressable
