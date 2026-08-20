@@ -235,9 +235,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
               </View>
             )}
           </View>
-          <Text style={styles.createLabel}>
-            My Day{'\n'}{meName?.trim().split(/\s+/)[0] || 'You'}
-          </Text>
+          <Text style={styles.createLabel}>My Day</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.createPlus, pressed && styles.pressed]}
@@ -417,7 +415,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   createPlus: {
     position: 'absolute',
     right: 8,
-    bottom: 8,
+    top: 8,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -451,7 +449,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   createLabel: {
     position: 'absolute',
     left: 10,
-    right: 44,
+    right: 10,
     bottom: 10,
     color: '#fff',
     fontFamily: font.bold,

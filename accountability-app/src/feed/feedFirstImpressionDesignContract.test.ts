@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const header = readFileSync(require.resolve('./SocialBrandHeader'), 'utf8');
 const feed = readFileSync(require.resolve('../app/(app)/index'), 'utf8');
+const storyRail = readFileSync(require.resolve('../stories/StoryRail'), 'utf8');
 
 describe('Feed first-impression design', () => {
   test('renders the approved Accountability lockup instead of the legacy casing', () => {
@@ -17,5 +18,11 @@ describe('Feed first-impression design', () => {
     expect(feed).toContain('justifyContent: \'center\'');
     expect(feed).toContain('promptText: { fontFamily: font.regular');
     expect(feed).not.toContain('promptText: { flex: 1');
+  });
+
+  test('keeps the My Day label readable and moves the add control out of its text column', () => {
+    expect(storyRail).toContain('<Text style={styles.createLabel}>My Day</Text>');
+    expect(storyRail).toMatch(/createPlus:\s*\{[\s\S]*?top: 8,/);
+    expect(storyRail).not.toContain("My Day{'\\n'}{meName?.trim().split(/\\s+/)[0] || 'You'}");
   });
 });
