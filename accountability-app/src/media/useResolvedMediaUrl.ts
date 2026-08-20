@@ -14,8 +14,11 @@ type PrivateMediaResolution = {
 const RENEWAL_RETRY_DELAY_MS = 15_000;
 const MAX_RENEWAL_RETRIES = 2;
 
-export function useResolvedMediaUrl(value: string | null | undefined): string | null {
-  const privateRef = value && isPrivateMediaRef(value) ? value : null;
+export function useResolvedMediaUrl(
+  value: string | null | undefined,
+  enabled = true,
+): string | null {
+  const privateRef = enabled && value && isPrivateMediaRef(value) ? value : null;
   const [privateResolution, setPrivateResolution] =
     useState<PrivateMediaResolution | null>(null);
 

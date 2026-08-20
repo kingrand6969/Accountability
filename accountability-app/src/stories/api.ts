@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
 import { uploadPostImage, uploadPostImageForOwner } from '../feed/uploadPostImage';
@@ -98,7 +100,9 @@ export async function listStoryGroups(): Promise<StoryGroup[]> {
   if (error) throw error;
   const rawRows = (data ?? []) as Story[];
   const [, authors, viewedStoryIds] = await Promise.all([
-    resolveMediaUrls(rawRows.map((story) => story.image_url)),
+    Platform.OS === 'web'
+      ? resolveMediaUrls(rawRows.map((story) => story.image_url))
+      : Promise.resolve(new Map<string, string>()),
     getPublicProfiles([...new Set(rawRows.map((story) => story.user_id))]),
     listViewedStoryIds(uid, rawRows.map((story) => story.id)),
   ]);

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { Platform } from 'react-native';
 
 import { getPublicProfile, getPublicProfiles } from './publicProfiles';
 
@@ -36,10 +37,37 @@ function deferred<T>() {
 describe('public profile media references', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
     mockResolveMediaUrl.mockResolvedValue(SIGNED_AVATAR);
     mockResolveMediaUrls.mockResolvedValue(
       new Map([[PRIVATE_AVATAR, SIGNED_AVATAR]]),
     );
+  });
+
+  it('returns native batch profile metadata without signed-url warming', async () => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    mockIn.mockResolvedValue({
+      data: [{ id: 'member-1', avatar_url: PRIVATE_AVATAR }],
+      error: null,
+    });
+
+    const profiles = await getPublicProfiles(['member-1']);
+
+    expect(profiles.get('member-1')?.avatar_url).toBe(PRIVATE_AVATAR);
+    expect(mockResolveMediaUrls).not.toHaveBeenCalled();
+  });
+
+  it('returns native singular profile metadata without signed-url warming', async () => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    mockMaybeSingle.mockResolvedValue({
+      data: { id: 'member-1', avatar_url: PRIVATE_AVATAR },
+      error: null,
+    });
+
+    const profile = await getPublicProfile('member-1');
+
+    expect(profile?.avatar_url).toBe(PRIVATE_AVATAR);
+    expect(mockResolveMediaUrl).not.toHaveBeenCalled();
   });
 
   it('warms batch authorization without replacing durable private avatar refs', async () => {

@@ -10,6 +10,7 @@ import {
 
 const SIGNED_URL =
   'https://media.example/avatars/member/dog.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=secret';
+const PRIVATE_REF = 'r2://avatars/00000000-0000-4000-8000-000000000000/dog.jpg';
 
 function jpegHeader(): Uint8Array {
   return Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -192,6 +193,45 @@ describe('private image file cache', () => {
       `file:///cache/private-images/session-1/${'a'.repeat(64)}.jpg`,
     ]);
     expect([...fs.files.keys()][0]).not.toContain('X-Amz');
+  });
+
+  it('downloads a raw image ref through the proxy once and publishes it through the same cache pipeline', async () => {
+    const fs = createFakeFileSystem();
+    const proxyDownload = jest.fn(async (_ref: string, destination: string) => {
+      fs.files.set(destination, { bytes: 25_639, header: jpegHeader() });
+    });
+    const cache = createPrivateImageFileCache(fs, {}, undefined, proxyDownload);
+
+    const first = cache.resolvePrivateRef(PRIVATE_REF);
+    const second = cache.resolvePrivateRef(PRIVATE_REF);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      `file:///cache/private-images/session-1/${'a'.repeat(64)}.jpg`,
+      `file:///cache/private-images/session-1/${'a'.repeat(64)}.jpg`,
+    ]);
+    expect(proxyDownload).toHaveBeenCalledTimes(1);
+    expect(fs.downloads).toEqual([]);
+  });
+
+  it('does not publish late proxy bytes after the auth epoch changes', async () => {
+    const fs = createFakeFileSystem();
+    const pending = deferred<void>();
+    const started = deferred<void>();
+    const proxyDownload = jest.fn(async (_ref: string, destination: string) => {
+      started.resolve();
+      await pending.promise;
+      fs.files.set(destination, { bytes: 25_639, header: jpegHeader() });
+    });
+    const cache = createPrivateImageFileCache(fs, {}, undefined, proxyDownload);
+    const request = cache.resolvePrivateRef(PRIVATE_REF);
+    await started.promise;
+
+    cache.clear();
+    pending.resolve();
+
+    await expect(request).rejects.toThrow('Private image access changed.');
+    expect([...fs.files.keys()]).toEqual([]);
+    expect(proxyDownload).toHaveBeenCalledTimes(1);
   });
 
   it('uses the legacy downloader on a fresh unique part after the primary downloader fails', async () => {

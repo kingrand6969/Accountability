@@ -9,6 +9,10 @@ const responseHeaders = {
   'Vary': 'Authorization',
 };
 const PRIVATE_REF = /^r2:\/\/(avatars|covers|post-images|post-videos|voice-encouragements)\/[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,100}$/i;
+const BYTE_IMAGE_FOLDERS = new Set(['avatars', 'covers', 'post-images']);
+const BYTE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const BYTE_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+const BYTE_IMAGE_FETCH_TIMEOUT_MS = 15_000;
 // Five minutes allows a user to seek within a short video without exposing a
 // durable URL. The URL is still issued only after the post's RLS check passes.
 const READ_SECONDS = 300;
@@ -18,6 +22,52 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...responseHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function imageTypeForBytes(bytes: Uint8Array): string | null {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+    bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) return 'image/png';
+  if (
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) return 'image/webp';
+  return null;
+}
+
+async function readBoundedBody(
+  body: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  if (!body) return null;
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      if (value.byteLength > maxBytes - totalBytes) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      totalBytes += value.byteLength;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (totalBytes < 1) return null;
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
 }
 
 Deno.serve(async (req) => {
@@ -34,7 +84,18 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return json({ error: 'unauthorized' }, 401);
 
-    const input = (await req.json().catch(() => ({}))) as { ref?: unknown; refs?: unknown };
+    const input = (await req.json().catch(() => ({}))) as {
+      ref?: unknown;
+      refs?: unknown;
+      delivery?: unknown;
+    };
+    const byteDelivery = input.delivery === 'bytes';
+    if (
+      (input.delivery !== undefined && !byteDelivery) ||
+      (byteDelivery && (input.refs !== undefined || typeof input.ref !== 'string'))
+    ) {
+      return json({ error: 'media not found' }, 404);
+    }
     const requested = Array.isArray(input.refs) ? input.refs : [input.ref];
     if (requested.length === 0 || requested.length > 50 || requested.some(
       (ref) => typeof ref !== 'string' || ref.length > 240 || !PRIVATE_REF.test(ref),
@@ -65,6 +126,9 @@ Deno.serve(async (req) => {
     }));
     if (authorized.some((item) => item == null)) return json({ error: 'media not found' }, 404);
     const readable = authorized.filter((item): item is NonNullable<typeof item> => item != null);
+    if (byteDelivery && !BYTE_IMAGE_FOLDERS.has(readable[0].folder)) {
+      return json({ error: 'media not found' }, 404);
+    }
 
     const { error: rateError } = await supabase.from('media_read_log').insert(
       readable.map((item) => ({ media_kind: item.folder })),
@@ -77,6 +141,51 @@ Deno.serve(async (req) => {
       service: 's3',
       region: 'auto',
     });
+    if (byteDelivery) {
+      const { key } = readable[0];
+      const endpoint = `https://${Deno.env.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com/${Deno.env.get('R2_BUCKET')}/${key}`;
+      const upstreamRequest = await aws.sign(new Request(endpoint, { method: 'GET' }));
+      const upstream = await fetch(upstreamRequest, { signal: AbortSignal.timeout(BYTE_IMAGE_FETCH_TIMEOUT_MS) });
+      if (!upstream.ok) return json({ error: 'media request failed' }, 502);
+
+      const contentType = (upstream.headers.get('content-type') ?? '')
+        .split(';', 1)[0]
+        .trim()
+        .toLowerCase();
+      if (!BYTE_IMAGE_TYPES.has(contentType)) {
+        return json({ error: 'media request failed' }, 502);
+      }
+      const contentLength = upstream.headers.get('content-length');
+      if (contentLength !== null) {
+        const declaredBytes = Number(contentLength);
+        if (
+          !Number.isSafeInteger(declaredBytes) ||
+          declaredBytes < 1 ||
+          declaredBytes > BYTE_IMAGE_MAX_BYTES
+        ) {
+          return json({ error: 'media request failed' }, 502);
+        }
+      }
+      const bytes = await readBoundedBody(upstream.body, BYTE_IMAGE_MAX_BYTES);
+      if (bytes === null || bytes.byteLength < 1 || bytes.byteLength > BYTE_IMAGE_MAX_BYTES) {
+        return json({ error: 'media request failed' }, 502);
+      }
+      const magicType = imageTypeForBytes(bytes);
+      if (magicType !== contentType) {
+        return json({ error: 'media request failed' }, 502);
+      }
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          ...responseHeaders,
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(bytes.byteLength),
+          'X-Private-Image-Type': contentType,
+          'X-Content-Type-Options': 'nosniff',
+          'Access-Control-Expose-Headers': 'X-Private-Image-Type, Content-Length',
+        },
+      });
+    }
     const expiresAt = new Date(Date.now() + READ_SECONDS * 1000).toISOString();
     const items = await Promise.all(readable.map(async ({ ref, key }) => {
       const endpoint = `https://${Deno.env.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com/${Deno.env.get('R2_BUCKET')}/${key}`;

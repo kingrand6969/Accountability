@@ -3,6 +3,8 @@ import Constants from 'expo-constants';
 import { Directory, File, FileMode, Paths } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 
+import { downloadPrivateImageRef, isPrivateImageRef } from './privateImageByteProxy';
+
 export const PRIVATE_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 export const PRIVATE_IMAGE_CACHE_MAX_BYTES = 128 * 1024 * 1024;
 export const PRIVATE_IMAGE_CACHE_MAX_FILES = 64;
@@ -103,6 +105,7 @@ type PrivateImageCacheLimits = {
 type PrivateImageDiagnosticStage =
   | 'prepare'
   | 'primary-download'
+  | 'proxy-download'
   | 'legacy-download'
   | 'inspect'
   | 'move'
@@ -333,6 +336,12 @@ export function createPrivateImageFileCache(
   fs: PrivateImageFileSystem = expoFileSystem,
   limits: PrivateImageCacheLimits = {},
   report: PrivateImageDiagnosticReporter = previewDiagnosticReporter,
+  proxyDownload: (
+    ref: string,
+    destinationUri: string,
+    maxBytes: number,
+    signal: AbortSignal,
+  ) => Promise<void> = downloadPrivateImageRef,
 ) {
   const maxBytes = limits.maxBytes ?? PRIVATE_IMAGE_CACHE_MAX_BYTES;
   const maxFiles = limits.maxFiles ?? PRIVATE_IMAGE_CACHE_MAX_FILES;
@@ -459,10 +468,11 @@ export function createPrivateImageFileCache(
   }
 
   async function attempt(
-    url: string,
+    source: string,
     key: string,
     targetSessionUri: string,
     requestEpoch: number,
+    transport: 'signed' | 'proxy',
   ): Promise<string> {
     let attemptNumber: 1 | 2 = 1;
     let partUri = `${targetSessionUri}/${key}-${fs.createPartId()}.part`;
@@ -491,20 +501,23 @@ export function createPrivateImageFileCache(
       }
       const primaryStartedAt = Date.now();
       const primaryPartUri = partUri;
+      const primaryStage = transport === 'proxy' ? 'proxy-download' : 'primary-download';
       try {
         await runDownloadWithTimeout(
-          (signal) => fs.download(url, primaryPartUri, PRIVATE_IMAGE_MAX_BYTES, signal),
+          (signal) => transport === 'proxy'
+            ? proxyDownload(source, primaryPartUri, PRIVATE_IMAGE_MAX_BYTES, signal)
+            : fs.download(source, primaryPartUri, PRIVATE_IMAGE_MAX_BYTES, signal),
           () => fs.deleteFile(primaryPartUri),
         );
         report({
-          stage: 'primary-download',
+          stage: primaryStage,
           attempt: attemptNumber,
           outcome: 'success',
           duration: durationBucket(primaryStartedAt),
         });
       } catch (error) {
         report({
-          stage: 'primary-download',
+          stage: primaryStage,
           attempt: attemptNumber,
           outcome: 'failure',
           ...downloadFailureDiagnostic(
@@ -516,6 +529,7 @@ export function createPrivateImageFileCache(
         await fs.deleteFile(partUri).catch(() => undefined);
         activeParts.delete(partUri);
         if (requestEpoch !== epoch) throw new Error('Private image access changed.');
+        if (transport === 'proxy') throw error;
         if (isPrivateImageTooLargeError(error)) throw error;
         attemptNumber = 2;
         partUri = `${targetSessionUri}/${key}-${fs.createPartId()}.part`;
@@ -525,7 +539,7 @@ export function createPrivateImageFileCache(
         const legacyPartUri = partUri;
         try {
           await runDownloadWithTimeout(
-            (signal) => fs.downloadLegacy(url, legacyPartUri, PRIVATE_IMAGE_MAX_BYTES, signal),
+            (signal) => fs.downloadLegacy(source, legacyPartUri, PRIVATE_IMAGE_MAX_BYTES, signal),
             () => fs.deleteFile(legacyPartUri),
           );
           report({
@@ -618,10 +632,12 @@ export function createPrivateImageFileCache(
     }
   }
 
-  async function resolve(url: string): Promise<string> {
+  async function resolveResource(
+    identity: string,
+    source: string,
+    transport: 'signed' | 'proxy',
+  ): Promise<string> {
     const requestEpoch = epoch;
-    const identity = canonicalPrivateImageIdentity(url);
-    if (!identity) throw new Error('Expected an AWS-signed private image URL.');
     const key = await fs.hashResourceIdentity(identity);
     if (requestEpoch !== epoch) throw new Error('Private image access changed.');
     const cached = resolved.get(key);
@@ -647,7 +663,7 @@ export function createPrivateImageFileCache(
     const targetSessionUri = sessionUri();
     const request = (async () => {
       try {
-        const fileUri = await attempt(url, key, targetSessionUri, requestEpoch);
+        const fileUri = await attempt(source, key, targetSessionUri, requestEpoch, transport);
         if (requestEpoch !== epoch) {
           await fs.deleteFile(fileUri).catch(() => undefined);
           throw new Error('Private image access changed.');
@@ -657,7 +673,12 @@ export function createPrivateImageFileCache(
         return fileUri;
       } catch (error) {
         if (requestEpoch !== epoch) throw error;
-        report({ stage: 'final', attempt: 2, outcome: 'failure', category: 'unknown' });
+        report({
+          stage: 'final',
+          attempt: transport === 'proxy' ? 1 : 2,
+          outcome: 'failure',
+          category: 'unknown',
+        });
         throw new Error('Could not open this private image.', { cause: error });
       }
     })();
@@ -667,6 +688,17 @@ export function createPrivateImageFileCache(
     } finally {
       if (inFlight.get(key) === request) inFlight.delete(key);
     }
+  }
+
+  async function resolve(url: string): Promise<string> {
+    const identity = canonicalPrivateImageIdentity(url);
+    if (!identity) throw new Error('Expected an AWS-signed private image URL.');
+    return resolveResource(identity, url, 'signed');
+  }
+
+  async function resolvePrivateRef(ref: string): Promise<string> {
+    if (!isPrivateImageRef(ref)) throw new Error('Expected a private image reference.');
+    return resolveResource(ref, ref, 'proxy');
   }
 
   function clear(): void {
@@ -679,10 +711,11 @@ export function createPrivateImageFileCache(
     schedulePurge(oldSessionUri);
   }
 
-  return { clear, resolve };
+  return { clear, resolve, resolvePrivateRef };
 }
 
 const privateImageFileCache = createPrivateImageFileCache();
 
 export const cachePrivateImageUrl = privateImageFileCache.resolve;
+export const cachePrivateImageRef = privateImageFileCache.resolvePrivateRef;
 export const clearPrivateImageFileCache = privateImageFileCache.clear;

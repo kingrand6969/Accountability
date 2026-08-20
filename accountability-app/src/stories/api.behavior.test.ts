@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { Platform } from 'react-native';
 
 import {
   buildStoryGroups,
@@ -26,6 +27,7 @@ jest.mock('../media/privateMedia', () => ({
 }));
 
 beforeEach(() => {
+  Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
   mockGetUser.mockReset();
   mockFrom.mockReset();
   mockGetPublicProfiles.mockReset();
@@ -86,6 +88,38 @@ describe('story receipt grouping', () => {
     const groups = await listStoryGroups();
 
     expect(mockResolveMediaUrls).toHaveBeenCalledWith([rawStory.image_url]);
+    expect(groups[0].stories[0].image_url).toBe(rawStory.image_url);
+  });
+
+  test('keeps native story refs without signed-url warming', async () => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    const rawStory: Story = {
+      id: 'story-raw',
+      user_id: 'author',
+      image_url: 'r2://post-images/author/story.jpg',
+      caption: null,
+      created_at: '2026-08-10T00:00:00Z',
+    };
+    const storyQuery = {
+      select: jest.fn().mockReturnThis(),
+      gt: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn(async () => ({ data: [rawStory], error: null })),
+    };
+    const receiptQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      in: jest.fn(async () => ({ data: [], error: null })),
+    };
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'viewer' } } });
+    mockFrom.mockImplementation((table: string) =>
+      table === 'stories' ? storyQuery : receiptQuery,
+    );
+    mockGetPublicProfiles.mockResolvedValue(new Map());
+
+    const groups = await listStoryGroups();
+
+    expect(mockResolveMediaUrls).not.toHaveBeenCalled();
     expect(groups[0].stories[0].image_url).toBe(rawStory.image_url);
   });
 });

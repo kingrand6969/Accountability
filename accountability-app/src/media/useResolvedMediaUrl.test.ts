@@ -30,12 +30,14 @@ function deferred<T>() {
 
 function Probe({
   value,
+  enabled = true,
   onRender,
 }: {
   value: string | null;
+  enabled?: boolean;
   onRender: (resolved: string | null) => void;
 }) {
-  onRender(useResolvedMediaUrl(value));
+  onRender(useResolvedMediaUrl(value, enabled));
   return null;
 }
 
@@ -109,6 +111,26 @@ describe('useResolvedMediaUrl', () => {
     });
     expect(renders.at(-1)).toBe('https://cdn.example/new.jpg');
 
+    await act(async () => renderer.unmount());
+  });
+
+  it('can disable signed-url authorization for an image-only native caller', async () => {
+    const renders: (string | null)[] = [];
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(Probe, {
+          value: 'r2://avatars/member/avatar.jpg',
+          enabled: false,
+          onRender: (value) => renders.push(value),
+        }),
+      );
+    });
+
+    expect(mockResolvePrivateMediaUrl).not.toHaveBeenCalled();
+    expect(mockInvalidationListeners).toHaveProperty('size', 0);
+    expect(renders.at(-1)).toBe('r2://avatars/member/avatar.jpg');
     await act(async () => renderer.unmount());
   });
 

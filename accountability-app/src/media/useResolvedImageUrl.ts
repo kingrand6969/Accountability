@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
-import { cachePrivateImageUrl, isAwsSignedImageUrl } from './privateImageFileCache';
+import {
+  cachePrivateImageRef,
+  cachePrivateImageUrl,
+  isAwsSignedImageUrl,
+} from './privateImageFileCache';
+import { isPrivateImageRef } from './privateImageByteProxy';
 import { isPrivateMediaRef, subscribePrivateMediaCacheInvalidation } from './privateMedia';
 import { useResolvedMediaUrl } from './useResolvedMediaUrl';
 
@@ -12,8 +17,10 @@ type LocalImageResolution = {
 };
 
 export function useResolvedImageUrl(value: string | null | undefined): string | null {
-  const authorizedUrl = useResolvedMediaUrl(value);
   const rawPrivateRef = value && isPrivateMediaRef(value) ? value : null;
+  const nativeRawImageRef =
+    Platform.OS !== 'web' && value && isPrivateImageRef(value) ? value : null;
+  const authorizedUrl = useResolvedMediaUrl(value, !nativeRawImageRef);
   const signedImageUrl = isAwsSignedImageUrl(authorizedUrl) ? authorizedUrl : null;
   const directSignedUrl = !rawPrivateRef && isAwsSignedImageUrl(value) ? value : null;
   const [authGeneration, setAuthGeneration] = useState(0);
@@ -31,27 +38,37 @@ export function useResolvedImageUrl(value: string | null | undefined): string | 
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
+    const source = nativeRawImageRef ?? signedImageUrl;
     if (
-      !signedImageUrl ||
+      !source ||
       (directSignedUrl !== null && blockedDirectUrl === directSignedUrl)
     ) {
       return;
     }
     let active = true;
-    void cachePrivateImageUrl(signedImageUrl)
+    const resolution = nativeRawImageRef
+      ? cachePrivateImageRef(nativeRawImageRef)
+      : cachePrivateImageUrl(source);
+    void resolution
       .then((url) => {
-        if (active) setLocalResolution({ source: signedImageUrl, generation: authGeneration, url });
+        if (active) setLocalResolution({ source, generation: authGeneration, url });
       })
       .catch(() => {
         if (active) {
-          setLocalResolution({ source: signedImageUrl, generation: authGeneration, url: null });
+          setLocalResolution({ source, generation: authGeneration, url: null });
         }
       });
     return () => {
       active = false;
     };
-  }, [authGeneration, blockedDirectUrl, directSignedUrl, signedImageUrl]);
+  }, [authGeneration, blockedDirectUrl, directSignedUrl, nativeRawImageRef, signedImageUrl]);
 
+  if (nativeRawImageRef) {
+    return localResolution?.source === nativeRawImageRef &&
+      localResolution.generation === authGeneration
+      ? localResolution.url
+      : null;
+  }
   if (!authorizedUrl) return null;
   if (!signedImageUrl) return authorizedUrl;
   if (directSignedUrl !== null && blockedDirectUrl === directSignedUrl) return null;
