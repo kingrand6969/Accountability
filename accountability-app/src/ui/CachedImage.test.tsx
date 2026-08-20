@@ -97,4 +97,30 @@ describe('CachedImage native fallback', () => {
 
     await act(async () => renderer.unmount());
   });
+
+  test('uses the native renderer immediately for an AWS-signed private image URL', async () => {
+    const signedUri =
+      'https://media.example/avatar.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260820T000000Z';
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <CachedImage
+          uri={signedUri}
+          style={{ width: 84, height: 84 }}
+          contentFit="cover"
+          accessibilityLabel="Signed profile photo"
+        />,
+      );
+    });
+
+    expect(renderer.root.findAllByType('ExpoImage' as never)).toHaveLength(0);
+    expect(renderer.root.findByType(NativeImage).props).toMatchObject({
+      source: { uri: signedUri },
+      resizeMode: 'cover',
+      accessibilityLabel: 'Signed profile photo',
+    });
+
+    await act(async () => renderer.unmount());
+  });
 });

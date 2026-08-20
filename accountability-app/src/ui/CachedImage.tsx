@@ -19,6 +19,10 @@ type Props = {
   accessibilityLabel?: string;
 };
 
+function isAwsSignedImageUrl(uri: string | null | undefined): boolean {
+  return Boolean(uri && /^https:\/\//i.test(uri) && /[?&]X-Amz-Algorithm=/i.test(uri));
+}
+
 /**
  * A remote image with on-device memory + disk caching (via expo-image).
  *
@@ -44,9 +48,10 @@ function CachedImageForUri({
   accessibilityLabel,
 }: Props) {
   const [useNativeFallback, setUseNativeFallback] = useState(false);
+  const useNativeRenderer = useNativeFallback || isAwsSignedImageUrl(uri);
 
   if (
-    useNativeFallback &&
+    useNativeRenderer &&
     uri &&
     (contentFit === 'cover' || contentFit === 'contain')
   ) {
