@@ -58,9 +58,10 @@ release, or the challenge participant privacy finalizer.**
   post was published.
 - Navigation: PASS. Three settled Feed to Post to visible-Back cycles returned
   to the same painted Feed row and controls without a blank screen.
-- Private post-video and voice media: NOT DIRECTLY EXERCISED because no suitable
-  staging item was available during this canary. Migration and focused media
-  contract coverage passed.
+- Private post-video and voice media: NOT DIRECTLY EXERCISED. A read-only
+  staging inventory after the canary found zero video posts and zero voice
+  encouragements, so there was no legitimate playback target. No test content
+  was created. Migration and focused media contract coverage passed.
 
 ## Residual risk
 
