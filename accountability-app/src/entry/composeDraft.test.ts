@@ -5,6 +5,7 @@ import {
   composeDraftKey,
   draftEffect,
   durableMediaPath,
+  hasRestorableDraftContent,
   isCompatibleDraft,
   parseComposeDraft,
   persistDurableMedia,
@@ -66,6 +67,47 @@ describe('compose draft contract', () => {
     await saveComposeDraft(featuredDraft, storage);
 
     expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([featuredDraft]);
+  });
+
+  test('treats an all-default draft as disposable while preserving real composer work', () => {
+    const blankDraft: ComposeDraftV1 = {
+      ...validDraft,
+      origin: 'post',
+      queryIdentity: { photo: false, event: false, text: '', edit: null },
+      body: '   ',
+      media: null,
+      event: { open: false, title: '', date: '2026-08-21', time: '18:00', location: '' },
+      tagIds: [],
+      keepInMemories: false,
+      audience: 'buddies',
+      showOnCard: false,
+    };
+
+    expect(hasRestorableDraftContent(blankDraft)).toBe(false);
+    expect(hasRestorableDraftContent({ ...blankDraft, body: 'Easy five today' })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, media: validDraft.media ?? {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2, sha256: 'a'.repeat(64), kind: 'photo',
+    } })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, event: { ...blankDraft.event, open: true } })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, tagIds: ['buddy-a'] })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, audience: 'public', showOnCard: true })).toBe(true);
+  });
+
+  test('silently removes legacy blank drafts instead of presenting them for restore', async () => {
+    const blankDraft: ComposeDraftV1 = {
+      ...validDraft,
+      origin: 'post',
+      queryIdentity: { photo: false, event: false, text: '', edit: null },
+      body: '',
+      event: { open: false, title: '', date: '2026-08-21', time: '18:00', location: '' },
+    };
+    const storage = memoryStorage();
+    await saveComposeDraft(blankDraft, storage);
+
+    expect(await loadComposeDrafts(OWNER, storage)).toEqual({ drafts: [], cleanedInvalid: 0 });
+    expect(await storage.getItem(composeDraftKey(OWNER, 'new', DRAFT))).toBeNull();
+    expect(await storage.getItem(composeDraftIndexKey(OWNER))).toBeNull();
   });
 
   test('defaults legacy drafts without a Buddy Card feature field to unfeatured', () => {

@@ -54,6 +54,16 @@ export function selectDraftCleanupTarget(
   return submitted === undefined ? current ?? retained : submitted;
 }
 
+export function hasRestorableDraftContent(draft: ComposeDraftV1): boolean {
+  return draft.kind === 'edit'
+    || draft.body.trim().length > 0
+    || draft.media !== null
+    || draft.event.open
+    || draft.tagIds.length > 0
+    || draft.keepInMemories
+    || draft.showOnCard;
+}
+
 export function composeDraftKey(ownerId: string, kind: ComposeDraftKind, draftId: string): string {
   return `compose-draft:v1:${ownerId}:${kind}:${draftId}`;
 }
@@ -103,6 +113,14 @@ async function saveComposeDraftUnlocked(draft: ComposeDraftV1, storage: DraftSto
   const indexKey = composeDraftIndexKey(draft.ownerId);
   const pendingKey = composeDraftPendingKey(draft.ownerId);
   const index = parseIndex(await storage.getItem(indexKey), draft.ownerId);
+  if (!hasRestorableDraftContent(normalizedDraft)) {
+    const retained = index.filter((item) => item !== key);
+    await storage.removeItem(key);
+    if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));
+    else await storage.removeItem(indexKey);
+    await storage.removeItem(pendingKey);
+    return;
+  }
   await storage.setItem(pendingKey, key);
   await storage.setItem(key, JSON.stringify(normalizedDraft));
   if (!index.includes(key)) await storage.setItem(indexKey, JSON.stringify([...index, key]));
@@ -130,16 +148,22 @@ async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage,
   for (const key of keys) {
     const raw = await storage.getItem(key);
     const draft = raw ? parseComposeDraft(raw, ownerId) : null;
-    if (draft) {
+    if (draft && hasRestorableDraftContent(draft)) {
       drafts.push(draft);
       retained.push(key);
+      if (adapter) await cleanupOrphanTemps(ownerId, draft.draftId, adapter);
+    } else if (draft) {
+      await storage.removeItem(key);
       if (adapter) await cleanupOrphanTemps(ownerId, draft.draftId, adapter);
     } else {
       await storage.removeItem(key);
       cleanedInvalid += 1;
     }
   }
-  if (retained.length !== keys.length) await storage.setItem(indexKey, JSON.stringify(retained));
+  if (retained.length !== keys.length) {
+    if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));
+    else await storage.removeItem(indexKey);
+  }
   return { drafts: drafts.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), cleanedInvalid };
 }
 export async function loadComposeDrafts(ownerId: string, storage: DraftStorage, adapter?: DraftFileAdapter) {
