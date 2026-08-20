@@ -117,7 +117,7 @@ describe('Group 3 social Feed contract', () => {
 
   test('renders the exact compact social header without a segmented selector', () => {
     expect(brandHeaderSource).toContain('<BrandMark');
-    expect(brandHeaderSource).toContain('AccountAbility');
+    expect(brandHeaderSource).toContain('BRAND_WORDMARK');
     expect(brandHeaderSource).toContain('accessibilityLabel="Search"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Create"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Notifications"');
@@ -129,7 +129,7 @@ describe('Group 3 social Feed contract', () => {
     expect(brandHeaderSource).toContain('useWindowDimensions');
     expect(brandHeaderSource).toContain('fontScale >= 1.25');
     expect(brandHeaderSource).toContain('isLargeText ? null');
-    expect(brandHeaderSource).toContain('accessibilityLabel="AccountAbility"');
+    expect(brandHeaderSource).toContain('accessibilityLabel={BRAND_WORDMARK}');
     expect(brandHeaderSource).toContain('minWidth: 44');
     expect(brandHeaderSource).toContain('minHeight: 44');
   });

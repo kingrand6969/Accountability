@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandMark } from '../ui/BrandMark';
+import { BRAND_WORDMARK } from '../ui/brandGeometry';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
@@ -29,10 +30,10 @@ export function SocialBrandHeader({
   return (
     <View style={[styles.header, { paddingTop: insets.top }]}>
       <IconButton icon="menu-outline" accessibilityLabel="Menu" onPress={onMenu} styles={styles} color={theme.ink.action} />
-      <View style={styles.wordmark} accessible accessibilityLabel="AccountAbility">
-        <BrandMark size={32} accessibilityLabel="AccountAbility logo" />
+      <View style={styles.wordmark} accessible accessibilityLabel={BRAND_WORDMARK}>
+        <BrandMark size={32} accessibilityLabel={`${BRAND_WORDMARK} logo`} />
         {isLargeText ? null : (
-          <Text style={styles.account}>Account<Text style={styles.ability}>Ability</Text></Text>
+          <Text style={styles.account}>{BRAND_WORDMARK}</Text>
         )}
       </View>
       <View style={styles.actions}>
@@ -97,7 +98,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     gap: 7,
   },
   account: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 16 },
-  ability: { color: theme.ink.action },
   actions: { flexDirection: 'row', alignItems: 'center' },
   iconButton: {
     minWidth: 44,

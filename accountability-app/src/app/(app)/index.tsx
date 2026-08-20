@@ -618,7 +618,9 @@ export default function Feed() {
             accessibilityRole="button"
             accessibilityLabel="Share a win — create a post"
           >
-            <Text style={styles.promptText} numberOfLines={1}>Inspire us today!</Text>
+            <View style={styles.promptCopy}>
+              <Text style={styles.promptText} numberOfLines={1}>Inspire us today!</Text>
+            </View>
           </Pressable>
         </View>
         <View style={styles.composerDivider} />
@@ -845,7 +847,8 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   promptRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
   avatarButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   promptAction: { minHeight: 48, flex: 1, justifyContent: 'center', paddingRight: spacing.md },
-  promptText: { flex: 1, fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
+  promptCopy: { flex: 1, justifyContent: 'center' },
+  promptText: { fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
   composerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.border.subtle, marginHorizontal: spacing.lg },
   quickShareRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center' },
   quickShare: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
