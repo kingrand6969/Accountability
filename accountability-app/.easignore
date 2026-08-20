@@ -23,6 +23,8 @@ supabase/
 docs/
 
 # Local tooling and editor state
+.device-verification/
+.device-verification/**
 .superpowers/
 .tmp-quality-web/
 .tmp-quality-web/**

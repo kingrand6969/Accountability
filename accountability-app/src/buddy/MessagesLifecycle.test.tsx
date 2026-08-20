@@ -168,6 +168,59 @@ describe('Messages account and refresh lifecycle', () => {
     await act(async () => renderer.update(React.createElement(Messages)));
     await flush();
     expect(visibleText(renderer)).toContain('Training Buddy');
+    expect(visibleText(renderer)).toContain('Messages couldn’t load');
+  });
+
+  test('shows an accessible initial failure instead of a false empty inbox and retries', async () => {
+    mockListConversations
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([conversation('Recovered Buddy', 'buddy-recovered')]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = renderMessages();
+    });
+    await flush();
+
+    expect(visibleText(renderer)).toContain('Messages couldn’t load');
+    expect(visibleText(renderer)).not.toContain('No messages yet');
+    const retry = renderer.root.findByProps({ accessibilityLabel: 'Retry loading messages' });
+    expect(retry.props.accessibilityRole).toBe('button');
+
+    act(() => retry.props.onPress());
+    await flush();
+    expect(visibleText(renderer)).toContain('Recovered Buddy');
+    expect(visibleText(renderer)).not.toContain('Messages couldn’t load');
+  });
+
+  test('labels the unresolved initial inbox as a loading progress state', async () => {
+    mockListConversations.mockReturnValueOnce(new Promise(() => {}));
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = renderMessages();
+    });
+
+    const loading = renderer.root.findByProps({ accessibilityLabel: 'Loading messages' });
+    expect(loading.props.accessibilityRole).toBe('progressbar');
+  });
+
+  test('drops a stale account failure without showing it to the next account', async () => {
+    const accountA = deferred<unknown[]>();
+    mockListConversations
+      .mockReturnValueOnce(accountA.promise)
+      .mockResolvedValueOnce([conversation('Account B', 'buddy-b')]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = renderMessages();
+    });
+
+    mockOwnerId = 'owner-b';
+    await act(async () => renderer.update(React.createElement(Messages)));
+    await flush();
+    accountA.reject(new Error('stale offline failure'));
+    await flush();
+
+    expect(visibleText(renderer)).toContain('Account B');
+    expect(visibleText(renderer)).not.toContain('Messages couldn’t load');
   });
 
   test('drops a pull-refresh result when the account changes', async () => {

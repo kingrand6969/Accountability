@@ -41,6 +41,39 @@ function loadBoundedBodyReader(): BoundedBodyReader {
   return runInNewContext(`${compiled}\nreadBoundedBody`) as BoundedBodyReader;
 }
 
+function loadNamedFunction<T>(name: string): T {
+  const start = source.indexOf(`function ${name}(`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const openingParen = source.indexOf('(', start);
+  let parenDepth = 0;
+  let closingParen = -1;
+  for (let index = openingParen; index < source.length; index += 1) {
+    if (source[index] === '(') parenDepth += 1;
+    if (source[index] === ')') parenDepth -= 1;
+    if (parenDepth === 0) {
+      closingParen = index;
+      break;
+    }
+  }
+  expect(closingParen).toBeGreaterThan(openingParen);
+  const openingBrace = source.indexOf('{', closingParen);
+  let depth = 0;
+  let end = -1;
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') depth -= 1;
+    if (depth === 0) {
+      end = index + 1;
+      break;
+    }
+  }
+  expect(end).toBeGreaterThan(openingBrace);
+  const compiled = transpileModule(source.slice(start, end), {
+    compilerOptions: { module: ModuleKind.None, target: ScriptTarget.ES2022 },
+  }).outputText;
+  return runInNewContext(`${compiled}\n${name}`) as T;
+}
+
 describe('media-read authenticated image-byte delivery', () => {
   test('keeps signed links as the default and requires one raw ref for byte delivery', () => {
     expect(source).toContain("input.delivery === 'bytes'");
@@ -130,5 +163,30 @@ describe('media-read authenticated image-byte delivery', () => {
     expect(source).toContain("'X-Private-Image-Type': contentType");
     expect(source).not.toMatch(/console\.(?:log|info|warn|error)/);
     expect(source).not.toMatch(/json\(\{\s*error:\s*`/);
+  });
+
+  test('distinguishes privacy denial from an authorization-query outage', () => {
+    const decide = loadNamedFunction<(
+      responses: Array<{ data: unknown; error: unknown }>,
+    ) => 'allowed' | 'denied' | 'unavailable'>('authorizationDecision');
+
+    expect(decide([{ data: { id: 'visible' }, error: null }])).toBe('allowed');
+    expect(decide([{ data: null, error: null }])).toBe('denied');
+    expect(decide([{ data: null, error: { code: 'XX000' } }])).toBe('unavailable');
+    expect(source).toMatch(/authorizationUnavailable[\s\S]*?media service is temporarily unavailable[\s\S]*?503/);
+    expect(source).toMatch(/authorized\.some[\s\S]*?media not found[\s\S]*?404/);
+  });
+
+  test('returns 429 only for the database rate-limit SQLSTATE', () => {
+    const statusFor = loadNamedFunction<(
+      error: { code?: string } | null,
+    ) => number | null>('rateErrorStatus');
+
+    expect(statusFor(null)).toBeNull();
+    expect(statusFor({ code: '54000' })).toBe(429);
+    expect(statusFor({ code: '23514' })).toBe(503);
+    expect(statusFor({})).toBe(503);
+    expect(source).toMatch(/rateStatus === 429[\s\S]*?Too many image requests/);
+    expect(source).toMatch(/rateStatus === 503[\s\S]*?media service is temporarily unavailable/);
   });
 });

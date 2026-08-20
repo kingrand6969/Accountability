@@ -100,7 +100,7 @@ function ChallengePage({ c, now, onOpen }: { c: ChallengeCard; now: number; onOp
             </View>
           );
         })()}
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={styles.title}>
           {c.title}
         </Text>
         <Text style={styles.meta}>
@@ -122,7 +122,7 @@ function challengePalette(theme: AppThemeColors, mode: AppThemeMode) {
     muted: mode === 'dark' ? theme.ink.muted : INK_SOFT,
     action: mode === 'dark' ? theme.ink.action : ACCENT,
     actionInk: mode === 'dark' ? theme.ink.inverse : '#fff',
-    success: mode === 'dark' ? theme.status.success : '#16a34a',
+    success: mode === 'dark' ? theme.status.success : '#166534',
     icon: mode === 'dark' ? theme.surface.muted : 'rgba(37,99,235,0.12)',
     pill: mode === 'dark' ? theme.surface.muted : 'rgba(37,99,235,0.12)',
     pillJoined: mode === 'dark' ? theme.status.successSoft : 'rgba(22,163,74,0.14)',

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -37,44 +37,117 @@ export default function ProfileOverview() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const currentOwnerRef = useRef(ownerId);
+  const loadGeneration = useRef(0);
   const [profile, setProfile] = useState<ProfileRecord | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [rank, setRank] = useState<RankSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const resolvedAvatar = useResolvedImageUrl(profile?.avatar_url ?? null);
-  const resolvedCover = useResolvedImageUrl(profile?.cover_url ?? null);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
+  const [errorOwnerId, setErrorOwnerId] = useState<string | null>(null);
+
+  useEffect(() => {
+    currentOwnerRef.current = ownerId;
+    loadGeneration.current += 1;
+  }, [ownerId]);
+
+  const ownedProfile = ownerId && dataOwnerId === ownerId ? profile : null;
+  const ownedMetrics = ownerId && dataOwnerId === ownerId ? metrics : null;
+  const ownedRank = ownerId && dataOwnerId === ownerId ? rank : null;
+  const loadFailed = Boolean(ownerId && errorOwnerId === ownerId);
+  const resolvedAvatar = useResolvedImageUrl(ownedProfile?.avatar_url ?? null);
+  const resolvedCover = useResolvedImageUrl(ownedProfile?.cover_url ?? null);
+
+  const load = useCallback(async () => {
+    const requestOwner = ownerId;
+    const generation = ++loadGeneration.current;
+    setErrorOwnerId(null);
+    if (!requestOwner) {
+      setProfile(null);
+      setMetrics(null);
+      setRank(null);
+      setDataOwnerId(null);
+      return;
+    }
+    try {
+      const [nextProfile, nextMetrics, nextRank] = await Promise.all([
+        getMyProfile(),
+        getMetrics(),
+        getRank({ expectedOwnerId: requestOwner }),
+      ]);
+      if (!nextProfile) {
+        throw new Error('Profile unavailable');
+      }
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current
+      ) return;
+      setProfile(nextProfile);
+      setMetrics(nextMetrics);
+      setRank(nextRank);
+      setDataOwnerId(requestOwner);
+      setErrorOwnerId(null);
+    } catch {
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current
+      ) return;
+      setErrorOwnerId(requestOwner);
+    }
+  }, [ownerId]);
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      setLoading(true);
-      Promise.all([getMyProfile(), getMetrics(), getRank()])
-        .then(([p, m, r]) => {
-          if (!active) return;
-          setProfile(p);
-          setMetrics(m);
-          setRank(r);
-        })
-        .catch(() => {})
-        .finally(() => active && setLoading(false));
+      void load();
       return () => {
-        active = false;
+        loadGeneration.current += 1;
       };
-    }, []),
+    }, [load]),
   );
 
-  if (loading) {
+  if (loadFailed && dataOwnerId !== ownerId) {
     return (
-      <View style={styles.center}>
+      <View
+        style={styles.failure}
+        accessibilityRole="alert"
+        accessibilityLiveRegion="assertive"
+      >
+        <View style={styles.failureIcon}>
+          <Ionicons name="cloud-offline-outline" size={28} color={theme.ink.action} />
+        </View>
+        <Text style={styles.failureTitle} accessibilityRole="header">
+          We couldn’t load your profile
+        </Text>
+        <Text style={styles.failureMessage}>Check your connection, then try again.</Text>
+        <Pressable
+          onPress={() => void load()}
+          style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading profile"
+        >
+          <Ionicons name="refresh" size={17} color={theme.ink.inverse} />
+          <Text style={styles.retryButtonText}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!ownerId || dataOwnerId !== ownerId) {
+    return (
+      <View
+        style={styles.center}
+        accessibilityRole="progressbar"
+        accessibilityLabel="Loading profile"
+      >
         <ActivityIndicator color={theme.ink.action} size="large" />
         <Text style={styles.loadingText}>Opening your story...</Text>
       </View>
     );
   }
 
-  const displayName = profile?.display_name?.trim() || session?.user.email?.split('@')[0] || 'AccountAbility member';
+  const displayName = ownedProfile?.display_name?.trim() || session?.user.email?.split('@')[0] || 'AccountAbility member';
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
@@ -120,11 +193,11 @@ export default function ProfileOverview() {
           )}
         </View>
         <Text style={styles.name}>{displayName}</Text>
-        {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : <Text style={styles.bio}>Discipline is my compass.</Text>}
-        {profile?.area ? (
+        {ownedProfile?.bio ? <Text style={styles.bio}>{ownedProfile.bio}</Text> : <Text style={styles.bio}>Discipline is my compass.</Text>}
+        {ownedProfile?.area ? (
           <View style={styles.location}>
             <Ionicons name="location-outline" size={14} color={theme.ink.muted} />
-            <Text style={styles.locationText}>{profile.area}</Text>
+            <Text style={styles.locationText}>{ownedProfile.area}</Text>
           </View>
         ) : null}
         <Pressable
@@ -138,12 +211,35 @@ export default function ProfileOverview() {
         </Pressable>
       </View>
 
+      {loadFailed ? (
+        <View
+          style={styles.refreshNotice}
+          accessibilityRole="alert"
+          accessibilityLabel="Profile refresh failed"
+          accessibilityLiveRegion="polite"
+        >
+          <Ionicons name="cloud-offline-outline" size={18} color={theme.status.attention} />
+          <View style={styles.refreshNoticeCopy}>
+            <Text style={styles.refreshNoticeTitle}>Couldn’t refresh your profile</Text>
+            <Text style={styles.refreshNoticeMessage}>Showing your last loaded profile.</Text>
+          </View>
+          <Pressable
+            onPress={() => void load()}
+            style={({ pressed }) => [styles.refreshRetry, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Retry refreshing profile"
+          >
+            <Text style={styles.refreshRetryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.stats}>
-        <Stat value={metrics?.streak ?? 0} label="Day streak" />
+        <Stat value={ownedMetrics?.streak ?? 0} label="Day streak" />
         <View style={styles.statDivider} />
-        <Stat value={rank?.name ?? 'Rookie'} label="Momentum rank" />
+        <Stat value={ownedRank?.name ?? 'Rookie'} label="Momentum rank" />
         <View style={styles.statDivider} />
-        <Stat value={metrics?.buddies ?? 0} label="Buddies" />
+        <Stat value={ownedMetrics?.buddies ?? 0} label="Buddies" />
       </View>
 
       <View style={styles.sectionHeader}>
@@ -227,6 +323,12 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   content: { paddingBottom: 120 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: theme.surface.canvas },
   loadingText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 14 },
+  failure: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, backgroundColor: theme.surface.canvas },
+  failureIcon: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surface.muted },
+  failureTitle: { marginTop: 18, color: theme.ink.primary, fontFamily: font.bold, fontSize: 22, textAlign: 'center' },
+  failureMessage: { marginTop: 7, color: theme.ink.muted, fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  retryButton: { marginTop: 20, minHeight: spacing.touch, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.ink.action },
+  retryButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
   pressed: { opacity: 0.72 },
   hero: { height: 184, paddingHorizontal: 18, overflow: 'hidden' },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -245,6 +347,12 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   locationText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5 },
   editButton: { marginTop: 16, minHeight: spacing.touch, minWidth: 174, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.ink.action },
   editButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
+  refreshNotice: { marginHorizontal: 18, marginTop: 18, minHeight: spacing.touch, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 14, backgroundColor: theme.surface.card, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  refreshNoticeCopy: { flex: 1 },
+  refreshNoticeTitle: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 13 },
+  refreshNoticeMessage: { marginTop: 2, color: theme.ink.muted, fontFamily: font.regular, fontSize: 11.5 },
+  refreshRetry: { minWidth: spacing.touch, minHeight: spacing.touch, alignItems: 'center', justifyContent: 'center' },
+  refreshRetryText: { color: theme.ink.action, fontFamily: font.bold, fontSize: 13 },
   stats: { marginHorizontal: 18, marginTop: 22, minHeight: 82, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 18, backgroundColor: theme.surface.card, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, ...shadow.card },
   stat: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
   statValue: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18 },

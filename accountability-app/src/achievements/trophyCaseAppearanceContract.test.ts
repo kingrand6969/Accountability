@@ -61,7 +61,19 @@ describe('Trophy Case manual appearance contract', () => {
     expect(trophy).toContain("router.push('/activity' as never)");
     expect(trophy).toContain("router.push('/compete' as never)");
     expect(trophy).toContain("pathname: '/challenge/[id]'");
-    expect(trophy).toContain('/compose?text=');
+    expect(trophy).not.toContain('/compose?text=');
+  });
+
+  test('routes both medal share actions through one typed idempotent Flex context', () => {
+    expect(trophy).toContain("pathname: '/win-card'");
+    expect(trophy).toContain("achievementKind: 'medal'");
+    expect(trophy).toContain(
+      'achievementSourceId: `medal:${state.def.id}:tier:${state.tierIndex}`',
+    );
+    expect(trophy).toContain('achievementTitle: medalTitle');
+    expect(trophy).toContain('achievementText: `Just earned the ${medalTitle} medal`');
+    expect(trophy).toContain("autoPrompt: '1'");
+    expect(trophy.match(/onShare=\{openMedalFlex\}/g)).toHaveLength(2);
   });
 
   test.each([

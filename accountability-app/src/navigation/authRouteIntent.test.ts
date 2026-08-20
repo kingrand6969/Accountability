@@ -16,6 +16,18 @@ describe('protected Group 3 route intent validation', () => {
     ['/body', '/body'],
     ['/journey-path', '/journey-path'],
     ['/compose?event=1&text=Show%20up', '/compose?event=1&text=Show+up'],
+    [
+      '/post/11111111-1111-4111-8111-111111111111',
+      '/post/11111111-1111-4111-8111-111111111111',
+    ],
+    [
+      '/post/11111111-1111-4111-8111-111111111111?comment=1',
+      '/post/11111111-1111-4111-8111-111111111111?comment=1',
+    ],
+    [
+      'accountabilityapp://post/11111111-1111-4111-8111-111111111111?encouragement=1',
+      '/post/11111111-1111-4111-8111-111111111111?encouragement=1',
+    ],
     ['/win-card?buddyName=Maya', '/win-card?buddyName=Maya'],
     [
       '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&achievementText=Finished%20strong&audience=public&showOnCard=1&autoPrompt=1',
@@ -32,8 +44,13 @@ describe('protected Group 3 route intent validation', () => {
   });
 
   test.each([
-    '/post/11111111-1111-4111-8111-111111111111',
     '/share/11111111-1111-4111-8111-111111111111',
+    '/post/not-a-post-id',
+    '/post/11111111-1111-4111-8111-111111111111/nested',
+    '/post/11111111-1111-4111-8111-111111111111?comment=0',
+    '/post/11111111-1111-4111-8111-111111111111?comment=1&comment=1',
+    '/post/11111111-1111-4111-8111-111111111111?comment=1&encouragement=1',
+    '/post/11111111-1111-4111-8111-111111111111?redirect=%2Fcompose',
     '/story',
     '/story/a/b',
     '/story/..',
@@ -76,10 +93,44 @@ describe('protected Group 3 route intent validation', () => {
     expect(routeIntentFromPath('/story/restored-user', { userId: 'restored-user' })).toBe(
       '/story/restored-user',
     );
+    expect(
+      routeIntentFromPath('/post/11111111-1111-4111-8111-111111111111', {
+        id: '11111111-1111-4111-8111-111111111111',
+        comment: '1',
+      }),
+    ).toBe('/post/11111111-1111-4111-8111-111111111111?comment=1');
+    expect(
+      routeIntentFromPath('/post/11111111-1111-4111-8111-111111111111', {
+        id: ['11111111-1111-4111-8111-111111111111'],
+      }),
+    ).toBeNull();
   });
 });
 
 describe('one-shot authentication route intent lifecycle', () => {
+  test('holds a Post comment intent through sign-in and onboarding, then resumes it once', () => {
+    const destination = '/post/11111111-1111-4111-8111-111111111111?comment=1';
+    const controller = createAuthRouteIntentController();
+
+    expect(controller.capture(destination)).toBe(true);
+    controller.transitionToOwner('owner-a');
+    expect(controller.resumeForOwner('owner-a', false)).toBeNull();
+    expect(controller.peek()).toBe(destination);
+    expect(controller.resumeForOwner('owner-a', true)).toBe(destination);
+    expect(controller.resumeForOwner('owner-a', true)).toBeNull();
+  });
+
+  test('holds a direct protected route for the current incomplete account only', () => {
+    const controller = createAuthRouteIntentController('owner-a');
+
+    expect(controller.captureForOwner('owner-a', '/compose?photo=1')).toBe(true);
+    expect(controller.captureForOwner('owner-b', '/win-card')).toBe(false);
+    expect(controller.resumeForOwner('owner-a', false)).toBeNull();
+    expect(controller.resumeForOwner('owner-b', true)).toBeNull();
+    expect(controller.resumeForOwner('owner-a', true)).toBe('/compose?photo=1');
+    expect(controller.resumeForOwner('owner-a', true)).toBeNull();
+  });
+
   test.each([
     ['accountabilityapp-staging://body', '/body'],
     ['accountabilityapp://journey-path', '/journey-path'],
@@ -89,8 +140,9 @@ describe('one-shot authentication route intent lifecycle', () => {
 
     expect(controller.completeAsyncCapture(ticket, href)).toBe(true);
     expect(controller.peek()).toBe(expected);
-    expect(controller.transitionToOwner('owner-a')).toBe(expected);
-    expect(controller.transitionToOwner('owner-a')).toBeNull();
+    controller.transitionToOwner('owner-a');
+    expect(controller.resumeForOwner('owner-a', true)).toBe(expected);
+    expect(controller.resumeForOwner('owner-a', true)).toBeNull();
   });
 
   test('preserves a validated Flex context across signed-out cold resume', () => {
@@ -103,29 +155,33 @@ describe('one-shot authentication route intent lifecycle', () => {
 
     expect(controller.completeAsyncCapture(ticket, href)).toBe(true);
     expect(controller.peek()).toBe(expected);
-    expect(controller.transitionToOwner('owner-a')).toBe(expected);
-    expect(controller.transitionToOwner('owner-a')).toBeNull();
+    controller.transitionToOwner('owner-a');
+    expect(controller.resumeForOwner('owner-a', true)).toBe(expected);
+    expect(controller.resumeForOwner('owner-a', true)).toBeNull();
   });
 
   test('captures while signed out and consumes exactly once on sign-in', () => {
     const controller = createAuthRouteIntentController();
     expect(controller.capture('/story/restored-user')).toBe(true);
-    expect(controller.transitionToOwner(null)).toBeNull();
-    expect(controller.transitionToOwner('owner-a')).toBe('/story/restored-user');
-    expect(controller.transitionToOwner('owner-a')).toBeNull();
+    controller.transitionToOwner(null);
+    controller.transitionToOwner('owner-a');
+    expect(controller.resumeForOwner('owner-a', true)).toBe('/story/restored-user');
+    expect(controller.resumeForOwner('owner-a', true)).toBeNull();
   });
 
   test('does not replay an owner-A intent into owner B during an account switch', () => {
     const controller = createAuthRouteIntentController('owner-a');
     expect(controller.capture('/notifications')).toBe(false);
-    expect(controller.transitionToOwner('owner-b')).toBeNull();
+    controller.transitionToOwner('owner-b');
+    expect(controller.resumeForOwner('owner-b', true)).toBeNull();
     expect(controller.peek()).toBeNull();
   });
 
   test('rejects a stale async initial-link completion after authentication', () => {
     const controller = createAuthRouteIntentController();
     const ticket = controller.beginAsyncCapture();
-    expect(controller.transitionToOwner('owner-a')).toBeNull();
+    controller.transitionToOwner('owner-a');
+    expect(controller.resumeForOwner('owner-a', true)).toBeNull();
     expect(controller.completeAsyncCapture(ticket, '/search')).toBe(false);
     expect(controller.peek()).toBeNull();
   });
@@ -135,8 +191,10 @@ describe('one-shot authentication route intent lifecycle', () => {
     const stale = controller.beginAsyncCapture();
     expect(controller.capture('/groups')).toBe(true);
     expect(controller.completeAsyncCapture(stale, '/story/stale-user')).toBe(false);
-    expect(controller.transitionToOwner('owner-a')).toBe('/groups');
-    expect(controller.transitionToOwner(null)).toBeNull();
-    expect(controller.transitionToOwner('owner-a')).toBeNull();
+    controller.transitionToOwner('owner-a');
+    expect(controller.resumeForOwner('owner-a', true)).toBe('/groups');
+    controller.transitionToOwner(null);
+    controller.transitionToOwner('owner-a');
+    expect(controller.resumeForOwner('owner-a', true)).toBeNull();
   });
 });

@@ -19,10 +19,12 @@ export function PostImage({
   url,
   capTall = false,
   immersive = false,
+  detail = false,
 }: {
   url: string;
   capTall?: boolean;
   immersive?: boolean;
+  detail?: boolean;
 }) {
   const [ratio, setRatio] = useState(16 / 9);
   const resolvedUrl = useResolvedImageUrl(url);
@@ -44,7 +46,7 @@ export function PostImage({
           borderRadius: immersive ? 0 : radius.sm,
           backgroundColor: colors.surface,
         }}
-        contentFit={immersive ? 'contain' : 'cover'}
+        contentFit={immersive || detail ? 'contain' : 'cover'}
       /> : <View style={[styles.privatePlaceholder, immersive && styles.immersivePlaceholder, { aspectRatio: shown }]} />}
       {capped ? (
         <View style={styles.hint} pointerEvents="none">

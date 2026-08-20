@@ -3,7 +3,6 @@ import {
   KeyboardAvoidingView,
   Image,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,8 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { font, spacing } from './theme';
 import { BrandMark } from './BrandMark';
 
@@ -20,6 +21,8 @@ type Props = {
   glass?: boolean;
   presentation?: 'default' | 'welcome';
 };
+
+const AUTH_CANVAS = '#06152E';
 
 /** Branded backdrop for the auth screens: gradient, wordmark, elevated form card. */
 export function AuthShell({
@@ -32,6 +35,7 @@ export function AuthShell({
 
   return (
     <SafeAreaView style={styles.screen}>
+      <StatusBar style="light" />
       <Image
         source={require('../../assets/images/auth-mountain-hero.png')}
         style={[styles.heroImage, welcome && styles.welcomeHeroImage]}
@@ -88,7 +92,7 @@ export function AuthShell({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#06152E' },
+  screen: { flex: 1, backgroundColor: AUTH_CANVAS },
   heroImage: {
     ...StyleSheet.absoluteFill,
     width: '100%',

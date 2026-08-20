@@ -65,6 +65,7 @@ import { activeVideoPost } from '../../feed/videoPolicy';
 import { runFeedCriticalLoad } from '../../feed/feedLoadCoordinator';
 import { reconcileFeedPostsPublished } from '../../feed/feedPublishSignal';
 import { DIRECT_POST_HREF, type DirectPostHref } from '../../entry/createFlow';
+import { userFacingErrorMessage } from '../../ui/userFacingError';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type CreateItem = {
@@ -330,7 +331,7 @@ export default function Feed() {
         setEndReached(page.length < FEED_PAGE_SIZE);
       },
       onPageError: (error) => {
-        setLoadError(String((error as Error).message ?? error));
+        setLoadError(userFacingErrorMessage(error, 'load'));
       },
       onPreviews: setEncouragementPreviews,
       onVisibleSettled: () => {
@@ -518,7 +519,7 @@ export default function Feed() {
         next.delete(eventId);
         return next;
       });
-      Alert.alert('Could not join', String((error as Error).message ?? error));
+      Alert.alert('Could not join', userFacingErrorMessage(error, 'update'));
     }
   }
 
@@ -544,7 +545,7 @@ export default function Feed() {
             : item,
         ),
       );
-      Alert.alert('Could not update like', String((error as Error).message ?? error));
+      Alert.alert('Could not update like', userFacingErrorMessage(error, 'update'));
     } finally {
       likesInFlight.current.delete(post.id);
     }

@@ -98,9 +98,20 @@ export default function Compete() {
               accessibilityRole="button"
               accessibilityLabel="Share a win"
             >
-              <Ionicons name="flame" size={17} color="#f59e0b" />
+              <View style={styles.winIcon}>
+                <Ionicons name="flame" size={17} color="#f59e0b" />
+              </View>
             </Pressable>
-            {rank ? <RankBadge rank={rank} size={30} onPress={() => router.push('/achievements' as never)} /> : null}
+            {rank ? (
+              <Pressable
+                style={({ pressed }) => [styles.rankBtn, pressed && styles.pressed]}
+                onPress={() => router.push('/achievements' as never)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${rank} rank details`}
+              >
+                <RankBadge rank={rank} size={30} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
         <Segmented
@@ -409,13 +420,13 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
                     </View>
                   );
                 })()}
-                <View style={{ flex: 1 }}>
+                <View style={styles.challengeCopy}>
                   {c.is_official ? (
                     <Text style={styles.officialLabel}>
                       OFFICIAL · {(c.difficulty ?? 'beginner').toUpperCase()}
                     </Text>
                   ) : null}
-                  <Text style={styles.challengeTitle} numberOfLines={1}>
+                  <Text style={styles.challengeTitle}>
                     {c.title}
                   </Text>
                   <Text style={styles.challengeMeta}>
@@ -579,6 +590,12 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   winBtn: {
+    width: spacing.touch,
+    height: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  winIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
@@ -586,7 +603,13 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontSize: 26, fontFamily: font.extrabold, color: palette.ink },
+  rankBtn: {
+    minWidth: spacing.touch,
+    minHeight: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { flexShrink: 1, fontSize: 26, fontFamily: font.extrabold, color: palette.ink },
   pressed: { opacity: 0.7 },
   card: {},
   pad: { padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
@@ -628,9 +651,13 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 18,
+    minHeight: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   secondaryBtnText: { color: palette.accent, fontFamily: font.bold, fontSize: 13.5 },
   challengePad: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
+  challengeCopy: { flex: 1, minWidth: 0 },
   challengeTitle: { fontFamily: font.bold, fontSize: 15.5, color: palette.ink },
   officialLabel: { fontFamily: font.extrabold, fontSize: 9.5, color: palette.accent, letterSpacing: 0.6 },
   challengeMeta: { fontFamily: font.medium, fontSize: 12.5, color: palette.inkSoft, marginTop: 2 },
@@ -640,7 +667,7 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     borderRadius: radius.pill,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    minHeight: 36,
+    minHeight: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -669,7 +696,7 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     borderColor: palette.accentBorder,
     borderRadius: radius.pill,
     paddingVertical: 12,
-    minHeight: 44,
+    minHeight: spacing.touch,
   },
-  flexBtnText: { fontFamily: font.bold, fontSize: 14, color: palette.accent },
+  flexBtnText: { flexShrink: 1, fontFamily: font.bold, fontSize: 14, color: palette.accent, textAlign: 'center' },
 });

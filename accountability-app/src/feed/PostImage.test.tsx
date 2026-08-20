@@ -38,4 +38,22 @@ describe('PostImage presentation', () => {
       undefined,
     );
   });
+
+  test('shows an ordinary detail photo uncropped at its measured aspect ratio', () => {
+    act(() => {
+      TestRenderer.create(<PostImage url="photo.jpg" detail />);
+    });
+
+    const firstProps = jest.mocked(CachedImage).mock.calls.at(-1)?.[0];
+    expect(firstProps?.contentFit).toBe('contain');
+
+    act(() => {
+      firstProps?.onLoad?.({ source: { width: 900, height: 1600 } } as never);
+    });
+
+    const measuredProps = jest.mocked(CachedImage).mock.calls.at(-1)?.[0];
+    const measuredStyle = measuredProps?.style as unknown as { aspectRatio: number };
+    expect(measuredProps?.contentFit).toBe('contain');
+    expect(measuredStyle.aspectRatio).toBe(900 / 1600);
+  });
 });

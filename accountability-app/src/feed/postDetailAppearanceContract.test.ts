@@ -14,12 +14,14 @@ const immersiveSource = readFileSync(require.resolve('./ImmersivePost'), 'utf8')
 const compactPost = {
   post_type: 'post',
   image_url: null,
+  share_data: {},
 } as FeedPost;
 
 const immersivePost = {
   post_type: 'photo',
   image_url: 'https://example.com/proof.jpg',
-} as FeedPost;
+  share_data: { verified: true },
+} as unknown as FeedPost;
 
 describe('Post detail Light/Dark appearance contract', () => {
   test('uses light status-bar content for dark or immersive detail while keeping light compact defaults', () => {

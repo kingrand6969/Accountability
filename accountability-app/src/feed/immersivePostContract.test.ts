@@ -142,8 +142,27 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(postDetailStatusBarStyle(null)).toBe('dark');
     expect(postDetailStatusBarStyle({ ...post, post_type: 'post' })).toBe('dark');
     expect(postDetailStatusBarStyle({ ...post, post_type: 'event' })).toBe('dark');
+    expect(
+      postDetailStatusBarStyle({
+        ...post,
+        post_type: 'photo',
+        share_data: { verified: false },
+      }),
+    ).toBe('dark');
+    expect(
+      postDetailStatusBarStyle({
+        ...post,
+        post_type: 'video',
+        share_data: {},
+      }),
+    ).toBe('dark');
+    expect(
+      postDetailStatusBarStyle(
+        { ...post, post_type: 'photo', share_data: { verified: false } },
+        'dark',
+      ),
+    ).toBe('light');
     expect(postDetailStatusBarStyle({ ...post, post_type: 'photo' })).toBe('light');
-    expect(postDetailStatusBarStyle({ ...post, post_type: 'video' })).toBe('light');
     expect(postDetailStatusBarStyle(post)).toBe('light');
     expect(routeSource).toContain("import { StatusBar } from 'expo-status-bar'");
     expect(routeSource).toContain(
@@ -151,7 +170,21 @@ describe('Group 3 immersive Post Detail contract', () => {
     );
   });
 
-  test('reserves the full-height immersive surface for media-first photo, video, and run posts', () => {
+  test('reserves the athletic hero for runs and verified athletic proof', () => {
+    expect(
+      usesImmersivePostSurface({
+        ...post,
+        post_type: 'photo',
+        share_data: { verified: false },
+      }),
+    ).toBe(false);
+    expect(
+      usesImmersivePostSurface({
+        ...post,
+        post_type: 'video',
+        share_data: {},
+      }),
+    ).toBe(false);
     expect(usesImmersivePostSurface({ ...post, post_type: 'photo' })).toBe(true);
     expect(usesImmersivePostSurface({ ...post, post_type: 'video' })).toBe(true);
     expect(usesImmersivePostSurface(post)).toBe(true);
@@ -378,6 +411,19 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(componentSource).not.toContain('Media unavailable');
     expect(componentSource).not.toContain('minHeight: 720');
     expect(componentSource).not.toContain('presentation.privacyLabel || post.body');
+  });
+
+  test('renders ordinary photos in the clean natural-size detail viewer', () => {
+    expect(componentSource).toContain('<PostImage url={post.image_url} detail />');
+    expect(componentSource).not.toContain('<PostImage url={post.image_url} capTall />');
+    expect(componentSource).not.toMatch(/compactMedia:\s*\{[^}]*minHeight/s);
+  });
+
+  test('preserves the focused-route playback lifecycle for ordinary video detail', () => {
+    expect(componentSource).toContain('mediaActive={mediaActive}');
+    expect(componentSource).toContain(
+      '<PostVideo url={post.image_url} detail active={mediaActive} />',
+    );
   });
 
   test('uses the approved clap for Cheer and truthful empty-comment copy', () => {

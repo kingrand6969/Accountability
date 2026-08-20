@@ -11,6 +11,7 @@ const controls = source('src/compete/CompeteUI.tsx');
 const compete = source('src/app/compete.tsx');
 const detail = source('src/app/challenge/[id].tsx');
 const create = source('src/app/challenge-new.tsx');
+const carousel = source('src/achievements/ChallengesCarousel.tsx');
 
 function luminance(hex: string): number {
   const rgb = hex
@@ -27,6 +28,16 @@ function contrast(foreground: string, background: string): number {
   const high = Math.max(luminance(foreground), luminance(background));
   const low = Math.min(luminance(foreground), luminance(background));
   return (high + 0.05) / (low + 0.05);
+}
+
+function composite(foreground: string, background: string, alpha: number): string {
+  const fg = foreground.slice(1).match(/.{2}/g)!.map((value) => parseInt(value, 16));
+  const bg = background.slice(1).match(/.{2}/g)!.map((value) => parseInt(value, 16));
+  return `#${fg.map((value, index) =>
+    Math.round(value * alpha + bg[index] * (1 - alpha))
+      .toString(16)
+      .padStart(2, '0'),
+  ).join('')}`;
 }
 
 describe('competition and challenge appearance contract', () => {
@@ -74,4 +85,42 @@ describe('competition and challenge appearance contract', () => {
       expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
     },
   );
+
+  test('all direct competition actions and shared selectors expose 48dp targets', () => {
+    expect(controls).toMatch(/segBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(controls).toMatch(/chip:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(compete).toMatch(/winBtn:\s*\{[^}]*width: spacing\.touch[^}]*height: spacing\.touch/s);
+    expect(compete).toContain('<View style={styles.winIcon}>');
+    expect(compete).toMatch(/winIcon:\s*\{[^}]*width: 34[^}]*height: 34[^}]*borderRadius: 17/s);
+    expect(compete).toMatch(/rankBtn:\s*\{[^}]*minWidth: spacing\.touch[^}]*minHeight: spacing\.touch/s);
+    expect(compete).toMatch(/secondaryBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(compete).toMatch(/joinBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(compete).toMatch(/flexBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(detail).toMatch(/retryBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(detail).toMatch(/joinBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(detail).toMatch(/inviteBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+  });
+
+  test('competition labels can grow and wrap without colliding or truncating identity', () => {
+    expect(controls).toContain('segText: { flexShrink: 1');
+    expect(controls).toContain('chipText: { flexShrink: 1');
+    expect(controls).toContain('<View style={styles.rankCopy}>');
+    expect(controls).not.toContain('style={styles.name} numberOfLines={1}');
+    expect(controls).not.toContain('style={styles.sub} numberOfLines={1}');
+    expect(compete).not.toContain('style={styles.challengeTitle} numberOfLines={1}');
+    expect(compete).toContain('challengeCopy: { flex: 1, minWidth: 0 }');
+    expect(detail).toContain('inviteText: { flexShrink: 1');
+    expect(carousel).not.toContain('style={styles.title} numberOfLines={2}');
+  });
+
+  test('Light challenge secondary and success text meet 4.5:1 on the darkest approved glass stop', () => {
+    const darkestGlass = '#C9DCF4';
+    const secondary = composite('#1E1B4B', darkestGlass, 0.72);
+    const joinedSurface = composite('#16A34A', darkestGlass, 0.14);
+
+    expect(contrast(secondary, darkestGlass)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#166534', joinedSurface)).toBeGreaterThanOrEqual(4.5);
+    expect(carousel).toContain("success: mode === 'dark' ? theme.status.success : '#166534'");
+    expect(carousel).toContain("pillJoined: mode === 'dark' ? theme.status.successSoft : 'rgba(22,163,74,0.14)'");
+  });
 });

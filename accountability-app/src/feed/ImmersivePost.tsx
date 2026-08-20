@@ -243,7 +243,9 @@ export function usesImmersivePostSurface(
 ): post is FeedPost & { image_url: string } {
   return (
     Boolean(post.image_url) &&
-    (post.post_type === 'photo' || post.post_type === 'video' || post.post_type === 'run')
+    (post.post_type === 'run' ||
+      ((post.post_type === 'photo' || post.post_type === 'video') &&
+        post.share_data.verified === true))
   );
 }
 
@@ -306,6 +308,7 @@ export function ImmersivePost({
         supporterCount={supporterCount}
         supporterNames={supporterNames}
         supporterAvatars={supporterAvatars}
+        mediaActive={mediaActive}
         onBack={onBack}
         onOptions={onOptions}
         onEncourage={onEncourage}
@@ -428,6 +431,7 @@ function CompactPostSurface({
   supporterCount,
   supporterNames,
   supporterAvatars,
+  mediaActive,
   onBack,
   onOptions,
   onEncourage,
@@ -441,6 +445,7 @@ function CompactPostSurface({
   supporterCount: number;
   supporterNames: string;
   supporterAvatars: { id: string; name: string | null; avatar_url: string | null }[];
+  mediaActive: boolean;
   onBack(): void;
   onOptions(): void;
   onEncourage(): void;
@@ -504,9 +509,9 @@ function CompactPostSurface({
           accessibilityLabel={`Post media by ${authorLabel(post.author_name)}`}
         >
           {post.post_type === 'video' ? (
-            <PostVideo url={post.image_url} detail />
+            <PostVideo url={post.image_url} detail active={mediaActive} />
           ) : (
-            <PostImage url={post.image_url} capTall />
+            <PostImage url={post.image_url} detail />
           )}
         </View>
       ) : null}
@@ -737,7 +742,6 @@ const createCompactStyles = (theme: AppThemeColors, mode: AppThemeMode) => Style
   compactEventTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15, lineHeight: 20 },
   compactEventMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
   compactMedia: {
-    minHeight: 220,
     overflow: 'hidden',
     backgroundColor: mode === 'dark' ? theme.surface.canvas : theme.surface.inverse,
   },

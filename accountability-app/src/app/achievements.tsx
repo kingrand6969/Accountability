@@ -48,6 +48,22 @@ import { missionPoints, type MissionState } from '../achievements/missions';
 
 const SEEN_KEY = 'achievements:seen:v1';
 
+export function medalFlexRoute(state: MedalState) {
+  const medalTitle = state.tierName
+    ? `${state.tierName} ${state.def.title}`
+    : state.def.title;
+  return {
+    pathname: '/win-card',
+    params: {
+      achievementKind: 'medal',
+      achievementSourceId: `medal:${state.def.id}:tier:${state.tierIndex}`,
+      achievementTitle: medalTitle,
+      achievementText: `Just earned the ${medalTitle} medal`,
+      autoPrompt: '1',
+    },
+  } as const;
+}
+
 export default function Achievements() {
   const router = useRouter();
   const { colors: theme, mode } = useAppTheme();
@@ -61,6 +77,12 @@ export default function Achievements() {
   const [challenges, setChallenges] = useState<ChallengeCard[] | null>(null);
   const [missions, setMissions] = useState<MissionState[] | null>(null);
   const [flexing, setFlexing] = useState(false);
+
+  const openMedalFlex = useCallback((state: MedalState) => {
+    setSelected(null);
+    setUnlock(null);
+    router.push(medalFlexRoute(state) as never);
+  }, [router]);
 
   const load = useCallback(() => {
     listChallenges()
@@ -439,12 +461,7 @@ export default function Achievements() {
       <MedalSheet
         state={selected}
         onClose={() => setSelected(null)}
-        onShare={(s) => {
-          setSelected(null);
-          router.push(
-            `/compose?text=${encodeURIComponent(`Just earned the ${s.tierName} ${s.def.title} medal`)}` as never,
-          );
-        }}
+        onShare={openMedalFlex}
       />
 
       {/* unlock celebration */}
@@ -452,12 +469,7 @@ export default function Achievements() {
         state={unlock}
         celebrate
         onClose={() => setUnlock(null)}
-        onShare={(s) => {
-          setUnlock(null);
-          router.push(
-            `/compose?text=${encodeURIComponent(`Just earned the ${s.tierName} ${s.def.title} medal`)}` as never,
-          );
-        }}
+        onShare={openMedalFlex}
       />
     </View>
   );

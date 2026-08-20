@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, test } from '@jest/globals';
 
 const layoutSource = fs.readFileSync(path.join(__dirname, '../app/_layout.tsx'), 'utf8');
+const onboardingSource = fs.readFileSync(path.join(__dirname, '../app/onboarding.tsx'), 'utf8');
 
 describe('root layout contract', () => {
   test('keeps the approved provider and host order', () => {
@@ -54,13 +55,36 @@ describe('root layout contract', () => {
     expect(layoutSource).toMatch(
       /const\s+\[fontsLoaded,\s*fontError\]\s*=\s*useFonts\(/,
     );
-    expect(layoutSource).toMatch(
-      /if\s*\(\s*loading\s*\|\|\s*\(!fontsLoaded\s*&&\s*!fontError\)\s*\)/,
-    );
+    expect(layoutSource).toMatch(/if\s*\(\s*loading\s*\|\|/);
+    expect(layoutSource).toContain('|| (!fontsLoaded && !fontError))');
     expect(layoutSource).not.toMatch(/if\s*\(\s*loading\s*\|\|\s*!fontsLoaded\s*\)/);
   });
 
   test('does not mount Post in the root Android stack', () => {
     expect(layoutSource).not.toContain('<Stack.Screen name="post/[id]"');
+  });
+
+  test('keeps onboarding session-only and requires completed onboarding for every app route', () => {
+    expect(layoutSource).toMatch(
+      /<Stack\.Protected guard=\{!!session\}>\s*<Stack\.Screen name="onboarding" \/>\s*<\/Stack\.Protected>/,
+    );
+    expect(layoutSource).toContain(
+      '<Stack.Protected guard={!!session && onboarded === true}>',
+    );
+
+    const appGuard = layoutSource.indexOf(
+      '<Stack.Protected guard={!!session && onboarded === true}>',
+    );
+    const appGuardEnd = layoutSource.indexOf('</Stack.Protected>', appGuard);
+    const protectedAppRoutes = layoutSource.slice(appGuard, appGuardEnd);
+    for (const route of ['(app)', 'compose', 'win-card', 'story/[userId]']) {
+      expect(protectedAppRoutes).toContain(`name="${route}"`);
+    }
+    expect(protectedAppRoutes).not.toContain('name="onboarding"');
+  });
+
+  test('signals successful onboarding to the root lifecycle instead of racing a local redirect', () => {
+    expect(onboardingSource).toContain('notifyOnboardingComplete(expectedOwner)');
+    expect(onboardingSource).not.toContain("router.replace('/')");
   });
 });

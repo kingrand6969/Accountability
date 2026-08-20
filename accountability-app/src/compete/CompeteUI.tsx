@@ -177,13 +177,13 @@ export function RankRow({
         <Text style={[styles.rankNum, medal ? { color: '#fff' } : null]}>{rank}</Text>
       </View>
       <Avatar url={avatar} name={name} size={38} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name} numberOfLines={1}>
+      <View style={styles.rankCopy}>
+        <Text style={styles.name}>
           {name?.trim() || 'Member'}
           {highlight ? ' (you)' : ''}
         </Text>
         {subtitle ? (
-          <Text style={styles.sub} numberOfLines={1}>
+          <Text style={styles.sub}>
             {subtitle}
           </Text>
         ) : null}
@@ -211,10 +211,11 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     gap: 5,
     paddingVertical: 8,
     borderRadius: radius.pill,
-    minHeight: 38,
+    minHeight: spacing.touch,
+    minWidth: 0,
   },
   segActive: { backgroundColor: palette.accent },
-  segText: { fontFamily: font.bold, fontSize: 13.5, color: palette.inkSoft },
+  segText: { flexShrink: 1, fontFamily: font.bold, fontSize: 13.5, color: palette.inkSoft, textAlign: 'center' },
   segTextActive: { color: palette.onAccent },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: {
@@ -227,10 +228,11 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     borderRadius: radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 13,
-    minHeight: 34,
+    minHeight: spacing.touch,
+    minWidth: 0,
   },
   chipActive: { backgroundColor: palette.accent, borderColor: palette.accent },
-  chipText: { fontFamily: font.semibold, fontSize: 13, color: palette.ink },
+  chipText: { flexShrink: 1, fontFamily: font.semibold, fontSize: 13, color: palette.ink },
   chipTextActive: { color: palette.onAccent },
   row: {
     flexDirection: 'row',
@@ -238,6 +240,7 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     gap: spacing.md,
     paddingVertical: 8,
     paddingHorizontal: 4,
+    minHeight: spacing.touch,
   },
   rowMe: {
     backgroundColor: palette.selectedRow,
@@ -253,7 +256,8 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     justifyContent: 'center',
   },
   rankNum: { fontFamily: font.extrabold, fontSize: 13, color: palette.inkSoft },
+  rankCopy: { flex: 1, minWidth: 0 },
   name: { fontFamily: font.bold, fontSize: 14.5, color: palette.ink },
   sub: { fontFamily: font.medium, fontSize: 12, color: palette.inkSoft, marginTop: 1 },
-  score: { fontFamily: font.extrabold, fontSize: 15, color: palette.accent },
+  score: { flexShrink: 0, fontFamily: font.extrabold, fontSize: 15, color: palette.accent, textAlign: 'right' },
 });

@@ -57,6 +57,7 @@ import {
   type ImmersiveViewContext,
 } from '../../../feed/ImmersivePost';
 import { navigateBackSafely } from '../../../navigation/routeAccessContract';
+import { userFacingErrorMessage } from '../../../ui/userFacingError';
 
 export default function PostDetailRoute() {
   const params = useLocalSearchParams<{ id: string; encouragement?: string }>();
@@ -294,7 +295,7 @@ function PostDetailView({
       );
     } catch (error) {
       if (!belongs()) return;
-      setLoadError(String((error as Error).message ?? error));
+      setLoadError(userFacingErrorMessage(error, 'load'));
     } finally {
       if (belongs()) {
         setLoading(false);
@@ -389,7 +390,7 @@ function PostDetailView({
       }
     } catch (error) {
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
-        Alert.alert('Could not update like', String((error as Error).message ?? error));
+        Alert.alert('Could not update like', userFacingErrorMessage(error, 'update'));
         void load({ preserveVisible: true });
       }
     } finally {
@@ -433,7 +434,7 @@ function PostDetailView({
       }
     } catch (error) {
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
-        Alert.alert('Could not comment', String((error as Error).message ?? error));
+        Alert.alert('Could not comment', userFacingErrorMessage(error, 'comment'));
       }
     } finally {
       const result = operations.current.complete(

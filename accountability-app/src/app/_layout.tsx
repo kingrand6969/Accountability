@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Stack, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { Linking, Platform, Pressable } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
@@ -25,12 +26,21 @@ import '../notifications/handler';
 import '../activity/locationTask';
 import {
   createAuthRouteIntentController,
+  onboardingStorageKey,
   routeIntentFromPath,
+  subscribeToOnboardingCompletion,
   type RouteQuery,
 } from '../navigation/authRouteIntent';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
 import { AppLaunchState } from '../ui/AppLaunchState';
 import { AppThemeProvider, useAppTheme } from '../ui/AppThemeProvider';
+import { getMyProfile } from '../profiles/api';
+
+type OnboardingState = Readonly<{
+  ownerId: string;
+  complete: boolean;
+  failed?: boolean;
+}>;
 
 /**
  * A back control that never dead-ends: it pops the stack when there's somewhere
@@ -62,12 +72,28 @@ function RootNavigator() {
   const ownerId = session?.user.id ?? null;
   const ownerRef = useRef(ownerId);
   const initialLinkCaptureStartedRef = useRef(false);
-  const [intentController] = useState(createAuthRouteIntentController);
+  const [intentController] = useState(() => createAuthRouteIntentController(ownerId));
+  const [onboardingState, setOnboardingState] = useState<OnboardingState | null>(null);
+  const [onboardingAttempt, setOnboardingAttempt] = useState(0);
+  const ownerOnboardingState = ownerId && onboardingState?.ownerId === ownerId
+    ? onboardingState
+    : null;
+  const onboardingFailed = ownerOnboardingState?.failed === true;
+  const onboarded = ownerId
+    ? ownerOnboardingState && !onboardingFailed
+      ? ownerOnboardingState.complete
+      : null
+    : false;
   const currentIntent = routeIntentFromPath(pathname, query);
 
   useEffect(() => {
     if (!session && currentIntent) intentController.capture(currentIntent);
   }, [currentIntent, intentController, session]);
+
+  useEffect(() => {
+    if (!ownerId || onboarded === true || !currentIntent) return;
+    intentController.captureForOwner(ownerId, currentIntent);
+  }, [currentIntent, intentController, onboarded, ownerId]);
 
   useEffect(() => {
     if (initialLinkCaptureStartedRef.current) return;
@@ -84,12 +110,64 @@ function RootNavigator() {
 
   useEffect(() => {
     ownerRef.current = ownerId;
-    const destination = intentController.transitionToOwner(ownerId);
-    if (!destination || !ownerId) return;
+    intentController.transitionToOwner(ownerId);
+  }, [intentController, ownerId]);
+
+  useEffect(() => {
+    if (!ownerId) return;
+    let active = true;
+    void (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(onboardingStorageKey(ownerId));
+        if (stored === '1') {
+          if (active) setOnboardingState({ ownerId, complete: true });
+          return;
+        }
+        const profile = await getMyProfile();
+        const complete = !!profile?.display_name?.trim() && !!profile?.area?.trim();
+        if (active) {
+          setOnboardingState((current) =>
+            current?.ownerId === ownerId && current.complete
+              ? current
+              : { ownerId, complete, failed: false },
+          );
+        }
+        if (complete) {
+          AsyncStorage.setItem(onboardingStorageKey(ownerId), '1').catch(() => {});
+        }
+      } catch {
+        if (active) {
+          setOnboardingState((current) =>
+            current?.ownerId === ownerId && current.complete
+              ? current
+              : { ownerId, complete: false, failed: true },
+          );
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [onboardingAttempt, ownerId]);
+
+  useEffect(() => subscribeToOnboardingCompletion((completedOwnerId) => {
+    if (ownerRef.current !== completedOwnerId) return;
+    setOnboardingState((current) =>
+      current?.ownerId === completedOwnerId && current.complete
+        ? current
+        : { ownerId: completedOwnerId, complete: true, failed: false },
+    );
+  }), []);
+
+  useEffect(() => {
+    if (!ownerId || onboarded !== true) return;
+    const destination = intentController.resumeForOwner(ownerId, true);
+    const target = destination ?? (pathname === '/onboarding' ? '/' : null);
+    if (!target) return;
     queueMicrotask(() => {
-      if (ownerRef.current === ownerId) router.replace(destination as never);
+      if (ownerRef.current === ownerId) router.replace(target as never);
     });
-  }, [intentController, ownerId, router]);
+  }, [intentController, onboarded, ownerId, pathname, router]);
 
   // Referral attribution: remember an invite link on launch, then credit the
   // inviter once this (new) account is signed in.
@@ -115,6 +193,26 @@ function RootNavigator() {
     return <AppLaunchState message="Opening AccountAbility" />;
   }
 
+  if (!!session && onboardingFailed) {
+    return (
+      <AppLaunchState
+        message="We could not check your account setup"
+        error
+        actionLabel="Try again"
+        onAction={() => {
+          setOnboardingState((current) =>
+            current?.ownerId === ownerId && current.failed ? null : current,
+          );
+          setOnboardingAttempt((attempt) => attempt + 1);
+        }}
+      />
+    );
+  }
+
+  if (!!session && onboarded === null) {
+    return <AppLaunchState message="Opening AccountAbility" />;
+  }
+
   return (
     <>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
@@ -129,8 +227,10 @@ function RootNavigator() {
         }}
       >
       <Stack.Protected guard={!!session}>
-        <Stack.Screen name="(app)" />
         <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      <Stack.Protected guard={!!session && onboarded === true}>
+        <Stack.Screen name="(app)" />
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
         <Stack.Screen name="gym" options={{ headerShown: true, title: 'Exercise Library' }} />
         <Stack.Screen name="exercise/[id]" options={{ headerShown: true, title: 'Exercise' }} />

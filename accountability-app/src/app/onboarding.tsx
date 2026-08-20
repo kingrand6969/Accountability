@@ -11,13 +11,16 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { getMyProfile, updateMyProfile } from '../profiles/api';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../ui/Button';
 import { confirmDialog } from '../ui/ConfirmDialog';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BrandMark } from '../ui/BrandMark';
 import { createItem, listItemsForDay } from '../timeline/api';
@@ -27,6 +30,10 @@ import {
   createSingleFlight,
   togglePromiseSelection,
 } from '../entry/promiseSelection';
+import {
+  notifyOnboardingComplete,
+  onboardingStorageKey,
+} from '../navigation/authRouteIntent';
 
 const PROMISES = [
   { id: 'body-run', group: 'Body', icon: 'walk' as const, color: '#2563EB', title: 'Morning run 3.2 km' },
@@ -37,7 +44,7 @@ const PROMISES = [
 
 /** Per-user flag — a second account on the same device gets its own onboarding. */
 export function onboardedKey(userId: string): string {
-  return `onboarded:${userId}`;
+  return onboardingStorageKey(userId);
 }
 
 /** A believable name part: at least 2 letters (unicode), spaces/'-. allowed. */
@@ -91,7 +98,8 @@ async function resolveArea(text: string): Promise<AreaCheck> {
 }
 
 function PromiseStep({ userId }: { userId: string | null }) {
-  const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const styles = createStyles(theme);
   const [saving, setSaving] = useState(false);
   const [selectedPromises, setSelectedPromises] = useState<Set<string>>(new Set());
   const [promiseError, setPromiseError] = useState<string | null>(null);
@@ -138,7 +146,7 @@ function PromiseStep({ userId }: { userId: string | null }) {
         return;
       }
       if (!isCurrentOwner()) return;
-      router.replace('/');
+      if (expectedOwner) notifyOnboardingComplete(expectedOwner);
       if (result.warning) Alert.alert('Saved for this session', result.warning);
     });
   }
@@ -146,7 +154,7 @@ function PromiseStep({ userId }: { userId: string | null }) {
   return (
     <ScrollView contentContainerStyle={styles.promiseScreen} keyboardShouldPersistTaps="handled">
       <View style={styles.promiseIntro}>
-        <BrandMark size={34} color={colors.primary} accessibilityLabel="AccountAbility" />
+        <BrandMark size={34} color={theme.ink.action} accessibilityLabel="AccountAbility" />
         <Text accessibilityRole="header" style={styles.promiseTitle}>
           What will you{'\n'}show up for today?
         </Text>
@@ -198,7 +206,7 @@ function PromiseStep({ userId }: { userId: string | null }) {
               <Ionicons
                 name={selected ? 'checkbox' : 'square-outline'}
                 size={24}
-                color={selected ? colors.primary : colors.textFaint}
+                color={selected ? theme.ink.action : theme.ink.muted}
               />
             </Pressable>
           );
@@ -232,6 +240,8 @@ function PromiseStep({ userId }: { userId: string | null }) {
 
 export default function Onboarding() {
   const router = useRouter();
+  const { colors: theme, mode } = useAppTheme();
+  const styles = createStyles(theme);
   const { width, fontScale } = useWindowDimensions();
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
@@ -316,13 +326,22 @@ export default function Onboarding() {
   }
 
   if (step === 'promises') {
-    return <PromiseStep key={userId ?? 'signed-out'} userId={userId} />;
+    return (
+      <>
+        <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+        <SafeAreaView style={styles.screen}>
+          <PromiseStep key={userId ?? 'signed-out'} userId={userId} />
+        </SafeAreaView>
+      </>
+    );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={styles.screen}>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.hero}>
-        <BrandMark size={62} color={colors.primary} accessibilityLabel="AccountAbility" />
+        <BrandMark size={62} color={theme.ink.action} accessibilityLabel="AccountAbility" />
       </View>
       <Text style={styles.title}>Welcome to AccountAbility</Text>
       <Text style={styles.subtitle}>
@@ -336,7 +355,7 @@ export default function Onboarding() {
           <TextInput
             style={styles.input}
             placeholder="First name"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={theme.ink.muted}
             value={firstName}
             onChangeText={setFirstName}
             autoComplete="given-name"
@@ -350,7 +369,7 @@ export default function Onboarding() {
           <TextInput
             style={styles.input}
             placeholder="Last name"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={theme.ink.muted}
             value={lastName}
             onChangeText={setLastName}
             autoComplete="family-name"
@@ -365,7 +384,7 @@ export default function Onboarding() {
       <TextInput
         style={[styles.input, areaErr ? styles.inputErr : null]}
         placeholder="City or area — e.g. Cebu City"
-        placeholderTextColor={colors.textFaint}
+        placeholderTextColor={theme.ink.muted}
         value={area}
         onChangeText={(v) => {
           setArea(v);
@@ -419,11 +438,13 @@ export default function Onboarding() {
         </Text>
         .
       </Text>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   container: {
     padding: spacing.xxl,
     gap: 10,
@@ -438,9 +459,9 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 24,
-    backgroundColor: '#fffffc',
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
@@ -450,10 +471,10 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontFamily: font.extrabold,
     textAlign: 'center',
-    color: colors.text,
+    color: theme.ink.primary,
   },
   subtitle: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: 21,
@@ -462,37 +483,37 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: 'row', gap: 10 },
   nameRowStacked: { flexDirection: 'column' },
   nameCol: { flex: 1, gap: 10 },
-  label: { fontSize: 14, fontFamily: font.semibold, color: colors.textSecondary, marginTop: 10 },
+  label: { fontSize: 14, fontFamily: font.semibold, color: theme.ink.secondary, marginTop: 10 },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: 13,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: theme.ink.primary,
+    backgroundColor: theme.surface.muted,
   },
-  inputErr: { borderColor: colors.danger },
-  errText: { color: colors.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
-  help: { color: colors.textFaint, fontFamily: font.regular, fontSize: 12.5, lineHeight: 18 },
+  inputErr: { borderColor: theme.border.danger },
+  errText: { color: theme.status.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
+  help: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 12.5, lineHeight: 18 },
   cta: { marginTop: spacing.xl },
   legalRow: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     fontSize: 12.5,
     textAlign: 'center',
     lineHeight: 19,
     marginTop: spacing.md,
   },
-  legalLink: { color: colors.primary, fontFamily: font.semibold },
+  legalLink: { color: theme.ink.action, fontFamily: font.semibold },
   promiseScreen: {
     flexGrow: 1,
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
-    backgroundColor: colors.cream,
+    backgroundColor: theme.surface.canvas,
     gap: spacing.md,
     maxWidth: 520,
     width: '100%',
@@ -501,7 +522,7 @@ const styles = StyleSheet.create({
   promiseIntro: { alignItems: 'center', gap: 5, alignSelf: 'stretch' },
   promiseTitle: {
     marginTop: 2,
-    color: colors.text,
+    color: theme.ink.primary,
     fontFamily: font.serif,
     fontSize: 31,
     lineHeight: 35,
@@ -509,7 +530,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.7,
   },
   promiseSubtitle: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     fontSize: 14,
     lineHeight: 20,
@@ -520,15 +541,15 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     alignSelf: 'stretch',
     gap: spacing.sm,
   },
-  promiseCount: { color: colors.primary, fontFamily: font.bold, fontSize: 12.5 },
-  promiseEncouragement: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12 },
+  promiseCount: { color: theme.ink.action, fontFamily: font.bold, fontSize: 12.5 },
+  promiseEncouragement: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12 },
   promiseList: { alignSelf: 'stretch', gap: 8 },
   promiseCard: {
     minHeight: 64,
@@ -539,22 +560,22 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#E3DDD1',
-    backgroundColor: '#FFFFFF',
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
   },
   promiseCardSelected: {
-    borderColor: colors.primary,
+    borderColor: theme.border.action,
     borderWidth: 2,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
   },
   promiseIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   promiseCopy: { flex: 1, gap: 2 },
-  promiseGroup: { color: colors.text, fontFamily: font.bold, fontSize: 15 },
-  promiseExample: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12.5 },
+  promiseGroup: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15 },
+  promiseExample: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 12.5 },
   promisePressed: { opacity: 0.65 },
   promiseLimitNotice: {
     alignSelf: 'stretch',
-    color: colors.danger,
+    color: theme.status.danger,
     fontFamily: font.semibold,
     fontSize: 13,
     lineHeight: 18,
@@ -564,15 +585,15 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.danger,
+    borderColor: theme.border.danger,
     borderRadius: radius.md,
     padding: spacing.md,
-    backgroundColor: colors.dangerSoft,
+    backgroundColor: theme.status.dangerSoft,
     marginBottom: spacing.sm,
   },
-  promiseErrorTitle: { color: colors.danger, fontFamily: font.bold, fontSize: 15 },
-  promiseErrorText: { color: colors.textSecondary, fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
+  promiseErrorTitle: { color: theme.status.danger, fontFamily: font.bold, fontSize: 15 },
+  promiseErrorText: { color: theme.ink.secondary, fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
   promiseActions: { alignSelf: 'stretch', gap: 2, marginTop: 'auto' },
   skipPromises: { minHeight: 48, minWidth: 140, alignItems: 'center', justifyContent: 'center' },
-  skipPromisesText: { color: colors.primary, fontFamily: font.semibold, fontSize: 14 },
+  skipPromisesText: { color: theme.ink.action, fontFamily: font.semibold, fontSize: 14 },
 });

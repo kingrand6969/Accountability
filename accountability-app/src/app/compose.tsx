@@ -71,6 +71,7 @@ import {
   type DurableDraftMedia,
 } from '../entry/composeDraft';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
+import { userFacingErrorMessage } from '../ui/userFacingError';
 
 type CleanupRecovery = {
   successMessage: string;
@@ -200,7 +201,7 @@ export default function Compose() {
         })
         .catch((e) => {
           if (mounted && mountTokenRef.current === hydrationToken) {
-            Alert.alert('Could not edit post', String((e as Error).message ?? e));
+            Alert.alert('Could not edit post', userFacingErrorMessage(e, 'load'));
           }
         })
         .then(() => undefined);
@@ -746,7 +747,7 @@ export default function Compose() {
       await attachVideoAsset(normalized.asset, operationOwner, operationToken);
     } catch (error) {
       if (ownerRef.current === operationOwner && mountTokenRef.current === operationToken) {
-        Alert.alert('Video not added', `${String((error as Error).message ?? error)}. Retry or remove the media.`);
+        Alert.alert('Video not added', userFacingErrorMessage(error, 'media'));
       }
     }
   }
@@ -777,7 +778,7 @@ export default function Compose() {
       })
       .catch((error) => {
         if (ownerRef.current === operationOwner && mountTokenRef.current === operationToken) {
-          Alert.alert('Photo not added', `${String((error as Error).message ?? error)}. Retry or remove the media.`);
+          Alert.alert('Photo not added', userFacingErrorMessage(error, 'media'));
         }
       });
   }
@@ -863,7 +864,7 @@ export default function Compose() {
       } catch (e) {
         if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
           postingRef.current = false;
-          Alert.alert('Could not update post', String((e as Error).message ?? e));
+          Alert.alert('Could not update post', userFacingErrorMessage(e, 'update'));
           setPosting(false);
         }
       }
@@ -900,7 +901,7 @@ export default function Compose() {
       } catch (e) {
         if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
           postingRef.current = false;
-          Alert.alert('Could not announce event', String((e as Error).message ?? e));
+          Alert.alert('Could not announce event', userFacingErrorMessage(e, 'publish'));
           setPosting(false);
         }
       }
@@ -955,7 +956,7 @@ export default function Compose() {
       } catch (cleanupError) {
         finishAfterRemoteSuccess(
           'Posted to your feed',
-          String((cleanupError as Error).message ?? cleanupError),
+          userFacingErrorMessage(cleanupError, 'update'),
           submittedDraft,
           submittedOwner,
           submittedToken,
@@ -988,7 +989,7 @@ export default function Compose() {
     } catch (e) {
       if (ownerRef.current === submittedOwner && mountTokenRef.current === submittedToken) {
         postingRef.current = false;
-        Alert.alert('Could not post', String((e as Error).message ?? e));
+        Alert.alert('Could not post', userFacingErrorMessage(e, 'publish'));
         setPosting(false);
       }
     }

@@ -70,6 +70,18 @@ async function readBoundedBody(
   return merged;
 }
 
+function authorizationDecision(
+  responses: Array<{ data: unknown; error: unknown }>,
+): 'allowed' | 'denied' | 'unavailable' {
+  if (responses.some(({ error }) => Boolean(error))) return 'unavailable';
+  return responses.some(({ data }) => Boolean(data)) ? 'allowed' : 'denied';
+}
+
+function rateErrorStatus(error: { code?: string } | null): number | null {
+  if (!error) return null;
+  return error.code === '54000' ? 429 : 503;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: responseHeaders });
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
@@ -107,25 +119,36 @@ Deno.serve(async (req) => {
     const authorized = await Promise.all(refs.map(async (ref) => {
       const key = ref.slice('r2://'.length);
       const folder = key.split('/', 1)[0];
-      let allowed = false;
+      let decision: 'allowed' | 'denied' | 'unavailable';
       if (folder === 'post-images' || folder === 'post-videos') {
-        const [{ data: post }, { data: story }] = await Promise.all([
+        const responses = await Promise.all([
           supabase.from('posts').select('id').eq('image_url', ref).limit(1).maybeSingle(),
           supabase.from('stories').select('id').eq('image_url', ref).limit(1).maybeSingle(),
         ]);
-        allowed = Boolean(post || story);
+        decision = authorizationDecision(responses);
       } else if (folder === 'voice-encouragements') {
-        const { data } = await supabase.from('post_encouragements').select('id').eq('voice_ref', ref).limit(1).maybeSingle();
-        allowed = Boolean(data);
+        const response = await supabase.from('post_encouragements').select('id').eq('voice_ref', ref).limit(1).maybeSingle();
+        decision = authorizationDecision([response]);
       } else {
         const column = folder === 'avatars' ? 'avatar_url' : 'cover_url';
-        const { data } = await supabase.from('public_profiles').select('id').eq(column, ref).limit(1).maybeSingle();
-        allowed = Boolean(data);
+        const response = await supabase.from('public_profiles').select('id').eq(column, ref).limit(1).maybeSingle();
+        decision = authorizationDecision([response]);
       }
-      return allowed ? { ref, key, folder } : null;
+      return {
+        decision,
+        item: decision === 'allowed' ? { ref, key, folder } : null,
+      };
     }));
-    if (authorized.some((item) => item == null)) return json({ error: 'media not found' }, 404);
-    const readable = authorized.filter((item): item is NonNullable<typeof item> => item != null);
+    const authorizationUnavailable = authorized.some(({ decision }) => decision === 'unavailable');
+    if (authorizationUnavailable) {
+      return json({ error: 'media service is temporarily unavailable' }, 503);
+    }
+    if (authorized.some(({ decision }) => decision === 'denied')) {
+      return json({ error: 'media not found' }, 404);
+    }
+    const readable = authorized
+      .map(({ item }) => item)
+      .filter((item): item is NonNullable<typeof item> => item != null);
     if (byteDelivery && !BYTE_IMAGE_FOLDERS.has(readable[0].folder)) {
       return json({ error: 'media not found' }, 404);
     }
@@ -133,7 +156,13 @@ Deno.serve(async (req) => {
     const { error: rateError } = await supabase.from('media_read_log').insert(
       readable.map((item) => ({ media_kind: item.folder })),
     );
-    if (rateError) return json({ error: 'Too many image requests — please try again shortly.' }, 429);
+    const rateStatus = rateErrorStatus(rateError);
+    if (rateStatus === 429) {
+      return json({ error: 'Too many image requests — please try again shortly.' }, 429);
+    }
+    if (rateStatus === 503) {
+      return json({ error: 'media service is temporarily unavailable' }, 503);
+    }
 
     const aws = new AwsClient({
       accessKeyId: Deno.env.get('R2_ACCESS_KEY_ID')!,

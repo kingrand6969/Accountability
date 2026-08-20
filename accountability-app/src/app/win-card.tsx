@@ -45,6 +45,7 @@ import {
   type ProofExportOptIns,
 } from '../entry/proofExport';
 import { useAppTheme } from '../ui/AppThemeProvider';
+import { userFacingErrorMessage } from '../ui/userFacingError';
 import {
   colors,
   font,
@@ -351,7 +352,7 @@ export default function WinCard() {
         }
         mutateForToken(token, () => {
           dispatchAction({ type: 'error', action: 'post-feed', message: safeProofActionMessage('dispatch') });
-          Alert.alert('Could not post Daily Proof', 'Nothing was posted. Please try again.');
+          Alert.alert('Could not post Daily Proof', userFacingErrorMessage(error, 'publish'));
         });
       }
       throw error;

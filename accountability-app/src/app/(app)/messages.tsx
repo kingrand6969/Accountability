@@ -46,11 +46,11 @@ export default function Messages() {
   const [activeOwnerId, setActiveOwnerId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-
-  currentOwnerRef.current = ownerId;
-  dataOwnerRef.current = dataOwnerId;
+  const [errorOwnerId, setErrorOwnerId] = useState<string | null>(null);
 
   useEffect(() => {
+    currentOwnerRef.current = ownerId;
+    dataOwnerRef.current = null;
     loadGeneration.current += 1;
     chatsInFlight.current.clear();
     queueMicrotask(() => {
@@ -61,6 +61,7 @@ export default function Messages() {
       setActiveOwnerId(null);
       setQuery('');
       setRefreshing(false);
+      setErrorOwnerId(null);
     });
   }, [ownerId]);
 
@@ -68,11 +69,13 @@ export default function Messages() {
     const requestOwner = ownerId;
     const generation = ++loadGeneration.current;
     if (!requestOwner) {
+      dataOwnerRef.current = null;
       setItems([]);
       setDataOwnerId(null);
       setActive([]);
       setActiveOwnerId(null);
       setRefreshing(false);
+      setErrorOwnerId(null);
       return;
     }
 
@@ -95,8 +98,10 @@ export default function Messages() {
         requestOwner !== currentOwnerRef.current
       )
         return;
+      dataOwnerRef.current = requestOwner;
       setItems(next);
       setDataOwnerId(requestOwner);
+      setErrorOwnerId(null);
     } catch {
       if (
         generation !== loadGeneration.current ||
@@ -104,9 +109,11 @@ export default function Messages() {
       )
         return;
       if (dataOwnerRef.current !== requestOwner) {
+        dataOwnerRef.current = requestOwner;
         setItems([]);
         setDataOwnerId(requestOwner);
       }
+      setErrorOwnerId(requestOwner);
     } finally {
       if (
         generation === loadGeneration.current &&
@@ -128,7 +135,11 @@ export default function Messages() {
   );
 
   const ownedItems = ownerId && dataOwnerId === ownerId ? items : null;
-  const ownedActive = ownerId && activeOwnerId === ownerId ? active : [];
+  const ownedActive = useMemo(
+    () => (ownerId && activeOwnerId === ownerId ? active : []),
+    [active, activeOwnerId, ownerId],
+  );
+  const loadFailed = ownerId !== null && errorOwnerId === ownerId;
 
   const filtered = useMemo(() => {
     if (!ownedItems) return null;
@@ -221,6 +232,32 @@ export default function Messages() {
           </Text>
         </View>
       ) : null}
+
+      {loadFailed ? (
+        <View
+          style={styles.errorNotice}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <View style={styles.errorCopy}>
+            <Text style={styles.errorTitle}>Messages couldn’t load</Text>
+            <Text style={styles.errorBody}>Check your connection, then try again.</Text>
+          </View>
+          <Pressable
+            onPress={() => {
+              setRefreshing(true);
+              void load();
+            }}
+            disabled={refreshing}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading messages"
+            accessibilityState={{ disabled: refreshing }}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.retryText}>{refreshing ? 'Trying…' : 'Retry'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -246,7 +283,11 @@ export default function Messages() {
           }
           ListEmptyComponent={
             filtered === null ? (
-              <View accessibilityLabel="Loading messages" style={styles.loadingList}>
+              <View
+                accessibilityLabel="Loading messages"
+                accessibilityRole="progressbar"
+                style={styles.loadingList}
+              >
                 {[0, 1, 2].map((index) => (
                   <View key={index} style={styles.loadingRow}>
                     <View style={styles.loadingAvatar} />
@@ -257,7 +298,7 @@ export default function Messages() {
                   </View>
                 ))}
               </View>
-            ) : query ? (
+            ) : loadFailed ? null : query ? (
               <Text style={styles.noResults}>No conversations match “{query}”.</Text>
             ) : (
               <EmptyState
@@ -419,4 +460,29 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   badgeText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 11 },
   noResults: { fontFamily: font.medium, fontSize: 14, color: theme.ink.muted, textAlign: 'center', marginTop: 40 },
+  errorNotice: {
+    minHeight: spacing.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
+  },
+  errorCopy: { flex: 1, gap: 2 },
+  errorTitle: { fontFamily: font.bold, fontSize: 14, color: theme.ink.primary },
+  errorBody: { fontFamily: font.regular, fontSize: 12.5, lineHeight: 17, color: theme.ink.muted },
+  retryButton: {
+    minWidth: 68,
+    minHeight: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: theme.surface.muted,
+  },
+  retryText: { fontFamily: font.bold, fontSize: 13, color: theme.ink.action },
 });
