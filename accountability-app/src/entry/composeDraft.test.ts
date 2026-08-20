@@ -393,6 +393,10 @@ describe('Compose production binding', () => {
     expect(source).not.toContain('Show on Buddy Card');
   });
 
+  test('keeps drafts for other composer entry points without showing a non-actionable warning', () => {
+    expect(source).not.toContain("setDraftNotice('Other saved draft available')");
+  });
+
   test('reuses the saved draft identity across media upload and lost-response post retries', () => {
     expect(source).toContain('const operationId = submittedDraft?.draftId ?? draftId;');
     expect(source).toMatch(/uploadPostImageWithDigest\(pickedBase64, pickedExt, operationId, submittedOwner\)/);

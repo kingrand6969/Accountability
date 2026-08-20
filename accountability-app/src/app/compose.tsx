@@ -259,7 +259,6 @@ export default function Compose() {
         const compatible = loaded.drafts.find((draft) => isCompatibleDraft(draft, { ...draftContext, ownerId }));
         if (!compatible) {
           setDraftReady(true);
-          if (loaded.drafts.length) setDraftNotice('Other saved draft available');
           return;
         }
         const promptOwner = ownerId;
