@@ -19,6 +19,12 @@ describe('0114 private body progress migration', () => {
     expect(migration).toMatch(/commit\s*;$/);
   });
 
+  test('bounds lock and statement waits immediately inside the transaction', () => {
+    expect(migration).toMatch(
+      /^begin; set local lock_timeout = '5s'; set local statement_timeout = '60s';/,
+    );
+  });
+
   test('creates constrained owner-scoped body measurements', () => {
     expect(migration).toMatch(/create table if not exists public\.body_measurements \( id uuid primary key default gen_random_uuid\(\), user_id uuid not null references auth\.users \(id\) on delete cascade, recorded_at timestamptz not null default now\(\), weight_kg numeric\(6,2\) not null check \(weight_kg between 20 and 500\), height_cm numeric\(5,2\) not null check \(height_cm between 80 and 250\), created_at timestamptz not null default now\(\) \)/);
     expect(migration).toContain(
@@ -28,22 +34,23 @@ describe('0114 private body progress migration', () => {
   });
 
   test('creates constrained private progress photo metadata', () => {
-    expect(migration).toMatch(/create table if not exists public\.progress_photos \( id uuid primary key default gen_random_uuid\(\), user_id uuid not null references auth\.users \(id\) on delete cascade, storage_path text not null check \(char_length\(storage_path\) between 1 and 220\), captured_at timestamptz not null default now\(\), weight_kg numeric\(6,2\) check \(weight_kg between 20 and 500\), created_at timestamptz not null default now\(\), unique \(user_id, storage_path\) \)/);
+    expect(migration).toMatch(/create table if not exists public\.progress_photos \( id uuid primary key default gen_random_uuid\(\), user_id uuid not null references auth\.users \(id\) on delete cascade, storage_path text not null check \(char_length\(storage_path\) between 1 and 220\),[\s\S]* captured_at timestamptz not null default now\(\), weight_kg numeric\(6,2\) check \(weight_kg between 20 and 500\), created_at timestamptz not null default now\(\), unique \(user_id, storage_path\) \)/);
     expect(migration).toContain(
       'create index if not exists progress_photos_owner_captured_at_idx on public.progress_photos (user_id, captured_at desc)',
     );
     expect(migration).toContain('alter table public.progress_photos enable row level security');
+    expect(migration).toMatch(/check \( storage_path = btrim\(storage_path\) and split_part\(storage_path, '\/', 1\) = user_id::text and storage_path like user_id::text \|\| '\/%' and substring\(storage_path from char_length\(user_id::text\) \+ 2\) <> '' and storage_path not like '%\/\/%' and storage_path not like '%\/' \)/);
   });
 
   test.each([
-    ['body_measurements', 'select', 'using (user_id = auth.uid())'],
-    ['body_measurements', 'insert', 'with check (user_id = auth.uid())'],
-    ['body_measurements', 'update', 'using (user_id = auth.uid()) with check (user_id = auth.uid())'],
-    ['body_measurements', 'delete', 'using (user_id = auth.uid())'],
-    ['progress_photos', 'select', 'using (user_id = auth.uid())'],
-    ['progress_photos', 'insert', 'with check (user_id = auth.uid())'],
-    ['progress_photos', 'update', 'using (user_id = auth.uid()) with check (user_id = auth.uid())'],
-    ['progress_photos', 'delete', 'using (user_id = auth.uid())'],
+    ['body_measurements', 'select', 'using (user_id = (select auth.uid()))'],
+    ['body_measurements', 'insert', 'with check (user_id = (select auth.uid()))'],
+    ['body_measurements', 'update', 'using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))'],
+    ['body_measurements', 'delete', 'using (user_id = (select auth.uid()))'],
+    ['progress_photos', 'select', 'using (user_id = (select auth.uid()))'],
+    ['progress_photos', 'insert', 'with check (user_id = (select auth.uid()))'],
+    ['progress_photos', 'update', 'using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))'],
+    ['progress_photos', 'delete', 'using (user_id = (select auth.uid()))'],
   ])('gives authenticated owners self-only %s %s access', (table, operation, predicate) => {
     expect(migration).toContain(`drop policy if exists ${table}_${operation} on public.${table}`);
     expect(migration).toContain(
@@ -62,8 +69,12 @@ describe('0114 private body progress migration', () => {
   ])('allows authenticated owners to %s only their first storage folder', (operation, clause) => {
     expect(migration).toContain(`drop policy if exists progress_photos_storage_${operation} on storage.objects`);
     expect(migration).toContain(
-      `create policy progress_photos_storage_${operation} on storage.objects for ${operation} to authenticated ${clause} (bucket_id = 'progress-photos' and (storage.foldername(name))[1] = auth.uid()::text)`,
+      `create policy progress_photos_storage_${operation} on storage.objects for ${operation} to authenticated ${clause} (bucket_id = 'progress-photos' and (storage.foldername(name))[1] = (select auth.uid())::text)`,
     );
+  });
+
+  test('uses init-plan eligible auth identity lookups in every RLS policy', () => {
+    expect(migration.replace(/\(select auth\.uid\(\)\)/g, '')).not.toContain('auth.uid()');
   });
 
   test('grants table access only to authenticated users and exposes nothing to anon or public', () => {
