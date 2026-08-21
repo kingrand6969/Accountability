@@ -1,6 +1,7 @@
 import { postVisibility, type ShareVisibility } from '../progress/visibility';
 
 export const SHARE_CAPTION_LIMIT = 300;
+export const SHARE_CARD_METRIC_LIMIT = 3;
 
 export type ShareStudioContext = Readonly<{
   title: string;
@@ -31,6 +32,28 @@ export type ShareStudioResult = Readonly<{
   media: ShareStudioMedia;
 }>;
 
+const canonicalContexts = new WeakSet<object>();
+
+/**
+ * The share card and its callback intentionally expose at most three metrics.
+ * Anything after the third item is outside the share boundary and is discarded.
+ */
+export function canonicalShareStudioContext(input: ShareStudioContext): ShareStudioContext {
+  if (canonicalContexts.has(input)) return input;
+  if (!Array.isArray(input.metrics)) throw new Error('Share metrics must be a list.');
+  const metrics = input.metrics.slice(0, SHARE_CARD_METRIC_LIMIT).map((metric) => Object.freeze({
+    label: requiredText(metric.label, 'Metric label'),
+    value: requiredText(metric.value, 'Metric value'),
+  }));
+  const context = Object.freeze({
+    title: requiredText(input.title, 'Share title'),
+    date: requiredText(input.date, 'Share date'),
+    metrics: Object.freeze(metrics),
+  });
+  canonicalContexts.add(context);
+  return context;
+}
+
 export function createShareStudioResult(input: {
   ownerId: string;
   context: ShareStudioContext;
@@ -39,15 +62,9 @@ export function createShareStudioResult(input: {
   media: ShareStudioMedia;
 }): ShareStudioResult {
   const ownerId = requiredText(input.ownerId, 'Owner');
-  const title = requiredText(input.context.title, 'Share title');
-  const date = requiredText(input.context.date, 'Share date');
   const caption = input.caption.trim();
   if (caption.length > SHARE_CAPTION_LIMIT) throw new Error(`Caption must be ${SHARE_CAPTION_LIMIT} characters or fewer.`);
-  const metrics = input.context.metrics.map((metric) => Object.freeze({
-    label: requiredText(metric.label, 'Metric label'),
-    value: requiredText(metric.value, 'Metric value'),
-  }));
-  const context = Object.freeze({ title, date, metrics: Object.freeze(metrics) });
+  const context = canonicalShareStudioContext(input.context);
   const visibility = Object.freeze(postVisibility(input.showPublicly));
   const media = Object.freeze({ ...input.media }) as ShareStudioMedia;
   return Object.freeze({ ownerId, context, caption, showPublicly: input.showPublicly, visibility, media });

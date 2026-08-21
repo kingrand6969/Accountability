@@ -20,6 +20,7 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 import { createShareStudioStyles } from './ShareStudio.styles';
 import {
   createShareStudioResult,
+  canonicalShareStudioContext,
   SHARE_CAPTION_LIMIT,
   type ShareStudioContext,
   type ShareStudioResult,
@@ -66,6 +67,7 @@ function ShareStudioSession({
 }: Props) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createShareStudioStyles(theme), [theme]);
+  const shareContext = useMemo(() => canonicalShareStudioContext(context), [context]);
   const [choice, setChoice] = useState<MediaChoice>('card');
   const [photo, setPhoto] = useState<CapturedProgressPhoto | null>(null);
   const [caption, setCaption] = useState(defaultCaption.slice(0, SHARE_CAPTION_LIMIT));
@@ -160,7 +162,7 @@ function ShareStudioSession({
         : { kind: 'card' as const };
       const result = createShareStudioResult({
         ownerId: expectedOwnerId,
-        context,
+        context: shareContext,
         caption,
         showPublicly,
         media,
@@ -182,7 +184,7 @@ function ShareStudioSession({
         setContinuing(false);
       }
     }
-  }, [caption, choice, context, continuing, expectedOwnerId, onContinue, photo, picking, showPublicly]);
+  }, [caption, choice, continuing, expectedOwnerId, onContinue, photo, picking, shareContext, showPublicly]);
 
   const summary = showPublicly
     ? 'Public · also shown on your Buddy Card'
@@ -228,10 +230,10 @@ function ShareStudioSession({
               />
             ) : null}
             <View testID="share-card-shade" style={[styles.previewShade, photo && choice !== 'card' ? styles.previewShadePhoto : null]}>
-              <Text testID="share-card-date" numberOfLines={1} maxFontSizeMultiplier={1.5} style={styles.previewEyebrow}>{context.date}</Text>
-              <Text testID="share-card-title" numberOfLines={3} maxFontSizeMultiplier={1.5} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.previewTitle}>{context.title}</Text>
+              <Text testID="share-card-date" numberOfLines={1} maxFontSizeMultiplier={1.5} style={styles.previewEyebrow}>{shareContext.date}</Text>
+              <Text testID="share-card-title" numberOfLines={3} maxFontSizeMultiplier={1.5} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.previewTitle}>{shareContext.title}</Text>
               <View style={styles.metricRow}>
-                {context.metrics.slice(0, 3).map((metric) => (
+                {shareContext.metrics.map((metric) => (
                   <View key={`${metric.label}:${metric.value}`} style={styles.metric}>
                     <Text testID="share-card-metric-value" numberOfLines={1} maxFontSizeMultiplier={1.4} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.metricValue}>{metric.value}</Text>
                     <Text testID="share-card-metric-label" numberOfLines={1} maxFontSizeMultiplier={1.4} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.metricLabel}>{metric.label}</Text>

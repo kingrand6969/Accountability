@@ -311,10 +311,10 @@ describe('ShareStudio', () => {
         { label: 'Volume', value: '8,420 kg' },
         { label: 'Duration', value: '52 min' },
         { label: 'Sets', value: '18' },
-        { label: 'Personal records', value: '3' },
+        { label: 'Sensitive body fat', value: '18%' },
       ],
     };
-    const { renderer } = renderStudio({ choosePhoto, context: crowdedContext });
+    const { renderer, onContinue } = renderStudio({ choosePhoto, context: crowdedContext });
     await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Take selfie' }).props.onPress());
     const image = renderer.root.findByProps({ accessibilityLabel: 'Selected selfie for share card preview' });
     expect(image.props.accessibilityRole).toBe('image');
@@ -323,5 +323,12 @@ describe('ShareStudio', () => {
     expect(title.props.numberOfLines).toBeGreaterThanOrEqual(2);
     expect(title.props.maxFontSizeMultiplier).toBeLessThanOrEqual(1.5);
     expect(renderer.root.findAllByType(Text).filter((node) => node.props.testID === 'share-card-metric-value')).toHaveLength(3);
+    expect(textOf(renderer)).not.toContain('Sensitive body fat');
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Continue sharing' }).props.onPress());
+    const result = onContinue.mock.calls[0][0];
+    expect(result.context.metrics).toHaveLength(3);
+    expect(JSON.stringify(result)).not.toContain('Sensitive body fat');
+    expect(Object.isFrozen(result.context)).toBe(true);
+    expect(Object.isFrozen(result.context.metrics)).toBe(true);
   });
 });
