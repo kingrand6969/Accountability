@@ -8,7 +8,7 @@ describe('event composer contract', () => {
   test('uses the draft operation and initiating owner for the atomic event RPC', () => {
     expect(compose).toMatch(/const operationId = submittedDraft\?\.draftId \?\? draftId;[\s\S]*?createEvent\(\{/);
     expect(compose).toMatch(/createEvent\(\{[\s\S]*?expectedOwnerId: submittedOwner[\s\S]*?operationId/);
-    expect(compose).toMatch(/createEvent\(\{[\s\S]*?audience[\s\S]*?showOnCard: normalizeBuddyCardFeature\(audience, showOnCard\)/);
+    expect(compose).toMatch(/createEvent\(\{[\s\S]*?showPublicly: submittedShowPublicly/);
   });
 
   test('makes Event and media mutually exclusive instead of ignoring attachments', () => {

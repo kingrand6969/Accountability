@@ -13,7 +13,7 @@ async function currentUserId(): Promise<string | null> {
 }
 
 const POST_SELECT =
-  'id,body,image_url,created_at,user_id,audience,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_encouragements(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
+  'id,body,image_url,created_at,user_id,audience,show_on_card,group_id,page_id,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_encouragements(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
 
 function mapPost(
   row: any,
@@ -34,6 +34,9 @@ function mapPost(
     voice_encouragement_count: row.post_encouragements?.[0]?.count ?? 0,
     liked_by_me: likedSet.has(row.id),
     audience: row.audience ?? 'buddies',
+    show_on_card: row.show_on_card === true,
+    group_id: row.group_id ?? null,
+    page_id: row.page_id ?? null,
     post_type: row.post_type ?? (row.event ? 'event' : row.image_url ? 'photo' : 'post'),
     share_data: row.share_data ?? {},
     activity_id: row.activity_id ?? null,

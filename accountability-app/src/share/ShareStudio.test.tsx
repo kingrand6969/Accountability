@@ -89,7 +89,7 @@ describe('ShareStudio', () => {
     expect(renderer.root.findByProps({ accessibilityLabel: 'Card only' }).props.accessibilityState.selected).toBe(true);
     expect(renderer.root.findByProps({ testID: 'buddy-card-visibility-switch' }).props.value).toBe(false);
     expect(textOf(renderer)).toContain('Buddies only');
-    expect(textOf(renderer)).toContain('Show on Buddy Card too');
+    expect(textOf(renderer)).toContain('Buddies only');
   });
 
   test('maps the one switch to Public and Buddy Card without separate audience controls', () => {
@@ -99,14 +99,14 @@ describe('ShareStudio', () => {
     expect(switchControl.props.accessibilityHint).toBe(postVisibilityCopy(false).helper);
     expect(switchControl.props.accessibilityState.checked).toBe(false);
     act(() => switchControl.props.onValueChange(true));
-    expect(textOf(renderer)).toContain('Public · also shown on your Buddy Card');
+    expect(textOf(renderer)).toContain('Public + Buddy Card');
     expect(renderer.root.findByProps({ testID: 'buddy-card-visibility-switch' }).props.accessibilityHint).toBe(postVisibilityCopy(true).helper);
     expect(renderer.root.findByProps({ testID: 'buddy-card-visibility-switch' }).props.accessibilityState.checked).toBe(true);
-    expect(renderer.root.findByProps({ testID: 'buddy-card-switch-label' }).props.children).toBe('Show on Buddy Card too');
+    expect(renderer.root.findByProps({ testID: 'buddy-card-switch-label' }).props.children).toBe('Public + Buddy Card');
     expect(renderer.root.findAllByType(Switch)).toHaveLength(1);
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Public audience' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Buddy Card audience' })).toHaveLength(0);
-    expect(textOf(renderer)).toContain('Turn on to make this post Public and show it on your Buddy Card.');
+    expect(textOf(renderer)).toContain('Everyone can see this post, and it will appear on your Buddy Card.');
   });
 
   test('derives the primary action from the current visibility', () => {

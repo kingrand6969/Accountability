@@ -22,6 +22,9 @@ export type FeedPost = {
   voice_encouragement_count?: number;
   liked_by_me: boolean;
   audience: PostAudience;
+  show_on_card?: boolean;
+  group_id?: string | null;
+  page_id?: string | null;
   post_type: PostType;
   share_data: Record<string, unknown>;
   activity_id: string | null;

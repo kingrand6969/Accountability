@@ -25,8 +25,8 @@ export type ComposeDraftV1 = {
   origin: ComposeDraftOrigin;
   queryIdentity: DraftQueryIdentity;
   body: string;
-  audience: 'buddies' | 'public';
-  showOnCard: boolean;
+  showPublicly: boolean;
+  visibilityChanged: boolean;
   media: DurableDraftMedia | null;
   event: { open: boolean; title: string; date: string; time: string; location: string };
   tagIds: string[];
@@ -38,13 +38,6 @@ export type DraftTrigger =
   | 'field-change' | 'background' | 'process-recovery' | 'explicit-cancel'
   | 'successful-post' | 'successful-edit' | 'hardware-back' | 'upload-error' | 'account-switch';
 export type DraftEffect = 'save' | 'clear' | 'keep' | 'detach';
-
-export function normalizeBuddyCardFeature(
-  audience: ComposeDraftV1['audience'],
-  showOnCard: unknown,
-): boolean {
-  return audience === 'public' && showOnCard === true;
-}
 
 export function selectDraftCleanupTarget(
   submitted: ComposeDraftV1 | null | undefined,
@@ -61,7 +54,7 @@ export function hasRestorableDraftContent(draft: ComposeDraftV1): boolean {
     || draft.event.open
     || draft.tagIds.length > 0
     || draft.keepInMemories
-    || draft.showOnCard;
+    || draft.showPublicly;
 }
 
 export function composeDraftKey(ownerId: string, kind: ComposeDraftKind, draftId: string): string {
@@ -268,15 +261,38 @@ export function parseComposeDraft(raw: string, expectedOwnerId: string): Compose
     if (value.editingId !== null && typeof value.editingId !== 'string') return null;
     if (!['hub', 'post', 'photo', 'event', 'edit'].includes(String(value.origin))) return null;
     if (!validQuery(value.queryIdentity) || typeof value.body !== 'string') return null;
-    if (value.audience !== 'buddies' && value.audience !== 'public') return null;
-    if (value.showOnCard !== undefined && typeof value.showOnCard !== 'boolean') return null;
+    const hasNewVisibility = Object.prototype.hasOwnProperty.call(value, 'showPublicly');
+    let showPublicly: boolean;
+    if (hasNewVisibility) {
+      if (typeof value.showPublicly !== 'boolean') return null;
+      showPublicly = value.showPublicly;
+    } else {
+      if (value.audience !== 'buddies' && value.audience !== 'public') return null;
+      if (value.showOnCard !== undefined && typeof value.showOnCard !== 'boolean') return null;
+      showPublicly = value.audience === 'public' && value.showOnCard === true;
+    }
+    if (value.visibilityChanged !== undefined && typeof value.visibilityChanged !== 'boolean') return null;
+    const visibilityChanged = hasNewVisibility && value.visibilityChanged === true;
     if (value.media !== null && !validMedia(value.media, value.ownerId, value.draftId)) return null;
     if (!validEvent(value.event) || !Array.isArray(value.tagIds) || !value.tagIds.every((id) => typeof id === 'string')) return null;
     if (typeof value.keepInMemories !== 'boolean' || typeof value.updatedAt !== 'string') return null;
-    const draft = {
-      ...value,
-      showOnCard: normalizeBuddyCardFeature(value.audience, value.showOnCard),
-    } as ComposeDraftV1;
+    const draft: ComposeDraftV1 = {
+      version: 1,
+      draftId: value.draftId,
+      ownerId: value.ownerId,
+      kind: value.kind,
+      editingId: value.editingId,
+      origin: value.origin as ComposeDraftOrigin,
+      queryIdentity: value.queryIdentity,
+      body: value.body,
+      showPublicly,
+      visibilityChanged,
+      media: value.media,
+      event: value.event,
+      tagIds: value.tagIds,
+      keepInMemories: value.keepInMemories,
+      updatedAt: value.updatedAt,
+    };
     const expected = resolveDraftContext({
       edit: draft.queryIdentity.edit ?? undefined,
       event: draft.queryIdentity.event ? '1' : undefined,

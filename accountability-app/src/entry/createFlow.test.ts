@@ -12,6 +12,12 @@ import {
 } from './createFlow';
 
 describe('createPickerReadinessGate', () => {
+  test('queues a selfie intent until owner and draft hydration are ready', () => {
+    const gate = createPickerReadinessGate();
+    expect(gate.request('selfie', false)).toBeNull();
+    expect(gate.resolve(true)).toBe('selfie');
+  });
+
   test('queues a cold photo intent until owner and draft hydration are ready', () => {
     const gate = createPickerReadinessGate();
     expect(gate.request('photo', false)).toBeNull();
@@ -98,16 +104,21 @@ describe('decideCreateContinuation', () => {
     media: CreateMedia;
     expected: CreateContinuation;
   }[] = [
-    { choiceId: 'post', media: 'photo', expected: { kind: 'editor', audience: 'public' } },
+    { choiceId: 'post', media: 'photo', expected: { kind: 'editor' } },
+    {
+      choiceId: 'photo-video',
+      media: 'selfie',
+      expected: { kind: 'picker', media: 'selfie' },
+    },
     {
       choiceId: 'photo-video',
       media: 'photo',
-      expected: { kind: 'picker', media: 'photo', audience: 'public' },
+      expected: { kind: 'picker', media: 'photo' },
     },
     {
       choiceId: 'photo-video',
       media: 'video',
-      expected: { kind: 'picker', media: 'video', audience: 'public' },
+      expected: { kind: 'picker', media: 'video' },
     },
     { choiceId: 'flex', media: 'photo', expected: { kind: 'route', route: '/win-card' } },
     { choiceId: 'share-run', media: 'photo', expected: { kind: 'route', route: '/run' } },
@@ -115,14 +126,13 @@ describe('decideCreateContinuation', () => {
   ];
 
   test.each(cases)('coordinates $choiceId with $media', ({ choiceId, media, expected }) => {
-    expect(decideCreateContinuation({ choiceId, media, audience: 'public' })).toEqual(expected);
+    expect(decideCreateContinuation({ choiceId, media })).toEqual(expected);
   });
 
   test('returns data only and cannot create or upload at Continue', () => {
     const decision = decideCreateContinuation({
       choiceId: 'photo-video',
       media: 'video',
-      audience: 'buddies',
     });
 
     expect(Object.values(decision).every((value) => typeof value !== 'function')).toBe(true);
@@ -139,7 +149,7 @@ describe('production binding', () => {
       'share-run',
       'my-day',
     ]);
-    expect(CREATE_HUB_MODEL.sections).toEqual(['preview', 'audience']);
+    expect(CREATE_HUB_MODEL.sections).toEqual(['preview']);
     expect(CREATE_HUB_MODEL.continueLabel).toBe('Continue');
   });
 
@@ -165,7 +175,9 @@ describe('production binding', () => {
     expect(hubSource).toContain('Choose what to create');
     expect(hubSource).toContain('name="chevron-forward"');
     expect(hubSource).toContain('styles.previewArtwork');
-    expect(hubSource).toContain('styles.audienceSegment');
+    expect(hubSource).toContain('Take selfie');
+    expect(hubSource).not.toContain('styles.audienceSegment');
+    expect(hubSource).not.toContain('accessibilityRole="radiogroup" style={styles.audienceSegment}');
     expect(hubSource).not.toContain('<BrandMark');
   });
 

@@ -23,7 +23,7 @@ import { File } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addPostTags, createPost, getPost, updatePost, updatePostAudience } from '../feed/api';
+import { addPostTags, createPost, getPost, updatePost, updatePostVisibility } from '../feed/api';
 import { markFeedPostPublished } from '../feed/feedPublishSignal';
 import { createEvent } from '../events/api';
 import { toIsoFromLocal, toLocalDateString } from '../timeline/datetime';
@@ -41,7 +41,6 @@ import { authorLabel, selfAuthorLabel, taggedLabel } from '../feed/format';
 import { Avatar } from '../feed/Avatar';
 import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
-import type { PostAudience } from '../feed/types';
 import { supabase } from '../lib/supabase';
 import { CreateHub } from '../entry/CreateHub';
 import {
@@ -59,7 +58,6 @@ import {
   hasRestorableDraftContent,
   isCompatibleDraft,
   loadComposeDrafts,
-  normalizeBuddyCardFeature,
   persistDraftMedia,
   removeDraftMedia,
   removeDurableMedia,
@@ -73,6 +71,15 @@ import {
 } from '../entry/composeDraft';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
 import { userFacingErrorMessage } from '../ui/userFacingError';
+import {
+  DEFAULT_SHOW_PUBLICLY,
+  normalizeStoredPostVisibility,
+  postVisibility,
+  postVisibilityCopy,
+} from '../progress/visibility';
+import { PhotoPermissionDeniedError } from '../progress/photoCapture';
+import { PostVisibilitySwitch } from '../share/PostVisibilitySwitch';
+import { captureComposerSelfie } from '../entry/composerSelfie';
 
 type CleanupRecovery = {
   successMessage: string;
@@ -112,8 +119,9 @@ export default function Compose() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [pickedVideo, setPickedVideo] = useState<{ uri: string; mimeType: string } | null>(null);
   const [keepInMemories, setKeepInMemories] = useState(false);
-  const [showOnCard, setShowOnCard] = useState(false);
-  const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
+  const [showPublicly, setShowPublicly] = useState(DEFAULT_SHOW_PUBLICLY);
+  const [visibilityChanged, setVisibilityChanged] = useState(false);
+  const [editingScoped, setEditingScoped] = useState(Boolean(editingId));
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [buddies, setBuddies] = useState<Buddy[]>([]);
   const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
@@ -148,6 +156,7 @@ export default function Compose() {
   const suppressNextDebounce = useRef(true);
   const flushDraftRef = useRef<() => Promise<void>>(async () => {});
   const mountedRef = useRef(true);
+  const editorPhotoReleaseRef = useRef<(() => Promise<void>) | null>(null);
   const focusedRef = useRef(false);
   const attachRecoveredPhotoRef = useRef<
     (asset: ImagePicker.ImagePickerAsset, isCurrent: () => boolean) => Promise<void>
@@ -198,7 +207,9 @@ export default function Compose() {
           if (!mounted || mountTokenRef.current !== hydrationToken || restoreChosenRef.current) return;
           setBody(post.body);
           setPreviewUri(post.image_url);
-          if (post.audience !== 'group') setAudience(post.audience);
+          setEditingScoped(Boolean(post.group_id || post.page_id || post.audience === 'group'));
+          setShowPublicly(normalizeStoredPostVisibility(post).showOnCard);
+          setVisibilityChanged(false);
         })
         .catch((e) => {
           if (mounted && mountTokenRef.current === hydrationToken) {
@@ -234,9 +245,12 @@ export default function Compose() {
       setPickedBase64(null);
       setPickedVideo(null);
       setPreviewUri(null);
+      setEditorUri(null);
+      releaseEditorPhoto();
       setBody(typeof params.text === 'string' ? params.text : '');
-      setAudience('buddies');
-      setShowOnCard(false);
+      setShowPublicly(DEFAULT_SHOW_PUBLICLY);
+      setVisibilityChanged(false);
+      setEditingScoped(Boolean(editingId));
       setTaggedIds(new Set());
       setKeepInMemories(false);
       setEventOpen(params.event === '1');
@@ -246,7 +260,7 @@ export default function Compose() {
       }
     });
     return () => data.subscription.unsubscribe();
-  }, [ownerId, params.event, params.text, pickerReadinessGate]);
+  }, [editingId, ownerId, params.event, params.text, pickerReadinessGate]);
 
   useEffect(() => {
     if (!ownerId) return;
@@ -292,8 +306,8 @@ export default function Compose() {
                   restoreChosenRef.current = true;
                   setDraftId(draft.draftId);
                   setBody(draft.body);
-                  setAudience(draft.audience);
-                  setShowOnCard(normalizeBuddyCardFeature(draft.audience, draft.showOnCard));
+                  setShowPublicly(draft.showPublicly);
+                  setVisibilityChanged(draft.visibilityChanged);
                   setDraftMedia(draft.media);
                   setPreviewUri(draft.media?.uri ?? null);
                   setPickedVideo(draft.media?.kind === 'video'
@@ -346,8 +360,8 @@ export default function Compose() {
       ownerId,
       ...draftContext,
       body,
-      audience,
-      showOnCard: normalizeBuddyCardFeature(audience, showOnCard),
+      showPublicly,
+      visibilityChanged,
       media: draftMedia,
       event: { open: eventOpen, title: evTitle, date: evDate, time: evTime, location: evLocation },
       tagIds: [...taggedIds],
@@ -396,9 +410,29 @@ export default function Compose() {
     exitCompose();
   }
 
-  function selectAudience(nextAudience: Exclude<PostAudience, 'group'>) {
-    setAudience(nextAudience);
-    setShowOnCard((current) => normalizeBuddyCardFeature(nextAudience, current));
+  function releaseEditorPhoto() {
+    const release = editorPhotoReleaseRef.current;
+    editorPhotoReleaseRef.current = null;
+    if (release) void release();
+  }
+
+  function releaseEditedPhotoUri(uri: string) {
+    try {
+      if (Platform.OS === 'web') {
+        if (/^blob:/i.test(uri)) URL.revokeObjectURL(uri);
+        return;
+      }
+      if (!/^file:\/\//i.test(uri)) return;
+      const file = new File(uri);
+      if (file.exists) file.delete();
+    } catch {
+      // A best-effort temp cleanup must never erase or hide the saved draft.
+    }
+  }
+
+  function changeVisibility(next: boolean) {
+    setShowPublicly(next);
+    if (editingId) setVisibilityChanged(true);
   }
 
   useEffect(() => {
@@ -410,7 +444,7 @@ export default function Compose() {
     const timer = setTimeout(() => { if (!postingRef.current) void flushDraft(); }, 500);
     return () => clearTimeout(timer);
     // Every persisted field intentionally triggers the debounce.
-  }, [draftReady, body, audience, showOnCard, draftMedia, eventOpen, evTitle, evDate, evTime, evLocation, taggedIds, keepInMemories]);
+  }, [draftReady, body, showPublicly, visibilityChanged, draftMedia, eventOpen, evTitle, evDate, evTime, evLocation, taggedIds, keepInMemories]);
 
   useEffect(() => {
     const appState = AppState.addEventListener('change', (state) => {
@@ -471,6 +505,7 @@ export default function Compose() {
     mountedRef.current = false;
     focusedRef.current = false;
     draftRef.current = null;
+    releaseEditorPhoto();
     recoveryControllerRef.current?.dispose();
   }, []);
 
@@ -722,7 +757,41 @@ export default function Compose() {
       setPreviewUri(asset.uri);
       return;
     }
+    releaseEditorPhoto();
     setEditorUri(asset.uri); // native: filters + brand watermark
+  }
+
+  async function onTakeSelfie() {
+    if (eventOpenRef.current) return;
+    const operationOwner = ownerRef.current;
+    const operationToken = mountTokenRef.current;
+    try {
+      const captured = await captureComposerSelfie({
+        expectedOwner: operationOwner,
+        expectedToken: operationToken,
+        currentOwner: () => ownerRef.current,
+        currentToken: () => mountTokenRef.current,
+        eventOpen: () => eventOpenRef.current,
+      });
+      if (!captured) return;
+      releaseEditorPhoto();
+      editorPhotoReleaseRef.current = captured.release;
+      setEditorUri(captured.uri);
+    } catch (error) {
+      if (ownerRef.current !== operationOwner || mountTokenRef.current !== operationToken) return;
+      if (error instanceof PhotoPermissionDeniedError) {
+        Alert.alert(
+          'Camera permission needed',
+          'Allow camera access in Settings to take a selfie. Your draft has not changed.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => { void Linking.openSettings(); } },
+          ],
+        );
+        return;
+      }
+      Alert.alert('Selfie not added', userFacingErrorMessage(error, 'media'));
+    }
   }
 
   async function onPickVideo() {
@@ -758,7 +827,8 @@ export default function Compose() {
   }
 
   async function launchMediaPicker(media: CreateMedia) {
-    if (media === 'photo') await onPickPhoto();
+    if (media === 'selfie') await onTakeSelfie();
+    else if (media === 'photo') await onPickPhoto();
     else await onPickVideo();
   }
 
@@ -783,8 +853,13 @@ export default function Compose() {
       })
       .catch((error) => {
         if (ownerRef.current === operationOwner && mountTokenRef.current === operationToken) {
+          setEditorUri(null);
           Alert.alert('Photo not added', userFacingErrorMessage(error, 'media'));
         }
+      })
+      .finally(() => {
+        releaseEditorPhoto();
+        releaseEditedPhotoUri(photo.uri);
       });
   }
 
@@ -851,13 +926,17 @@ export default function Compose() {
     const submittedOwner = ownerRef.current;
     const submittedToken = mountTokenRef.current;
     const operationId = submittedDraft?.draftId ?? draftId;
+    const submittedShowPublicly = submittedDraft?.showPublicly ?? showPublicly;
+    const submittedVisibilityChanged = submittedDraft?.visibilityChanged ?? visibilityChanged;
+    const submittedVisibility = postVisibility(submittedShowPublicly);
     postingRef.current = true;
     setPosting(true);
     if (editingId) {
       try {
+        if (!submittedOwner) throw new Error('Sign in again before updating this post.');
         const result = await completeRemoteSubmission(async () => {
           await updatePost(editingId, body.trim());
-          await updatePostAudience(editingId, audience);
+          if (!editingScoped && submittedVisibilityChanged) await updatePostVisibility(editingId, submittedShowPublicly, submittedOwner);
         }, () => clearSavedDraftForSubmission(
           true,
           submittedDraft,
@@ -885,8 +964,9 @@ export default function Compose() {
           startsAtIso: toIsoFromLocal(evDate, evTime),
           location: evLocation,
           message: body.trim(),
-          audience,
-          showOnCard: normalizeBuddyCardFeature(audience, showOnCard),
+          audience: submittedVisibility.audience,
+          showOnCard: submittedVisibility.showOnCard,
+          showPublicly: submittedShowPublicly,
         }), () => clearSavedDraftForSubmission(
           true,
           submittedDraft,
@@ -940,13 +1020,14 @@ export default function Compose() {
         null,
         null,
         null,
-        normalizeBuddyCardFeature(audience, showOnCard),
+        submittedVisibility.showOnCard,
         {
-          audience,
+          audience: submittedVisibility.audience,
           postType: pickedVideo ? 'video' : imageUrl ? 'photo' : 'post',
           shareData: mediaUpload ? { client_media_sha256: mediaUpload.sha256 } : undefined,
           operationId,
           expectedOwnerId: submittedOwner,
+          showPublicly: submittedShowPublicly,
         },
       );
       markFeedPostPublished(submittedOwner, postId);
@@ -1001,22 +1082,26 @@ export default function Compose() {
   }
 
   const tagged = buddies.filter((b) => taggedIds.has(b.id));
+  const visibilityCopy = postVisibilityCopy(showPublicly);
+  const primaryActionLabel = editingId
+    ? 'Save'
+    : eventOpen
+      ? showPublicly ? 'Announce publicly' : 'Announce to buddies'
+      : visibilityCopy.postAction;
 
   if (showCreateHub) {
     return (
       <CreateHub
         onClose={onClose}
-        onContinue={(choice, media, selectedAudience) => {
+        onContinue={(choice, media) => {
           const decision = decideCreateContinuation({
             choiceId: choice.id,
             media,
-            audience: selectedAudience,
           });
           if (decision.kind === 'route') {
             router.replace(decision.route as never);
             return;
           }
-          selectAudience(decision.audience);
           setShowCreateHub(false);
           if (decision.kind === 'picker') {
             requestMediaPicker(decision.media);
@@ -1029,7 +1114,14 @@ export default function Compose() {
   return (
     <View style={styles.screen}>
       {editorUri ? (
-        <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
+        <PhotoEditor
+          uri={editorUri}
+          onDone={onEdited}
+          onCancel={() => {
+            setEditorUri(null);
+            releaseEditorPhoto();
+          }}
+        />
       ) : null}
 
       {/* top bar */}
@@ -1058,12 +1150,12 @@ export default function Compose() {
             !canPost && styles.postBtnDisabled,
             pressed && canPost && styles.pressed,
           ]}
-          accessibilityLabel="Post"
+          accessibilityLabel={primaryActionLabel}
         >
           {posting ? (
             <ActivityIndicator size="small" color={theme.ink.inverse} />
           ) : (
-            <Text style={styles.postBtnText}>{editingId ? 'Save' : eventOpen ? 'Announce' : 'Post'}</Text>
+            <Text style={styles.postBtnText}>{primaryActionLabel}</Text>
           )}
         </Pressable>
       </View>
@@ -1118,27 +1210,7 @@ export default function Compose() {
           <Avatar url={me.avatar} name={selfAuthorLabel(me.name)} size={44} />
           <View style={{ flex: 1 }}>
             <Text style={styles.author}>{selfAuthorLabel(me.name)}</Text>
-            <View style={styles.audiencePicker} accessibilityRole="radiogroup">
-              {(['buddies', 'public'] as const).map((value) => (
-                <Pressable
-                  key={value}
-                  onPress={() => selectAudience(value)}
-                  style={[styles.privacyChip, audience === value && styles.privacyChipActive]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: audience === value }}
-                  accessibilityLabel={value === 'buddies' ? 'Buddies only' : 'Public, also appears in Discover'}
-                >
-                  <Ionicons
-                    name={value === 'buddies' ? 'people' : 'earth'}
-                    size={12}
-                    color={audience === value ? theme.ink.action : theme.ink.muted}
-                  />
-                  <Text style={[styles.privacyText, audience === value && styles.privacyTextActive]}>
-                    {value === 'buddies' ? 'Buddies' : 'Public'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            {editingScoped ? <Text style={styles.scopedAudience}>Visible in its original group or page</Text> : null}
           </View>
         </View>
 
@@ -1152,28 +1224,13 @@ export default function Compose() {
           autoFocus
         />
 
-        {/* per-post grant: lets non-buddies see this post on your buddy card */}
-        {!editingId && audience === 'public' ? <Pressable
-          style={({ pressed }) => [styles.cardOptRow, pressed && styles.pressed]}
-          onPress={() => setShowOnCard((current) => normalizeBuddyCardFeature(audience, !current))}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: showOnCard }}
-          accessibilityLabel="Feature on my Buddy Card"
-        >
-          <Ionicons
-            name={showOnCard ? 'checkbox' : 'square-outline'}
-            size={19}
-            color={showOnCard ? theme.ink.action : theme.ink.muted}
+        {!editingScoped ? (
+          <PostVisibilitySwitch
+            showPublicly={showPublicly}
+            onChange={changeVisibility}
+            disabled={posting || remoteSucceeded}
           />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardOptText, showOnCard && { color: theme.ink.action }]}>
-              Feature on my Buddy Card
-            </Text>
-            <Text style={styles.cardOptHint}>
-              Choose this post as a highlight for anyone viewing your public Buddy Card
-            </Text>
-          </View>
-        </Pressable> : null}
+        ) : null}
 
         {previewUri ? (
           <View style={styles.previewWrap}>
@@ -1273,6 +1330,13 @@ export default function Compose() {
 
       {/* bottom action bar */}
       {!remoteSucceeded ? <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+        <Action
+          icon="camera-outline"
+          tint={theme.ink.action}
+          label="Take selfie"
+          disabled={eventOpen || !draftReady || !ownerId}
+          onPress={() => requestMediaPicker('selfie')}
+        />
         <Action
           icon="image-outline"
           tint={theme.ink.action}
@@ -1395,7 +1459,7 @@ function createStyles(theme: AppThemeColors) {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.border.subtle,
   },
-  close: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  close: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   closeDisabled: { opacity: theme.interaction.disabledOpacity },
   title: { flex: 1, fontSize: 17, fontFamily: font.bold, color: theme.ink.primary },
   postBtn: {
@@ -1403,7 +1467,7 @@ function createStyles(theme: AppThemeColors) {
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 20,
-    minHeight: 38,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1447,23 +1511,7 @@ function createStyles(theme: AppThemeColors) {
   cleanupRetryText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   author: { fontSize: 16, fontFamily: font.bold, color: theme.ink.primary },
-  audiencePicker: { flexDirection: 'row', gap: 6, marginTop: 4 },
-  privacyChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
-    backgroundColor: theme.surface.muted,
-    borderWidth: 1,
-    borderColor: theme.border.subtle,
-    borderRadius: radius.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    minHeight: 44,
-  },
-  privacyChipActive: { backgroundColor: theme.surface.raised, borderColor: theme.border.action },
-  privacyText: { fontSize: 12, fontFamily: font.semibold, color: theme.ink.muted },
-  privacyTextActive: { color: theme.ink.action },
+  scopedAudience: { marginTop: 3, fontSize: 12.5, lineHeight: 18, fontFamily: font.regular, color: theme.ink.muted },
   input: {
     fontSize: 19,
     lineHeight: 26,
@@ -1489,15 +1537,6 @@ function createStyles(theme: AppThemeColors) {
   photoOpts: { gap: 4 },
   optRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34 },
   optText: { fontFamily: font.semibold, fontSize: 13.5, color: theme.ink.secondary },
-  cardOptRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingVertical: 8,
-    minHeight: 44,
-  },
-  cardOptText: { fontFamily: font.semibold, fontSize: 13.5, color: theme.ink.secondary },
-  cardOptHint: { fontFamily: font.regular, fontSize: 12, color: theme.ink.muted, marginTop: 1 },
   eventForm: { gap: spacing.sm },
   eventInput: {
     borderWidth: 1,

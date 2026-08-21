@@ -12,7 +12,6 @@ import {
   saveComposeDraft,
   selectDraftCleanupTarget,
   loadComposeDrafts,
-  normalizeBuddyCardFeature,
   clearComposeDraft,
   commitDraftMedia,
   removeDraftMedia,
@@ -40,8 +39,8 @@ const validDraft: ComposeDraftV1 = {
   origin: 'photo',
   queryIdentity: { photo: true, event: false, text: null, edit: null },
   body: 'hello',
-  audience: 'buddies',
-  showOnCard: false,
+  showPublicly: false,
+  visibilityChanged: false,
   media: null,
   event: { open: false, title: '', date: '2026-07-29', time: '18:00', location: '' },
   tagIds: [],
@@ -56,11 +55,10 @@ describe('compose draft contract', () => {
     expect(parseComposeDraft(JSON.stringify(validDraft), OWNER)).toEqual(validDraft);
   });
 
-  test('round-trips an explicitly featured Public draft through save and load', async () => {
+  test('round-trips an explicitly Public plus Buddy Card draft through save and load', async () => {
     const featuredDraft: ComposeDraftV1 = {
       ...validDraft,
-      audience: 'public',
-      showOnCard: true,
+      showPublicly: true,
     };
     const storage = memoryStorage();
 
@@ -79,8 +77,7 @@ describe('compose draft contract', () => {
       event: { open: false, title: '', date: '2026-08-21', time: '18:00', location: '' },
       tagIds: [],
       keepInMemories: false,
-      audience: 'buddies',
-      showOnCard: false,
+      showPublicly: false,
     };
 
     expect(hasRestorableDraftContent(blankDraft)).toBe(false);
@@ -91,7 +88,7 @@ describe('compose draft contract', () => {
     } })).toBe(true);
     expect(hasRestorableDraftContent({ ...blankDraft, event: { ...blankDraft.event, open: true } })).toBe(true);
     expect(hasRestorableDraftContent({ ...blankDraft, tagIds: ['buddy-a'] })).toBe(true);
-    expect(hasRestorableDraftContent({ ...blankDraft, audience: 'public', showOnCard: true })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, showPublicly: true })).toBe(true);
   });
 
   test('silently removes legacy blank drafts instead of presenting them for restore', async () => {
@@ -110,22 +107,30 @@ describe('compose draft contract', () => {
     expect(await storage.getItem(composeDraftIndexKey(OWNER))).toBeNull();
   });
 
-  test('defaults legacy drafts without a Buddy Card feature field to unfeatured', () => {
-    const { showOnCard: _legacyMissingField, ...legacyDraft } = validDraft;
-
-    expect(parseComposeDraft(JSON.stringify(legacyDraft), OWNER)).toEqual(validDraft);
+  test('privacy-safely migrates all legacy audience and Buddy Card combinations', () => {
+    const { showPublicly: _newField, visibilityChanged: _legacyChanged, ...legacyBase } = validDraft;
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: true }), OWNER))
+      .toEqual({ ...validDraft, showPublicly: true });
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: false }), OWNER))
+      .toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'buddies', showOnCard: true }), OWNER))
+      .toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'buddies' }), OWNER))
+      .toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: true }), OWNER)?.showPublicly)
+      .toBe(true);
   });
 
-  test('allows featuring only for Public and never restores it after Buddies clears it', () => {
-    expect(normalizeBuddyCardFeature('public', true)).toBe(true);
-    expect(normalizeBuddyCardFeature('public', false)).toBe(false);
-    expect(normalizeBuddyCardFeature('buddies', true)).toBe(false);
-    expect(normalizeBuddyCardFeature('public', normalizeBuddyCardFeature('buddies', true))).toBe(false);
+  test('rejects malformed new or legacy visibility fields', () => {
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showPublicly: 'yes' }), OWNER)).toBeNull();
+    const { showPublicly: _newField, ...legacyBase } = validDraft;
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: 'yes' }), OWNER)).toBeNull();
   });
 
-  test('rejects a malformed Buddy Card feature field and normalizes Buddies to unfeatured', () => {
-    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showOnCard: 'yes' }), OWNER)).toBeNull();
-    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showOnCard: true }), OWNER)).toEqual(validDraft);
+  test('defaults older drafts to no explicit edit visibility change', () => {
+    const { visibilityChanged: _missing, ...olderDraft } = validDraft;
+    expect(parseComposeDraft(JSON.stringify(olderDraft), OWNER)).toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, visibilityChanged: 'yes' }), OWNER)).toBeNull();
   });
 
   test('rejects corrupt, unsupported and cross-owner records', () => {
@@ -267,7 +272,7 @@ describe('Compose production binding', () => {
     expect(source).toContain(
       "if (state !== 'active' && !postingRef.current) void flushDraft()",
     );
-    expect(source).toContain('[draftReady, body, audience, showOnCard, draftMedia');
+    expect(source).toContain('[draftReady, body, showPublicly, visibilityChanged, draftMedia');
   });
 
   test('closes the draft-save gate synchronously before submission begins', () => {
@@ -335,7 +340,8 @@ describe('Compose production binding', () => {
     expect(source).toContain('draftRef.current = null');
     expect(source).toContain('setDraftMedia(null)');
     expect(source).toContain('setOwnerId(nextOwner)');
-    expect(source).toContain('setShowOnCard(false)');
+    expect(source).toContain('setShowPublicly(DEFAULT_SHOW_PUBLICLY)');
+    expect(source).toContain('releaseEditorPhoto()');
   });
 
   test('resets every mounted submission latch at the auth identity boundary without deleting the old draft', () => {
@@ -385,12 +391,12 @@ describe('Compose production binding', () => {
   });
 
   test('persists and restores the approved Public Buddy Card feature intent', () => {
-    expect(source).toContain("showOnCard: normalizeBuddyCardFeature(audience, showOnCard)");
-    expect(source).toContain('setShowOnCard(normalizeBuddyCardFeature(draft.audience, draft.showOnCard))');
-    expect(source).toContain('setShowOnCard((current) => normalizeBuddyCardFeature(nextAudience, current))');
-    expect(source).toContain("!editingId && audience === 'public'");
-    expect(source).toContain('Feature on my Buddy Card');
-    expect(source).not.toContain('Show on Buddy Card');
+    expect(source).toContain('showPublicly,');
+    expect(source).toContain('setShowPublicly(draft.showPublicly)');
+    expect(source).toContain('<PostVisibilitySwitch');
+    expect(source).toContain('showPublicly={showPublicly}');
+    expect(source).not.toContain('Feature on my Buddy Card');
+    expect(source).not.toContain('accessibilityRole="radiogroup"');
   });
 
   test('keeps drafts for other composer entry points without showing a non-actionable warning', () => {

@@ -44,7 +44,8 @@ describe('residual utility manual appearance contract', () => {
     );
     expect(createHubSource).toContain('backgroundColor: palette.canvas');
     expect(createHubSource).toContain('backgroundColor: palette.card');
-    expect(createHubSource).toContain('hitSlop={2}');
+    expect(createHubSource).toContain('width: 48');
+    expect(createHubSource).toContain('minHeight: 48');
   });
 
   test('upload states keep privacy-safe behavior and receive readable Dark surfaces', () => {

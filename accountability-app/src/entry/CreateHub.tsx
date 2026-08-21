@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { PostAudience } from '../feed/types';
 import {
   colors as legacyColors,
   font,
@@ -14,13 +13,11 @@ import {
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
   CREATE_HUB_MODEL,
-  type CreateAudience,
   type CreateChoice,
   type CreateMedia,
 } from './createFlow';
 
 type MediaChoice = CreateMedia;
-type Audience = CreateAudience & Exclude<PostAudience, 'group'>;
 
 const icons: Record<
   CreateChoice['id'],
@@ -38,7 +35,7 @@ export function CreateHub({
   onContinue,
 }: {
   onClose: () => void;
-  onContinue: (choice: CreateChoice, media: MediaChoice, audience: Audience) => void;
+  onContinue: (choice: CreateChoice, media: MediaChoice) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { colors: theme, mode } = useAppTheme();
@@ -46,7 +43,6 @@ export function CreateHub({
   const palette = useMemo(() => createPalette(theme, mode), [theme, mode]);
   const [selectedId, setSelectedId] = useState<CreateChoice['id']>('post');
   const [media, setMedia] = useState<MediaChoice>('photo');
-  const [audience, setAudience] = useState<Audience>('buddies');
   const [focusedControl, setFocusedControl] = useState<string | null>(null);
   const selected =
     CREATE_HUB_MODEL.choices.find((choice) => choice.id === selectedId) ??
@@ -125,32 +121,43 @@ export function CreateHub({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Media</Text>
             <View style={styles.segment} accessibilityRole="radiogroup">
-              {(['photo', 'video'] as const).map((value) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setMedia(value)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: media === value }}
-                  accessibilityLabel={value === 'photo' ? 'Choose photo' : 'Choose video'}
-                  onFocus={() => setFocusedControl(`media-${value}`)}
-                  onBlur={() => setFocusedControl(null)}
-                  style={({ pressed }) => [
-                    styles.segmentButton,
-                    media === value && styles.segmentSelected,
-                    (pressed || focusedControl === `media-${value}`) && styles.controlFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name={value === 'photo' ? 'image-outline' : 'videocam-outline'}
-                    size={20}
-                    color={palette.ink}
-                  />
-                  <Text style={styles.segmentText}>
-                    {value === 'photo' ? 'Photo' : 'Video'}
-                    {media === value ? '  ✓' : ''}
-                  </Text>
-                </Pressable>
-              ))}
+              {(['selfie', 'photo', 'video'] as const).map((value) => {
+                const label = value === 'selfie'
+                  ? 'Take selfie'
+                  : value === 'photo'
+                    ? 'Choose photo'
+                    : 'Choose video';
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setMedia(value)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: media === value }}
+                    accessibilityLabel={label}
+                    onFocus={() => setFocusedControl(`media-${value}`)}
+                    onBlur={() => setFocusedControl(null)}
+                    style={({ pressed }) => [
+                      styles.segmentButton,
+                      media === value && styles.segmentSelected,
+                      (pressed || focusedControl === `media-${value}`) && styles.controlFocused,
+                    ]}
+                  >
+                    <Ionicons
+                      name={value === 'selfie'
+                        ? 'camera-outline'
+                        : value === 'photo'
+                          ? 'image-outline'
+                          : 'videocam-outline'}
+                      size={20}
+                      color={palette.ink}
+                    />
+                    <Text style={styles.segmentText}>
+                      {label}
+                      {media === value ? '  ✓' : ''}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         ) : null}
@@ -162,9 +169,11 @@ export function CreateHub({
               <Ionicons
                 name={
                   selected.id === 'photo-video'
-                    ? media === 'photo'
-                      ? 'image'
-                      : 'videocam'
+                    ? media === 'video'
+                      ? 'videocam'
+                      : media === 'selfie'
+                        ? 'camera'
+                        : 'image'
                     : icons[selected.id]
                 }
                 size={34}
@@ -174,53 +183,18 @@ export function CreateHub({
             <View style={styles.copy}>
               <Text style={styles.previewText}>
                 {selected.id === 'photo-video'
-                  ? `${media === 'photo' ? 'Photo' : 'Video'} post`
+                  ? `${media === 'selfie' ? 'Selfie' : media === 'photo' ? 'Photo' : 'Video'} post`
                   : selected.title}
               </Text>
               <Text style={styles.previewDetail}>{selected.detail}</Text>
             </View>
           </View>
         </View>
-
-        {(selectedId === 'post' || selectedId === 'photo-video') && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Audience</Text>
-            <View style={styles.audienceSegment} accessibilityRole="radiogroup">
-              {(['buddies', 'public'] as const).map((value) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setAudience(value)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: audience === value }}
-                  accessibilityLabel={value === 'buddies' ? 'Buddies only' : 'Public'}
-                  hitSlop={2}
-                  onFocus={() => setFocusedControl(`audience-${value}`)}
-                  onBlur={() => setFocusedControl(null)}
-                  style={({ pressed }) => [
-                    styles.audienceButton,
-                    audience === value && styles.segmentSelected,
-                    (pressed || focusedControl === `audience-${value}`) && styles.controlFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name={value === 'buddies' ? 'people-outline' : 'earth-outline'}
-                    size={20}
-                    color={palette.ink}
-                  />
-                  <Text style={styles.segmentText}>
-                    {value === 'buddies' ? 'Buddies' : 'Public'}
-                    {audience === value ? '  ✓' : ''}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <Pressable
-          onPress={() => onContinue(selected, media, audience)}
+          onPress={() => onContinue(selected, media)}
           accessibilityRole="button"
           accessibilityLabel={`Continue with ${selected.title}`}
           onFocus={() => setFocusedControl('continue')}
@@ -336,24 +310,6 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   },
   segmentSelected: { borderWidth: 2, borderColor: palette.action, backgroundColor: palette.actionSoft },
   segmentText: { color: palette.ink, fontFamily: font.semibold, fontSize: 14, flexShrink: 1 },
-  audienceSegment: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: palette.border,
-    borderRadius: radius.pill,
-    backgroundColor: palette.card,
-    overflow: 'hidden',
-  },
-  audienceButton: {
-    minHeight: 44,
-    minWidth: 112,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
   previewSection: { gap: spacing.sm },
   preview: {
     minHeight: 92,

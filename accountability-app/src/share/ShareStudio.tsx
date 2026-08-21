@@ -19,6 +19,7 @@ import { chooseProgressPhoto, type CapturedProgressPhoto, type ProgressPhotoSour
 import { postVisibilityCopy } from '../progress/visibility';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { createShareStudioStyles } from './ShareStudio.styles';
+import { PostVisibilitySwitch } from './PostVisibilitySwitch';
 import {
   createShareStudioResult,
   canonicalShareStudioContext,
@@ -231,9 +232,6 @@ function ShareStudioSession({
     }
   }, [availableMediaOptions, caption, choice, continuing, expectedOwnerId, includeBodyStats, mediaReady, onContinue, operationId, photo, picking, retryDraft, shareContext, showPublicly]);
 
-  const summary = showPublicly
-    ? 'Public · also shown on your Buddy Card'
-    : 'Buddies only';
   const visibilityCopy = postVisibilityCopy(showPublicly);
 
   return (
@@ -362,27 +360,11 @@ function ShareStudioSession({
             </View>
           ) : null}
 
-          <View style={styles.visibility}>
-            <View style={styles.visibilityCopy}>
-              <Text testID="buddy-card-switch-label" style={styles.visibilityTitle}>Show on Buddy Card too</Text>
-              <Text style={styles.visibilityConsequence}>Turn on to make this post Public and show it on your Buddy Card.</Text>
-              <Text accessibilityLiveRegion="polite" style={styles.visibilitySummary}>{summary}</Text>
-            </View>
-            <View testID="buddy-card-switch-target" style={styles.switchTarget}>
-              <Switch
-                testID="buddy-card-visibility-switch"
-                accessibilityRole="switch"
-                accessibilityLabel={visibilityCopy.accessibilityLabel}
-                accessibilityHint={visibilityCopy.helper}
-                accessibilityState={{ checked: showPublicly, disabled: continuing || draftLocked }}
-                value={showPublicly}
-                onValueChange={setShowPublicly}
-                disabled={continuing || draftLocked}
-                hitSlop={{ top: 9, right: 6, bottom: 9, left: 6 }}
-                trackColor={{ false: theme.border.strong, true: theme.ink.action }}
-              />
-            </View>
-          </View>
+          <PostVisibilitySwitch
+            showPublicly={showPublicly}
+            onChange={setShowPublicly}
+            disabled={continuing || draftLocked}
+          />
 
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
 

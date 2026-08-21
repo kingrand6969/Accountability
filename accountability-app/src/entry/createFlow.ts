@@ -54,12 +54,11 @@ export const CREATE_CHOICES: readonly CreateChoice[] = [
 
 export const CREATE_HUB_MODEL = {
   choices: CREATE_CHOICES,
-  sections: ['preview', 'audience'] as const,
+  sections: ['preview'] as const,
   continueLabel: 'Continue',
 };
 
-export type CreateMedia = 'photo' | 'video';
-export type CreateAudience = 'buddies' | 'public';
+export type CreateMedia = 'selfie' | 'photo' | 'video';
 
 export const DIRECT_POST_HREF = {
   pathname: '/compose',
@@ -89,24 +88,22 @@ export function createPickerReadinessGate(initial: CreateMedia | null = null) {
 }
 
 export type CreateContinuation =
-  | { kind: 'editor'; audience: CreateAudience }
-  | { kind: 'picker'; media: CreateMedia; audience: CreateAudience }
+  | { kind: 'editor' }
+  | { kind: 'picker'; media: CreateMedia }
   | { kind: 'route'; route: '/win-card' | '/run' | '/add' };
 
 export function decideCreateContinuation({
   choiceId,
   media,
-  audience,
 }: {
   choiceId: CreateChoice['id'];
   media: CreateMedia;
-  audience: CreateAudience;
 }): CreateContinuation {
   const choice = CREATE_CHOICES.find((candidate) => candidate.id === choiceId);
   if (!choice) throw new Error(`Unknown create choice: ${choiceId}`);
   if (choice.route) return { kind: 'route', route: choice.route };
-  if (choice.action === 'choose-media') return { kind: 'picker', media, audience };
-  return { kind: 'editor', audience };
+  if (choice.action === 'choose-media') return { kind: 'picker', media };
+  return { kind: 'editor' };
 }
 
 type ComposeParams = {
