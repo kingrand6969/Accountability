@@ -84,6 +84,7 @@ const ProgressRoute = require('../app/journey-progress').default as React.Compon
 
 afterEach(() => {
   for (const renderer of mounted.splice(0)) act(() => renderer.unmount());
+  jest.useRealTimers();
 });
 
 describe('Journey progress owner lifecycle', () => {
@@ -117,6 +118,24 @@ describe('Journey progress owner lifecycle', () => {
     await act(async () => { renderer = TestRenderer.create(<ProgressRoute />); mounted.push(renderer); });
     await flush();
     expect(mockGetInsights).toHaveBeenCalledWith('week', 'owner-a');
+  });
+
+  test('refreshes the mounted chart clock after refocus crosses local midnight', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 22, 23, 59, 0, 0));
+    mockListMeasurements
+      .mockResolvedValueOnce([measurementAt('before-midnight', 74, new Date(2026, 7, 22, 23, 50, 0, 0))])
+      .mockResolvedValueOnce([measurementAt('after-midnight', 73, new Date(2026, 7, 23, 0, 1, 0, 0))]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(<ProgressRoute />); mounted.push(renderer); });
+    await flush();
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel?.includes('one check-in at 74.0 kg'))).not.toHaveLength(0);
+
+    jest.setSystemTime(new Date(2026, 7, 23, 0, 5, 0, 0));
+    mockFocusEpoch += 1;
+    await act(async () => renderer.update(<ProgressRoute />));
+    await flush();
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel?.includes('one check-in at 73.0 kg'))).not.toHaveLength(0);
   });
 
   test('recovers under replayed StrictMode effects', async () => {

@@ -20,6 +20,7 @@ const REFRESH_ERROR = 'Your progress couldn’t refresh. Your saved progress is 
 
 type Snapshot = {
   ownerId: string;
+  referenceTime: number;
   measurements: BodyMeasurement[];
   photos: ProgressPhoto[];
   insights: Insights;
@@ -102,7 +103,7 @@ export default function JourneyProgress() {
       getInsights('week', capturedOwner),
     ]).then(([measurements, photos, insights]) => {
       if (!alive || !canCommit()) return;
-      setSnapshot({ ownerId: capturedOwner, measurements, photos, insights });
+      setSnapshot({ ownerId: capturedOwner, referenceTime: Date.now(), measurements, photos, insights });
     }).catch(() => {
       if (!alive || !canCommit()) return;
       if (hasCachedData) setRefreshErrorOwner(capturedOwner);
@@ -200,7 +201,7 @@ export default function JourneyProgress() {
                 <Text style={styles.emptyText}>Add your weight and height to start a private progress record.</Text>
               </View>
             )}
-            <WeightTrendChart measurements={current.measurements} />
+            <WeightTrendChart measurements={current.measurements} now={current.referenceTime} />
             <Pressable accessibilityRole="button" accessibilityLabel="Add body check-in" onPress={() => ownerId && setSheetState({ ownerId, token: ownerToken })} style={styles.checkInButton}><Text style={styles.checkInButtonText}>{latest ? 'Add body check-in' : 'Start body check-in'}</Text></Pressable>
             <ProgressPhotoVault photos={current.photos} />
           </>
