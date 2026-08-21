@@ -5,6 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { calculateBmi } from './bmi';
+import { CheckInDateField } from './CheckInDateField';
+import { localDateKey, recordedAtForLocalDate } from './checkInDate';
 import type { AddMeasurementInput } from './types';
 
 type Props = {
@@ -20,24 +22,26 @@ export function BodyCheckInSheet({ visible, latestHeightCm, onCancel, onSave }: 
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState(latestHeightCm?.toString() ?? '');
   const [editHeight, setEditHeight] = useState(latestHeightCm == null);
-  const [recordedAt, setRecordedAt] = useState(() => new Date().toISOString());
+  const [openedAt] = useState(() => new Date());
+  const [checkInDate, setCheckInDate] = useState(() => localDateKey(openedAt));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
   }, []);
 
   const save = async () => {
     if (savingRef.current) return;
     const weightKg = Number(weight);
     const heightCm = Number(height);
-    const date = new Date(recordedAt);
+    let recordedAt: string;
     try {
       calculateBmi(weightKg, heightCm);
-      if (!Number.isFinite(date.getTime())) throw new Error('Enter a valid date and time.');
+      recordedAt = recordedAtForLocalDate(checkInDate, new Date());
     } catch (validationError) {
       setError(validationError instanceof Error ? validationError.message : 'Enter valid weight and height values.');
       return;
@@ -46,7 +50,7 @@ export function BodyCheckInSheet({ visible, latestHeightCm, onCancel, onSave }: 
     setSaving(true);
     setError(null);
     try {
-      await onSave({ weightKg, heightCm, recordedAt: date.toISOString() });
+      await onSave({ weightKg, heightCm, recordedAt });
     } catch {
       if (mountedRef.current) setError('Your body check-in couldn’t save. Try again.');
     } finally {
@@ -79,8 +83,7 @@ export function BodyCheckInSheet({ visible, latestHeightCm, onCancel, onSave }: 
                 <TextInput value={height} onChangeText={setHeight} keyboardType="decimal-pad" accessibilityLabel="Height in centimetres" placeholder="cm" placeholderTextColor={theme.ink.muted} style={styles.input} />
               </>
             )}
-            <Text style={styles.label}>Date and time</Text>
-            <TextInput value={recordedAt} onChangeText={setRecordedAt} autoCapitalize="none" accessibilityLabel="Check-in date and time" style={styles.input} />
+            <CheckInDateField value={checkInDate} onChange={setCheckInDate} maximumDate={openedAt} error={error?.includes('date') ? error : undefined} />
             {error ? <Text accessibilityRole="alert" accessibilityLabel="Body check-in error" style={styles.error}>{error}</Text> : null}
             <View style={styles.actions}>
               <Pressable accessibilityRole="button" accessibilityLabel="Cancel body check-in" accessibilityState={{ disabled: saving }} disabled={saving} onPress={cancel} style={styles.secondary}><Text style={styles.secondaryText}>Cancel</Text></Pressable>

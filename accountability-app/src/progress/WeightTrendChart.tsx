@@ -8,27 +8,36 @@ import type { BodyMeasurement } from './types';
 
 type TrendPeriod = 'week' | 'month';
 
-function chronological(measurements: readonly BodyMeasurement[], period: TrendPeriod) {
+function localWindow(now: Date, period: TrendPeriod) {
   const days = period === 'week' ? 7 : 30;
-  const newestTime = measurements.reduce(
-    (latest, item) => Math.max(latest, new Date(item.recordedAt).getTime()),
-    Number.NEGATIVE_INFINITY,
-  );
-  if (!Number.isFinite(newestTime)) return [];
-  const cutoff = newestTime - days * 24 * 60 * 60 * 1000;
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return { start: start.getTime(), end: end.getTime() };
+}
+
+function chronological(measurements: readonly BodyMeasurement[], period: TrendPeriod, now: Date) {
+  const window = localWindow(now, period);
+  const nowTime = now.getTime();
   return [...measurements]
-    .filter((item) => new Date(item.recordedAt).getTime() >= cutoff)
+    .filter((item) => {
+      const time = new Date(item.recordedAt).getTime();
+      return Number.isFinite(time) && time >= window.start && time < window.end && time <= nowTime;
+    })
     .sort((left, right) => {
       const dateDifference = new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime();
       return dateDifference || left.id.localeCompare(right.id);
     });
 }
 
-export function WeightTrendChart({ measurements }: { measurements: readonly BodyMeasurement[] }) {
+export function WeightTrendChart({ measurements, now }: { measurements: readonly BodyMeasurement[]; now?: Date | number }) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [period, setPeriod] = useState<TrendPeriod>('week');
-  const points = useMemo(() => chronological(measurements, period), [measurements, period]);
+  const [defaultNow] = useState(Date.now);
+  const nowTime = now instanceof Date ? now.getTime() : now ?? defaultNow;
+  const referenceDate = useMemo(() => new Date(nowTime), [nowTime]);
+  const window = useMemo(() => localWindow(referenceDate, period), [period, referenceDate]);
+  const points = useMemo(() => chronological(measurements, period, referenceDate), [measurements, period, referenceDate]);
   const first = points[0];
   const current = points.at(-1);
   const change = first && current ? current.weightKg - first.weightKg : 0;
@@ -44,12 +53,13 @@ export function WeightTrendChart({ measurements }: { measurements: readonly Body
     const low = Math.min(...weights);
     const high = Math.max(...weights);
     const range = high - low || 1;
-    return points.map((point, index) => {
-      const x = 12 + (index / (points.length - 1)) * 296;
+    return points.map((point) => {
+      const time = new Date(point.recordedAt).getTime();
+      const x = 12 + ((time - window.start) / (window.end - window.start)) * 296;
       const y = 92 - ((point.weightKg - low) / range) * 72;
       return `${x},${y}`;
     }).join(' ');
-  }, [points]);
+  }, [points, window.end, window.start]);
 
   return (
     <View style={styles.card}>

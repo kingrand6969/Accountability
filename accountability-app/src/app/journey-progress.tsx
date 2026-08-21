@@ -64,13 +64,17 @@ export default function JourneyProgress() {
   const [sheetState, setSheetState] = useState<{ ownerId: string; token: symbol } | null>(null);
 
   useEffect(() => {
+    mountedRef.current = true;
     ownerRef.current = ownerId;
     snapshotRef.current = snapshot;
   }, [ownerId, snapshot]);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    generationRef.current += 1;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+    };
   }, []);
 
   const load = useCallback((focus = activeFocusRef.current) => {
@@ -95,7 +99,7 @@ export default function JourneyProgress() {
     void Promise.all([
       listMeasurements(capturedOwner, 52),
       listProgressPhotos(capturedOwner),
-      getInsights('week'),
+      getInsights('week', capturedOwner),
     ]).then(([measurements, photos, insights]) => {
       if (!alive || !canCommit()) return;
       setSnapshot({ ownerId: capturedOwner, measurements, photos, insights });

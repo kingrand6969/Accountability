@@ -2,6 +2,7 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { Modal, StyleSheet, Text, TextInput } from 'react-native';
+import { Polyline } from 'react-native-svg';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +15,7 @@ let mockFocused = true;
 const mockListMeasurements = jest.fn<(owner: string, limit: number) => Promise<BodyMeasurement[]>>();
 const mockListPhotos = jest.fn<(owner: string) => Promise<ProgressPhoto[]>>();
 const mockAddMeasurement = jest.fn<(...args: unknown[]) => Promise<BodyMeasurement>>();
-const mockGetInsights = jest.fn<() => Promise<Record<string, unknown>>>();
+const mockGetInsights = jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>>>();
 
 jest.mock('../auth/AuthProvider', () => ({
   useAuth: () => ({ session: mockOwnerId ? { user: { id: mockOwnerId } } : null }),
@@ -42,13 +43,16 @@ jest.mock('./api', () => ({
   listProgressPhotos: (owner: string) => mockListPhotos(owner),
   addMeasurement: (...args: unknown[]) => mockAddMeasurement(...args),
 }));
-jest.mock('../insights/api', () => ({ getInsights: () => mockGetInsights() }));
+jest.mock('../insights/api', () => ({ getInsights: (...args: unknown[]) => mockGetInsights(...args) }));
 
 const measurement = (id: string, weightKg: number, heightCm = 180, day = 20): BodyMeasurement => ({
   id,
   weightKg,
   heightCm,
   recordedAt: `2026-08-${String(day).padStart(2, '0')}T10:30:00.000Z`,
+});
+const measurementAt = (id: string, weightKg: number, recordedAt: Date): BodyMeasurement => ({
+  id, weightKg, heightCm: 180, recordedAt: recordedAt.toISOString(),
 });
 const photo = (id: string): ProgressPhoto => ({
   id,
@@ -106,6 +110,23 @@ describe('Journey progress owner lifecycle', () => {
     expect(textOf(renderer)).toContain('No body check-ins yet');
     expect(textOf(renderer)).toContain('No private progress photos yet');
     expect(textOf(renderer)).not.toContain('0.0 kg');
+  });
+
+  test('passes the immutable captured owner to insights', async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(<ProgressRoute />); mounted.push(renderer); });
+    await flush();
+    expect(mockGetInsights).toHaveBeenCalledWith('week', 'owner-a');
+  });
+
+  test('recovers under replayed StrictMode effects', async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(<React.StrictMode><ProgressRoute /></React.StrictMode>);
+      mounted.push(renderer);
+    });
+    await flush();
+    expect(textOf(renderer)).toContain('No body check-ins yet');
   });
 
   test('shows a truthful initial error and Retry recovers all data', async () => {
@@ -241,7 +262,10 @@ describe('Journey progress owner lifecycle', () => {
     expect(mockAddMeasurement).toHaveBeenCalledTimes(1);
     expect(mockAddMeasurement.mock.calls[0][1]).toBe('owner-a');
     expect(mockListMeasurements).toHaveBeenCalledTimes(2);
-    expect(textOf(renderer)).toContain('75.0 kg');
+    const currentWeight = renderer.root.findAllByType(Text).find((node) =>
+      Array.isArray(node.props.children) && node.props.children.join('') === '75.0 kg',
+    );
+    expect(currentWeight).toBeTruthy();
   });
 
   test('does not refresh or reveal a save from the previous owner', async () => {
@@ -300,7 +324,7 @@ describe('Weight trend semantics', () => {
   test('switches between seven-day and thirty-day chronological windows without interpolation', () => {
     const points = [measurement('old', 80, 180, 1), measurement('recent', 75, 180, 20), measurement('latest', 74, 180, 21)];
     let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={points} />); });
+    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={points} now={new Date(2026, 7, 22, 23)} />); });
     mounted.push(renderer);
     expect(renderer.root.findAll((node) => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.includes('started at 75.0 kg, current 74.0 kg, change -1.0 kg'))).not.toHaveLength(0);
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Show monthly weight trend' }).props.onPress());
@@ -309,12 +333,12 @@ describe('Weight trend semantics', () => {
 
   test('states empty and single-point limitations truthfully', () => {
     let empty!: TestRenderer.ReactTestRenderer;
-    act(() => { empty = TestRenderer.create(<WeightTrendChart measurements={[]} />); });
+    act(() => { empty = TestRenderer.create(<WeightTrendChart measurements={[]} now={new Date(2026, 7, 22, 23)} />); });
     mounted.push(empty);
     expect(textOf(empty)).toContain('Add a body check-in to begin your weight trend.');
 
     let single!: TestRenderer.ReactTestRenderer;
-    act(() => { single = TestRenderer.create(<WeightTrendChart measurements={[measurement('only', 74)]} />); });
+    act(() => { single = TestRenderer.create(<WeightTrendChart measurements={[measurement('only', 74)]} now={new Date(2026, 7, 22, 23)} />); });
     mounted.push(single);
     expect(textOf(single)).toContain('One check-in recorded. Add another to see a trend.');
     const onePointSummary = single.root.findAll((node) => typeof node.props.accessibilityLabel === 'string')
@@ -333,12 +357,87 @@ describe('Weight trend semantics', () => {
 
   test('gives both period controls 48-point targets', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={[]} />); });
+    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={[]} now={new Date(2026, 7, 22, 23)} />); });
     mounted.push(renderer);
     for (const label of ['Show weekly weight trend', 'Show monthly weight trend']) {
       const control = renderer.root.findByProps({ accessibilityLabel: label });
       expect(StyleSheet.flatten(control.props.style).minHeight).toBeGreaterThanOrEqual(48);
     }
+  });
+
+  test('excludes stale-only and future points from the injected local-calendar week', () => {
+    const now = new Date(2026, 7, 22, 15, 0, 0, 0);
+    const measurements = [
+      measurementAt('stale', 80, new Date(2026, 7, 15, 23, 59, 59, 999)),
+      measurementAt('future', 70, new Date(2026, 7, 22, 15, 0, 0, 1)),
+    ];
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={measurements} now={now} />); });
+    mounted.push(renderer);
+    expect(textOf(renderer)).toContain('Weight trend has no check-ins yet.');
+    expect(textOf(renderer)).not.toContain('started at 80.0 kg');
+  });
+
+  test('includes exact start and now boundaries but excludes next-day window end', () => {
+    const now = new Date(2026, 7, 22, 15, 0, 0, 0);
+    const measurements = [
+      measurementAt('start', 80, new Date(2026, 7, 16, 0, 0, 0, 0)),
+      measurementAt('now', 75, now),
+      measurementAt('end', 60, new Date(2026, 7, 23, 0, 0, 0, 0)),
+    ];
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={measurements} now={now.getTime()} />); });
+    mounted.push(renderer);
+    const summary = renderer.root.findAll((node) => typeof node.props.accessibilityLabel === 'string')
+      .map((node) => node.props.accessibilityLabel as string).find((label) => label.startsWith('Weight trend:'));
+    expect(summary).toContain('started at 80.0 kg');
+    expect(summary).toContain('current 75.0 kg');
+    expect(summary).not.toContain('60.0 kg');
+  });
+
+  test('spaces irregular timestamps by elapsed time rather than point index', () => {
+    const now = new Date(2026, 7, 22, 12, 0, 0, 0);
+    const measurements = [
+      measurementAt('a', 80, new Date(2026, 7, 16, 0, 0, 0, 0)),
+      measurementAt('b', 79, new Date(2026, 7, 17, 0, 0, 0, 0)),
+      measurementAt('c', 78, new Date(2026, 7, 21, 0, 0, 0, 0)),
+    ];
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={measurements} now={now} />); });
+    mounted.push(renderer);
+    const xs = renderer.root.findByType(Polyline).props.points.split(' ').map((point: string) => Number(point.split(',')[0]));
+    expect(xs[1] - xs[0]).toBeLessThan(xs[2] - xs[1]);
+  });
+
+  test('uses calendar dates across month and daylight-saving transition days', () => {
+    const now = new Date(2026, 2, 8, 12, 0, 0, 0);
+    const measurements = [
+      measurementAt('calendar-start', 82, new Date(2026, 2, 2, 0, 0, 0, 0)),
+      measurementAt('before', 90, new Date(2026, 2, 1, 23, 59, 59, 999)),
+      measurementAt('today', 81, new Date(2026, 2, 8, 11, 0, 0, 0)),
+    ];
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={measurements} now={now} />); });
+    mounted.push(renderer);
+    expect(textOf(renderer)).toContain('started at 82.0 kg');
+    expect(textOf(renderer)).toContain('current 81.0 kg');
+    expect(textOf(renderer)).not.toContain('90.0 kg');
+  });
+
+  test('uses today plus the previous 29 local dates for Monthly', () => {
+    const now = new Date(2026, 7, 22, 12, 0, 0, 0);
+    const measurements = [
+      measurementAt('monthly-start', 84, new Date(2026, 6, 24, 0, 0, 0, 0)),
+      measurementAt('monthly-stale', 91, new Date(2026, 6, 23, 23, 59, 59, 999)),
+      measurementAt('monthly-current', 82, now),
+    ];
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<WeightTrendChart measurements={measurements} now={now} />); });
+    mounted.push(renderer);
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Show monthly weight trend' }).props.onPress());
+    expect(textOf(renderer)).toContain('started at 84.0 kg');
+    expect(textOf(renderer)).toContain('current 82.0 kg');
+    expect(textOf(renderer)).not.toContain('91.0 kg');
   });
 });
 
@@ -353,7 +452,7 @@ describe('Body check-in interaction safety', () => {
     return { renderer, onCancel, onSave };
   }
 
-  test('validates weight, height, and date before saving', () => {
+  test('validates weight and height before saving', () => {
     const { renderer, onSave } = renderSheet();
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Save body check-in' }).props.onPress());
     expect(textOf(renderer)).toContain('Enter valid weight and height values.');
@@ -369,10 +468,6 @@ describe('Body check-in interaction safety', () => {
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Save body check-in' }).props.onPress());
     expect(textOf(renderer)).toContain('Enter valid weight and height values.');
 
-    act(() => renderer.root.findByProps({ accessibilityLabel: 'Height in centimetres' }).props.onChangeText('180'));
-    act(() => renderer.root.findByProps({ accessibilityLabel: 'Check-in date and time' }).props.onChangeText('not-a-date'));
-    act(() => renderer.root.findByProps({ accessibilityLabel: 'Save body check-in' }).props.onPress());
-    expect(textOf(renderer)).toContain('Enter a valid date and time.');
     expect(onSave).not.toHaveBeenCalled();
   });
 
@@ -405,11 +500,28 @@ describe('Body check-in interaction safety', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  test('recovers save error state under replayed StrictMode effects', async () => {
+    const onSave = jest.fn<() => Promise<void>>().mockRejectedValue(new Error('offline'));
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <React.StrictMode><BodyCheckInSheet visible onCancel={jest.fn()} onSave={onSave} /></React.StrictMode>,
+      );
+      mounted.push(renderer);
+    });
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Weight in kilograms' }).props.onChangeText('75'));
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Height in centimetres' }).props.onChangeText('180'));
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Save body check-in' }).props.onPress());
+    await flush();
+    expect(textOf(renderer)).toContain('Your body check-in couldn’t save. Try again.');
+  });
+
   test('gives modal inputs and direct controls 48-point targets and wraps actions', () => {
     const { renderer } = renderSheet(undefined, 180);
-    for (const label of ['Weight in kilograms', 'Check-in date and time', 'Edit height', 'Cancel body check-in', 'Save body check-in']) {
+    for (const label of ['Weight in kilograms', 'Check-in date', 'Edit height', 'Cancel body check-in', 'Save body check-in']) {
       const control = renderer.root.findByProps({ accessibilityLabel: label });
-      expect(StyleSheet.flatten(control.props.style).minHeight).toBeGreaterThanOrEqual(48);
+      const renderedStyle = typeof control.props.style === 'function' ? control.props.style({ pressed: false }) : control.props.style;
+      expect(StyleSheet.flatten(renderedStyle).minHeight).toBeGreaterThanOrEqual(48);
     }
     const cancel = renderer.root.findByProps({ accessibilityLabel: 'Cancel body check-in' });
     expect(StyleSheet.flatten(cancel.parent?.props.style).flexWrap).toBe('wrap');
