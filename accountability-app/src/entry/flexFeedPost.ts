@@ -55,9 +55,9 @@ export async function publishFlexFeedPost(
     null,
     null,
     null,
-    input.context.audience === 'public' && input.context.showOnCard,
+    input.context.showPublicly,
     {
-      audience: input.context.audience,
+      showPublicly: input.context.showPublicly,
       postType: 'milestone',
       shareData: buildFlexFeedShareData(input.context, input.mediaSha256),
       operationId: input.operationId,

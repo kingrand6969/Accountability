@@ -64,15 +64,14 @@ import {
   ProofCaptureCard,
   type ProofCaptureRendererContext,
 } from '../entry/ProofCaptureCard';
-import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
 import {
-  achievementPayloadKey,
   retainAchievementStoryOperation,
   type AchievementCompletion,
   type AchievementStoryOperation,
 } from '../entry/achievementCompletion';
 import { parseFlexContext } from '../entry/flexContext';
 import { publishFlexFeedPost } from '../entry/flexFeedPost';
+import { ShareStudio, type ShareStudioResult } from '../share/ShareStudio';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
@@ -92,6 +91,7 @@ export default function WinCard() {
     achievementText?: string | string[];
     audience?: string | string[];
     showOnCard?: string | string[];
+    showPublicly?: string | string[];
     autoPrompt?: string | string[];
   }>();
   const proofLocation = sanitizeProofParam(params.location);
@@ -125,12 +125,13 @@ export default function WinCard() {
   const [privacy, setPrivacy] = useState<ProofPrivacy>({ ...DEFAULT_PROOF_PRIVACY });
   const [selectedCaptureContext, setSelectedCaptureContext] =
     useState<ProofCaptureRendererContext | null>(null);
-  const [sharePromptVisible, setSharePromptVisible] = useState(
+  const [shareStudioVisible, setShareStudioVisible] = useState(
     sanitizeProofParam(params.autoPrompt) === '1',
   );
   const cardRef = useRef<View>(null);
   const retryGuardRef = useRef(createProofRetryGuard());
   const storyOperationRef = useRef<AchievementStoryOperation | null>(null);
+  const [shareBackgroundUri, setShareBackgroundUri] = useState<string | null>(null);
   // Fonts (Inter + Anton) are loaded globally in the root layout.
 
   useFocusEffect(
@@ -160,6 +161,8 @@ export default function WinCard() {
         retryGuardRef.current.invalidate();
         setActionOwner(null);
         setSelectedCaptureContext(null);
+        setShareStudioVisible(false);
+        setShareBackgroundUri(null);
       };
     // The orchestrator owns mutable session refs; this focus lifecycle must not
     // restart when its render-local facade is recreated.
@@ -176,6 +179,8 @@ export default function WinCard() {
       retryGuard.invalidate();
       setActionOwner(ownerId);
       setSelectedCaptureContext(null);
+      setShareStudioVisible(false);
+      setShareBackgroundUri(null);
       if (ownerId) void loadOwnerView(ownerId);
     });
     return () => {
@@ -236,8 +241,7 @@ export default function WinCard() {
     sourceId: `streak-${stats.streak}-${new Date().toISOString().slice(0, 10)}`,
     title: 'I showed up today.',
     body: fallbackMessage,
-    audience: 'buddies' as const,
-    showOnCard: false,
+    showPublicly: false,
   };
   const message = flexContext.body;
   const proofInput: ProofExportInput = {
@@ -302,13 +306,21 @@ export default function WinCard() {
     });
   }
 
-  async function onShareToFeed() {
+  async function onShareToFeed(draft: ShareStudioResult) {
     const token = beginAction('post-feed');
     if (!token) throw new Error('Another share is already in progress.');
     const expectedOwnerId = expectedProofOwner(token);
     let pending: PendingProofActionV1 | null = null;
     let dispatched = false;
     try {
+      if (draft.ownerId !== expectedOwnerId) throw new Error('Account changed.');
+      if (draft.media.kind === 'photo') {
+        setShareBackgroundUri(draft.media.uri);
+        await nextPaint();
+        if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
+      }
+      const shareBody = draft.caption || message;
+      const publishContext = { ...flexContext, body: shareBody, showPublicly: draft.showPublicly };
       const base64 = await captureDestination(
         buildFeedProofExport,
         'base64',
@@ -318,7 +330,7 @@ export default function WinCard() {
         throw new Error('Could not prepare the Daily Proof image. Please try again.');
       }
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      pending = await journalDurableAction(token, 'post-feed', base64, message);
+      pending = await journalDurableAction(token, 'post-feed', base64, shareBody, false, draft.operationId);
       if (!await requireCurrentActionOwner(token)) {
         await confirmDurableAction(pending);
         pending = null;
@@ -328,7 +340,7 @@ export default function WinCard() {
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
       dispatched = true;
       await publishFlexFeedPost({
-        context: flexContext,
+        context: publishContext,
         mediaRef: imageUrl,
         mediaSha256: pending.match.imageSha256,
         operationId: pending.operationId,
@@ -338,9 +350,14 @@ export default function WinCard() {
       await confirmDurableAction(pending);
       pending = null;
       if (!ownerStayedCurrent) throw new Error('Account changed.');
+      if (draft.media.kind === 'photo') {
+        await draft.media.release().catch(() => {});
+      }
       mutateForToken(token, () => {
         dispatchAction({ type: 'success', action: 'post-feed' });
         Alert.alert('Shared to your feed', 'Your Daily Proof is now on your feed.');
+        setShareStudioVisible(false);
+        setShareBackgroundUri(null);
       });
     } catch (error) {
       if (pending && dispatched) {
@@ -533,7 +550,7 @@ export default function WinCard() {
           cardModel.format === 'landscape' && styles.landscape,
         ]}
       >
-        <ProofCaptureCard context={captureContext} />
+        <ProofCaptureCard context={captureContext} backgroundUri={shareBackgroundUri} />
       </View>
 
       <View style={styles.formatRow} accessibilityRole="radiogroup">
@@ -591,7 +608,8 @@ export default function WinCard() {
       ) : null}
 
       <View style={styles.actions}>
-        <ProofAction icon="people-outline" label="Share achievement" onPress={() => setSharePromptVisible(true)} busy={isProofActionBusy(actionState, 'post-feed')} disabled={actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'} />
+        <ProofAction icon="people-outline" label="Share achievement" onPress={() => setShareStudioVisible(true)} busy={isProofActionBusy(actionState, 'post-feed')} disabled={actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'} />
+        <ProofAction icon="time-outline" label="Add to My Day" onPress={() => void onShareToStory()} busy={isProofActionBusy(actionState, 'share-external')} />
         <ProofAction icon="share-social-outline" label="Share outside app" onPress={onShareExternally} busy={isProofActionBusy(actionState, 'share-external')} />
         {Platform.OS !== 'web' ? <ProofAction icon="download-outline" label="Save to phone" onPress={onSavePhone} busy={isProofActionBusy(actionState, 'save-phone')} /> : null}
         <ProofAction icon="bookmark-outline" label="Save to Memories" onPress={onSaveMemories} busy={isProofActionBusy(actionState, 'save-memories')} disabled={actionState['save-memories'].status === 'unresolved' || actionState['save-memories'].status === 'ambiguous'} />
@@ -625,13 +643,24 @@ export default function WinCard() {
           </View>
         </View>
       ))}
-      <AchievementSharePrompt
-        visible={sharePromptVisible}
-        payloadKey={achievementPayloadKey(completionPayload)}
-        onFeed={onShareToFeed}
-        onStory={onShareToStory}
-        onPrivate={() => Promise.resolve()}
-        onClose={() => setSharePromptVisible(false)}
+      <ShareStudio
+        visible={shareStudioVisible}
+        expectedOwnerId={ownerIdRef.current!}
+        context={{
+          title: flexContext.title,
+          date: new Date().toLocaleDateString(),
+          metrics: [
+            { label: 'Workouts', value: String(stats.weekWorkouts), sensitivity: 'standard' },
+            { label: 'Activities', value: String(stats.weekActivities), sensitivity: 'standard' },
+            { label: 'Streak', value: `${stats.streak} days`, sensitivity: 'standard' },
+          ],
+        }}
+        defaultCaption={message}
+        onContinue={onShareToFeed}
+        onCancel={() => {
+          setShareStudioVisible(false);
+          setShareBackgroundUri(null);
+        }}
       />
     </ScrollView>
   );

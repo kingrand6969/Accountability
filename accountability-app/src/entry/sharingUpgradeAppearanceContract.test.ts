@@ -13,7 +13,7 @@ describe('sharing and upgrade appearance contract', () => {
     expect(winCardSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
     expect(winCardSource).toContain("mode === 'light' ? '#F8F5EE' : theme.surface.canvas");
     expect(winCardSource).toContain('backgroundColor: palette.surface');
-    expect(winCardSource).toContain('<ProofCaptureCard context={captureContext} />');
+    expect(winCardSource).toContain('<ProofCaptureCard context={captureContext} backgroundUri={shareBackgroundUri} />');
     expect(winCardSource).toContain('publishFlexFeedPost({');
     expect(winCardSource).toContain('saveImageToMemories(uri, null, null, expectedProofOwner(token))');
     expect(winCardSource).toContain('hitSlop={2}');

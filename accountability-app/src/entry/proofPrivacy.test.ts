@@ -168,13 +168,15 @@ describe('captured Daily Proof binding', () => {
     expect(source.match(/captureDestination\(\s*buildExternalProofExport,/g)).toHaveLength(1);
     expect(source).toMatch(/captureDestination\(\s*buildPhoneProofExport,/);
     expect(source).toMatch(/captureDestination\(\s*buildMemoryProofExport,/);
-    expect(source).toMatch(/<ProofCaptureCard context=\{captureContext\} \/>/);
+    expect(source).toMatch(/<ProofCaptureCard context=\{captureContext\} backgroundUri=\{shareBackgroundUri\} \/>/);
     expect(source).toMatch(/accessibilityLabel=\{label\}/);
     expect(source).not.toMatch(/ImagePicker|pickerPhotoReference|renderBackgroundUri|Image\.getSize/);
-    expect(capturedSubtree).toMatch(/source=\{PROOF_RUNNER_HERO\}/);
+    expect(capturedSubtree).toMatch(/source=\{backgroundSource\}/);
+    expect(capturedSubtree).toMatch(/\^\(\?:file\|content\):\\\/\\\//);
+    expect(capturedSubtree).toMatch(/\^blob:/);
     expect(capturedSubtree).not.toMatch(/context\.resolve|source=\{\{\s*uri:/);
     expect(capturedSubtree).not.toMatch(
-      /\bparams\.|\bstats\.|pickerPhotoReference|renderBackgroundUri|file:\/\/|content:\/\//,
+      /\bparams\.|\bstats\.|pickerPhotoReference|renderBackgroundUri/,
     );
     expect(capturedSubtree.match(/allowFontScaling=\{false\}/g)?.length).toBeGreaterThanOrEqual(8);
     expect(capturedSubtree).toMatch(/buildProofCardSummary/);

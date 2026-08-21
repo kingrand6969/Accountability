@@ -13,7 +13,9 @@ describe('achievement sharing integration', () => {
     expect(sheet).toContain("import { addStoryIdempotent } from '../stories/api'");
     expect(sheet).toContain("import { AchievementSharePrompt } from '../entry/AchievementSharePrompt'");
     expect(sheet).toContain('<AchievementSharePrompt');
-    expect(sheet).toContain("onFeed={() => onDestination('feed')}");
+    expect(sheet).toContain('setShareStudioVisible(true)');
+    expect(sheet).toContain('<ShareStudio');
+    expect(sheet).toContain('onContinue={publishRunDraft}');
     expect(sheet).toContain('onStory={onStoryDestination}');
     expect(sheet).toContain('addStoryIdempotent({');
     expect(sheet).toContain('onPrivate={() => closeEditor()}');
@@ -51,8 +53,9 @@ describe('achievement sharing integration', () => {
     const winCard = source('src/app/win-card.tsx');
     const challenge = source('src/app/challenge/[id].tsx');
 
-    expect(winCard).toContain('<AchievementSharePrompt');
-    expect(winCard).toContain('onStory={onShareToStory}');
+    expect(winCard).toContain('<ShareStudio');
+    expect(winCard).toContain('onContinue={onShareToFeed}');
+    expect(winCard).toContain('label="Add to My Day"');
     expect(winCard).toContain('await addStoryIdempotent({');
     expect(challenge).toContain("achievementKind: 'challenge'");
     expect(challenge).toContain("pathname: '/win-card'");

@@ -17,8 +17,7 @@ export type FlexContext = Readonly<{
   sourceId: string;
   title: string;
   body: string;
-  audience: FlexAudience;
-  showOnCard: boolean;
+  showPublicly: boolean;
 }>;
 
 export type FlexContextParams = Readonly<{
@@ -28,6 +27,7 @@ export type FlexContextParams = Readonly<{
   achievementText?: string | string[];
   audience?: string | string[];
   showOnCard?: string | string[];
+  showPublicly?: string | string[];
 }>;
 
 export const FLEX_SOURCE_ID_MAX_LENGTH = 128;
@@ -80,13 +80,17 @@ export function parseFlexContext(params: FlexContextParams): FlexContext | null 
     : normalizeFlexDisplayText(rawBody, FLEX_BODY_MAX_LENGTH);
   if (!body) return null;
 
+  const rawShowPublicly = optionalScalar(params.showPublicly);
+  if (rawShowPublicly === INVALID_SCALAR || (rawShowPublicly !== undefined && rawShowPublicly !== '1')) return null;
   const rawAudience = optionalScalar(params.audience);
-  if (rawAudience === INVALID_SCALAR) return null;
-  const audience = rawAudience ?? 'buddies';
-  if (!isFlexAudience(audience)) return null;
-
   const rawShowOnCard = optionalScalar(params.showOnCard);
-  if (rawShowOnCard === INVALID_SCALAR || (rawShowOnCard !== undefined && rawShowOnCard !== '1')) {
+  if (
+    rawAudience === INVALID_SCALAR ||
+    rawShowOnCard === INVALID_SCALAR ||
+    (rawAudience !== undefined && !isFlexAudience(rawAudience)) ||
+    (rawShowOnCard !== undefined && rawShowOnCard !== '1') ||
+    (rawShowPublicly !== undefined && (rawAudience !== undefined || rawShowOnCard !== undefined))
+  ) {
     return null;
   }
 
@@ -95,8 +99,8 @@ export function parseFlexContext(params: FlexContextParams): FlexContext | null 
     sourceId,
     title,
     body,
-    audience,
-    showOnCard: audience === 'public' && rawShowOnCard === '1',
+    showPublicly: rawShowPublicly === '1' ||
+      (rawShowPublicly === undefined && rawAudience === 'public' && rawShowOnCard === '1'),
   };
 }
 

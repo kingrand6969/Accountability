@@ -65,6 +65,7 @@ const QUERY_RULES: Record<
     achievementText: (value) => normalizeFlexDisplayText(value, FLEX_BODY_MAX_LENGTH) !== null,
     audience: isFlexAudience,
     showOnCard: (value) => value === '1',
+    showPublicly: (value) => value === '1',
     autoPrompt: (value) => value === '1',
   },
 };

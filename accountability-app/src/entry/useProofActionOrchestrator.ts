@@ -126,6 +126,7 @@ export function useProofActionOrchestrator() {
     image: string,
     headline: string,
     isFileUri = false,
+    operationId = Crypto.randomUUID(),
   ): Promise<PendingProofActionV1> {
     const ownerId = token.ownerId;
     if (!ownerId) throw new Error('Not signed in.');
@@ -148,7 +149,7 @@ export function useProofActionOrchestrator() {
     );
     if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
     const entry = createPendingProofAction({
-      operationId: Crypto.randomUUID(),
+      operationId,
       ownerId,
       action,
       fingerprint: fingerprintResult.fingerprint,

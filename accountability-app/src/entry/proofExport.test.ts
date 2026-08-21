@@ -11,7 +11,7 @@ import {
   type ProofExportOptIns,
   type RenderAssetAdapter,
 } from './proofExport';
-import { buildProofCardSummary } from './ProofCaptureCard';
+import { buildProofCardSummary, proofBackgroundSource, PROOF_RUNNER_HERO } from './ProofCaptureCard';
 
 const safeInput: ProofExportInput = {
   brand: 'AccountAbility',
@@ -54,13 +54,20 @@ describe('Share Proof screen safety contract', () => {
     );
   });
 
-  test('captures the trusted bundled runner hero without a raw URI source', () => {
+  test('captures the trusted hero or one normalized local Share Studio photo', () => {
     expect(cardSource).toContain(
       "require('../../assets/images/proof-runner-hero-v1.webp')",
     );
-    expect(cardSource).toContain('source={PROOF_RUNNER_HERO}');
+    expect(cardSource).toContain('source={backgroundSource}');
     expect(cardSource).not.toContain('source={{ uri:');
     expect(cardSource).not.toContain('context.resolve');
+    expect(proofBackgroundSource(null)).toBe(PROOF_RUNNER_HERO);
+    expect(proofBackgroundSource('file:///cache/share.jpg')).toEqual({ uri: 'file:///cache/share.jpg' });
+    expect(proofBackgroundSource('content://media/share.jpg')).toEqual({ uri: 'content://media/share.jpg' });
+    expect(proofBackgroundSource('blob:https://local.invalid/photo')).toEqual({ uri: 'blob:https://local.invalid/photo' });
+    expect(proofBackgroundSource('https://project.supabase.co/storage/v1/object/sign/private')).toBe(PROOF_RUNNER_HERO);
+    expect(proofBackgroundSource('data:image/jpeg;base64,secret')).toBe(PROOF_RUNNER_HERO);
+    expect(proofBackgroundSource('file:relative-secret')).toBe(PROOF_RUNNER_HERO);
   });
 
   test('uses real safe-area insets and preserves scalable controls outside fixed artwork', () => {

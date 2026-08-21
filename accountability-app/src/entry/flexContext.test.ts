@@ -30,12 +30,11 @@ describe('Flex context parsing', () => {
       sourceId: UUID,
       title: 'Morning milestone',
       body: 'Morning milestone completed on AccountAbility. I showed up today.',
-      audience: 'buddies',
-      showOnCard: false,
+      showPublicly: false,
     });
   });
 
-  test('preserves a display-safe custom body and public Buddy Card choice', () => {
+  test('preserves a display-safe custom body and the single public choice', () => {
     expect(parseFlexContext({
       achievementKind: 'challenge',
       achievementSourceId: UUID,
@@ -48,19 +47,33 @@ describe('Flex context parsing', () => {
       sourceId: UUID,
       title: 'First 10K',
       body: 'Finished strong with my buddies.',
-      audience: 'public',
-      showOnCard: true,
+      showPublicly: true,
     });
   });
 
-  test('normalizes Buddy Card featuring off for a Buddies-only Flex', () => {
+  test('normalizes every mismatched legacy pair to Buddies only', () => {
     expect(parseFlexContext({
       achievementKind: 'workout',
       achievementSourceId: UUID,
       achievementTitle: 'Strength session',
       audience: 'buddies',
       showOnCard: '1',
-    })).toMatchObject({ audience: 'buddies', showOnCard: false });
+    })).toMatchObject({ showPublicly: false });
+    expect(parseFlexContext({
+      achievementKind: 'workout',
+      achievementSourceId: UUID,
+      achievementTitle: 'Strength session',
+      audience: 'public',
+    })).toMatchObject({ showPublicly: false });
+  });
+
+  test('accepts one scalar showPublicly value for new Flex routes', () => {
+    expect(parseFlexContext({
+      achievementKind: 'medal',
+      achievementSourceId: UUID,
+      achievementTitle: 'Trailblazer',
+      showPublicly: '1',
+    })).toMatchObject({ showPublicly: true });
   });
 
   const invalidCases: [string, FlexContextParams][] = [

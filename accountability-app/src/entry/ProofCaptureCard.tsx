@@ -1,11 +1,18 @@
-import { ImageBackground, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BrandMark } from '../ui/BrandMark';
 import { font } from '../ui/theme';
 import type { ProofExport, RenderAssetHandle } from './proofExport';
 
-const PROOF_RUNNER_HERO = require('../../assets/images/proof-runner-hero-v1.webp');
+export const PROOF_RUNNER_HERO = require('../../assets/images/proof-runner-hero-v1.webp');
+
+export function proofBackgroundSource(uri: string | null | undefined): ImageSourcePropType {
+  return typeof uri === 'string' &&
+    (/^(?:file|content):\/\//iu.test(uri) || /^blob:/iu.test(uri))
+    ? { uri }
+    : PROOF_RUNNER_HERO;
+}
 
 function metricLabel(value: number, singular: string, plural = `${singular}s`): string {
   return `${value} ${value === 1 ? singular : plural}`;
@@ -35,11 +42,12 @@ export function buildProofCardSummary(model: ProofExport): string {
   return details.filter(Boolean).join(' ');
 }
 
-export function ProofCaptureCard({ context }: { context: ProofCaptureRendererContext }) {
+export function ProofCaptureCard({ context, backgroundUri }: { context: ProofCaptureRendererContext; backgroundUri?: string | null }) {
   const cardModel = context.dto;
+  const backgroundSource = proofBackgroundSource(backgroundUri);
   return (
     <ImageBackground
-      source={PROOF_RUNNER_HERO}
+      source={backgroundSource}
       style={styles.card}
       resizeMode="cover"
       accessibilityIgnoresInvertColors

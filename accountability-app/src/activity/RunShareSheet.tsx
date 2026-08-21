@@ -42,7 +42,6 @@ import {
   type RunMediaFit,
   type RunShareFormat,
 } from './runShareFormats';
-import type { PostAudience } from '../feed/types';
 import { createShareOperationGate } from './shareOperationGate';
 import { saveImageToMemories } from '../memories/api';
 import { RunMediaActions } from './RunMediaActions';
@@ -83,6 +82,7 @@ import {
   type AchievementCompletion,
   type AchievementStoryOperation,
 } from '../entry/achievementCompletion';
+import { ShareStudio, type ShareStudioResult } from '../share/ShareStudio';
 
 const LIME = '#c6f24e';
 
@@ -103,7 +103,7 @@ type Mode = 'map' | 'photo';
 
 type RunFeedOperationMetadata = {
   body: string;
-  audience: Exclude<PostAudience, 'group'>;
+  showPublicly: boolean;
   activityId: string;
   shareData: {
     format: RunShareFormat;
@@ -182,13 +182,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   >(null);
   const [mode, setMode] = useState<Mode>('map');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | null>(null);
+  const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | 'gallery' | null>(null);
   const [originalRatio, setOriginalRatio] = useState<number | null>(null);
   const [format, setFormat] = useState<RunShareFormat>('feed');
   const [mediaFit, setMediaFit] = useState<RunMediaFit>('cover');
-  const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
   const [activeDestination, setActiveDestination] = useState<RunMediaDestination | null>(null);
   const [sharePromptVisible, setSharePromptVisible] = useState(true);
+  const [shareStudioVisible, setShareStudioVisible] = useState(false);
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
   const [beautyStage, setBeautyStage] = useState<'camera' | 'editor' | null>(
     null,
@@ -260,7 +260,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         setMode('map');
         setFormat('feed');
         setMediaFit('cover');
-        setAudience('buddies');
+        setShareStudioVisible(false);
         setShowEnds(false);
         setBeautyStage(null);
         setBeautySource(null);
@@ -360,6 +360,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       setPhotoKind(null);
       setOriginalRatio(null);
       setMode('map');
+      setShareStudioVisible(false);
       setShowEnds(false);
       setBeautyStage(null);
       setBeautySource(null);
@@ -492,7 +493,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     }
   }
 
-  async function addPhoto(kind: 'selfie' | 'place') {
+  async function addPhoto(kind: 'selfie' | 'place' | 'gallery') {
     if (kind === 'selfie') {
       openBeautyCamera();
       return;
@@ -509,7 +510,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       let res: ImagePicker.ImagePickerResult;
       // web has no camera and needs the picker to open synchronously (an
       // await before it breaks the user-gesture) → go straight to the library
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' || kind === 'gallery') {
         res = await ImagePicker.launchImageLibraryAsync(opts);
         boundary.assertOwned();
       } else {
@@ -599,7 +600,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     await safeCloseRef.current!();
   }
 
-  async function onDestination(destination: RunMediaDestination) {
+  async function onDestination(destination: RunMediaDestination, draft?: ShareStudioResult) {
     const ran = await shareOperationGate.run(async () => {
       const boundary = ownerBoundary();
       boundary.assertOwned();
@@ -611,22 +612,27 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               'Save a real GPS activity on your phone before posting a verified Run card.',
           );
         }
+        if (destination === 'feed' && !draft) {
+          throw new Error('Review this run in Share Studio before posting.');
+        }
         const feedContext =
           destination === 'feed'
             ? (feedOperation.current = retainFeedOperationContext(
                 feedOperation.current,
                 () => ({
-                  operationId: createRunMediaOperationId(),
+                  operationId: draft!.operationId,
                   metadata: {
-                    body: caption,
-                    audience,
+                    body: draft!.caption || caption,
+                    showPublicly: draft!.showPublicly,
                     activityId: run.activityId!,
                     shareData: {
                       format,
                       media_fit: mediaFit,
                       route_ends_visible: showEnds,
                     },
-                    selfie: photoKind === 'selfie',
+                    selfie: draft!.media.kind === 'photo'
+                      ? draft!.media.source === 'selfie'
+                      : photoKind === 'selfie',
                     distanceKm: run.distance / 1000,
                   },
                 }),
@@ -652,9 +658,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               body: feedContext!.metadata.body,
               imageUrl: null,
               operationId: operationId!,
-              audience: feedContext!.metadata.audience,
+              showPublicly: feedContext!.metadata.showPublicly,
               activityId: feedContext!.metadata.activityId,
               shareData: feedContext!.metadata.shareData,
+              expectedOwnerId: run.ownerId!,
             }));
             boundary.assertOwned();
             void completionEffects
@@ -721,9 +728,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               body: feedContext!.metadata.body,
               imageUrl,
               operationId: operationId!,
-              audience: feedContext!.metadata.audience,
+              showPublicly: feedContext!.metadata.showPublicly,
               activityId: feedContext!.metadata.activityId,
               shareData: feedContext!.metadata.shareData,
+              expectedOwnerId: run.ownerId!,
             })),
         });
         boundary.assertOwned();
@@ -791,6 +799,30 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       }
     });
     if (!ran) throw new Error('Another run-image action is already in progress.');
+  }
+
+  async function publishRunDraft(draft: ShareStudioResult): Promise<void> {
+    const boundary = ownerBoundary();
+    boundary.assertOwned();
+    if (draft.ownerId !== run.ownerId) throw new Error('Account changed.');
+    if (draft.media.kind === 'photo') {
+      setPhotoUri(draft.media.uri);
+      setOriginalRatio(draft.media.width / draft.media.height);
+      setPhotoKind(draft.media.source === 'selfie' ? 'selfie' : 'gallery');
+      setMode('photo');
+      releaseProcessedPhotoAfterReplacement();
+      await nextRunSharePaint();
+      boundary.assertOwned();
+    }
+    await onDestination('feed', draft);
+    if (draft.media.kind === 'photo') {
+      await draft.media.release().catch(() => {});
+    }
+  }
+
+  function cancelRunShareStudio(): void {
+    feedOperation.current = null;
+    setShareStudioVisible(false);
   }
 
   if (!ownerMatches) {
@@ -976,16 +1008,23 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       <View style={styles.modeRow}>
         <ModeBtn
           icon="happy-outline"
-          label="Selfie"
+          label="Take selfie"
           active={mode === 'photo' && photoKind === 'selfie'}
           onPress={() => addPhoto('selfie')}
           disabled={busy}
         />
         <ModeBtn
           icon="camera-outline"
-          label="Photo"
+          label="Take photo"
           active={mode === 'photo' && photoKind === 'place'}
           onPress={() => addPhoto('place')}
+          disabled={busy}
+        />
+        <ModeBtn
+          icon="images-outline"
+          label="Choose photo"
+          active={mode === 'photo' && photoKind === 'gallery'}
+          onPress={() => addPhoto('gallery')}
           disabled={busy}
         />
         <ModeBtn
@@ -1002,29 +1041,6 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         />
       </View>
 
-      <View style={styles.audienceRow}>
-        <Text style={styles.audienceTitle}>Who can see it?</Text>
-        {(['buddies', 'public'] as const).map((value) => (
-          <Pressable
-            key={value}
-            onPress={() => setAudience(value)}
-            disabled={busy}
-            style={[styles.audienceChip, audience === value && styles.audienceChipActive]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: audience === value }}
-          >
-            <Ionicons
-              name={value === 'buddies' ? 'people' : 'earth'}
-              size={14}
-              color={audience === value ? '#101319' : '#cbd5e1'}
-            />
-            <Text style={[styles.audienceText, audience === value && styles.audienceTextActive]}>
-              {value === 'buddies' ? 'Buddies' : 'Public'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
       <RunMediaActions
         onDestination={onDestination}
         onShareAchievement={() => setSharePromptVisible(true)}
@@ -1036,13 +1052,40 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         visible={sharePromptVisible}
         payloadKey={`${completionPayload.kind}:${completionPayload.sourceId}`}
         feedDisabledReason={feedDisabledReason}
-        onFeed={() => onDestination('feed')}
+        onFeed={() => {
+          feedOperation.current = null;
+          setSharePromptVisible(false);
+          setShareStudioVisible(true);
+          return Promise.resolve();
+        }}
         onStory={onStoryDestination}
         onPrivate={() => closeEditor()}
         onClose={() => setSharePromptVisible(false)}
       />
+      <ShareStudio
+        visible={shareStudioVisible}
+        expectedOwnerId={run.ownerId!}
+        context={{
+          title: run.title,
+          date: new Date().toLocaleDateString(),
+          metrics: [
+            { label: 'Distance', value: `${formatKm(run.distance)} km`, sensitivity: 'standard' },
+            { label: 'Time', value: formatDurationLong(run.elapsed), sensitivity: 'standard' },
+            { label: 'Pace', value: `${formatPace(run.distance, run.elapsed)} /km`, sensitivity: 'standard' },
+          ],
+        }}
+        defaultCaption={caption}
+        onContinue={publishRunDraft}
+        onCancel={cancelRunShareStudio}
+      />
     </View>
   );
+}
+
+function nextRunSharePaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
 
 function ModeBtn({
@@ -1052,7 +1095,7 @@ function ModeBtn({
   onPress,
   disabled,
 }: {
-  icon: 'happy-outline' | 'camera-outline' | 'map-outline';
+  icon: 'happy-outline' | 'camera-outline' | 'images-outline' | 'map-outline';
   label: string;
   active: boolean;
   onPress: () => void;
@@ -1213,40 +1256,13 @@ const styles = StyleSheet.create({
   privacyAction: { color: '#c6f24e', fontFamily: font.bold, fontSize: 12 },
   modeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     alignSelf: 'center',
     justifyContent: 'center',
     width: '100%',
     maxWidth: 560,
   },
-  audienceRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 560,
-    gap: 8,
-  },
-  audienceTitle: {
-    color: '#94a3b8',
-    fontFamily: font.semibold,
-    fontSize: 12,
-    marginRight: 'auto',
-  },
-  audienceChip: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  audienceChipActive: { backgroundColor: LIME, borderColor: LIME },
-  audienceText: { color: '#cbd5e1', fontFamily: font.bold, fontSize: 12 },
-  audienceTextActive: { color: '#101319' },
   modeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1257,7 +1273,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 11,
     paddingHorizontal: 16,
-    minHeight: 44,
+    minHeight: 48,
+    minWidth: 128,
+    flexGrow: 1,
   },
   modeBtnActive: { backgroundColor: LIME, borderColor: LIME },
   modeText: { color: '#cbd5e1', fontFamily: font.bold, fontSize: 13.5 },

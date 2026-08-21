@@ -1,13 +1,12 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import type { FlexContext } from './flexContext';
-
-jest.mock('../feed/api', () => ({ createPost: jest.fn() }));
-jest.mock('../feed/feedPublishSignal', () => ({ markFeedPostPublished: jest.fn() }));
-
 import {
   buildFlexFeedShareData,
   publishFlexFeedPost,
 } from './flexFeedPost';
+
+jest.mock('../feed/api', () => ({ createPost: jest.fn() }));
+jest.mock('../feed/feedPublishSignal', () => ({ markFeedPostPublished: jest.fn() }));
 
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const operationId = '22222222-2222-4222-8222-222222222222';
@@ -21,8 +20,7 @@ const publicMedal: FlexContext = {
   sourceId: 'medal-trailblazer',
   title: 'Explorer Trailblazer',
   body: 'Just earned the Explorer Trailblazer medal.',
-  audience: 'public',
-  showOnCard: true,
+  showPublicly: true,
 };
 
 describe('Flex Feed milestone publishing', () => {
@@ -63,7 +61,7 @@ describe('Flex Feed milestone publishing', () => {
       null,
       true,
       {
-        audience: 'public',
+        showPublicly: true,
         postType: 'milestone',
         shareData: {
           kind: 'medal',
@@ -79,12 +77,11 @@ describe('Flex Feed milestone publishing', () => {
     expect(markFeedPostPublished).toHaveBeenCalledWith(ownerId, postId);
   });
 
-  test('forces Buddy-only posts off the public Buddy Card', async () => {
+  test('maps an Off draft to Buddies only with no Buddy Card', async () => {
     const createPost = jest.fn(async () => postId) as jest.MockedFunction<CreatePostDependency>;
     const buddiesContext: FlexContext = {
       ...publicMedal,
-      audience: 'buddies',
-      showOnCard: true,
+      showPublicly: false,
     };
 
     await publishFlexFeedPost({
@@ -96,7 +93,7 @@ describe('Flex Feed milestone publishing', () => {
     }, { createPost, markFeedPostPublished: jest.fn() });
 
     expect(createPost.mock.calls[0]?.[5]).toBe(false);
-    expect(createPost.mock.calls[0]?.[6]).toMatchObject({ audience: 'buddies' });
+    expect(createPost.mock.calls[0]?.[6]).toMatchObject({ showPublicly: false });
   });
 
   test('does not signal Feed when the durable post call fails', async () => {

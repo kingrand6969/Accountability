@@ -30,8 +30,8 @@ describe('protected Group 3 route intent validation', () => {
     ],
     ['/win-card?buddyName=Maya', '/win-card?buddyName=Maya'],
     [
-      '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&achievementText=Finished%20strong&audience=public&showOnCard=1&autoPrompt=1',
-      '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First+10K&achievementText=Finished+strong&audience=public&showOnCard=1&autoPrompt=1',
+      '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&achievementText=Finished%20strong&showPublicly=1&autoPrompt=1',
+      '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First+10K&achievementText=Finished+strong&showPublicly=1&autoPrompt=1',
     ],
     [
       'accountabilityapp://story/restored_user-2026',
@@ -75,6 +75,7 @@ describe('protected Group 3 route intent validation', () => {
     '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&achievementText%5Bprivate%5D=secret',
     '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&audience=friends',
     '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&showOnCard=true',
+    '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&showPublicly=true',
     '/win-card?achievementKind=challenge&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=First%2010K&autoPrompt=0',
     '/groups#fragment',
     'accountabilityapp-preview://body',
@@ -147,9 +148,9 @@ describe('one-shot authentication route intent lifecycle', () => {
 
   test('preserves a validated Flex context across signed-out cold resume', () => {
     const href =
-      'accountabilityapp-staging://win-card?achievementKind=workout&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=Morning%20strength&audience=public&showOnCard=1&autoPrompt=1';
+      'accountabilityapp-staging://win-card?achievementKind=workout&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=Morning%20strength&showPublicly=1&autoPrompt=1';
     const expected =
-      '/win-card?achievementKind=workout&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=Morning+strength&audience=public&showOnCard=1&autoPrompt=1';
+      '/win-card?achievementKind=workout&achievementSourceId=68ff9f8f-79d8-4c5c-94e8-b2a0a79ed16a&achievementTitle=Morning+strength&showPublicly=1&autoPrompt=1';
     const controller = createAuthRouteIntentController();
     const ticket = controller.beginAsyncCapture();
 
