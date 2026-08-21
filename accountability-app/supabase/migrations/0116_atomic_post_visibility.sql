@@ -73,10 +73,30 @@ begin
     and user_id = p_expected_owner;
 
   if v_event_group_id is not null then
-    update public.groups
-    set privacy = case when p_show_publicly then 'public' else 'private' end
-    where id = v_event_group_id
-      and created_by = p_expected_owner;
+    -- The group row lock above is the serialization point for every toggle in
+    -- this auto-created event group. Recompute after the target post update so
+    -- the last lock holder observes prior commits and cannot overwrite a group
+    -- that still has another canonical Public announcement.
+    update public.groups g
+    set privacy = case
+      when exists (
+        select 1
+        from public.events e_linked
+        join public.posts p_linked on p_linked.event_id = e_linked.id
+        where e_linked.group_id = v_event_group_id
+          and e_linked.created_by = p_expected_owner
+          and p_linked.user_id = p_expected_owner
+          and p_linked.group_id is null
+          and p_linked.page_id is null
+          and p_linked.post_type = 'event'
+          and p_linked.moderation_state = 'visible'
+          and p_linked.audience = 'public'
+          and p_linked.show_on_card = true
+      ) then 'public'
+      else 'private'
+    end
+    where g.id = v_event_group_id
+      and g.created_by = p_expected_owner;
   end if;
 
   return query select p_post_id, v_audience, p_show_publicly;
