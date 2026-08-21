@@ -106,4 +106,53 @@ describe('Composer media picker lease', () => {
     expect(descriptor.uri).toContain('committed.jpg');
     expect(durableFileExists).toBe(true);
   });
+
+  test.each(['photo', 'video'])(
+    'suppresses a committed %s continuation after A to B without touching A storage',
+    async (kind) => {
+      let owner: string | null = 'owner-a';
+      let recoveryAttached = true;
+      let resolveDurable!: (value: { uri: string; kind: string }) => void;
+      const durablePromise = new Promise<{ uri: string; kind: string }>((resolve) => {
+        resolveDurable = resolve;
+      });
+      const accountADraft = {
+        media: { uri: `file:///document/compose-drafts/owner-a/draft-a/committed.${kind}`, kind },
+      };
+      let accountBMedia: typeof accountADraft.media | null = null;
+      const lease = createComposerMediaLease('owner-a', 4, 7);
+      const continuation = durablePromise.then((committed) => applyCommittedComposerMedia({
+        lease,
+        current: () => ({ owner, mountToken: 4, requestToken: 7, active: true, editing: false }),
+        recoveryCurrent: () => recoveryAttached,
+        committed,
+        apply: (value) => { accountBMedia = value; },
+      }));
+
+      resolveDurable(accountADraft.media);
+      owner = 'owner-b';
+      recoveryAttached = false;
+
+      await expect(continuation).resolves.toBe(false);
+      expect(accountBMedia).toBeNull();
+      expect(accountADraft.media.uri).toContain('owner-a/draft-a/committed');
+    },
+  );
+
+  test.each(['photo', 'video'])(
+    'rechecks the recovered %s context at the committed continuation boundary',
+    (kind) => {
+      const apply = jest.fn();
+      expect(applyCommittedComposerMedia({
+        lease: createComposerMediaLease('owner-a', 4, 7),
+        current: () => ({
+          owner: 'owner-a', mountToken: 4, requestToken: 7, active: true, editing: false,
+        }),
+        recoveryCurrent: () => false,
+        committed: { uri: `file:///committed.${kind}` },
+        apply,
+      })).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+    },
+  );
 });

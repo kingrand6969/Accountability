@@ -274,7 +274,9 @@ describe('Compose production binding', () => {
     const recoveryPhotoSource = source.slice(start, end);
 
     expect(recoveryPhotoSource).toContain("makeMediaDurable(asset.uri, extension, mimeType, 'photo', lease, isCurrent)");
-    expect(recoveryPhotoSource).toContain('setEditorUri(durable.uri)');
+    expect(recoveryPhotoSource).toContain('applyCommittedComposerMedia({');
+    expect(recoveryPhotoSource).toContain('recoveryCurrent: isCurrent');
+    expect(recoveryPhotoSource).toContain('setEditorUri(committed.uri)');
     expect(recoveryPhotoSource).not.toMatch(/uploadPost(Image|Video)|createPost/);
   });
 

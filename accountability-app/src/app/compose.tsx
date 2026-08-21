@@ -732,12 +732,20 @@ export default function Compose() {
     const mimeType = asset.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
     const extension = mimeType === 'image/png' ? 'png' : 'jpg';
     const durable = await makeMediaDurable(asset.uri, extension, mimeType, 'photo', lease, isCurrent);
-    setPickedVideo(null);
-    setPickedBase64(null);
-    setPickedExt(extension);
-    setPreviewUri(durable.uri);
-    editorMediaLeaseRef.current = lease;
-    setEditorUri(durable.uri);
+    applyCommittedComposerMedia({
+      lease,
+      current: currentMediaLeaseState,
+      recoveryCurrent: isCurrent,
+      committed: durable,
+      apply: (committed) => {
+        setPickedVideo(null);
+        setPickedBase64(null);
+        setPickedExt(extension);
+        setPreviewUri(committed.uri);
+        editorMediaLeaseRef.current = lease;
+        setEditorUri(committed.uri);
+      },
+    });
   }
 
   async function attachVideoAsset(
@@ -763,10 +771,18 @@ export default function Compose() {
     const durable = await makeMediaDurable(
       asset.uri, extension, inferredMime, 'video', lease, recoveryCurrent,
     );
-    setPickedBase64(null);
-    setEditorUri(null);
-    setKeepInMemories(false);
-    setPickedVideo({ uri: durable.uri, mimeType: inferredMime });
+    applyCommittedComposerMedia({
+      lease,
+      current: currentMediaLeaseState,
+      recoveryCurrent,
+      committed: durable,
+      apply: (committed) => {
+        setPickedBase64(null);
+        setEditorUri(null);
+        setKeepInMemories(false);
+        setPickedVideo({ uri: committed.uri, mimeType: inferredMime });
+      },
+    });
   }
 
   async function attachRecoveredVideo(

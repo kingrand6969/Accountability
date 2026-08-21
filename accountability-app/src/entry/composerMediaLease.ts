@@ -42,10 +42,14 @@ export function composerMediaLeaseIsCurrent(
 export function applyCommittedComposerMedia<T>(input: {
   lease: ComposerMediaLease | null;
   current: () => ComposerMediaLeaseState;
+  recoveryCurrent?: () => boolean;
   committed: T;
   apply: (committed: T) => void;
 }): boolean {
-  if (!composerMediaLeaseIsCurrent(input.lease, input.current())) return false;
+  if (
+    !composerMediaLeaseIsCurrent(input.lease, input.current())
+    || (input.recoveryCurrent && !input.recoveryCurrent())
+  ) return false;
   input.apply(input.committed);
   return true;
 }
