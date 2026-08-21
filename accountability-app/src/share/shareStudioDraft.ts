@@ -26,7 +26,7 @@ export type ShareStudioResult = Readonly<{
   ownerId: string;
   context: ShareStudioContext;
   caption: string;
-  showOnBuddyCard: boolean;
+  showPublicly: boolean;
   visibility: ShareVisibility;
   media: ShareStudioMedia;
 }>;
@@ -35,7 +35,7 @@ export function createShareStudioResult(input: {
   ownerId: string;
   context: ShareStudioContext;
   caption: string;
-  showOnBuddyCard: boolean;
+  showPublicly: boolean;
   media: ShareStudioMedia;
 }): ShareStudioResult {
   const ownerId = requiredText(input.ownerId, 'Owner');
@@ -48,9 +48,9 @@ export function createShareStudioResult(input: {
     value: requiredText(metric.value, 'Metric value'),
   }));
   const context = Object.freeze({ title, date, metrics: Object.freeze(metrics) });
-  const visibility = Object.freeze(postVisibility(input.showOnBuddyCard));
+  const visibility = Object.freeze(postVisibility(input.showPublicly));
   const media = Object.freeze({ ...input.media }) as ShareStudioMedia;
-  return Object.freeze({ ownerId, context, caption, showOnBuddyCard: input.showOnBuddyCard, visibility, media });
+  return Object.freeze({ ownerId, context, caption, showPublicly: input.showPublicly, visibility, media });
 }
 
 function requiredText(value: string, label: string): string {

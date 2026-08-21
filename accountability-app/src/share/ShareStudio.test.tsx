@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, ScrollView, StyleSheet, Switch, Text, TextInput }
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import type { CapturedProgressPhoto, ProgressPhotoSource } from '../progress/photoCapture';
+import { postVisibilityCopy } from '../progress/visibility';
 import { ShareStudio, SHARE_CAPTION_LIMIT, type ShareStudioResult } from './ShareStudio';
 
 jest.mock('@expo/vector-icons/Ionicons', () => {
@@ -91,8 +92,15 @@ describe('ShareStudio', () => {
 
   test('maps the one switch to Public and Buddy Card without separate audience controls', () => {
     const { renderer } = renderStudio();
+    const switchControl = renderer.root.findByType(Switch);
+    expect(switchControl.props.accessibilityLabel).toBe(postVisibilityCopy(false).accessibilityLabel);
+    expect(switchControl.props.accessibilityHint).toBe(postVisibilityCopy(false).helper);
+    expect(switchControl.props.accessibilityState.checked).toBe(false);
     act(() => renderer.root.findByType(Switch).props.onValueChange(true));
     expect(textOf(renderer)).toContain('Public · also shown on your Buddy Card');
+    expect(renderer.root.findByType(Switch).props.accessibilityHint).toBe(postVisibilityCopy(true).helper);
+    expect(renderer.root.findByType(Switch).props.accessibilityState.checked).toBe(true);
+    expect(renderer.root.findByProps({ testID: 'buddy-card-switch-label' }).props.children).toBe('Show on Buddy Card too');
     expect(renderer.root.findAllByType(Switch)).toHaveLength(1);
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Public audience' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Buddy Card audience' })).toHaveLength(0);
@@ -107,7 +115,7 @@ describe('ShareStudio', () => {
       ownerId: 'owner-a',
       context,
       caption: 'Strong work',
-      showOnBuddyCard: false,
+      showPublicly: false,
       visibility: { audience: 'buddies', showOnCard: false },
       media: { kind: 'card' },
     });
@@ -271,11 +279,49 @@ describe('ShareStudio', () => {
     expect(StyleSheet.flatten(scroll.props.contentContainerStyle).flexGrow).toBe(1);
     const preview = renderer.root.findByProps({ testID: 'share-card-preview' });
     expect(StyleSheet.flatten(preview.props.style).aspectRatio).toBe(4 / 5);
+    expect(StyleSheet.flatten(preview.props.style).maxWidth).toBe(448);
+    expect(StyleSheet.flatten(preview.props.style).maxHeight).toBeUndefined();
     for (const label of ['Card only', 'Take selfie', 'Choose photo', 'Back from Share Studio', 'Continue sharing']) {
       const control = renderer.root.findByProps({ accessibilityLabel: label });
       const style = typeof control.props.style === 'function' ? control.props.style({ pressed: false }) : control.props.style;
       expect(StyleSheet.flatten(style).minHeight ?? StyleSheet.flatten(style).height).toBeGreaterThanOrEqual(48);
     }
     expect(renderer.root.findByType(TextInput).props.allowFontScaling).not.toBe(false);
+    const switchTarget = renderer.root.findByProps({ testID: 'buddy-card-switch-target' });
+    expect(StyleSheet.flatten(switchTarget.props.style).minHeight).toBeGreaterThanOrEqual(48);
+    expect(renderer.root.findByType(Switch).props.hitSlop).toEqual(expect.objectContaining({ top: expect.any(Number), bottom: expect.any(Number) }));
+  });
+
+  test('uses a fixed high-contrast share-card palette in every app theme', () => {
+    const { renderer } = renderStudio();
+    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-preview' }).props.style).backgroundColor).toBe('#081A3A');
+    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-shade' }).props.style).backgroundColor).toBe('rgba(0,0,0,0)');
+    for (const id of ['share-card-date', 'share-card-title', 'share-card-metric-value', 'share-card-metric-label']) {
+      expect(StyleSheet.flatten(renderer.root.findAllByProps({ testID: id })[0].props.style).color).toBe('#FFFFFF');
+    }
+  });
+
+  test('labels a selected photo and constrains preview typography without clipping the card', async () => {
+    const photo = captured('file:///accessible-selfie.jpg');
+    const choosePhoto = jest.fn<(source: ProgressPhotoSource) => Promise<CapturedProgressPhoto | null>>().mockResolvedValue(photo);
+    const crowdedContext = {
+      ...context,
+      title: 'A deliberately long training title that must stay within the share card',
+      metrics: [
+        { label: 'Volume', value: '8,420 kg' },
+        { label: 'Duration', value: '52 min' },
+        { label: 'Sets', value: '18' },
+        { label: 'Personal records', value: '3' },
+      ],
+    };
+    const { renderer } = renderStudio({ choosePhoto, context: crowdedContext });
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Take selfie' }).props.onPress());
+    const image = renderer.root.findByProps({ accessibilityLabel: 'Selected selfie for share card preview' });
+    expect(image.props.accessibilityRole).toBe('image');
+    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-shade' }).props.style).backgroundColor).toBe('rgba(0,0,0,0.72)');
+    const title = renderer.root.findByProps({ testID: 'share-card-title' });
+    expect(title.props.numberOfLines).toBeGreaterThanOrEqual(2);
+    expect(title.props.maxFontSizeMultiplier).toBeLessThanOrEqual(1.5);
+    expect(renderer.root.findAllByType(Text).filter((node) => node.props.testID === 'share-card-metric-value')).toHaveLength(3);
   });
 });

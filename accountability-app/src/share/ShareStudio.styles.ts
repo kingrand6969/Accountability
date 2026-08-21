@@ -2,6 +2,9 @@ import { StyleSheet } from 'react-native';
 
 import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
+const SHARE_CARD_BACKGROUND = '#081A3A';
+const SHARE_CARD_TEXT = '#FFFFFF';
+
 export function createShareStudioStyles(theme: AppThemeColors) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.surface.canvas },
@@ -10,16 +13,16 @@ export function createShareStudioStyles(theme: AppThemeColors) {
     headerTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 19 },
     headerSpacer: { width: 48, height: 48 },
     content: { flexGrow: 1, width: '100%', maxWidth: 560, alignSelf: 'center', padding: spacing.lg, paddingBottom: spacing.section, gap: spacing.xl },
-    preview: { width: '100%', maxHeight: 560, aspectRatio: 4 / 5, overflow: 'hidden', borderRadius: radius.lg, backgroundColor: theme.surface.inverse },
+    preview: { width: '100%', maxWidth: 448, alignSelf: 'center', aspectRatio: 4 / 5, overflow: 'hidden', borderRadius: radius.lg, backgroundColor: SHARE_CARD_BACKGROUND },
     previewPhoto: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
-    previewShade: { flex: 1, justifyContent: 'flex-end', padding: spacing.xl, backgroundColor: 'rgba(8,26,58,0.12)' },
-    previewShadePhoto: { backgroundColor: 'rgba(8,26,58,0.48)' },
-    previewEyebrow: { color: theme.ink.inverse, fontFamily: font.semibold, fontSize: 13, letterSpacing: 0.6, textTransform: 'uppercase' },
-    previewTitle: { color: theme.ink.inverse, fontFamily: font.extrabold, fontSize: 30, lineHeight: 36, marginTop: spacing.xs },
+    previewShade: { flex: 1, justifyContent: 'flex-end', padding: spacing.xl, backgroundColor: 'rgba(0,0,0,0)' },
+    previewShadePhoto: { backgroundColor: 'rgba(0,0,0,0.72)' },
+    previewEyebrow: { color: SHARE_CARD_TEXT, fontFamily: font.semibold, fontSize: 13, letterSpacing: 0.6, textTransform: 'uppercase' },
+    previewTitle: { color: SHARE_CARD_TEXT, fontFamily: font.extrabold, fontSize: 30, lineHeight: 36, marginTop: spacing.xs },
     metricRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.lg },
     metric: { minWidth: 104, flexShrink: 1 },
-    metricValue: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 19 },
-    metricLabel: { color: theme.ink.inverse, fontFamily: font.medium, fontSize: 12, marginTop: 2, opacity: 0.82 },
+    metricValue: { color: SHARE_CARD_TEXT, fontFamily: font.bold, fontSize: 19 },
+    metricLabel: { color: SHARE_CARD_TEXT, fontFamily: font.medium, fontSize: 12, marginTop: 2 },
     section: { gap: spacing.sm },
     sectionTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 16, lineHeight: 22 },
     sectionCopy: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
@@ -37,6 +40,7 @@ export function createShareStudioStyles(theme: AppThemeColors) {
     caption: { minHeight: 112, maxHeight: 220, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: radius.md, backgroundColor: theme.surface.card, color: theme.ink.primary, fontFamily: font.regular, fontSize: 16, lineHeight: 23, padding: spacing.md },
     visibility: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: radius.md, backgroundColor: theme.surface.card, padding: spacing.md },
     visibilityCopy: { flex: 1, minWidth: 0 },
+    switchTarget: { minWidth: 56, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     visibilityTitle: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 15, lineHeight: 21 },
     visibilitySummary: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 12.5, lineHeight: 18, marginTop: 2 },
     error: { color: theme.status.danger, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
