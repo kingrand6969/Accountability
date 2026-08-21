@@ -7,7 +7,7 @@ const sql = readFileSync(
   'utf8',
 );
 
-const personalRepair = sql.match(/update public\.posts[\s\S]*?;/i)?.[0] ?? '';
+const personalRepair = sql.match(/repaired_personal_posts as \([\s\S]*?returning[\s\S]*?\)/i)?.[0] ?? '';
 const invariant = sql.match(
   /add constraint posts_personal_visibility_check[\s\S]*?not valid;/i,
 )?.[0] ?? '';
@@ -44,10 +44,11 @@ describe('universal post visibility migration', () => {
   });
 
   test('repairs every non-canonical personal audience, including legacy group rows', () => {
+    expect(sql).toMatch(/with repaired_personal_posts as \(\s*update public\.posts/i);
     expect(personalRepair).toMatch(/group_id is null/i);
     expect(personalRepair).toMatch(/page_id is null/i);
     expect(personalRepair).toMatch(
-      /not \(audience = 'public' and show_on_card is true\)/i,
+      /not \([\s\S]*audience = 'buddies'[\s\S]*show_on_card = false[\s\S]*audience = 'public'[\s\S]*show_on_card is true[\s\S]*\)/i,
     );
     expect(personalRepair).not.toMatch(/audience in \('buddies', 'public'\)/i);
 
@@ -77,12 +78,13 @@ describe('universal post visibility migration', () => {
   });
 
   test('repairs only linked auto-created event groups after a privacy downgrade', () => {
+    expect(sql).toMatch(/repaired_personal_posts[\s\S]*returning id, user_id, event_id, post_type/i);
+    expect(sql).toMatch(/join repaired_personal_posts r on r\.event_id = e\.id/i);
+    expect(sql).toMatch(/e\.created_by = r\.user_id/i);
+    expect(sql).toMatch(/r\.post_type = 'event'/i);
     expect(sql).toMatch(/update public\.groups g[\s\S]*set privacy = 'private'/i);
-    expect(sql).toMatch(/join public\.posts p on p\.event_id = e\.id/i);
-    expect(sql).toMatch(/e\.group_id = g\.id/i);
-    expect(sql).toMatch(/e\.created_by = p\.user_id/i);
-    expect(sql).toMatch(/p\.post_type = 'event'/i);
-    expect(sql).toMatch(/p\.audience = 'buddies'[\s\S]*p\.show_on_card = false/i);
+    expect(sql).toMatch(/from repaired_event_groups r[\s\S]*g\.id = r\.group_id/i);
+    expect(sql).toMatch(/g\.created_by = r\.user_id/i);
     expect(sql).toMatch(
       /g\.description like 'Event group · % — auto-created when the event was announced\.'/i,
     );

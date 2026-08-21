@@ -9,34 +9,35 @@ set local statement_timeout = '30s';
 alter table public.posts
   drop constraint if exists posts_personal_visibility_check;
 
-update public.posts
-set audience = 'buddies',
-    show_on_card = false
-where group_id is null
-  and page_id is null
-  and not (audience = 'public' and show_on_card is true);
-
--- Event announcements created by 0109 own a separate auto-created group. If
--- an ambiguous legacy announcement was repaired to Buddies-only above, keep
--- that exact linked group out of the public directory as well. The generated
--- description, event link and matching creator avoid touching normal groups.
+with repaired_personal_posts as (
+  update public.posts
+  set audience = 'buddies',
+      show_on_card = false
+  where group_id is null
+    and page_id is null
+    and not (
+      (audience = 'buddies' and show_on_card = false)
+      or (audience = 'public' and show_on_card is true)
+    )
+  returning id, user_id, event_id, post_type
+),
+repaired_event_groups as (
+  select distinct e.group_id, r.user_id
+  from public.events e
+  join repaired_personal_posts r on r.event_id = e.id
+  where e.created_by = r.user_id
+    and r.post_type = 'event'
+)
+-- Event announcements created by 0109 own a separate auto-created group. Use
+-- only IDs returned by the repair above so an unrelated pre-existing Buddies
+-- event can never cause a coincidentally named group to be downgraded.
 update public.groups g
 set privacy = 'private'
+from repaired_event_groups r
 where g.privacy = 'public'
+  and g.id = r.group_id
+  and g.created_by = r.user_id
   and g.description like 'Event group · % — auto-created when the event was announced.'
-  and exists (
-    select 1
-    from public.events e
-    join public.posts p on p.event_id = e.id
-    where e.group_id = g.id
-      and e.created_by = p.user_id
-      and g.created_by = e.created_by
-      and p.post_type = 'event'
-      and p.group_id is null
-      and p.page_id is null
-      and p.audience = 'buddies'
-      and p.show_on_card = false
-  )
   and not exists (
     select 1
     from public.events e_public

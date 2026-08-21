@@ -536,6 +536,73 @@ async function matchingStandardPostIdForOperation(
   return data.id as string;
 }
 
+const VERIFIED_RUN_SHARE_KEYS = [
+  'verified',
+  'activity_type',
+  'distance_m',
+  'duration_s',
+  'started_at',
+] as const;
+
+function runClientShareData(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const copy = { ...(value as Record<string, unknown>) };
+  for (const key of VERIFIED_RUN_SHARE_KEYS) delete copy[key];
+  return copy;
+}
+
+function hasVerifiedRunHydration(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const data = value as Record<string, unknown>;
+  return data.verified === true
+    && typeof data.activity_type === 'string'
+    && typeof data.distance_m === 'number'
+    && Number.isFinite(data.distance_m)
+    && typeof data.duration_s === 'number'
+    && Number.isFinite(data.duration_s)
+    && typeof data.started_at === 'string';
+}
+
+function matchesRunPostOperation(
+  row: Record<string, unknown>,
+  expected: StandardPostOperationPayload,
+): boolean {
+  // The database trigger adds these five verified activity fields after the
+  // client insert. Validate that hydration is present, then compare every
+  // client-controlled share key exactly; activity_id binds the server-owned
+  // values to the same owner activity without treating trigger output as a
+  // changed draft on a lost-response retry.
+  const storedClientShareData = runClientShareData(row.share_data);
+  const expectedClientShareData = runClientShareData(expected.share_data);
+  return storedClientShareData !== null
+    && expectedClientShareData !== null
+    && hasVerifiedRunHydration(row.share_data)
+    && canonicalJson(storedClientShareData) === canonicalJson(expectedClientShareData)
+    && matchesStandardPostOperation(
+      { ...row, share_data: expected.share_data },
+      expected,
+    );
+}
+
+async function matchingRunPostIdForOperation(
+  userId: string,
+  operationId: string,
+  expected: StandardPostOperationPayload,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select(STANDARD_POST_OPERATION_SELECT)
+    .eq('user_id', userId)
+    .eq('client_operation_id', operationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  if (!matchesRunPostOperation(data as Record<string, unknown>, expected)) {
+    throw new Error('This draft changed after the post was created. Refresh before posting again.');
+  }
+  return data.id as string;
+}
+
 export async function findMyPostByOperationId(operationId: string): Promise<string | null> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
@@ -552,6 +619,9 @@ export async function createRunPostIdempotent(input: {
   shareData: Record<string, unknown>;
   expectedOwnerId?: string;
 }): Promise<IdempotentPostResult> {
+  if (!POST_OPERATION_ID.test(input.operationId)) {
+    throw new Error('Invalid post operation id.');
+  }
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
   if (input.expectedOwnerId && me !== input.expectedOwnerId) {
@@ -561,9 +631,25 @@ export async function createRunPostIdempotent(input: {
   const visibility = postVisibility(
     input.showPublicly ?? input.audience === 'public',
   );
+  const postPayload: StandardPostOperationPayload = {
+    body: input.body,
+    image_url: input.imageUrl,
+    group_id: null,
+    page_id: null,
+    event_id: null,
+    show_on_card: visibility.showOnCard,
+    audience: visibility.audience,
+    post_type: 'run',
+    share_data: input.shareData,
+    activity_id: input.activityId,
+  };
 
   const result = await executeIdempotentPost({
-    findExisting: () => postIdForOperation(ownerId, input.operationId),
+    findExisting: () => matchingRunPostIdForOperation(
+      ownerId,
+      input.operationId,
+      postPayload,
+    ),
     insert: async () => {
       const currentOwner = await currentUserId();
       if (currentOwner !== ownerId) throw new Error('Account changed.');
@@ -571,16 +657,7 @@ export async function createRunPostIdempotent(input: {
         .from('posts')
         .insert({
           user_id: ownerId,
-          body: input.body,
-          image_url: input.imageUrl,
-          group_id: null,
-          page_id: null,
-          event_id: null,
-          show_on_card: visibility.showOnCard,
-          audience: visibility.audience,
-          post_type: 'run',
-          share_data: input.shareData,
-          activity_id: input.activityId,
+          ...postPayload,
           client_operation_id: input.operationId,
         })
         .select('id')
@@ -683,14 +760,25 @@ export async function updatePostVisibility(
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
   if (expectedOwnerId && me !== expectedOwnerId) throw new Error('Account changed.');
+  const ownerId = expectedOwnerId ?? me;
   const visibility = postVisibility(showPublicly);
-  const { error } = await supabase
-    .from('posts')
-    .update({ audience: visibility.audience, show_on_card: visibility.showOnCard })
-    .eq('id', postId)
-    .eq('user_id', me);
+  const { data, error } = await supabase.rpc('set_personal_post_visibility', {
+    p_expected_owner: ownerId,
+    p_post_id: postId,
+    p_show_publicly: showPublicly,
+  });
   if (error) throw error;
-  if (await currentUserId() !== me) throw new Error('Account changed.');
+  const rows = Array.isArray(data) ? data : [];
+  const row = rows.length === 1 && rows[0] && typeof rows[0] === 'object'
+    ? rows[0] as Record<string, unknown>
+    : null;
+  if (!row
+    || row.result_post_id !== postId
+    || row.result_audience !== visibility.audience
+    || row.result_show_on_card !== visibility.showOnCard) {
+    throw new Error('Post visibility could not be updated.');
+  }
+  if (await currentUserId() !== ownerId) throw new Error('Account changed.');
 }
 
 /** Tag buddies on a post (author-only; RLS also requires they're your buddies). */

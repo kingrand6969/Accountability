@@ -13,6 +13,7 @@ jest.mock('../lib/supabase', () => ({
   supabase: {
     auth: { getUser: jest.fn() },
     from: jest.fn(),
+    rpc: jest.fn(),
   },
 }));
 jest.mock('../profiles/publicProfiles', () => ({
@@ -41,6 +42,10 @@ const mockedSupabase = supabase as unknown as {
     >;
   };
   from: jest.Mock;
+  rpc: jest.Mock<(
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: unknown }>>;
 };
 
 function postQuery(options: {
@@ -324,6 +329,136 @@ describe('idempotent Feed post creation', () => {
     expect(query.insert).not.toHaveBeenCalled();
   });
 
+  test('run rejects an invalid operation id before reading auth or posts', async () => {
+    await expect(createRunPostIdempotent({
+      body: 'Invalid operation',
+      imageUrl: null,
+      operationId: 'not-a-uuid',
+      showPublicly: false,
+      activityId: 'activity-1',
+      shareData: {},
+    })).rejects.toThrow('Invalid post operation id.');
+
+    expect(mockedSupabase.auth.getUser).not.toHaveBeenCalled();
+    expect(mockedSupabase.from).not.toHaveBeenCalled();
+  });
+
+  test('run returns an exact committed replay without inserting again', async () => {
+    const query = postQuery({
+      existingPostIds: ['run-existing'],
+      existingPostPayload: {
+        body: 'Morning run',
+        image_url: 'media/run.jpg',
+        group_id: null,
+        page_id: null,
+        event_id: null,
+        show_on_card: true,
+        audience: 'public',
+        post_type: 'run',
+        share_data: {
+          format: 'feed',
+          verified: true,
+          activity_type: 'run',
+          distance_m: 5000,
+          duration_s: 1500,
+          started_at: '2026-08-22T10:00:00.000Z',
+        },
+        activity_id: 'activity-1',
+      },
+    });
+
+    await expect(createRunPostIdempotent({
+      body: 'Morning run',
+      imageUrl: 'media/run.jpg',
+      operationId,
+      showPublicly: true,
+      activityId: 'activity-1',
+      shareData: { format: 'feed' },
+      expectedOwnerId: 'member-1',
+    })).resolves.toEqual({ postId: 'run-existing', created: false });
+
+    expect(query.insert).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['body', { body: 'Changed run' }],
+    ['media', { imageUrl: 'media/changed-run.jpg' }],
+    ['visibility', { showPublicly: false }],
+    ['activity', { activityId: 'activity-2' }],
+    ['share data', { shareData: { format: 'story' } }],
+  ])('run rejects a replay with changed %s', async (_label, changes) => {
+    const query = postQuery({
+      existingPostIds: ['run-existing'],
+      existingPostPayload: {
+        body: 'Morning run',
+        image_url: 'media/run.jpg',
+        group_id: null,
+        page_id: null,
+        event_id: null,
+        show_on_card: true,
+        audience: 'public',
+        post_type: 'run',
+        share_data: {
+          format: 'feed',
+          verified: true,
+          activity_type: 'run',
+          distance_m: 5000,
+          duration_s: 1500,
+          started_at: '2026-08-22T10:00:00.000Z',
+        },
+        activity_id: 'activity-1',
+      },
+    });
+
+    await expect(createRunPostIdempotent({
+      body: 'Morning run',
+      imageUrl: 'media/run.jpg',
+      operationId,
+      showPublicly: true,
+      activityId: 'activity-1',
+      shareData: { format: 'feed' },
+      expectedOwnerId: 'member-1',
+      ...changes,
+    })).rejects.toThrow('This draft changed after the post was created');
+    expect(query.insert).not.toHaveBeenCalled();
+  });
+
+  test('run rejects an operation previously committed as another post type', async () => {
+    const query = postQuery({
+      existingPostIds: ['post-existing'],
+      existingPostPayload: {
+        body: 'Morning run',
+        image_url: 'media/run.jpg',
+        group_id: null,
+        page_id: null,
+        event_id: null,
+        show_on_card: true,
+        audience: 'public',
+        post_type: 'photo',
+        share_data: {
+          format: 'feed',
+          verified: true,
+          activity_type: 'run',
+          distance_m: 5000,
+          duration_s: 1500,
+          started_at: '2026-08-22T10:00:00.000Z',
+        },
+        activity_id: 'activity-1',
+      },
+    });
+
+    await expect(createRunPostIdempotent({
+      body: 'Morning run',
+      imageUrl: 'media/run.jpg',
+      operationId,
+      showPublicly: true,
+      activityId: 'activity-1',
+      shareData: { format: 'feed' },
+      expectedOwnerId: 'member-1',
+    })).rejects.toThrow('This draft changed after the post was created');
+    expect(query.insert).not.toHaveBeenCalled();
+  });
+
   test('run stops when the account changes after its operation lookup', async () => {
     const query = postQuery({ existingPostIds: [null] });
     mockedSupabase.auth.getUser
@@ -358,16 +493,58 @@ describe('idempotent Feed post creation', () => {
   });
 
   test('visibility updates audience and Buddy Card eligibility in one owner-bound write', async () => {
-    const secondEq = jest.fn(async () => ({ error: null }));
-    const firstEq = jest.fn(() => ({ eq: secondEq }));
-    const update = jest.fn(() => ({ eq: firstEq }));
-    mockedSupabase.from.mockReturnValue({ update });
+    mockedSupabase.rpc.mockResolvedValue({
+      data: [{
+        result_post_id: 'post-1',
+        result_audience: 'public',
+        result_show_on_card: true,
+      }],
+      error: null,
+    });
 
     await updatePostVisibility('post-1', true, 'member-1');
 
-    expect(update).toHaveBeenCalledWith({ audience: 'public', show_on_card: true });
-    expect(firstEq).toHaveBeenCalledWith('id', 'post-1');
-    expect(secondEq).toHaveBeenCalledWith('user_id', 'member-1');
+    expect(mockedSupabase.rpc).toHaveBeenCalledWith('set_personal_post_visibility', {
+      p_expected_owner: 'member-1',
+      p_post_id: 'post-1',
+      p_show_publicly: true,
+    });
+    expect(mockedSupabase.from).not.toHaveBeenCalled();
+  });
+
+  test.each([null, [], [{
+    result_post_id: 'another-post',
+    result_audience: 'public',
+    result_show_on_card: true,
+  }]])('visibility update rejects a missing or mismatched RPC result: %p', async (data) => {
+    mockedSupabase.rpc.mockResolvedValue({ data, error: null });
+
+    await expect(updatePostVisibility('post-1', true, 'member-1'))
+      .rejects.toThrow('Post visibility could not be updated.');
+  });
+
+  test('visibility update rejects a server owner or moderation denial', async () => {
+    const denial = { code: '42501', message: 'Post visibility could not be updated.' };
+    mockedSupabase.rpc.mockResolvedValue({ data: null, error: denial });
+
+    await expect(updatePostVisibility('post-1', false, 'member-1')).rejects.toBe(denial);
+  });
+
+  test('visibility update rejects stale success after an account switch', async () => {
+    mockedSupabase.auth.getUser
+      .mockResolvedValueOnce({ data: { user: { id: 'member-1' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'member-2' } }, error: null });
+    mockedSupabase.rpc.mockResolvedValue({
+      data: [{
+        result_post_id: 'post-1',
+        result_audience: 'buddies',
+        result_show_on_card: false,
+      }],
+      error: null,
+    });
+
+    await expect(updatePostVisibility('post-1', false, 'member-1'))
+      .rejects.toThrow('Account changed.');
   });
 });
 
