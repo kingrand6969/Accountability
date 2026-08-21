@@ -140,6 +140,36 @@ describe('chooseProgressPhoto', () => {
     revoke.mockRestore();
   });
 
+  test('releases the owned original web picker blob after normalization but retains external inputs', async () => {
+    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const blobPicker = jest.fn<ProgressPhotoCaptureDependencies['launchLibrary']>().mockResolvedValue({
+      canceled: false, assets: [{ uri: 'blob:https://app.example/original', type: 'image' }],
+    });
+    await chooseProgressPhoto('gallery', dependencies({ platform: 'web', launchLibrary: blobPicker }));
+    expect(revoke).toHaveBeenCalledWith('blob:https://app.example/original');
+
+    const externalPicker = jest.fn<ProgressPhotoCaptureDependencies['launchLibrary']>().mockResolvedValue({
+      canceled: false, assets: [{ uri: 'https://images.example/external.jpg', type: 'image' }],
+    });
+    await chooseProgressPhoto('gallery', dependencies({ platform: 'web', launchLibrary: externalPicker }));
+    expect(revoke).toHaveBeenCalledTimes(1);
+    revoke.mockRestore();
+  });
+
+  test('releases the owned original web picker blob when normalization fails', async () => {
+    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const deps = dependencies({
+      platform: 'web',
+      launchLibrary: jest.fn<ProgressPhotoCaptureDependencies['launchLibrary']>().mockResolvedValue({
+        canceled: false, assets: [{ uri: 'blob:https://app.example/original', type: 'image' }],
+      }),
+      normalizeToJpeg: jest.fn<ProgressPhotoCaptureDependencies['normalizeToJpeg']>().mockRejectedValue(new Error('normalize failed')),
+    });
+    await expect(chooseProgressPhoto('gallery', deps)).rejects.toThrow('normalize failed');
+    expect(revoke).toHaveBeenCalledWith('blob:https://app.example/original');
+    revoke.mockRestore();
+  });
+
   test('releases an invalid normalized output before rejecting it', async () => {
     const release = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
     const deps = dependencies({

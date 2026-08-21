@@ -167,7 +167,13 @@ export async function chooseProgressPhoto(
   const fallback = dependencies.now();
   if (!Number.isFinite(fallback.getTime())) throw new Error('The current date could not be read.');
   const capturedAt = originalCaptureDate(asset.exif) ?? fallback;
-  const normalized = await dependencies.normalizeToJpeg(asset.uri);
+  let normalized: Awaited<ReturnType<ProgressPhotoCaptureDependencies['normalizeToJpeg']>>;
+  try {
+    normalized = await dependencies.normalizeToJpeg(asset.uri);
+  } catch (error) {
+    releaseOwnedWebPickerUri(asset.uri, dependencies.platform);
+    throw error;
+  }
   const release = onceAsync(normalized.release ?? (() => releaseNormalizedPhoto(normalized.uri, dependencies.platform)));
   if (
     typeof normalized.uri !== 'string' ||
@@ -176,8 +182,10 @@ export async function chooseProgressPhoto(
     !isPositiveDimension(normalized.height)
   ) {
     await release();
+    releaseOwnedWebPickerUri(asset.uri, dependencies.platform, normalized.uri);
     throw new Error('Choose a valid photo and try again.');
   }
+  releaseOwnedWebPickerUri(asset.uri, dependencies.platform, normalized.uri);
   return {
     uri: normalized.uri,
     width: normalized.width,
@@ -185,6 +193,10 @@ export async function chooseProgressPhoto(
     capturedAt: capturedAt.toISOString(),
     release,
   };
+}
+
+function releaseOwnedWebPickerUri(uri: string, platform: string, retainedUri?: string): void {
+  if (platform === 'web' && /^blob:/i.test(uri) && uri !== retainedUri) URL.revokeObjectURL(uri);
 }
 
 async function releaseNormalizedPhoto(uri: string, platform: string): Promise<void> {

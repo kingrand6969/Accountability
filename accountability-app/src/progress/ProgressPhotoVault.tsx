@@ -22,7 +22,7 @@ type Props = Readonly<{
 }>;
 
 type Draft = Readonly<{ ownerId: string; ownerToken: symbol; photo: CapturedProgressPhoto; dateKey: string; weight: string; operationId: string }>;
-type ImageResult = Readonly<{ status: 'ready'; uri: string } | { status: 'error' }>;
+type ImageResult = Readonly<{ status: 'loading' } | { status: 'ready'; uri: string } | { status: 'error' }>;
 type ImageState = Readonly<{ ownerId: string; ownerToken: symbol; key: string; results: Readonly<Record<string, ImageResult>> }>;
 type BusyState = Readonly<{ ownerId: string; ownerToken: symbol }>;
 type FrozenSubmission = Readonly<{ ownerToken: symbol; input: SaveProgressPhotoInput; operationId: string }>;
@@ -40,6 +40,7 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
   const savingRef = useRef<symbol | null>(null);
   const draftRef = useRef<Draft | null>(null);
   const submissionRef = useRef<FrozenSubmission | null>(null);
+  const imageRequestsRef = useRef(new Map<string, symbol>());
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pickingState, setPickingState] = useState<BusyState | null>(null);
   const [savingState, setSavingState] = useState<BusyState | null>(null);
@@ -79,8 +80,13 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
     if (preview.length === 0) return;
     const capturedOwner = expectedOwnerId;
     const capturedToken = ownerToken;
+    const requests = imageRequestsRef.current;
+    const started = new Map<string, symbol>();
     let alive = true;
     for (const { photo } of preview) {
+      const requestToken = Symbol(photo.id);
+      requests.set(photo.id, requestToken);
+      started.set(photo.id, requestToken);
       void resolvePhoto(photo.storagePath, capturedOwner)
         .then(({ localUri }) => {
           if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
@@ -89,15 +95,44 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
         .catch(() => {
           if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
           setImageState((current) => mergeImageResult(current, capturedOwner, capturedToken, previewKey, photo.id, { status: 'error' }));
+        })
+        .finally(() => {
+          if (requests.get(photo.id) === requestToken) requests.delete(photo.id);
         });
     }
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+      for (const [photoId, requestToken] of started) {
+        if (requests.get(photoId) === requestToken) requests.delete(photoId);
+      }
+    };
   }, [expectedOwnerId, imageRetry, ownerToken, preview, previewKey, resolvePhoto]);
 
   useEffect(() => subscribePrivateMediaCacheInvalidation(() => {
     setImageState(null);
     setImageRetry((value) => value + 1);
   }), []);
+
+  const retryImage = (photo: ProgressPhoto) => {
+    if (imageRequestsRef.current.has(photo.id)) return;
+    const capturedOwner = expectedOwnerId;
+    const capturedToken = ownerToken;
+    const requestToken = Symbol(photo.id);
+    imageRequestsRef.current.set(photo.id, requestToken);
+    setImageState((current) => mergeImageResult(current, capturedOwner, capturedToken, previewKey, photo.id, { status: 'loading' }));
+    void resolvePhoto(photo.storagePath, capturedOwner)
+      .then(({ localUri }) => {
+        if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+        setImageState((current) => mergeImageResult(current, capturedOwner, capturedToken, previewKey, photo.id, { status: 'ready', uri: localUri }));
+      })
+      .catch(() => {
+        if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+        setImageState((current) => mergeImageResult(current, capturedOwner, capturedToken, previewKey, photo.id, { status: 'error' }));
+      })
+      .finally(() => {
+        if (imageRequestsRef.current.get(photo.id) === requestToken) imageRequestsRef.current.delete(photo.id);
+      });
+  };
 
   const pick = async (source: ProgressPhotoSource) => {
     if (pickingRef.current === ownerToken || savingRef.current === ownerToken) return;
@@ -216,9 +251,9 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
               label={label}
               photo={photo}
               localUri={result?.status === 'ready' ? result.uri : null}
-              loading={!result}
+              loading={!result || result.status === 'loading'}
               failed={result?.status === 'error'}
-              onRetry={() => setImageRetry((value) => value + 1)}
+              onRetry={() => retryImage(photo)}
               styles={styles}
             />;
           })}

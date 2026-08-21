@@ -314,6 +314,24 @@ describe('ProgressPhotoVault', () => {
     expect(textOf(renderer)).toContain('Private photo couldn’t load');
   });
 
+  test('single-flights an individual private photo retry and shows loading while it resolves', async () => {
+    const pending = deferred<{ localUri: string }>();
+    const first = photo('first', '2026-08-01T12:00:00.000Z');
+    const resolvePhoto = jest.fn<NonNullable<React.ComponentProps<typeof ProgressPhotoVault>['resolvePhoto']>>()
+      .mockRejectedValueOnce(new Error('temporary'))
+      .mockReturnValueOnce(pending.promise);
+    const { renderer } = renderVault({ photos: [first], resolvePhoto });
+    await flush();
+    const retry = renderer.root.findByProps({ accessibilityLabel: 'Retry Before private photo' });
+    act(() => { retry.props.onPress(); retry.props.onPress(); });
+    expect(resolvePhoto).toHaveBeenCalledTimes(2);
+    expect(textOf(renderer)).toContain('Loading private photo');
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Retry Before private photo' })).toHaveLength(0);
+    pending.resolve({ localUri: 'file:///private-cache/recovered.jpg' });
+    await flush();
+    expect(renderer.root.findAllByType(Image).map((image) => image.props.source)).toContainEqual({ uri: 'file:///private-cache/recovered.jpg' });
+  });
+
   test('drops resolved private images and reauthorizes after auth cache invalidation', async () => {
     const first = photo('first', '2026-08-01T12:00:00.000Z');
     const resolvePhoto = jest.fn<NonNullable<React.ComponentProps<typeof ProgressPhotoVault>['resolvePhoto']>>()

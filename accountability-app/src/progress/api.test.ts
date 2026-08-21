@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import {
   addMeasurement,
   deleteProgressPhoto,
+  inspectProgressImageUri,
   listMeasurements,
   listProgressPhotos,
   readProgressImageUri,
@@ -28,13 +29,17 @@ const MAX_PROGRESS_IMAGE_BYTES = 20 * 1024 * 1024;
 const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]).buffer;
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).buffer;
 
-test('reads a web blob URI through fetch for private upload', async () => {
-  const fetcher: typeof fetch = async () => new globalThis.Response(new Blob([JPEG_BYTES], { type: 'image/jpeg' }));
-  await expect(readProgressImageUri('blob:https://app.example/photo', fetcher)).resolves.toEqual({
-    bytes: JPEG_BYTES,
+test('inspects a web blob without materializing bytes, then reads valid bytes exactly once', async () => {
+  const blob = new Blob([JPEG_BYTES], { type: 'image/jpeg' });
+  const arrayBuffer = jest.spyOn(blob, 'arrayBuffer').mockResolvedValue(JPEG_BYTES);
+  const fetcher: typeof fetch = async () => ({ ok: true, blob: async () => blob } as globalThis.Response);
+  await expect(inspectProgressImageUri('blob:https://app.example/photo', fetcher)).resolves.toEqual({
     size: JPEG_BYTES.byteLength,
     mimeType: 'image/jpeg',
   });
+  expect(arrayBuffer).not.toHaveBeenCalled();
+  await expect(readProgressImageUri('blob:https://app.example/photo', fetcher)).resolves.toBe(JPEG_BYTES);
+  expect(arrayBuffer).toHaveBeenCalledTimes(1);
 });
 
 type Response = { data: unknown; error: unknown; status?: number };
@@ -399,6 +404,8 @@ describe('progress photo APIs', () => {
       { contentType: 'image/jpeg', upsert: false },
     );
     expect(f.calls.inserts).toContainEqual({ user_id: OWNER, storage_path: `${OWNER}/${OPERATION}.jpg`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: 81.56 });
+    expect(f.deps.inspectLocalImage).toHaveBeenCalledTimes(1);
+    expect(f.deps.readLocalImage).toHaveBeenCalledTimes(1);
   });
 
   test.each([

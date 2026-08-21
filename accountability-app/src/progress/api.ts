@@ -70,11 +70,10 @@ export type ProgressApiDependencies = {
 const defaultDependencies: ProgressApiDependencies = {
   client: supabase as unknown as ProgressClient,
   async inspectLocalImage(localUri) {
-    const image = await readProgressImageUri(localUri);
-    return { size: image.size, mimeType: image.mimeType };
+    return inspectProgressImageUri(localUri);
   },
   async readLocalImage(localUri) {
-    return (await readProgressImageUri(localUri)).bytes;
+    return readProgressImageUri(localUri);
   },
   randomUUID: Crypto.randomUUID,
 };
@@ -169,15 +168,24 @@ export async function listProgressPhotos(
   return [...new Map(photos.map((photo) => [photo.id, photo])).values()];
 }
 
-export async function readProgressImageUri(localUri: string, fetcher: typeof fetch = fetch) {
+export async function inspectProgressImageUri(localUri: string, fetcher: typeof fetch = fetch) {
   if (/^blob:/i.test(localUri)) {
     const response = await fetcher(localUri);
     if (!response.ok) throw new Error(INVALID_PROGRESS_IMAGE);
     const blob = await response.blob();
-    return { bytes: await blob.arrayBuffer(), size: blob.size, mimeType: blob.type || undefined };
+    return { size: blob.size, mimeType: blob.type || undefined };
   }
   const file = new File(localUri);
-  return { bytes: await file.arrayBuffer(), size: file.size, mimeType: file.type || undefined };
+  return { size: file.size, mimeType: file.type || undefined };
+}
+
+export async function readProgressImageUri(localUri: string, fetcher: typeof fetch = fetch): Promise<ArrayBuffer> {
+  if (/^blob:/i.test(localUri)) {
+    const response = await fetcher(localUri);
+    if (!response.ok) throw new Error(INVALID_PROGRESS_IMAGE);
+    return (await response.blob()).arrayBuffer();
+  }
+  return new File(localUri).arrayBuffer();
 }
 
 export async function saveProgressPhoto(
