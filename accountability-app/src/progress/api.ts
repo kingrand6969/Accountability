@@ -16,6 +16,8 @@ const DELETE_PHOTO_COLUMNS = 'id,user_id,storage_path';
 const PROGRESS_PHOTO_BUCKET = 'progress-photos';
 const INVALID_PROGRESS_DATA = 'Progress data could not be verified.';
 const INVALID_PROGRESS_PHOTO = 'Progress photo could not be verified.';
+const INVALID_PROGRESS_IMAGE = 'Choose a valid JPEG or PNG image up to 20 MB.';
+const MAX_PROGRESS_IMAGE_BYTES = 20 * 1024 * 1024;
 const UUID_V4 = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const LOCAL_URI = /^(?:file|content|ph|assets-library):\/\//i;
 
@@ -58,20 +60,24 @@ type ProgressClient = {
 
 export type ProgressApiDependencies = {
   readonly client: ProgressClient;
-  readonly readLocalImage: (
+  readonly inspectLocalImage: (
     localUri: string,
-  ) => Promise<{ readonly bytes: ArrayBuffer; readonly contentType: string }>;
+  ) => Promise<{ readonly size: number; readonly mimeType?: string }>;
+  readonly readLocalImage: (localUri: string) => Promise<ArrayBuffer>;
   readonly randomUUID: () => string;
 };
 
 const defaultDependencies: ProgressApiDependencies = {
   client: supabase as unknown as ProgressClient,
-  async readLocalImage(localUri) {
+  async inspectLocalImage(localUri) {
     const file = new File(localUri);
     return {
-      bytes: await file.arrayBuffer(),
-      contentType: safeImageContentType(file.type),
+      size: file.size,
+      mimeType: file.type || undefined,
     };
+  },
+  async readLocalImage(localUri) {
+    return new File(localUri).arrayBuffer();
   },
   randomUUID: Crypto.randomUUID,
 };
@@ -108,6 +114,8 @@ export async function addMeasurement(
   await assertOwner(expectedOwnerId, deps);
   assertValidBodyValues(input.weightKg, input.heightCm);
   const recordedAt = validIsoDate(input.recordedAt, INVALID_PROGRESS_DATA);
+  const weightKg = canonicalTwoDecimals(input.weightKg);
+  const heightCm = canonicalTwoDecimals(input.heightCm);
   const { data, error } = await withOwnerRecheck(
     () =>
       deps.client
@@ -115,8 +123,8 @@ export async function addMeasurement(
         .insert({
           user_id: expectedOwnerId,
           recorded_at: recordedAt,
-          weight_kg: input.weightKg,
-          height_cm: input.heightCm,
+          weight_kg: weightKg,
+          height_cm: heightCm,
         })
         .select(MEASUREMENT_COLUMNS)
         .single(),
@@ -157,27 +165,33 @@ export async function saveProgressPhoto(
   await assertOwner(expectedOwnerId, deps);
   validateLocalUri(input.localUri);
   const capturedAt = validIsoDate(input.capturedAt, INVALID_PROGRESS_PHOTO);
-  validateOptionalWeight(input.weightKg);
+  const weightKg = canonicalOptionalWeight(input.weightKg);
   const identity = operationId ?? deps.randomUUID();
   if (!UUID_V4.test(identity)) throw new Error(INVALID_PROGRESS_PHOTO);
+  const storagePath = progressPhotoPath(expectedOwnerId, identity);
+  const existing = await findPhotoByPath(storagePath, expectedOwnerId, deps);
+  if (existing) {
+    confirmEquivalentPhoto(existing, capturedAt, weightKg);
+    return existing;
+  }
 
-  const image = await withOwnerRecheck(
+  const inspection = await withOwnerRecheck(
+    () => deps.inspectLocalImage(input.localUri),
+    expectedOwnerId,
+    deps,
+  );
+  validateImageSize(inspection.size);
+  const imageBytes = await withOwnerRecheck(
     () => deps.readLocalImage(input.localUri),
     expectedOwnerId,
     deps,
   );
-  const contentType = safeImageContentType(image.contentType);
-  const storagePath = progressPhotoPath(expectedOwnerId, identity);
-  const existing = await findPhotoByPath(storagePath, expectedOwnerId, deps);
-  if (existing) {
-    confirmEquivalentPhoto(existing, capturedAt, input.weightKg);
-    return existing;
-  }
+  const contentType = validateImageBytes(imageBytes, inspection);
 
   const storage = deps.client.storage.from(PROGRESS_PHOTO_BUCKET);
   const upload = await withOwnerRecheck(
     () =>
-      storage.upload(storagePath, image.bytes, {
+      storage.upload(storagePath, imageBytes, {
         contentType,
         upsert: false,
       }),
@@ -192,7 +206,7 @@ export async function saveProgressPhoto(
     user_id: expectedOwnerId,
     storage_path: storagePath,
     captured_at: capturedAt,
-    weight_kg: input.weightKg,
+    weight_kg: weightKg,
   };
   let insert: DatabaseResponse;
   try {
@@ -208,10 +222,10 @@ export async function saveProgressPhoto(
     );
   } catch (insertError) {
     if (isAccountChangedError(insertError)) throw insertError;
-    return recoverPhotoInsert(storagePath, capturedAt, input.weightKg, expectedOwnerId, insertError, undefined, storage, deps);
+    return recoverPhotoInsert(storagePath, capturedAt, weightKg, expectedOwnerId, insertError, undefined, storage, deps);
   }
   if (insert.error) {
-    return recoverPhotoInsert(storagePath, capturedAt, input.weightKg, expectedOwnerId, insert.error, insert.status, storage, deps);
+    return recoverPhotoInsert(storagePath, capturedAt, weightKg, expectedOwnerId, insert.error, insert.status, storage, deps);
   }
   return mapProgressPhoto(insert.data, expectedOwnerId);
 }
@@ -226,6 +240,18 @@ export async function deleteProgressPhoto(
   if (typeof photo.id !== 'string' || photo.id.length === 0) {
     throw new Error(INVALID_PROGRESS_PHOTO);
   }
+  const storedById = await findPhotoById(photo.id, expectedOwnerId, deps);
+  if (!storedById) {
+    const storedByPath = await findPhotoByPath(photo.storagePath, expectedOwnerId, deps);
+    if (storedByPath) throw new Error(INVALID_PROGRESS_PHOTO);
+    await removeProgressPhotoObject(photo.storagePath, expectedOwnerId, deps);
+    return;
+  }
+  if (storedById.storagePath !== photo.storagePath) {
+    throw new Error(INVALID_PROGRESS_PHOTO);
+  }
+
+  await removeProgressPhotoObject(photo.storagePath, expectedOwnerId, deps);
   const { data, error } = await withOwnerRecheck(
     () =>
       deps.client
@@ -240,18 +266,14 @@ export async function deleteProgressPhoto(
     deps,
   );
   if (error) throw error;
+  if (data == null) {
+    const collision = await findPhotoByPath(photo.storagePath, expectedOwnerId, deps);
+    if (collision) throw new Error(INVALID_PROGRESS_PHOTO);
+    return;
+  }
   if (!isRecord(data) || data.id !== photo.id || data.user_id !== expectedOwnerId || data.storage_path !== photo.storagePath) {
     throw new Error(INVALID_PROGRESS_PHOTO);
   }
-  const removal = await withOwnerRecheck(
-    () =>
-      deps.client.storage
-        .from(PROGRESS_PHOTO_BUCKET)
-        .remove([photo.storagePath]),
-    expectedOwnerId,
-    deps,
-  );
-  if (removal.error) throw removal.error;
 }
 
 async function assertOwner(
@@ -283,7 +305,51 @@ async function findPhotoByPath(
     deps,
   );
   if (error) throw error;
-  return data == null ? null : mapProgressPhoto(data, expectedOwnerId);
+  if (data == null) return null;
+  const photo = mapProgressPhoto(data, expectedOwnerId);
+  if (photo.storagePath !== storagePath) throw new Error(INVALID_PROGRESS_PHOTO);
+  return photo;
+}
+
+async function findPhotoById(
+  id: string,
+  expectedOwnerId: string,
+  deps: ProgressApiDependencies,
+): Promise<ProgressPhoto | null> {
+  const { data, error } = await withOwnerRecheck(
+    () =>
+      deps.client
+        .from('progress_photos')
+        .select(PHOTO_COLUMNS)
+        .eq('id', id)
+        .eq('user_id', expectedOwnerId)
+        .maybeSingle(),
+    expectedOwnerId,
+    deps,
+  );
+  if (error) throw error;
+  if (data == null) return null;
+  const photo = mapProgressPhoto(data, expectedOwnerId);
+  if (photo.id !== id) throw new Error(INVALID_PROGRESS_PHOTO);
+  return photo;
+}
+
+async function removeProgressPhotoObject(
+  storagePath: string,
+  expectedOwnerId: string,
+  deps: ProgressApiDependencies,
+): Promise<void> {
+  const removal = await withOwnerRecheck(
+    () =>
+      deps.client.storage
+        .from(PROGRESS_PHOTO_BUCKET)
+        .remove([storagePath]),
+    expectedOwnerId,
+    deps,
+  );
+  if (removal.error && !isStorageObjectNotFound(removal.error)) {
+    throw removal.error;
+  }
 }
 
 async function recoverPhotoInsert(
@@ -350,7 +416,12 @@ function mapMeasurement(row: unknown, expectedOwnerId: string): BodyMeasurement 
   } catch {
     throw new Error(INVALID_PROGRESS_DATA);
   }
-  return { id: row.id, recordedAt, weightKg, heightCm };
+  return {
+    id: row.id,
+    recordedAt,
+    weightKg: canonicalTwoDecimals(weightKg),
+    heightCm: canonicalTwoDecimals(heightCm),
+  };
 }
 
 function mapProgressPhoto(row: unknown, expectedOwnerId: string): ProgressPhoto {
@@ -361,8 +432,8 @@ function mapProgressPhoto(row: unknown, expectedOwnerId: string): ProgressPhoto 
   const capturedAt = validIsoDate(row.captured_at, INVALID_PROGRESS_DATA);
   const weightKg = row.weight_kg === null ? null : databaseNumber(row.weight_kg);
   if (row.weight_kg !== null && weightKg === null) throw new Error(INVALID_PROGRESS_DATA);
-  validateOptionalWeight(weightKg, INVALID_PROGRESS_DATA);
-  return { id: row.id, storagePath: row.storage_path, capturedAt, weightKg };
+  const canonicalWeightKg = canonicalOptionalWeight(weightKg, INVALID_PROGRESS_DATA);
+  return { id: row.id, storagePath: row.storage_path, capturedAt, weightKg: canonicalWeightKg };
 }
 
 function databaseNumber(value: unknown): number | null {
@@ -386,6 +457,13 @@ function isExistingObjectConflict(error: unknown): boolean {
   return status === 409 && /(?:already exists|duplicate)/.test(message);
 }
 
+function isStorageObjectNotFound(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  const status = databaseNumber(error.statusCode ?? error.status);
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+  return status === 404 && /(?:not found|does not exist)/.test(message);
+}
+
 function errorStatus(error: unknown): number | null {
   if (!isRecord(error)) return null;
   const status = databaseNumber(error.status);
@@ -393,20 +471,57 @@ function errorStatus(error: unknown): number | null {
 }
 
 function validIsoDate(value: unknown, message: string): string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(value)) throw new Error(message);
+  if (typeof value !== 'string') throw new Error(message);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) throw new Error(message);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offset = match[7];
+  const offsetHour = offset === 'Z' ? 0 : Number(offset.slice(1, 3));
+  const offsetMinute = offset === 'Z' ? 0 : Number(offset.slice(4, 6));
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    throw new Error(message);
+  }
   const milliseconds = Date.parse(value);
   if (!Number.isFinite(milliseconds)) throw new Error(message);
   return new Date(milliseconds).toISOString();
 }
 
-function validateOptionalWeight(
+function canonicalOptionalWeight(
   weightKg: number | null,
   message = 'Enter valid weight and height values.',
-): void {
-  if (weightKg === null) return;
+): number | null {
+  if (weightKg === null) return null;
   if (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 500) {
     throw new Error(message);
   }
+  return canonicalTwoDecimals(weightKg);
+}
+
+function canonicalTwoDecimals(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leap ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }
 
 function validateLocalUri(localUri: string): void {
@@ -436,8 +551,34 @@ function progressPhotoPath(expectedOwnerId: string, identity: string): string {
   return storagePath;
 }
 
-function safeImageContentType(value: string): 'image/jpeg' | 'image/png' {
-  return value.toLowerCase() === 'image/png' ? 'image/png' : 'image/jpeg';
+function validateImageSize(size: number): void {
+  if (!Number.isSafeInteger(size) || size < 1 || size > MAX_PROGRESS_IMAGE_BYTES) {
+    throw new Error(INVALID_PROGRESS_IMAGE);
+  }
+}
+
+function validateImageBytes(
+  bytes: ArrayBuffer,
+  inspection: { readonly size: number; readonly mimeType?: string },
+): 'image/jpeg' | 'image/png' {
+  validateImageSize(bytes.byteLength);
+  if (bytes.byteLength !== inspection.size) throw new Error(INVALID_PROGRESS_IMAGE);
+  const view = new Uint8Array(bytes);
+  const isJpeg = view.length >= 3 && view[0] === 0xff && view[1] === 0xd8 && view[2] === 0xff;
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const isPng =
+    view.length >= pngSignature.length &&
+    pngSignature.every((value, index) => view[index] === value);
+  if (!isJpeg && !isPng) throw new Error(INVALID_PROGRESS_IMAGE);
+
+  const detected = isPng ? 'image/png' : 'image/jpeg';
+  if (inspection.mimeType) {
+    const declared = inspection.mimeType.trim().toLowerCase();
+    if ((declared !== 'image/jpeg' && declared !== 'image/png') || declared !== detected) {
+      throw new Error(INVALID_PROGRESS_IMAGE);
+    }
+  }
+  return detected;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
