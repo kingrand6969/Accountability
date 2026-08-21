@@ -32,7 +32,9 @@ export function WeightTrendChart({ measurements }: { measurements: readonly Body
   const first = points[0];
   const current = points.at(-1);
   const change = first && current ? current.weightKg - first.weightKg : 0;
-  const summary = first && current
+  const summary = points.length === 1 && current
+    ? `Weight trend: one check-in at ${current.weightKg.toFixed(1)} kg on ${new Date(current.recordedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}.`
+    : first && current
     ? `Weight trend: started at ${first.weightKg.toFixed(1)} kg, current ${current.weightKg.toFixed(1)} kg, change ${change >= 0 ? '+' : ''}${change.toFixed(1)} kg.`
     : 'Weight trend has no check-ins yet.';
 

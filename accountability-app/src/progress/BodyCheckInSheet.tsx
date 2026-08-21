@@ -55,8 +55,12 @@ export function BodyCheckInSheet({ visible, latestHeightCm, onCancel, onSave }: 
     }
   };
 
+  const cancel = () => {
+    if (!savingRef.current) onCancel();
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={cancel}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -79,7 +83,7 @@ export function BodyCheckInSheet({ visible, latestHeightCm, onCancel, onSave }: 
             <TextInput value={recordedAt} onChangeText={setRecordedAt} autoCapitalize="none" accessibilityLabel="Check-in date and time" style={styles.input} />
             {error ? <Text accessibilityRole="alert" accessibilityLabel="Body check-in error" style={styles.error}>{error}</Text> : null}
             <View style={styles.actions}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Cancel body check-in" disabled={saving} onPress={onCancel} style={styles.secondary}><Text style={styles.secondaryText}>Cancel</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Cancel body check-in" accessibilityState={{ disabled: saving }} disabled={saving} onPress={cancel} style={styles.secondary}><Text style={styles.secondaryText}>Cancel</Text></Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="Save body check-in" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving} onPress={() => void save()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save'}</Text></Pressable>
             </View>
           </ScrollView>

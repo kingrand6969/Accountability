@@ -25,6 +25,11 @@ type Snapshot = {
   insights: Insights;
 };
 
+type FocusLease = {
+  readonly epoch: number;
+  alive: boolean;
+};
+
 function activeTime(seconds: number) {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} min`;
@@ -45,6 +50,8 @@ export default function JourneyProgress() {
   const ownerToken = useMemo(() => Symbol(ownerId ?? 'signed-out'), [ownerId]);
   const ownerRef = useRef(ownerId);
   const generationRef = useRef(0);
+  const focusEpochRef = useRef(0);
+  const activeFocusRef = useRef<FocusLease | null>(null);
   const mountedRef = useRef(true);
   const insets = useSafeAreaInsets();
   const { colors: theme } = useAppTheme();
@@ -66,11 +73,21 @@ export default function JourneyProgress() {
     generationRef.current += 1;
   }, []);
 
-  const load = useCallback(() => {
-    if (!ownerId) return () => {};
+  const load = useCallback((focus = activeFocusRef.current) => {
+    if (!ownerId || !focus?.alive || activeFocusRef.current !== focus) return () => {};
     const capturedOwner = ownerId;
+    const capturedFocusEpoch = focus.epoch;
     const generation = ++generationRef.current;
     const hasCachedData = snapshotRef.current?.ownerId === capturedOwner;
+    const canCommit = () => (
+      focus.alive &&
+      activeFocusRef.current === focus &&
+      focus.epoch === capturedFocusEpoch &&
+      mountedRef.current &&
+      ownerRef.current === capturedOwner &&
+      generationRef.current === generation
+    );
+    if (!canCommit()) return () => {};
     setLoadingOwner(hasCachedData ? null : capturedOwner);
     setInitialErrorOwner(null);
     setRefreshErrorOwner(null);
@@ -80,14 +97,14 @@ export default function JourneyProgress() {
       listProgressPhotos(capturedOwner),
       getInsights('week'),
     ]).then(([measurements, photos, insights]) => {
-      if (!alive || !mountedRef.current || ownerRef.current !== capturedOwner || generationRef.current !== generation) return;
+      if (!alive || !canCommit()) return;
       setSnapshot({ ownerId: capturedOwner, measurements, photos, insights });
     }).catch(() => {
-      if (!alive || !mountedRef.current || ownerRef.current !== capturedOwner || generationRef.current !== generation) return;
+      if (!alive || !canCommit()) return;
       if (hasCachedData) setRefreshErrorOwner(capturedOwner);
       else setInitialErrorOwner(capturedOwner);
     }).finally(() => {
-      if (!alive || !mountedRef.current || ownerRef.current !== capturedOwner || generationRef.current !== generation) return;
+      if (!alive || !canCommit()) return;
       setLoadingOwner(null);
     });
     return () => {
@@ -96,7 +113,17 @@ export default function JourneyProgress() {
     };
   }, [ownerId]);
 
-  useFocusEffect(useCallback(() => load(), [load]));
+  useFocusEffect(useCallback(() => {
+    const focus: FocusLease = { epoch: ++focusEpochRef.current, alive: true };
+    activeFocusRef.current = focus;
+    const cancelLoad = load(focus);
+    return () => {
+      focus.alive = false;
+      cancelLoad();
+      if (activeFocusRef.current === focus) activeFocusRef.current = null;
+      generationRef.current += 1;
+    };
+  }, [load]));
 
   const current = snapshot?.ownerId === ownerId ? snapshot : null;
   const loading = !!ownerId && loadingOwner === ownerId && !current;
