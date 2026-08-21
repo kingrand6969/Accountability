@@ -139,11 +139,35 @@ describe('ShareStudio', () => {
     expect(onContinue.mock.calls[0][0].includeBodyStats).toBe(false);
     act(() => renderer.root.findByProps({ testID: 'include-body-stats-switch' }).props.onValueChange(true));
     expect(textOf(renderer)).toContain('72.4 kg');
+    expect(textOf(renderer)).toContain('23.1');
     await act(async () => renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.onPress());
     const result = onContinue.mock.calls[1][0];
     expect(result.context.metrics).toHaveLength(3);
     expect(result.context.metrics[0]).toEqual(expect.objectContaining({ label: 'Current weight', value: '72.4 kg' }));
-    expect(JSON.stringify(result)).not.toContain('23.1');
+    expect(result.context.metrics[1]).toEqual(expect.objectContaining({ label: 'BMI', value: '23.1' }));
+  });
+
+  test('reserves a visible slot for opted-in body stats after three standard metrics', async () => {
+    const bodyLastContext = {
+      title: 'Monthly progress',
+      date: '22 Aug 2026',
+      metrics: [
+        { label: 'Workouts', value: '12', sensitivity: 'standard' as const },
+        { label: 'Consistency', value: '91%', sensitivity: 'standard' as const },
+        { label: 'Training time', value: '9 hr', sensitivity: 'standard' as const },
+        { label: 'Current weight', value: '71.8 kg', sensitivity: 'body' as const },
+      ],
+    };
+    const { renderer, onContinue } = renderStudio({ context: bodyLastContext });
+    expect(textOf(renderer)).not.toContain('71.8 kg');
+    act(() => renderer.root.findByProps({ testID: 'include-body-stats-switch' }).props.onValueChange(true));
+    expect(textOf(renderer)).toContain('71.8 kg');
+    expect(renderer.root.findAllByType(Text).filter((node) => node.props.testID === 'share-card-metric-value')).toHaveLength(3);
+    await act(async () => renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.onPress());
+    const result = onContinue.mock.calls[0][0];
+    expect(result.context.metrics).toHaveLength(3);
+    expect(result.context.metrics).toContainEqual(expect.objectContaining({ label: 'Current weight', value: '71.8 kg' }));
+    for (const metric of result.context.metrics) expect(textOf(renderer)).toContain(metric.value);
   });
 
   test('defensively treats weight and BMI labels as body stats even if mislabeled standard', () => {
@@ -386,6 +410,20 @@ describe('ShareStudio', () => {
     expect(onContinue.mock.calls[1][0]).toBe(firstDraft);
     expect(photo.release).not.toHaveBeenCalled();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Card only' }).props.accessibilityState.selected).toBe(true);
+  });
+
+  test('clears a stale callback error as soon as retry starts', async () => {
+    const retry = deferred<void>();
+    const onContinue = jest.fn<(result: ShareStudioResult) => Promise<void>>()
+      .mockRejectedValueOnce(new Error('Network unavailable'))
+      .mockReturnValueOnce(retry.promise);
+    const { renderer } = renderStudio({ onContinue });
+    await act(async () => renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.onPress());
+    expect(textOf(renderer)).toContain('Network unavailable');
+    act(() => renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.onPress());
+    expect(textOf(renderer)).not.toContain('Network unavailable');
+    retry.resolve();
+    await flush();
   });
 
   test('single-flights Continue while retaining media until success or unmount', async () => {

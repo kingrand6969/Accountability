@@ -186,6 +186,7 @@ function ShareStudioSession({
   const proceed = useCallback(async () => {
     if (picking || continuing || !mediaReady || continueFlight.current) return;
     const lease = ownerLease.current;
+    setError(null);
     try {
       const media = photo && choice !== 'card'
         ? {

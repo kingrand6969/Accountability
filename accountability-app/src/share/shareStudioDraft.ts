@@ -43,15 +43,16 @@ export type ShareStudioResult = Readonly<{
 const canonicalContexts = new WeakMap<object, boolean>();
 
 /**
- * The share card and callback expose the same first three eligible metrics.
- * Body stats are ineligible unless the member explicitly includes them.
+ * The share card and callback expose the same three metrics. Body stats are
+ * ineligible by default and receive visible slots first only after opt-in.
  */
 export function canonicalShareStudioContext(input: ShareStudioContext, includeBodyStats = false): ShareStudioContext {
   if (canonicalContexts.get(input) === includeBodyStats) return input;
   if (!Array.isArray(input.metrics)) throw new Error('Share metrics must be a list.');
-  const metrics = input.metrics
-    .map(validateMetric)
-    .filter((metric) => includeBodyStats || !isBodyStatMetric(metric))
+  const validatedMetrics = input.metrics.map(validateMetric);
+  const standardMetrics = validatedMetrics.filter((metric) => !isBodyStatMetric(metric));
+  const bodyMetrics = validatedMetrics.filter(isBodyStatMetric);
+  const metrics = (includeBodyStats ? [...bodyMetrics, ...standardMetrics] : standardMetrics)
     .slice(0, SHARE_CARD_METRIC_LIMIT)
     .map((metric) => Object.freeze(metric));
   const context = Object.freeze({
