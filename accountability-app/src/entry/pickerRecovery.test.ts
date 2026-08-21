@@ -258,8 +258,8 @@ describe('Compose production binding', () => {
   test('recovers pending native picker results behind owner and mount guards', () => {
     expect(source).toContain('ImagePicker.getPendingResultAsync()');
     expect(source).toContain('recoveryControllerRef.current?.recover()');
-    expect(source).toContain('ownerRef.current !== expectedOwner');
-    expect(source).toContain('mountTokenRef.current !== expectedToken');
+    expect(source).toContain('composerMediaLeaseIsCurrent');
+    expect(source).toContain('mediaRequestTokenRef.current');
   });
 
   test('uses the controller and a navigation-focus recovery callback', () => {

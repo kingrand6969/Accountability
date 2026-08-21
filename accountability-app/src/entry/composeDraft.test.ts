@@ -23,15 +23,15 @@ import {
   persistDraftMedia,
   resolveDraftContext,
   validMediaTuple,
-  type ComposeDraftV1,
+  type ComposeDraftV2,
   type DraftFileAdapter,
 } from './composeDraft';
 
 const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const DRAFT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
-const validDraft: ComposeDraftV1 = {
-  version: 1,
+const validDraft: ComposeDraftV2 = {
+  version: 2,
   draftId: DRAFT,
   ownerId: OWNER,
   kind: 'new',
@@ -41,6 +41,8 @@ const validDraft: ComposeDraftV1 = {
   body: 'hello',
   showPublicly: false,
   visibilityChanged: false,
+  audience: 'buddies',
+  showOnCard: false,
   media: null,
   event: { open: false, title: '', date: '2026-07-29', time: '18:00', location: '' },
   tagIds: [],
@@ -50,15 +52,17 @@ const validDraft: ComposeDraftV1 = {
 
 describe('compose draft contract', () => {
   test('uses versioned per-user keys and round-trips a valid draft', () => {
-    expect(composeDraftKey('user-a', 'new', 'draft-1')).toBe('compose-draft:v1:user-a:new:draft-1');
-    expect(composeDraftIndexKey('user-a')).toBe('compose-draft-index:v1:user-a');
+    expect(composeDraftKey('user-a', 'new', 'draft-1')).toBe('compose-draft:v2:user-a:new:draft-1');
+    expect(composeDraftIndexKey('user-a')).toBe('compose-draft-index:v2:user-a');
     expect(parseComposeDraft(JSON.stringify(validDraft), OWNER)).toEqual(validDraft);
   });
 
   test('round-trips an explicitly Public plus Buddy Card draft through save and load', async () => {
-    const featuredDraft: ComposeDraftV1 = {
+    const featuredDraft: ComposeDraftV2 = {
       ...validDraft,
       showPublicly: true,
+      audience: 'public',
+      showOnCard: true,
     };
     const storage = memoryStorage();
 
@@ -67,8 +71,42 @@ describe('compose draft contract', () => {
     expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([featuredDraft]);
   });
 
+  test('loads an indexed V1 draft, migrates it to V2, and writes rollback visibility fields', async () => {
+    const legacyKey = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const legacyIndex = `compose-draft-index:v1:${OWNER}`;
+    const {
+      showPublicly: _showPublicly,
+      visibilityChanged: _visibilityChanged,
+      audience: _audience,
+      showOnCard: _showOnCard,
+      ...base
+    } = validDraft;
+    const legacy = { ...base, version: 1, audience: 'public', showOnCard: true };
+    const storage = memoryStorage(new Map([
+      [legacyIndex, JSON.stringify([legacyKey])],
+      [legacyKey, JSON.stringify(legacy)],
+    ]));
+
+    const migrated = (await loadComposeDrafts(OWNER, storage)).drafts[0];
+    expect(migrated).toEqual({
+      ...validDraft,
+      showPublicly: true,
+      audience: 'public',
+      showOnCard: true,
+    });
+    await saveComposeDraft(migrated!, storage);
+    expect(JSON.parse((await storage.getItem(composeDraftKey(OWNER, 'new', DRAFT)))!)).toMatchObject({
+      version: 2,
+      showPublicly: true,
+      visibilityChanged: false,
+      audience: 'public',
+      showOnCard: true,
+    });
+    expect(await storage.getItem(legacyKey)).not.toBeNull();
+  });
+
   test('treats an all-default draft as disposable while preserving real composer work', () => {
-    const blankDraft: ComposeDraftV1 = {
+    const blankDraft: ComposeDraftV2 = {
       ...validDraft,
       origin: 'post',
       queryIdentity: { photo: false, event: false, text: '', edit: null },
@@ -92,7 +130,7 @@ describe('compose draft contract', () => {
   });
 
   test('silently removes legacy blank drafts instead of presenting them for restore', async () => {
-    const blankDraft: ComposeDraftV1 = {
+    const blankDraft: ComposeDraftV2 = {
       ...validDraft,
       origin: 'post',
       queryIdentity: { photo: false, event: false, text: '', edit: null },
@@ -108,9 +146,16 @@ describe('compose draft contract', () => {
   });
 
   test('privacy-safely migrates all legacy audience and Buddy Card combinations', () => {
-    const { showPublicly: _newField, visibilityChanged: _legacyChanged, ...legacyBase } = validDraft;
+    const {
+      showPublicly: _newField,
+      visibilityChanged: _legacyChanged,
+      audience: _rollbackAudience,
+      showOnCard: _rollbackCard,
+      ...currentBase
+    } = validDraft;
+    const legacyBase = { ...currentBase, version: 1 };
     expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: true }), OWNER))
-      .toEqual({ ...validDraft, showPublicly: true });
+      .toEqual({ ...validDraft, showPublicly: true, audience: 'public', showOnCard: true });
     expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: false }), OWNER))
       .toEqual(validDraft);
     expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'buddies', showOnCard: true }), OWNER))
@@ -123,19 +168,24 @@ describe('compose draft contract', () => {
 
   test('rejects malformed new or legacy visibility fields', () => {
     expect(parseComposeDraft(JSON.stringify({ ...validDraft, showPublicly: 'yes' }), OWNER)).toBeNull();
-    const { showPublicly: _newField, ...legacyBase } = validDraft;
+    const { showPublicly: _newField, visibilityChanged: _changed, ...currentBase } = validDraft;
+    const legacyBase = { ...currentBase, version: 1 };
     expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: 'yes' }), OWNER)).toBeNull();
   });
 
   test('defaults older drafts to no explicit edit visibility change', () => {
     const { visibilityChanged: _missing, ...olderDraft } = validDraft;
     expect(parseComposeDraft(JSON.stringify(olderDraft), OWNER)).toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, visibilityChanged: true }), OWNER)?.visibilityChanged)
+      .toBe(true);
     expect(parseComposeDraft(JSON.stringify({ ...validDraft, visibilityChanged: 'yes' }), OWNER)).toBeNull();
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, audience: 'public' }), OWNER)).toBeNull();
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showOnCard: true }), OWNER)).toBeNull();
   });
 
   test('rejects corrupt, unsupported and cross-owner records', () => {
     expect(parseComposeDraft('{broken', OWNER)).toBeNull();
-    expect(parseComposeDraft(JSON.stringify({ ...validDraft, version: 2 }), OWNER)).toBeNull();
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, version: 3 }), OWNER)).toBeNull();
     expect(parseComposeDraft(JSON.stringify({ ...validDraft, ownerId: DRAFT }), OWNER)).toBeNull();
   });
 

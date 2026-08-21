@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -13,6 +13,7 @@ import {
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
   CREATE_HUB_MODEL,
+  composerMediaChoices,
   type CreateChoice,
   type CreateMedia,
 } from './createFlow';
@@ -43,6 +44,7 @@ export function CreateHub({
   const palette = useMemo(() => createPalette(theme, mode), [theme, mode]);
   const [selectedId, setSelectedId] = useState<CreateChoice['id']>('post');
   const [media, setMedia] = useState<MediaChoice>('photo');
+  const mediaChoices = composerMediaChoices(Platform.OS, false);
   const [focusedControl, setFocusedControl] = useState<string | null>(null);
   const selected =
     CREATE_HUB_MODEL.choices.find((choice) => choice.id === selectedId) ??
@@ -121,7 +123,7 @@ export function CreateHub({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Media</Text>
             <View style={styles.segment} accessibilityRole="radiogroup">
-              {(['selfie', 'photo', 'video'] as const).map((value) => {
+              {mediaChoices.map((value) => {
                 const label = value === 'selfie'
                   ? 'Take selfie'
                   : value === 'photo'

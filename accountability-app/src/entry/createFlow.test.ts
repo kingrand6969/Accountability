@@ -6,10 +6,27 @@ import {
   DIRECT_POST_HREF,
   createPickerReadinessGate,
   decideCreateContinuation,
+  composerMediaChoices,
+  composerCreateActions,
   resolveComposeMode,
   type CreateContinuation,
   type CreateMedia,
 } from './createFlow';
+
+describe('Composer media capability', () => {
+  test('hides every unsupported create action while editing', () => {
+    expect(composerMediaChoices('ios', true)).toEqual([]);
+    expect(composerMediaChoices('android', true)).toEqual([]);
+    expect(composerCreateActions('ios', true)).toEqual([]);
+    expect(composerCreateActions('web', true)).toEqual([]);
+  });
+
+  test('hides selfie on web and keeps truthful gallery/video choices', () => {
+    expect(composerMediaChoices('web', false)).toEqual(['photo', 'video']);
+    expect(composerMediaChoices('ios', false)).toEqual(['selfie', 'photo', 'video']);
+    expect(composerCreateActions('web', false)).toEqual(['photo', 'video', 'event']);
+  });
+});
 
 describe('createPickerReadinessGate', () => {
   test('queues a selfie intent until owner and draft hydration are ready', () => {

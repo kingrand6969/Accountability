@@ -60,6 +60,17 @@ export const CREATE_HUB_MODEL = {
 
 export type CreateMedia = 'selfie' | 'photo' | 'video';
 
+export function composerMediaChoices(platform: string, editing: boolean): readonly CreateMedia[] {
+  if (editing) return [];
+  return platform === 'web' ? ['photo', 'video'] : ['selfie', 'photo', 'video'];
+}
+
+export type ComposerCreateAction = CreateMedia | 'event';
+
+export function composerCreateActions(platform: string, editing: boolean): readonly ComposerCreateAction[] {
+  return editing ? [] : [...composerMediaChoices(platform, false), 'event'];
+}
+
 export const DIRECT_POST_HREF = {
   pathname: '/compose',
   params: { text: '' },

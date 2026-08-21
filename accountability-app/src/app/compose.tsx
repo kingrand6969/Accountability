@@ -45,6 +45,8 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 import { supabase } from '../lib/supabase';
 import { CreateHub } from '../entry/CreateHub';
 import {
+  composerMediaChoices,
+  composerCreateActions,
   createPickerReadinessGate,
   decideCreateContinuation,
   resolveComposeMode,
@@ -67,7 +69,7 @@ import {
   restoreForCurrentOwner,
   saveComposeDraft,
   selectDraftCleanupTarget,
-  type ComposeDraftV1,
+  type ComposeDraftV2,
   type DurableDraftMedia,
 } from '../entry/composeDraft';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
@@ -81,11 +83,16 @@ import {
 import { PhotoPermissionDeniedError } from '../progress/photoCapture';
 import { PostVisibilitySwitch } from '../share/PostVisibilitySwitch';
 import { captureComposerSelfie } from '../entry/composerSelfie';
-import { ComposerMediaActions } from '../entry/ComposerMediaActions';
+import { ComposerMediaActions, type ComposerMediaActionItem } from '../entry/ComposerMediaActions';
+import {
+  composerMediaLeaseIsCurrent,
+  createComposerMediaLease,
+  type ComposerMediaLease,
+} from '../entry/composerMediaLease';
 
 type CleanupRecovery = {
   successMessage: string;
-  submittedDraft: ComposeDraftV1 | null;
+  submittedDraft: ComposeDraftV2 | null;
   expectedOwner: string | null;
   expectedToken: number;
 };
@@ -129,7 +136,7 @@ export default function Compose() {
   const [buddies, setBuddies] = useState<Buddy[]>([]);
   const [taggedIds, setTaggedIds] = useState<Set<string>>(new Set());
   const [editorUri, setEditorUri] = useState<string | null>(null);
-  const [eventOpen, setEventOpen] = useState(params.event === '1');
+  const [eventOpen, setEventOpen] = useState(composeMode === 'event');
   const eventOpenRef = useRef(eventOpen);
   eventOpenRef.current = eventOpen;
   const [evTitle, setEvTitle] = useState('');
@@ -144,7 +151,7 @@ export default function Compose() {
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [screenFocused, setScreenFocused] = useState(false);
   const hasAttachedMedia = Boolean(draftMedia || previewUri || pickedBase64 || pickedVideo);
-  const draftRef = useRef<ComposeDraftV1 | null>(null);
+  const draftRef = useRef<ComposeDraftV2 | null>(null);
   const ownerRef = useRef<string | null>(null);
   ownerRef.current = ownerId;
   const draftIdRef = useRef(draftId);
@@ -160,6 +167,8 @@ export default function Compose() {
   const flushDraftRef = useRef<() => Promise<void>>(async () => {});
   const mountedRef = useRef(true);
   const editorPhotoReleaseRef = useRef<(() => Promise<void>) | null>(null);
+  const editorMediaLeaseRef = useRef<ComposerMediaLease | null>(null);
+  const mediaRequestTokenRef = useRef(0);
   const focusedRef = useRef(false);
   const attachRecoveredPhotoRef = useRef<
     (asset: ImagePicker.ImagePickerAsset, isCurrent: () => boolean) => Promise<void>
@@ -233,6 +242,7 @@ export default function Compose() {
       // Detach live state and the old draft reference; never delete another account's files.
       draftRef.current = null;
       mountTokenRef.current += 1;
+      mediaRequestTokenRef.current += 1;
       postingRef.current = false;
       setPosting(false);
       remoteSucceededRef.current = false;
@@ -249,6 +259,7 @@ export default function Compose() {
       setPickedVideo(null);
       setPreviewUri(null);
       setEditorUri(null);
+      editorMediaLeaseRef.current = null;
       releaseEditorPhoto();
       setBody(typeof params.text === 'string' ? params.text : '');
       setShowPublicly(DEFAULT_SHOW_PUBLICLY);
@@ -256,7 +267,7 @@ export default function Compose() {
       setEditingScoped(Boolean(editingId));
       setTaggedIds(new Set());
       setKeepInMemories(false);
-      setEventOpen(params.event === '1');
+      setEventOpen(!editingId && params.event === '1');
       setOwnerId(nextOwner);
       if (ownerId) {
         pickerReadinessGate.clear();
@@ -355,16 +366,18 @@ export default function Compose() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, draftReady, pickerReadinessGate]);
 
-  function currentDraft(): ComposeDraftV1 | null {
+  function currentDraft(): ComposeDraftV2 | null {
     if (!ownerId || !draftReady) return null;
     return {
-      version: 1,
+      version: 2,
       draftId,
       ownerId,
       ...draftContext,
       body,
       showPublicly,
       visibilityChanged,
+      audience: showPublicly ? 'public' : 'buddies',
+      showOnCard: showPublicly,
       media: draftMedia,
       event: { open: eventOpen, title: evTitle, date: evDate, time: evTime, location: evLocation },
       tagIds: [...taggedIds],
@@ -417,6 +430,34 @@ export default function Compose() {
     const release = editorPhotoReleaseRef.current;
     editorPhotoReleaseRef.current = null;
     if (release) void release();
+  }
+
+  function mediaLeaseIsCurrent(lease: ComposerMediaLease | null) {
+    return composerMediaLeaseIsCurrent(lease, {
+      owner: ownerRef.current,
+      mountToken: mountTokenRef.current,
+      requestToken: mediaRequestTokenRef.current,
+      active: mountedRef.current,
+      editing: Boolean(editingIdRef.current),
+    });
+  }
+
+  function discardDurableUri(uri: string) {
+    try {
+      if (Platform.OS !== 'web' && /^file:\/\//i.test(uri)) {
+        const file = new File(uri);
+        if (file.exists) file.delete();
+      }
+    } catch {
+      // Stale picker cleanup is best-effort and never touches the active draft.
+    }
+  }
+
+  function discardPickerResult(result: ImagePicker.ImagePickerResult) {
+    if (Platform.OS !== 'web' || result.canceled) return;
+    for (const asset of result.assets) {
+      if (/^blob:/i.test(asset.uri)) URL.revokeObjectURL(asset.uri);
+    }
   }
 
   function releaseEditedPhotoUri(uri: string) {
@@ -505,6 +546,8 @@ export default function Compose() {
 
   useEffect(() => () => {
     mountTokenRef.current += 1;
+    mediaRequestTokenRef.current += 1;
+    editorMediaLeaseRef.current = null;
     mountedRef.current = false;
     focusedRef.current = false;
     draftRef.current = null;
@@ -517,7 +560,7 @@ export default function Compose() {
     && !posting && !tagPickerOpen && !editorUri
     && !eventOpen && !showCreateHub;
 
-  async function clearSavedDraft(deleteMedia = true, submittedDraft?: ComposeDraftV1 | null) {
+  async function clearSavedDraft(deleteMedia = true, submittedDraft?: ComposeDraftV2 | null) {
     const draft = selectDraftCleanupTarget(submittedDraft, currentDraft(), draftRef.current);
     if (!draft) return;
     await clearComposeDraft(draft, AsyncStorage);
@@ -529,7 +572,7 @@ export default function Compose() {
 
   async function clearSavedDraftForSubmission(
     deleteMedia: boolean,
-    submittedDraft: ComposeDraftV1 | null,
+    submittedDraft: ComposeDraftV2 | null,
     expectedOwner: string | null,
     expectedToken: number,
   ) {
@@ -576,7 +619,7 @@ export default function Compose() {
   function finishAfterRemoteSuccess(
     successMessage: string,
     cleanupError: string | null,
-    submittedDraft: ComposeDraftV1 | null,
+    submittedDraft: ComposeDraftV2 | null,
     expectedOwner: string | null,
     expectedToken: number,
   ) {
@@ -679,11 +722,21 @@ export default function Compose() {
     const mimeType = asset.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
     const extension = mimeType === 'image/png' ? 'png' : 'jpg';
     const durable = await makeMediaDurable(asset.uri, extension, mimeType, 'photo');
-    if (!isCurrent()) return;
+    if (!isCurrent()) {
+      discardDurableUri(durable.uri);
+      return;
+    }
+    const requestToken = ++mediaRequestTokenRef.current;
+    const lease = createComposerMediaLease(ownerRef.current, mountTokenRef.current, requestToken);
+    if (!lease || !mediaLeaseIsCurrent(lease)) {
+      discardDurableUri(durable.uri);
+      return;
+    }
     setPickedVideo(null);
     setPickedBase64(null);
     setPickedExt(extension);
     setPreviewUri(durable.uri);
+    editorMediaLeaseRef.current = lease;
     setEditorUri(durable.uri);
   }
 
@@ -691,6 +744,7 @@ export default function Compose() {
     asset: ImagePicker.ImagePickerAsset,
     expectedOwner: string | null,
     expectedToken: number,
+    lease?: ComposerMediaLease,
   ) {
     const inferredMime =
       asset.mimeType ??
@@ -708,7 +762,13 @@ export default function Compose() {
     const extension = videoExtensionForMime(inferredMime);
     if (!extension) throw new Error('This video format is not supported');
     const durable = await makeMediaDurable(asset.uri, extension, inferredMime, 'video');
-    if (ownerRef.current !== expectedOwner || mountTokenRef.current !== expectedToken) return;
+    const current = lease
+      ? mediaLeaseIsCurrent(lease)
+      : ownerRef.current === expectedOwner && mountTokenRef.current === expectedToken;
+    if (!current) {
+      discardDurableUri(durable.uri);
+      return;
+    }
     setPickedBase64(null);
     setEditorUri(null);
     setKeepInMemories(false);
@@ -728,10 +788,11 @@ export default function Compose() {
   attachRecoveredPhotoRef.current = attachRecoveredPhoto;
   attachRecoveredVideoRef.current = attachRecoveredVideo;
 
-  async function onPickPhoto() {
-    if (eventOpenRef.current) return;
+  async function onPickPhoto(lease: ComposerMediaLease) {
+    if (!mediaLeaseIsCurrent(lease) || eventOpenRef.current) return;
     if (Platform.OS !== 'web') {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!mediaLeaseIsCurrent(lease)) return;
       if (!perm.granted) {
         showMediaPermissionExplanation('photo');
         return;
@@ -742,6 +803,10 @@ export default function Compose() {
       quality: 0.6,
       base64: true,
     });
+    if (!mediaLeaseIsCurrent(lease)) {
+      discardPickerResult(res);
+      return;
+    }
     const normalized = normalizePickedAsset(res, 'image');
     if (eventOpenRef.current) return;
     if (normalized.status === 'canceled') return;
@@ -755,33 +820,38 @@ export default function Compose() {
       return;
     }
     if (Platform.OS === 'web') {
+      if (!mediaLeaseIsCurrent(lease)) return;
       setPickedBase64(asset.base64);
       setPickedExt(asset.uri.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg');
       setPreviewUri(asset.uri);
       return;
     }
     releaseEditorPhoto();
+    editorMediaLeaseRef.current = lease;
     setEditorUri(asset.uri); // native: filters + brand watermark
   }
 
-  async function onTakeSelfie() {
-    if (eventOpenRef.current) return;
-    const operationOwner = ownerRef.current;
-    const operationToken = mountTokenRef.current;
+  async function onTakeSelfie(lease: ComposerMediaLease) {
+    if (!mediaLeaseIsCurrent(lease) || eventOpenRef.current) return;
     try {
       const captured = await captureComposerSelfie({
-        expectedOwner: operationOwner,
-        expectedToken: operationToken,
+        expectedOwner: lease.owner,
+        expectedToken: lease.mountToken,
         currentOwner: () => ownerRef.current,
         currentToken: () => mountTokenRef.current,
         eventOpen: () => eventOpenRef.current,
       });
       if (!captured) return;
+      if (!mediaLeaseIsCurrent(lease)) {
+        await captured.release();
+        return;
+      }
       releaseEditorPhoto();
       editorPhotoReleaseRef.current = captured.release;
+      editorMediaLeaseRef.current = lease;
       setEditorUri(captured.uri);
     } catch (error) {
-      if (ownerRef.current !== operationOwner || mountTokenRef.current !== operationToken) return;
+      if (!mediaLeaseIsCurrent(lease)) return;
       if (error instanceof PhotoPermissionDeniedError) {
         Alert.alert(
           'Camera permission needed',
@@ -797,10 +867,11 @@ export default function Compose() {
     }
   }
 
-  async function onPickVideo() {
-    if (eventOpenRef.current) return;
+  async function onPickVideo(lease: ComposerMediaLease) {
+    if (!mediaLeaseIsCurrent(lease) || eventOpenRef.current) return;
     if (Platform.OS !== 'web') {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!mediaLeaseIsCurrent(lease)) return;
       if (!perm.granted) {
         showMediaPermissionExplanation('video');
         return;
@@ -811,6 +882,10 @@ export default function Compose() {
       videoMaxDuration: 60,
       quality: ImagePicker.UIImagePickerControllerQualityType.Medium,
     });
+    if (!mediaLeaseIsCurrent(lease)) {
+      discardPickerResult(res);
+      return;
+    }
     const normalized = normalizePickedAsset(res, 'video');
     if (eventOpenRef.current) return;
     if (normalized.status === 'canceled') return;
@@ -818,36 +893,53 @@ export default function Compose() {
       Alert.alert('Video not added', normalized.message);
       return;
     }
-    const operationOwner = ownerRef.current;
-    const operationToken = mountTokenRef.current;
     try {
-      await attachVideoAsset(normalized.asset, operationOwner, operationToken);
+      await attachVideoAsset(normalized.asset, lease.owner, lease.mountToken, lease);
     } catch (error) {
-      if (ownerRef.current === operationOwner && mountTokenRef.current === operationToken) {
+      if (mediaLeaseIsCurrent(lease)) {
         Alert.alert('Video not added', userFacingErrorMessage(error, 'media'));
       }
     }
   }
 
   async function launchMediaPicker(media: CreateMedia) {
-    if (media === 'selfie') await onTakeSelfie();
-    else if (media === 'photo') await onPickPhoto();
-    else await onPickVideo();
+    if (editingIdRef.current) return;
+    const requestToken = ++mediaRequestTokenRef.current;
+    const lease = createComposerMediaLease(ownerRef.current, mountTokenRef.current, requestToken);
+    if (!lease) return;
+    if (media === 'selfie') {
+      if (Platform.OS !== 'web') await onTakeSelfie(lease);
+      return;
+    }
+    if (media === 'photo') await onPickPhoto(lease);
+    else await onPickVideo(lease);
   }
 
   function requestMediaPicker(media: CreateMedia) {
-    if (eventOpenRef.current) return;
+    if (
+      editingIdRef.current
+      || eventOpenRef.current
+      || !composerMediaChoices(Platform.OS, false).includes(media)
+    ) return;
     const ready = Boolean(ownerRef.current && draftReadyRef.current);
     const launch = pickerReadinessGate.request(media, ready);
     if (launch) void launchMediaPicker(launch);
   }
 
   function onEdited(photo: EditedPhoto) {
-    const operationOwner = ownerRef.current;
-    const operationToken = mountTokenRef.current;
+    const lease = editorMediaLeaseRef.current;
+    if (!mediaLeaseIsCurrent(lease)) {
+      setEditorUri(null);
+      releaseEditorPhoto();
+      releaseEditedPhotoUri(photo.uri);
+      return;
+    }
     void makeMediaDurable(photo.uri, 'jpg', 'image/jpeg', 'photo')
       .then(async (durable) => {
-        if (ownerRef.current !== operationOwner || mountTokenRef.current !== operationToken) return;
+        if (!mediaLeaseIsCurrent(lease)) {
+          discardDurableUri(durable.uri);
+          return;
+        }
         setPickedVideo(null);
         setPickedBase64(photo.base64);
         setPickedExt('jpg');
@@ -855,12 +947,13 @@ export default function Compose() {
         setEditorUri(null);
       })
       .catch((error) => {
-        if (ownerRef.current === operationOwner && mountTokenRef.current === operationToken) {
+        if (mediaLeaseIsCurrent(lease)) {
           setEditorUri(null);
           Alert.alert('Photo not added', userFacingErrorMessage(error, 'media'));
         }
       })
       .finally(() => {
+        editorMediaLeaseRef.current = null;
         releaseEditorPhoto();
         releaseEditedPhotoUri(photo.uri);
       });
@@ -903,6 +996,7 @@ export default function Compose() {
   }
 
   function toggleEventMode() {
+    if (editingIdRef.current) return;
     if (eventOpen) {
       setEventOpen(false);
       return;
@@ -1091,6 +1185,28 @@ export default function Compose() {
     : eventOpen
       ? showPublicly ? 'Announce publicly' : 'Announce to buddies'
       : visibilityCopy.postAction;
+  const allComposerActions: ComposerMediaActionItem[] = [
+    {
+      id: 'selfie', icon: 'camera-outline', tone: 'action', label: 'Take selfie',
+      disabled: eventOpen || !draftReady || !ownerId,
+      onPress: () => requestMediaPicker('selfie'),
+    },
+    {
+      id: 'photo', icon: 'image-outline', tone: 'action', label: 'Choose photo',
+      disabled: eventOpen, onPress: () => requestMediaPicker('photo'),
+    },
+    {
+      id: 'video', icon: 'videocam-outline', tone: 'danger', label: 'Choose video',
+      disabled: eventOpen, onPress: () => requestMediaPicker('video'),
+    },
+    {
+      id: 'event', icon: eventOpen ? 'calendar' : 'calendar-outline', tone: 'success', label: 'Event',
+      active: eventOpen, disabled: hasAttachedMedia, onPress: toggleEventMode,
+    },
+  ];
+  const composerActions = allComposerActions.filter((action) => (
+    composerCreateActions(Platform.OS, Boolean(editingId)).includes(action.id)
+  ));
 
   if (showCreateHub) {
     return (
@@ -1122,6 +1238,7 @@ export default function Compose() {
           onDone={onEdited}
           onCancel={() => {
             setEditorUri(null);
+            editorMediaLeaseRef.current = null;
             releaseEditorPhoto();
           }}
         />
@@ -1335,46 +1452,12 @@ export default function Compose() {
       </ScrollView>
 
       {/* bottom action bar */}
-      {!remoteSucceeded ? (
+      {!remoteSucceeded && !editingId ? (
         <ComposerMediaActions
           availableWidth={windowMetrics.width}
           fontScale={windowMetrics.fontScale}
           bottomInset={insets.bottom}
-          actions={[
-            {
-              id: 'selfie',
-              icon: 'camera-outline',
-              tone: 'action',
-              label: 'Take selfie',
-              disabled: eventOpen || !draftReady || !ownerId,
-              onPress: () => requestMediaPicker('selfie'),
-            },
-            {
-              id: 'photo',
-              icon: 'image-outline',
-              tone: 'action',
-              label: 'Choose photo',
-              disabled: eventOpen,
-              onPress: () => requestMediaPicker('photo'),
-            },
-            {
-              id: 'video',
-              icon: 'videocam-outline',
-              tone: 'danger',
-              label: 'Choose video',
-              disabled: eventOpen,
-              onPress: () => requestMediaPicker('video'),
-            },
-            {
-              id: 'event',
-              icon: eventOpen ? 'calendar' : 'calendar-outline',
-              tone: 'success',
-              label: 'Event',
-              active: eventOpen,
-              disabled: hasAttachedMedia,
-              onPress: toggleEventMode,
-            },
-          ]}
+          actions={composerActions}
         />
       ) : null}
 
