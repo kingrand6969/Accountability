@@ -10,6 +10,11 @@ describe('Run and Flex Share Studio integration', () => {
     expect(run).toContain("import { ShareStudio");
     expect(run).toContain('createRunShareMediaOverrideController');
     expect(run).toContain('uploadRunFeedImage');
+    expect(run).toContain('freezeRunShareRenderInputs');
+    expect(run).toContain('runShareRenderModel');
+    expect(run).toContain('renderDestinationPreview');
+    expect(run).toContain('unavailableReason={feedShare.reason}');
+    expect(run).toMatch(/shareStudioCaptureSize\.current = runShareExportSize\([\s\S]*?reviewed\.format,[\s\S]*?reviewed\.presentation\.originalRatio/);
     expect(run).toContain('<ShareStudio');
     expect(run).toMatch(/operationId:\s*draft!\.operationId/);
     expect(run).toMatch(/showPublicly:\s*draft!\.showPublicly/);
@@ -31,6 +36,10 @@ describe('Run and Flex Share Studio integration', () => {
 
   test('Flex uses one Share Studio and publishes the reviewed typed draft once', () => {
     expect(winCard).toContain("import { ShareStudio");
+    expect(winCard).toContain('createProofShareRenderModel');
+    expect(winCard).toContain('renderDestinationPreview');
+    expect(winCard).toContain('unavailableReason={feedShare.reason}');
+    expect(winCard).toContain('MOBILE_FEED_SHARING_NOTICE');
     expect(winCard).toContain('<ShareStudio');
     expect(winCard).toContain("journalDurableAction(token, 'post-feed', base64, shareBody, false, draft.operationId)");
     expect(winCard).toContain('operationId: pending.operationId');

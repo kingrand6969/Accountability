@@ -84,6 +84,51 @@ async function flush() {
 }
 
 describe('ShareStudio', () => {
+  test('renders a parent destination preview from the same media returned on Continue', async () => {
+    const previewStates: { media: ShareStudioResult['media']; title: string }[] = [];
+    const photo = captured('file:///truthful-preview.jpg');
+    const { renderer, onContinue } = renderStudio({
+      choosePhoto: jest.fn(async () => photo),
+      renderDestinationPreview: (state) => {
+        previewStates.push({ media: state.media, title: state.context.title });
+        return <Text testID="actual-destination-preview">
+          {state.media.kind === 'card' ? 'actual card' : state.media.uri}
+        </Text>;
+      },
+      destinationPreviewAspectRatio: (state) => state.media.kind === 'card' ? 1 : 16 / 9,
+    });
+
+    expect(renderer.root.findByProps({ testID: 'actual-destination-preview' }).props.children)
+      .toBe('actual card');
+    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-preview' }).props.style).aspectRatio)
+      .toBe(1);
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Choose photo' }).props.onPress());
+    expect(renderer.root.findByProps({ testID: 'actual-destination-preview' }).props.children)
+      .toBe('file:///truthful-preview.jpg');
+    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-preview' }).props.style).aspectRatio)
+      .toBe(16 / 9);
+    const previewed = previewStates.at(-1)!;
+    await act(async () => renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.onPress());
+
+    const published = onContinue.mock.calls[0][0];
+    expect(previewed.title).toBe(published.context.title);
+    expect(previewed.media).toEqual(published.media);
+  });
+
+  test('shows an accessible mobile-app notice without media or submit controls when unavailable', () => {
+    const { renderer, onContinue } = renderStudio({
+      unavailableReason: 'Feed sharing is available in the mobile app',
+    });
+
+    expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).props.children)
+      .toBe('Feed sharing is available in the mobile app');
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Card only' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Take selfie' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Choose photo' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'share-studio-primary-action' })).toHaveLength(0);
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
   test('defaults to Card only and the privacy-preserving Buddies-only visibility', () => {
     const { renderer } = renderStudio();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Card only' }).props.accessibilityState.selected).toBe(true);

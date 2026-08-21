@@ -61,7 +61,9 @@ import { withProofLoadTimeout } from '../entry/proofLoadTimeout';
 import { createProofRetryGuard } from '../entry/proofRetryGuard';
 import {
   buildProofCardSummary,
+  createProofShareRenderModel,
   ProofCaptureCard,
+  type ProofShareRenderModel,
   type ProofCaptureRendererContext,
 } from '../entry/ProofCaptureCard';
 import {
@@ -72,6 +74,10 @@ import {
 import { parseFlexContext } from '../entry/flexContext';
 import { publishFlexFeedPost } from '../entry/flexFeedPost';
 import { ShareStudio, type ShareStudioResult } from '../share/ShareStudio';
+import {
+  feedShareAvailability,
+  MOBILE_FEED_SHARING_NOTICE,
+} from '../share/feedShareAvailability';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
@@ -126,8 +132,9 @@ export default function WinCard() {
   const [selectedCaptureContext, setSelectedCaptureContext] =
     useState<ProofCaptureRendererContext | null>(null);
   const [shareStudioVisible, setShareStudioVisible] = useState(
-    sanitizeProofParam(params.autoPrompt) === '1',
+    Platform.OS !== 'web' && sanitizeProofParam(params.autoPrompt) === '1',
   );
+  const shareStudioProofContextRef = useRef<ProofCaptureRendererContext | null>(null);
   const cardRef = useRef<View>(null);
   const retryGuardRef = useRef(createProofRetryGuard());
   const storyOperationRef = useRef<AchievementStoryOperation | null>(null);
@@ -163,6 +170,7 @@ export default function WinCard() {
         setSelectedCaptureContext(null);
         setShareStudioVisible(false);
         setShareBackgroundUri(null);
+        shareStudioProofContextRef.current = null;
       };
     // The orchestrator owns mutable session refs; this focus lifecycle must not
     // restart when its render-local facade is recreated.
@@ -181,6 +189,7 @@ export default function WinCard() {
       setSelectedCaptureContext(null);
       setShareStudioVisible(false);
       setShareBackgroundUri(null);
+      shareStudioProofContextRef.current = null;
       if (ownerId) void loadOwnerView(ownerId);
     });
     return () => {
@@ -264,6 +273,13 @@ export default function WinCard() {
     buddyNames: !privacy.hideBuddyNames,
     buddyPortraits: !privacy.hideBuddyPortraits,
   };
+  const feedProofContext = unavailableRendererContext(
+    buildFeedProofExport(proofInput, proofOptIns),
+  );
+  const feedShare = feedShareAvailability(Platform.OS);
+  if (shareStudioVisible && !shareStudioProofContextRef.current) {
+    shareStudioProofContextRef.current = feedProofContext;
+  }
   const captureContext =
     selectedCaptureContext ??
     unavailableRendererContext(buildExternalProofExport(proofInput, proofOptIns));
@@ -306,6 +322,28 @@ export default function WinCard() {
     });
   }
 
+  async function captureReviewedProof(
+    model: ProofShareRenderModel,
+    result: 'base64' | 'tmpfile',
+    token: ProofActionToken,
+  ): Promise<string | null> {
+    return captureQueueRef.current.run(async () => {
+      if (!isCurrentAction(token)) return null;
+      try {
+        setSelectedCaptureContext(model.context);
+        setShareBackgroundUri(model.backgroundUri);
+        await nextPaint();
+        if (!isCurrentAction(token)) return null;
+        return await captureCard(result);
+      } finally {
+        if (mountedRef.current) {
+          setSelectedCaptureContext(null);
+          setShareBackgroundUri(null);
+        }
+      }
+    });
+  }
+
   async function onShareToFeed(draft: ShareStudioResult) {
     const token = beginAction('post-feed');
     if (!token) throw new Error('Another share is already in progress.');
@@ -314,15 +352,13 @@ export default function WinCard() {
     let dispatched = false;
     try {
       if (draft.ownerId !== expectedOwnerId) throw new Error('Account changed.');
-      if (draft.media.kind === 'photo') {
-        setShareBackgroundUri(draft.media.uri);
-        await nextPaint();
-        if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      }
+      const reviewedContext = shareStudioProofContextRef.current;
+      if (!reviewedContext) throw new Error('The reviewed Daily Proof is no longer available.');
+      const reviewedModel = createProofShareRenderModel(reviewedContext, draft.media);
       const shareBody = draft.caption || message;
       const publishContext = { ...flexContext, body: shareBody, showPublicly: draft.showPublicly };
-      const base64 = await captureDestination(
-        buildFeedProofExport,
+      const base64 = await captureReviewedProof(
+        reviewedModel,
         'base64',
         token,
       );
@@ -358,6 +394,7 @@ export default function WinCard() {
         Alert.alert('Shared to your feed', 'Your Daily Proof is now on your feed.');
         setShareStudioVisible(false);
         setShareBackgroundUri(null);
+        shareStudioProofContextRef.current = null;
       });
     } catch (error) {
       if (pending && dispatched) {
@@ -608,12 +645,27 @@ export default function WinCard() {
       ) : null}
 
       <View style={styles.actions}>
-        <ProofAction icon="people-outline" label="Share achievement" onPress={() => setShareStudioVisible(true)} busy={isProofActionBusy(actionState, 'post-feed')} disabled={actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'} />
+        <ProofAction
+          icon="people-outline"
+          label="Share achievement"
+          onPress={() => {
+            if (!feedShare.available) return;
+            shareStudioProofContextRef.current = feedProofContext;
+            setShareStudioVisible(true);
+          }}
+          busy={isProofActionBusy(actionState, 'post-feed')}
+          disabled={!feedShare.available || actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'}
+        />
         <ProofAction icon="time-outline" label="Add to My Day" onPress={() => void onShareToStory()} busy={isProofActionBusy(actionState, 'share-external')} />
         <ProofAction icon="share-social-outline" label="Share outside app" onPress={onShareExternally} busy={isProofActionBusy(actionState, 'share-external')} />
         {Platform.OS !== 'web' ? <ProofAction icon="download-outline" label="Save to phone" onPress={onSavePhone} busy={isProofActionBusy(actionState, 'save-phone')} /> : null}
         <ProofAction icon="bookmark-outline" label="Save to Memories" onPress={onSaveMemories} busy={isProofActionBusy(actionState, 'save-memories')} disabled={actionState['save-memories'].status === 'unresolved' || actionState['save-memories'].status === 'ambiguous'} />
       </View>
+      {!feedShare.available ? (
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.stateMessage}>
+          {feedShare.reason ?? MOBILE_FEED_SHARING_NOTICE}
+        </Text>
+      ) : null}
       {pendingActions.map((entry) => (
         <View key={entry.operationId} style={styles.pendingPanel} accessibilityLiveRegion="polite">
           <Text style={styles.pendingText}>
@@ -656,10 +708,27 @@ export default function WinCard() {
           ],
         }}
         defaultCaption={message}
+        unavailableReason={feedShare.reason}
+        destinationPreviewAspectRatio={() => proofFormatAspectRatio(
+          (shareStudioProofContextRef.current ?? feedProofContext).dto.format,
+        )}
+        renderDestinationPreview={(state) => {
+          const model = createProofShareRenderModel(
+            shareStudioProofContextRef.current ?? feedProofContext,
+            state.media,
+          );
+          return (
+            <ProofCaptureCard
+              context={model.context}
+              backgroundUri={model.backgroundUri}
+            />
+          );
+        }}
         onContinue={onShareToFeed}
         onCancel={() => {
           setShareStudioVisible(false);
           setShareBackgroundUri(null);
+          shareStudioProofContextRef.current = null;
         }}
       />
     </ScrollView>
@@ -703,6 +772,12 @@ export default function WinCard() {
       if (isRetryCurrent()) markLoadError();
     }
   }
+}
+
+function proofFormatAspectRatio(format: ProofFormat): number {
+  if (format === 'landscape') return 16 / 9;
+  if (format === 'square') return 1;
+  return 0.95;
 }
 
 function ScreenHeader({ onBack }: { onBack: () => void }) {

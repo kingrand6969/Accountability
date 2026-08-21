@@ -2,6 +2,8 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 import {
   createRunShareMediaOverrideController,
+  freezeRunShareRenderInputs,
+  runShareRenderModel,
   uploadRunFeedImage,
   type RunSharePresentation,
 } from './runShareMediaOverride';
@@ -30,6 +32,73 @@ const studioDraft = {
 };
 
 describe('Run Share Studio media override', () => {
+  test('Card only previews the existing selfie with exact private route and format inputs', () => {
+    const frozen = freezeRunShareRenderInputs({
+      presentation: editedPresentation,
+      format: 'feed',
+      mediaFit: 'contain',
+      showEnds: false,
+      points: [{ lat: -31.95, lon: 115.86 }],
+      distanceM: 5200,
+      durationS: 1800,
+    });
+
+    expect(runShareRenderModel(frozen, { kind: 'card' })).toEqual({
+      ...frozen,
+      presentation: editedPresentation,
+    });
+    expect(frozen.showEnds).toBe(false);
+    expect(frozen.points).toHaveLength(1);
+  });
+
+  test('Card only previews the existing map card without inventing a photo', () => {
+    const frozen = freezeRunShareRenderInputs({
+      presentation: mapPresentation,
+      format: 'square',
+      mediaFit: 'cover',
+      showEnds: true,
+      points: [{ lat: 1, lon: 2 }, { lat: 3, lon: 4 }],
+      distanceM: 1000,
+      durationS: 400,
+    });
+
+    expect(runShareRenderModel(frozen, { kind: 'card' }).presentation).toEqual(mapPresentation);
+  });
+
+  test('Studio photo changes only the frozen media used by preview and capture', () => {
+    const frozen = freezeRunShareRenderInputs({
+      presentation: mapPresentation,
+      format: 'portrait',
+      mediaFit: 'cover',
+      showEnds: false,
+      points: [{ lat: 1, lon: 2 }],
+      distanceM: 10000,
+      durationS: 3600,
+    });
+    const media = {
+      kind: 'photo' as const,
+      source: 'selfie' as const,
+      uri: 'file:///studio-selfie.jpg',
+      width: 900,
+      height: 1200,
+    };
+    const previewModel = runShareRenderModel(frozen, media);
+    const captureModel = runShareRenderModel(frozen, media);
+
+    expect(previewModel).toEqual(captureModel);
+    expect(previewModel).toEqual({
+      ...frozen,
+      presentation: {
+        mode: 'photo',
+        photoUri: 'file:///studio-selfie.jpg',
+        photoKind: 'selfie',
+        originalRatio: 0.75,
+      },
+    });
+    expect(Object.isFrozen(frozen)).toBe(true);
+    expect(Object.isFrozen(frozen.points)).toBe(true);
+  });
+
   test('failed publish then cancel restores the existing edited photo without releasing it', () => {
     const controller = createRunShareMediaOverrideController();
     const edited = { id: 'edited-cache', uri: 'file:///edited.jpg' };

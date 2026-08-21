@@ -1,4 +1,6 @@
 import type { RunMediaCacheItem } from './runMediaCache';
+import type { Pt } from './geo';
+import type { RunMediaFit, RunShareFormat } from './runShareFormats';
 
 export type RunSharePresentation = Readonly<{
   mode: 'map' | 'photo';
@@ -14,6 +16,47 @@ export type RunShareStudioPhotoDraft = Readonly<{
   width: number;
   height: number;
 }>;
+
+export type FrozenRunShareRenderInputs = Readonly<{
+  presentation: RunSharePresentation;
+  format: RunShareFormat;
+  mediaFit: RunMediaFit;
+  showEnds: boolean;
+  points: readonly Pt[];
+  distanceM: number;
+  durationS: number;
+}>;
+
+type RunSharePreviewMedia = Readonly<
+  | { kind: 'card' }
+  | { kind: 'photo'; source: 'selfie' | 'gallery'; uri: string; width: number; height: number }
+>;
+
+export function freezeRunShareRenderInputs(
+  input: FrozenRunShareRenderInputs,
+): FrozenRunShareRenderInputs {
+  return Object.freeze({
+    ...input,
+    presentation: Object.freeze({ ...input.presentation }),
+    points: Object.freeze(input.points.map((point) => Object.freeze({ ...point }))),
+  });
+}
+
+export function runShareRenderModel(
+  frozen: FrozenRunShareRenderInputs,
+  media: RunSharePreviewMedia,
+): FrozenRunShareRenderInputs {
+  if (media.kind === 'card') return frozen;
+  return Object.freeze({
+    ...frozen,
+    presentation: Object.freeze({
+      mode: 'photo' as const,
+      photoUri: media.uri,
+      photoKind: media.source,
+      originalRatio: media.width / media.height,
+    }),
+  });
+}
 
 type StagedOverride = Readonly<{
   operationId: string;

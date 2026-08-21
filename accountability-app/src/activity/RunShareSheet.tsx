@@ -85,9 +85,13 @@ import {
 import { ShareStudio, type ShareStudioResult } from '../share/ShareStudio';
 import {
   createRunShareMediaOverrideController,
+  freezeRunShareRenderInputs,
+  runShareRenderModel,
   uploadRunFeedImage,
+  type FrozenRunShareRenderInputs,
   type RunSharePresentation,
 } from './runShareMediaOverride';
+import { feedShareAvailability } from '../share/feedShareAvailability';
 
 const LIME = '#c6f24e';
 
@@ -209,6 +213,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   if (!shareMediaOverride.current) {
     shareMediaOverride.current = createRunShareMediaOverrideController();
   }
+  const shareStudioRunInputs = useRef<FrozenRunShareRenderInputs | null>(null);
+  const shareStudioCaptureSize = useRef<{ width: number; height: number } | null>(null);
   const renderGeneration = useRef(0);
   const capturedSourceLeases = useRef<ReturnType<
     typeof createBeautyCaptureLeaseSlot
@@ -273,6 +279,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         setMediaFit('cover');
         setShareStudioVisible(false);
         shareMediaOverride.current!.clear();
+        shareStudioRunInputs.current = null;
+        shareStudioCaptureSize.current = null;
         setShowEnds(false);
         setBeautyStage(null);
         setBeautySource(null);
@@ -318,8 +326,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           reason:
             'Save a real GPS activity before posting a verified Run card.',
         };
-  const activityQueued = !feedAvailability.enabled;
-  const feedDisabledReason = feedAvailability.reason ?? undefined;
+  const feedShare = feedShareAvailability(Platform.OS);
+  const activityQueued = !feedAvailability.enabled || !feedShare.available;
+  const feedDisabledReason = feedShare.reason ?? feedAvailability.reason ?? undefined;
   const syncDetail =
     !currentOwnerId || currentOwnerId !== run.ownerId
       ? 'Sign in as the recording owner to upload'
@@ -364,6 +373,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     void capturedSourceLeases.current!.releaseAll();
     feedOperation.current = null;
     shareMediaOverride.current!.clear();
+    shareStudioRunInputs.current = null;
+    shareStudioCaptureSize.current = null;
     hasPersistentDestination.current = false;
     let active = true;
     queueMicrotask(() => {
@@ -559,12 +570,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     try {
       // 4:5 at 1080×1350 — Instagram/FB portrait HD; near-lossless jpg so the
       // stats stay crisp (the on-screen preview renders small)
+      const captureSize = shareStudioCaptureSize.current ?? exportSize;
       const captured = await captureRef(cardRef, {
         format: 'jpg',
         quality: 0.97,
         result,
-        width: exportSize.width,
-        height: exportSize.height,
+        width: captureSize.width,
+        height: captureSize.height,
       });
       boundary.assertOwned();
       return captured;
@@ -639,9 +651,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
                     showPublicly: draft!.showPublicly,
                     activityId: run.activityId!,
                     shareData: {
-                      format,
-                      media_fit: mediaFit,
-                      route_ends_visible: showEnds,
+                      format: shareStudioRunInputs.current?.format ?? format,
+                      media_fit: shareStudioRunInputs.current?.mediaFit ?? mediaFit,
+                      route_ends_visible: shareStudioRunInputs.current?.showEnds ?? showEnds,
                     },
                     selfie: draft!.media.kind === 'photo'
                       ? draft!.media.source === 'selfie'
@@ -819,9 +831,19 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     const boundary = ownerBoundary();
     boundary.assertOwned();
     if (draft.ownerId !== run.ownerId) throw new Error('Account changed.');
+    const frozen = shareStudioRunInputs.current;
+    if (!frozen) throw new Error('The reviewed Run preview is no longer available.');
+    const reviewed = runShareRenderModel(frozen, draft.media);
+    shareStudioCaptureSize.current = runShareExportSize(
+      reviewed.format,
+      reviewed.presentation.originalRatio,
+    );
+    setFormat(reviewed.format);
+    setMediaFit(reviewed.mediaFit);
+    setShowEnds(reviewed.showEnds);
     if (draft.media.kind === 'photo') {
       applyRunSharePresentation(shareMediaOverride.current!.stage(
-        { mode, photoUri, photoKind, originalRatio },
+        frozen.presentation,
         processedPhotoMedia.current,
         {
           operationId: draft.operationId,
@@ -831,9 +853,11 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           height: draft.media.height,
         },
       ));
-      await nextRunSharePaint();
-      boundary.assertOwned();
+    } else {
+      applyRunSharePresentation(reviewed.presentation);
     }
+    await nextRunSharePaint();
+    boundary.assertOwned();
     await onDestination('feed', draft);
     const committed = shareMediaOverride.current!.commit();
     if (committed) {
@@ -846,6 +870,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       await draft.media.release().catch(() => {});
     }
     setShareStudioVisible(false);
+    shareStudioRunInputs.current = null;
+    shareStudioCaptureSize.current = null;
     await closeEditor();
   }
 
@@ -856,6 +882,8 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       applyRunSharePresentation(restored.presentation);
     }
     feedOperation.current = null;
+    shareStudioRunInputs.current = null;
+    shareStudioCaptureSize.current = null;
     setShareStudioVisible(false);
   }
 
@@ -1095,6 +1123,15 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         feedDisabledReason={feedDisabledReason}
         onFeed={() => {
           feedOperation.current = null;
+          shareStudioRunInputs.current = freezeRunShareRenderInputs({
+            presentation: { mode, photoUri, photoKind, originalRatio },
+            format,
+            mediaFit,
+            showEnds,
+            points: cardPoints,
+            distanceM: run.distance,
+            durationS: run.elapsed,
+          });
           setSharePromptVisible(false);
           setShareStudioVisible(true);
           return Promise.resolve();
@@ -1116,6 +1153,37 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           ],
         }}
         defaultCaption={caption}
+        unavailableReason={feedShare.reason}
+        destinationPreviewAspectRatio={(state) => {
+          const frozen = shareStudioRunInputs.current;
+          if (!frozen) return 4 / 5;
+          const preview = runShareRenderModel(frozen, state.media);
+          return runShareRatio(preview.format, preview.presentation.originalRatio);
+        }}
+        renderDestinationPreview={(state) => {
+          const frozen = shareStudioRunInputs.current ?? freezeRunShareRenderInputs({
+            presentation: { mode, photoUri, photoKind, originalRatio },
+            format,
+            mediaFit,
+            showEnds,
+            points: cardPoints,
+            distanceM: run.distance,
+            durationS: run.elapsed,
+          });
+          const preview = runShareRenderModel(frozen, state.media);
+          return (
+            <RunCard
+              mode={preview.presentation.mode}
+              photoUri={preview.presentation.photoUri}
+              distanceM={preview.distanceM}
+              durationS={preview.durationS}
+              points={preview.points as Pt[]}
+              width={cardWidth}
+              aspectRatio={runShareRatio(preview.format, preview.presentation.originalRatio)}
+              mediaFit={preview.mediaFit}
+            />
+          );
+        }}
         onContinue={publishRunDraft}
         onCancel={cancelRunShareStudio}
       />

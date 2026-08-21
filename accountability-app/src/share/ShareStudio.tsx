@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Crypto from 'expo-crypto';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -33,6 +33,13 @@ export { SHARE_CAPTION_LIMIT, type ShareStudioContext, type ShareStudioResult } 
 
 type MediaChoice = 'card' | 'selfie' | 'gallery';
 export type ShareMediaCapabilities = Readonly<{ card: boolean; selfie: boolean; gallery: boolean }>;
+export type ShareStudioPreviewState = Readonly<{
+  context: ShareStudioContext;
+  media: ShareStudioResult['media'];
+  caption: string;
+  showPublicly: boolean;
+  includeBodyStats: boolean;
+}>;
 type Props = Readonly<{
   visible: boolean;
   expectedOwnerId: string;
@@ -43,6 +50,9 @@ type Props = Readonly<{
   choosePhoto?: (source: ProgressPhotoSource) => Promise<CapturedProgressPhoto | null>;
   createOperationId?: () => string;
   mediaCapabilities?: Partial<ShareMediaCapabilities>;
+  renderDestinationPreview?: (state: ShareStudioPreviewState) => ReactNode;
+  destinationPreviewAspectRatio?: (state: ShareStudioPreviewState) => number;
+  unavailableReason?: string | null;
 }>;
 
 const mediaOptions: readonly Readonly<{
@@ -73,7 +83,38 @@ export function resolveShareMediaCapabilities(
 
 export function ShareStudio(props: Props) {
   if (!props.visible) return null;
+  if (props.unavailableReason) {
+    return <UnavailableShareStudio reason={props.unavailableReason} onCancel={props.onCancel} />;
+  }
   return <ShareStudioSession key={props.expectedOwnerId} {...props} />;
+}
+
+function UnavailableShareStudio({ reason, onCancel }: Readonly<{ reason: string; onCancel: () => void }>) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createShareStudioStyles(theme), [theme]);
+  return (
+    <Modal visible animationType="slide" onRequestClose={onCancel} transparent={false}>
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back from Share Studio"
+            onPress={onCancel}
+            style={styles.headerAction}
+          >
+            <Ionicons name="chevron-back" size={25} color={theme.ink.primary} />
+          </Pressable>
+          <Text accessibilityRole="header" style={styles.headerTitle}>Share Studio</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.content}>
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+            {reason}
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 function ShareStudioSession({
@@ -86,6 +127,8 @@ function ShareStudioSession({
   choosePhoto = chooseProgressPhoto,
   createOperationId = Crypto.randomUUID,
   mediaCapabilities,
+  renderDestinationPreview,
+  destinationPreviewAspectRatio,
 }: Props) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createShareStudioStyles(theme), [theme]);
@@ -119,6 +162,10 @@ function ShareStudioSession({
   );
   const draftLocked = retryDraft !== null;
   const mediaReady = choice === 'card' ? capabilities.card : photo !== null;
+  const previewMedia = useMemo(
+    () => selectedShareMedia(choice, photo),
+    [choice, photo],
+  );
 
   const releaseOwnedPhoto = useCallback(async () => {
     const owned = photoRef.current;
@@ -189,17 +236,7 @@ function ShareStudioSession({
     const lease = ownerLease.current;
     setError(null);
     try {
-      const media = photo && choice !== 'card'
-        ? {
-          kind: 'photo' as const,
-          source: choice,
-          uri: photo.uri,
-          width: photo.width,
-          height: photo.height,
-          capturedAt: photo.capturedAt,
-          release: photo.release,
-        }
-        : { kind: 'card' as const };
+      const media = previewMedia;
       const result = retryDraft ?? createShareStudioResult({
         ownerId: expectedOwnerId,
         operationId,
@@ -230,9 +267,17 @@ function ShareStudioSession({
         setContinuing(false);
       }
     }
-  }, [availableMediaOptions, caption, choice, continuing, expectedOwnerId, includeBodyStats, mediaReady, onContinue, operationId, photo, picking, retryDraft, shareContext, showPublicly]);
+  }, [availableMediaOptions, caption, continuing, expectedOwnerId, includeBodyStats, mediaReady, onContinue, operationId, picking, previewMedia, retryDraft, shareContext, showPublicly]);
 
   const visibilityCopy = postVisibilityCopy(showPublicly);
+  const previewState: ShareStudioPreviewState = {
+    context: shareContext,
+    media: previewMedia,
+    caption,
+    showPublicly,
+    includeBodyStats,
+  };
+  const previewRatio = destinationPreviewAspectRatio?.(previewState);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={cancel} transparent={false}>
@@ -258,7 +303,11 @@ function ShareStudioSession({
           contentContainerStyle={styles.content}
           automaticallyAdjustKeyboardInsets
         >
-          <View testID="share-card-preview" style={styles.preview}>
+          {renderDestinationPreview ? (
+            <View testID="share-card-preview" style={[styles.preview, previewRatio ? { aspectRatio: previewRatio } : null]}>
+              {renderDestinationPreview(previewState)}
+            </View>
+          ) : <View testID="share-card-preview" style={styles.preview}>
             {photo && choice !== 'card' ? (
               <Image
                 source={{ uri: photo.uri }}
@@ -284,7 +333,7 @@ function ShareStudioSession({
                 ))}
               </View>
             </View>
-          </View>
+          </View>}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Add to your card</Text>
@@ -386,6 +435,23 @@ function ShareStudioSession({
       </KeyboardAvoidingView>
     </Modal>
   );
+}
+
+function selectedShareMedia(
+  choice: MediaChoice,
+  photo: CapturedProgressPhoto | null,
+): ShareStudioResult['media'] {
+  return photo && choice !== 'card'
+    ? {
+      kind: 'photo',
+      source: choice,
+      uri: photo.uri,
+      width: photo.width,
+      height: photo.height,
+      capturedAt: photo.capturedAt,
+      release: photo.release,
+    }
+    : { kind: 'card' };
 }
 
 function permissionMessage(cause: unknown): string {

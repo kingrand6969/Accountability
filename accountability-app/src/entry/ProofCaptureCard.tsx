@@ -26,6 +26,21 @@ export type ProofCaptureRendererContext = Readonly<{
   resolve: (handle: RenderAssetHandle) => string;
 }>;
 
+export type ProofShareRenderModel = Readonly<{
+  context: ProofCaptureRendererContext;
+  backgroundUri: string | null;
+}>;
+
+export function createProofShareRenderModel(
+  context: ProofCaptureRendererContext,
+  media: Readonly<{ kind: 'card' } | { kind: 'photo'; uri: string }>,
+): ProofShareRenderModel {
+  return Object.freeze({
+    context,
+    backgroundUri: media.kind === 'photo' ? media.uri : null,
+  });
+}
+
 export function buildProofCardSummary(model: ProofExport): string {
   const details = [
     `${model.brand}.`,

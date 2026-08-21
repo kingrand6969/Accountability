@@ -11,7 +11,12 @@ import {
   type ProofExportOptIns,
   type RenderAssetAdapter,
 } from './proofExport';
-import { buildProofCardSummary, proofBackgroundSource, PROOF_RUNNER_HERO } from './ProofCaptureCard';
+import {
+  buildProofCardSummary,
+  createProofShareRenderModel,
+  proofBackgroundSource,
+  PROOF_RUNNER_HERO,
+} from './ProofCaptureCard';
 
 const safeInput: ProofExportInput = {
   brand: 'AccountAbility',
@@ -40,6 +45,25 @@ const builders: [string, typeof buildFeedProofExport][] = [
 ];
 
 describe('Share Proof screen safety contract', () => {
+  test('Flex preview and capture consume the same frozen proof renderer props', () => {
+    const context = {
+      dto: buildFeedProofExport(safeInput, allOptIns),
+      backgroundImage: null,
+      routeImages: [],
+      buddyPortraitImages: [],
+      resolve: jest.fn(() => ''),
+    };
+    const media = { kind: 'photo' as const, uri: 'file:///flex-selfie.jpg' };
+
+    const preview = createProofShareRenderModel(context, media);
+    const capture = createProofShareRenderModel(context, media);
+
+    expect(preview).toEqual(capture);
+    expect(preview.context).toBe(context);
+    expect(preview.backgroundUri).toBe('file:///flex-selfie.jpg');
+    expect(Object.isFrozen(preview)).toBe(true);
+  });
+
   const screenSource = readFileSync(resolve(__dirname, '../app/win-card.tsx'), 'utf8');
   const layoutSource = readFileSync(resolve(__dirname, '../app/_layout.tsx'), 'utf8');
   const cardSource = readFileSync(resolve(__dirname, './ProofCaptureCard.tsx'), 'utf8');
