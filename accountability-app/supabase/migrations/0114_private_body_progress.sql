@@ -104,11 +104,13 @@ create policy progress_photos_delete
   to authenticated
   using (user_id = (select auth.uid()));
 
-insert into storage.buckets (id, name, public)
-values ('progress-photos', 'progress-photos', false)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('progress-photos', 'progress-photos', false, 20971520, array['image/jpeg', 'image/png'])
 on conflict (id) do update
 set name = excluded.name,
-    public = false;
+    public = false,
+    file_size_limit = 20971520,
+    allowed_mime_types = array['image/jpeg', 'image/png'];
 
 drop policy if exists progress_photos_storage_select on storage.objects;
 create policy progress_photos_storage_select

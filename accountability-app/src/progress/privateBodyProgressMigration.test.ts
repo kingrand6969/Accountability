@@ -59,7 +59,10 @@ describe('0114 private body progress migration', () => {
   });
 
   test('keeps the progress photo bucket private on insert and replay', () => {
-    expect(migration).toMatch(/insert into storage\.buckets \(id, name, public\) values \('progress-photos', 'progress-photos', false\) on conflict \(id\) do update set name = excluded\.name, public = false/);
+    const bucketUpsert = migration.match(/insert into storage\.buckets[^;]+;/)?.[0] ?? '';
+    expect(bucketUpsert).toMatch(/insert into storage\.buckets \(id, name, public, file_size_limit, allowed_mime_types\) values \('progress-photos', 'progress-photos', false, 20971520, array\['image\/jpeg', 'image\/png'\]\)/);
+    expect(bucketUpsert).toMatch(/on conflict \(id\) do update set name = excluded\.name, public = false, file_size_limit = 20971520, allowed_mime_types = array\['image\/jpeg', 'image\/png'\]/);
+    expect(bucketUpsert).not.toMatch(/image\/(?:gif|webp)|(?:public|file_size_limit|allowed_mime_types)\s*=\s*null/);
   });
 
   test.each([
