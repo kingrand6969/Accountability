@@ -653,17 +653,22 @@ export default function Compose() {
     closeAfterRemoteSuccess();
   }
 
-  async function makeMediaDurable(uri: string, extension: string, mimeType: string, kind: 'photo' | 'video') {
+  async function makeMediaDurable(
+    uri: string,
+    extension: string,
+    mimeType: string,
+    kind: 'photo' | 'video',
+    lease: ComposerMediaLease,
+    recoveryCurrent: () => boolean = () => true,
+  ) {
     if (eventOpenRef.current) throw new Error('Turn off Event before attaching media.');
-    if (!ownerId) throw new Error('Sign in again before attaching media.');
-    const expectedOwner = ownerId;
-    const expectedToken = mountTokenRef.current;
-    const stillAttached = () => ownerRef.current === expectedOwner && mountTokenRef.current === expectedToken;
+    const stillAttached = () => mediaLeaseIsCurrent(lease) && recoveryCurrent();
+    if (!stillAttached()) throw new Error('Compose account detached');
     const expectedBytes = new File(uri).size;
     const base = currentDraft();
-    if (!base) throw new Error('Draft is not ready');
+    if (!base || base.ownerId !== lease.owner) throw new Error('Draft is not ready');
     const result = await persistDraftMedia(base, {
-      ownerId, draftId, sourceUri: uri, extension, expectedBytes,
+      ownerId: lease.owner, draftId: base.draftId, sourceUri: uri, extension, expectedBytes,
       maxBytes: kind === 'video' ? 100 * 1024 * 1024 : 20 * 1024 * 1024,
       mimeType,
       kind,
@@ -675,10 +680,17 @@ export default function Compose() {
     }
     const media: DurableDraftMedia = { ...result, extension: extension.toLowerCase(), mimeType, kind };
     const committed = await commitDraftMedia(base, media, AsyncStorage, fileAdapter, stillAttached);
-    if (!stillAttached()) throw new Error('Compose account detached');
+    if (!stillAttached()) {
+      await saveComposeDraft(base, AsyncStorage);
+      await removeDurableMedia(media, fileAdapter);
+      throw new Error('Compose account detached');
+    }
     draftRef.current = committed;
     setDraftMedia(committed.media);
     setPreviewUri(committed.media?.uri ?? null);
+    if (base.media && base.media.uri !== media.uri) {
+      void removeDurableMedia(base.media, fileAdapter);
+    }
     return media;
   }
 
@@ -719,19 +731,12 @@ export default function Compose() {
     asset: ImagePicker.ImagePickerAsset,
     isCurrent: () => boolean,
   ) {
-    const mimeType = asset.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
-    const extension = mimeType === 'image/png' ? 'png' : 'jpg';
-    const durable = await makeMediaDurable(asset.uri, extension, mimeType, 'photo');
-    if (!isCurrent()) {
-      discardDurableUri(durable.uri);
-      return;
-    }
     const requestToken = ++mediaRequestTokenRef.current;
     const lease = createComposerMediaLease(ownerRef.current, mountTokenRef.current, requestToken);
-    if (!lease || !mediaLeaseIsCurrent(lease)) {
-      discardDurableUri(durable.uri);
-      return;
-    }
+    if (!lease || !mediaLeaseIsCurrent(lease) || !isCurrent()) return;
+    const mimeType = asset.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+    const extension = mimeType === 'image/png' ? 'png' : 'jpg';
+    const durable = await makeMediaDurable(asset.uri, extension, mimeType, 'photo', lease, isCurrent);
     setPickedVideo(null);
     setPickedBase64(null);
     setPickedExt(extension);
@@ -742,9 +747,8 @@ export default function Compose() {
 
   async function attachVideoAsset(
     asset: ImagePicker.ImagePickerAsset,
-    expectedOwner: string | null,
-    expectedToken: number,
-    lease?: ComposerMediaLease,
+    lease: ComposerMediaLease,
+    recoveryCurrent: () => boolean = () => true,
   ) {
     const inferredMime =
       asset.mimeType ??
@@ -761,14 +765,9 @@ export default function Compose() {
     if (!validation.ok) throw new Error(validation.message);
     const extension = videoExtensionForMime(inferredMime);
     if (!extension) throw new Error('This video format is not supported');
-    const durable = await makeMediaDurable(asset.uri, extension, inferredMime, 'video');
-    const current = lease
-      ? mediaLeaseIsCurrent(lease)
-      : ownerRef.current === expectedOwner && mountTokenRef.current === expectedToken;
-    if (!current) {
-      discardDurableUri(durable.uri);
-      return;
-    }
+    const durable = await makeMediaDurable(
+      asset.uri, extension, inferredMime, 'video', lease, recoveryCurrent,
+    );
     setPickedBase64(null);
     setEditorUri(null);
     setKeepInMemories(false);
@@ -781,7 +780,10 @@ export default function Compose() {
   ) {
     const expectedOwner = ownerRef.current;
     const expectedToken = mountTokenRef.current;
-    await attachVideoAsset(asset, expectedOwner, expectedToken);
+    const requestToken = ++mediaRequestTokenRef.current;
+    const lease = createComposerMediaLease(expectedOwner, expectedToken, requestToken);
+    if (!lease || !mediaLeaseIsCurrent(lease) || !isCurrent()) return;
+    await attachVideoAsset(asset, lease, isCurrent);
     if (!isCurrent()) return;
   }
 
@@ -894,7 +896,7 @@ export default function Compose() {
       return;
     }
     try {
-      await attachVideoAsset(normalized.asset, lease.owner, lease.mountToken, lease);
+      await attachVideoAsset(normalized.asset, lease);
     } catch (error) {
       if (mediaLeaseIsCurrent(lease)) {
         Alert.alert('Video not added', userFacingErrorMessage(error, 'media'));
@@ -934,7 +936,7 @@ export default function Compose() {
       releaseEditedPhotoUri(photo.uri);
       return;
     }
-    void makeMediaDurable(photo.uri, 'jpg', 'image/jpeg', 'photo')
+    void makeMediaDurable(photo.uri, 'jpg', 'image/jpeg', 'photo', lease)
       .then(async (durable) => {
         if (!mediaLeaseIsCurrent(lease)) {
           discardDurableUri(durable.uri);

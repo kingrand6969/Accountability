@@ -52,4 +52,28 @@ describe('Composer media picker lease', () => {
     expect(applied).toBe(false);
     expect(discard).toHaveBeenCalledWith('picked-result');
   });
+
+  test.each(['picker persistence', 'edited-photo persistence'])(
+    'rejects a deferred %s result when context changes before persistence resolves',
+    async () => {
+      let mountToken = 8;
+      let finishPersistence!: () => void;
+      const persistence = new Promise<void>((resolve) => { finishPersistence = resolve; });
+      const discard = jest.fn(async () => {});
+      const pending = runComposerPickerLease({
+        lease: createComposerMediaLease('owner-a', 8, 3),
+        current: () => ({
+          owner: 'owner-a', mountToken, requestToken: 3, active: true, editing: false,
+        }),
+        launch: async () => 'durable-result',
+        accept: async () => persistence,
+        discard,
+      });
+      await Promise.resolve();
+      mountToken = 9;
+      finishPersistence();
+      await expect(pending).resolves.toBe(false);
+      expect(discard).toHaveBeenCalledWith('durable-result');
+    },
+  );
 });

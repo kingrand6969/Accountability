@@ -70,6 +70,9 @@ export function composeDraftIndexKey(ownerId: string): string {
 function composeDraftPendingKey(ownerId: string): string {
   return `compose-draft-pending:v2:${ownerId}`;
 }
+function legacyComposeDraftKey(ownerId: string, kind: ComposeDraftKind, draftId: string): string {
+  return `compose-draft:v1:${ownerId}:${kind}:${draftId}`;
+}
 
 export type DraftStorage = {
   getItem(key: string): Promise<string | null>;
@@ -136,6 +139,17 @@ async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage,
   const legacyIndexKey = `compose-draft-index:v1:${ownerId}`;
   const keys = parseIndex(await storage.getItem(indexKey), ownerId, 2);
   const legacyKeys = parseIndex(await storage.getItem(legacyIndexKey), ownerId, 1);
+  const legacyPendingKey = `compose-draft-pending:v1:${ownerId}`;
+  const legacyPending = await storage.getItem(legacyPendingKey);
+  const legacyPrefix = `compose-draft:v1:${ownerId}:`;
+  if (legacyPending?.startsWith(legacyPrefix) && !legacyKeys.includes(legacyPending)) {
+    const raw = await storage.getItem(legacyPending);
+    const pendingDraft = raw ? parseComposeDraft(raw, ownerId) : null;
+    if (
+      pendingDraft
+      && legacyPending === legacyComposeDraftKey(ownerId, pendingDraft.kind, pendingDraft.draftId)
+    ) legacyKeys.push(legacyPending);
+  }
   const pendingKey = composeDraftPendingKey(ownerId);
   const pending = await storage.getItem(pendingKey);
   const prefix = `compose-draft:v2:${ownerId}:`;
@@ -153,7 +167,16 @@ async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage,
     const raw = await storage.getItem(key);
     const draft = raw ? parseComposeDraft(raw, ownerId) : null;
     const legacy = key.startsWith(`compose-draft:v1:${ownerId}:`);
-    if (draft && hasRestorableDraftContent(draft)) {
+    const exactKey = draft && legacy
+      ? key === legacyComposeDraftKey(ownerId, draft.kind, draft.draftId)
+      : true;
+    if (draft && exactKey && hasRestorableDraftContent(draft)) {
+      if (legacy) {
+        await saveComposeDraftUnlocked(draft, storage);
+        const migratedKey = composeDraftKey(ownerId, draft.kind, draft.draftId);
+        if (!retained.includes(migratedKey)) retained.push(migratedKey);
+        if (key === legacyPending) await storage.removeItem(legacyPendingKey);
+      }
       if (legacy) legacyRetained.push(key);
       else retained.push(key);
       if (!seenDraftIds.has(draft.draftId)) {
@@ -169,7 +192,7 @@ async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage,
       cleanedInvalid += 1;
     }
   }
-  if (retained.length !== keys.length) {
+  if (retained.length !== keys.length || retained.some((key) => !keys.includes(key))) {
     if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));
     else await storage.removeItem(indexKey);
   }
@@ -532,17 +555,21 @@ export async function commitDraftMedia(
   const nextDraft = { ...previousDraft, media: nextMedia, updatedAt: new Date().toISOString() };
   try {
     await saveComposeDraft(nextDraft, storage);
-    if (!stillAttached()) {
-      await saveComposeDraft(previousDraft, storage);
-      await removeDurableMedia(nextMedia, adapter);
-      throw new Error('Compose account detached');
-    }
   } catch (error) {
-    await removeDurableMedia(nextMedia, adapter).catch(() => {});
+    const raw = await storage.getItem(composeDraftKey(nextDraft.ownerId, nextDraft.kind, nextDraft.draftId))
+      .catch(() => null);
+    const stored = raw ? parseComposeDraft(raw, nextDraft.ownerId) : null;
+    if (stored?.media?.uri !== nextMedia.uri) {
+      await removeDurableMedia(nextMedia, adapter).catch(() => {});
+    }
     throw error;
   }
-  if (previousDraft.media && previousDraft.media.uri !== nextMedia.uri) {
-    await removeDurableMedia(previousDraft.media, adapter);
+  if (!stillAttached()) {
+    // Roll the descriptor/index back first. If rollback fails, keep the new
+    // durable file because the committed descriptor still references it.
+    await saveComposeDraft(previousDraft, storage);
+    await removeDurableMedia(nextMedia, adapter);
+    throw new Error('Compose account detached');
   }
   return nextDraft;
 }
@@ -564,10 +591,12 @@ export async function cleanupOwnerDrafts(ownerId: string, storage: DraftStorage,
     const loaded = await loadComposeDraftsUnlocked(ownerId, storage, adapter);
     for (const draft of loaded.drafts) {
       await removeDurableMedia(draft.media, adapter);
-      await storage.removeItem(composeDraftKey(ownerId, draft.kind, draft.draftId));
+      await clearComposeDraftUnlocked(draft, storage);
     }
     await storage.removeItem(composeDraftIndexKey(ownerId));
     await storage.removeItem(composeDraftPendingKey(ownerId));
+    await storage.removeItem(`compose-draft-index:v1:${ownerId}`);
+    await storage.removeItem(`compose-draft-pending:v1:${ownerId}`);
     await adapter.deleteDirectoryIfExists(`${adapter.documentUri.replace(/\/+$/, '')}/compose-drafts/${ownerId}`);
     return loaded.drafts.length;
   });

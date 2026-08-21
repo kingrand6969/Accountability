@@ -105,6 +105,33 @@ describe('compose draft contract', () => {
     expect(await storage.getItem(legacyKey)).not.toBeNull();
   });
 
+  test('reconciles a valid unindexed V1 pending record into V2 before removing its pointer', async () => {
+    const legacyKey = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const legacyPending = `compose-draft-pending:v1:${OWNER}`;
+    const { showPublicly: _show, visibilityChanged: _changed, ...rollback } = validDraft;
+    const legacy = { ...rollback, version: 1, audience: 'buddies', showOnCard: false };
+    const storage = memoryStorage(new Map([
+      [legacyPending, legacyKey],
+      [legacyKey, JSON.stringify(legacy)],
+    ]));
+
+    expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([validDraft]);
+    expect(await storage.getItem(composeDraftKey(OWNER, 'new', DRAFT))).not.toBeNull();
+    expect(await storage.getItem(legacyPending)).toBeNull();
+  });
+
+  test.each([
+    ['wrong owner', `compose-draft:v1:${DRAFT}:new:${DRAFT}`, JSON.stringify(validDraft)],
+    ['wrong prefix', `compose-draft:v2:${OWNER}:new:${DRAFT}`, JSON.stringify(validDraft)],
+    ['corrupt record', `compose-draft:v1:${OWNER}:new:${DRAFT}`, '{broken'],
+  ])('does not reconcile or remove an unsafe V1 pending pointer: %s', async (_case, pointer, raw) => {
+    const pendingKey = `compose-draft-pending:v1:${OWNER}`;
+    const storage = memoryStorage(new Map([[pendingKey, pointer], [pointer, raw]]));
+    expect(await loadComposeDrafts(OWNER, storage)).toEqual({ drafts: [], cleanedInvalid: 0 });
+    expect(await storage.getItem(pendingKey)).toBe(pointer);
+    expect(await storage.getItem(composeDraftIndexKey(OWNER))).toBeNull();
+  });
+
   test('treats an all-default draft as disposable while preserving real composer work', () => {
     const blankDraft: ComposeDraftV2 = {
       ...validDraft,
@@ -600,6 +627,67 @@ describe('durable media path and transaction', () => {
     await expect(commitDraftMedia({ ...validDraft, media: prior }, next, storage, adapter)).rejects.toThrow('save');
     expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([['delete', next.uri]]);
     expect(calls[0]).toBe('set');
+  });
+
+  test('keeps the durable file when an index crash occurs after its descriptor commit', async () => {
+    const next = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2,
+      sha256: 'a'.repeat(64), kind: 'photo' as const,
+    };
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        if (key === composeDraftIndexKey(OWNER)) throw new Error('index crash');
+        values.set(key, value);
+      },
+      removeItem: async (key: string) => { values.delete(key); },
+    };
+    const adapter = mockAdapter();
+    await expect(commitDraftMedia(validDraft, next, storage, adapter)).rejects.toThrow('index crash');
+    expect(JSON.parse(values.get(composeDraftKey(OWNER, 'new', DRAFT))!)).toMatchObject({ media: next });
+    expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([]);
+  });
+
+  test('rolls back a stale committed descriptor before deleting its durable file', async () => {
+    const next = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2,
+      sha256: 'a'.repeat(64), kind: 'photo' as const,
+    };
+    const values = new Map<string, string>();
+    const storage = memoryStorage(values);
+    const adapter = mockAdapter();
+    await expect(commitDraftMedia(validDraft, next, storage, adapter, () => false))
+      .rejects.toThrow('detached');
+    expect(JSON.parse(values.get(composeDraftKey(OWNER, 'new', DRAFT))!)).toMatchObject({ media: null });
+    expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([['delete', next.uri]]);
+  });
+
+  test('never deletes a committed durable file when descriptor rollback fails', async () => {
+    const next = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2,
+      sha256: 'a'.repeat(64), kind: 'photo' as const,
+    };
+    const values = new Map<string, string>();
+    let descriptorWrites = 0;
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        if (key === composeDraftKey(OWNER, 'new', DRAFT) && ++descriptorWrites === 2) {
+          throw new Error('rollback failed');
+        }
+        values.set(key, value);
+      },
+      removeItem: async (key: string) => { values.delete(key); },
+    };
+    const adapter = mockAdapter();
+    await expect(commitDraftMedia(validDraft, next, storage, adapter, () => false))
+      .rejects.toThrow('rollback failed');
+    expect(JSON.parse(values.get(composeDraftKey(OWNER, 'new', DRAFT))!)).toMatchObject({ media: next });
+    expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([]);
   });
 
   test('persists media null before deleting removed media', async () => {

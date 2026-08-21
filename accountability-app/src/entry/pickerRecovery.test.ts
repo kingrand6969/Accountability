@@ -273,7 +273,7 @@ describe('Compose production binding', () => {
     const end = source.indexOf('async function attachVideoAsset(', start);
     const recoveryPhotoSource = source.slice(start, end);
 
-    expect(recoveryPhotoSource).toContain("makeMediaDurable(asset.uri, extension, mimeType, 'photo')");
+    expect(recoveryPhotoSource).toContain("makeMediaDurable(asset.uri, extension, mimeType, 'photo', lease, isCurrent)");
     expect(recoveryPhotoSource).toContain('setEditorUri(durable.uri)');
     expect(recoveryPhotoSource).not.toMatch(/uploadPost(Image|Video)|createPost/);
   });
