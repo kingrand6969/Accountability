@@ -126,6 +126,17 @@ describe('ProgressShareCard', () => {
     expect(renderer.root.findAllByType(View).some((node) => node.props.testID === 'progress-before-after')).toBe(false);
   });
 
+  test('describes Before and Latest photo meaning and dates in the parent image label', () => {
+    const model = createProgressShareRenderModel(snapshot, draft());
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<ProgressShareCard model={model} />); });
+    mounted.push(renderer);
+
+    const label = renderer.root.findByProps({ testID: 'progress-share-card' }).props.accessibilityLabel as string;
+    expect(label).toMatch(/Before photo.*Jul.*1.*2026/i);
+    expect(label).toMatch(/Latest photo.*Aug.*22.*2026/i);
+  });
+
   test('reports loading/error/ready only for the current render fingerprint and ignores stale image completion', () => {
     const onMediaStateChange = jest.fn();
     const firstModel = createProgressShareRenderModel(snapshot, draft());

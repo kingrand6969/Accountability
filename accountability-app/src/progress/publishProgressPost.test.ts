@@ -10,6 +10,8 @@ import {
   publishProgressPost,
   progressShareSnapshotForDraft,
   clearProgressPublishArtifacts,
+  cancelProgressPublish,
+  validateProgressShareJpeg,
   type ProgressPostDependencies,
 } from './publishProgressPost';
 
@@ -24,6 +26,20 @@ const ownerId = '11111111-1111-4111-8111-111111111111';
 const operationId = '22222222-2222-4222-8222-222222222222';
 const postId = '33333333-3333-4333-8333-333333333333';
 const digest = 'a'.repeat(64);
+
+function jpegBase64(width = 1080, height = 1350, trailingBytes = 0): string {
+  const bytes = [
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    (height >> 8) & 0xff, height & 0xff, (width >> 8) & 0xff, width & 0xff,
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xda, 0x00, 0x0c, 0x03, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00, 0x3f, 0x00,
+    ...Array.from({ length: trailingBytes }, () => 0x01),
+    0xff, 0xd9,
+  ];
+  return Buffer.from(bytes).toString('base64');
+}
 
 const snapshot: ProgressShareSnapshot = Object.freeze({
   ownerId,
@@ -88,14 +104,17 @@ function dependencies(events: string[] = []): ProgressPostDependencies {
     revalidateSources: jest.fn(async () => { events.push('validate'); }),
     captureCard: jest.fn<ProgressPostDependencies['captureCard']>(async (_model, options) => {
       events.push(`capture:${options.width}x${options.height}:${options.format}`);
-      return 'jpeg-base64';
+      return jpegBase64();
     }),
+    digestCapturedImage: jest.fn(async () => digest),
     uploadDerivedImage: jest.fn(async (_base64, ext, op, owner) => {
       events.push(`upload:${ext}:${op}:${owner}`);
       return { mediaRef: 'https://feed.example/derived.jpg', sha256: digest };
     }),
     createPost: jest.fn(async () => { events.push('post'); return postId; }) as ProgressPostDependencies['createPost'],
     markFeedPostPublished: jest.fn((_owner, _post) => { events.push('mark'); }),
+    findExistingPost: jest.fn(async () => null),
+    deleteDerivedImage: jest.fn(async () => {}),
   };
 }
 
@@ -202,7 +221,7 @@ describe('Journey progress Feed publishing', () => {
       'validate', 'owner', `upload:jpg:${operationId}:${ownerId}`, 'owner',
       'validate', 'owner', 'post', 'owner', 'mark',
     ]);
-    expect(deps.uploadDerivedImage).toHaveBeenCalledWith('jpeg-base64', 'jpg', operationId, ownerId);
+    expect(deps.uploadDerivedImage).toHaveBeenCalledWith(jpegBase64(), 'jpg', operationId, ownerId);
     expect(deps.createPost).toHaveBeenCalledWith(
       'Small steps, repeated.',
       'https://feed.example/derived.jpg',
@@ -248,7 +267,7 @@ describe('Journey progress Feed publishing', () => {
     const deps = dependencies();
     (deps.captureCard as jest.MockedFunction<ProgressPostDependencies['captureCard']>).mockImplementationOnce(async () => {
       await pending;
-      return 'jpeg-base64';
+      return jpegBase64();
     });
     const first = publishProgressPost({ snapshot, draft: draft() }, deps);
     const second = publishProgressPost({ snapshot, draft: draft() }, deps);
@@ -263,7 +282,7 @@ describe('Journey progress Feed publishing', () => {
       .mockResolvedValueOnce(postId);
     await expect(publishProgressPost({ snapshot, draft: draft() }, retryDeps)).rejects.toThrow('lost response');
     await expect(publishProgressPost({ snapshot, draft: draft() }, retryDeps)).resolves.toBe(postId);
-    expect(retryDeps.uploadDerivedImage).toHaveBeenNthCalledWith(1, 'jpeg-base64', 'jpg', operationId, ownerId);
+    expect(retryDeps.uploadDerivedImage).toHaveBeenNthCalledWith(1, jpegBase64(), 'jpg', operationId, ownerId);
     expect(retryDeps.uploadDerivedImage).toHaveBeenCalledTimes(1);
     expect(jest.mocked(retryDeps.createPost).mock.calls[0]).toEqual(jest.mocked(retryDeps.createPost).mock.calls[1]);
   });
@@ -274,8 +293,8 @@ describe('Journey progress Feed publishing', () => {
       .mockResolvedValueOnce({ mediaRef: 'https://feed.example/original.jpg', sha256: 'a'.repeat(64) })
       .mockResolvedValueOnce({ mediaRef: 'https://feed.example/changed.jpg', sha256: 'b'.repeat(64) });
     jest.mocked(deps.captureCard)
-      .mockResolvedValueOnce('first-capture')
-      .mockResolvedValueOnce('changed-capture');
+      .mockResolvedValueOnce(jpegBase64())
+      .mockResolvedValueOnce(jpegBase64(1080, 1350, 1));
     jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('lost response')).mockResolvedValueOnce(postId);
 
     await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('lost response');
@@ -308,12 +327,96 @@ describe('Journey progress Feed publishing', () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const deps = dependencies();
-    jest.mocked(deps.captureCard).mockImplementationOnce(async () => { await pending; return 'jpeg-base64'; });
+    jest.mocked(deps.captureCard).mockImplementationOnce(async () => { await pending; return jpegBase64(); });
     const first = publishProgressPost({ snapshot, draft: draft() }, deps);
     const changedRetry = publishProgressPost({ snapshot, draft: draft({ caption: 'Changed after review' }) }, deps);
     await expect(changedRetry).rejects.toThrow('changed');
     release();
     await expect(first).resolves.toBe(postId);
     expect(deps.captureCard).toHaveBeenCalledTimes(1);
+  });
+
+  test('validates a structurally complete JPEG and rejects empty, malformed, wrong-size, and oversized captures', () => {
+    expect(validateProgressShareJpeg(jpegBase64())).toMatchObject({ width: 1080, height: 1350 });
+    for (const invalid of [
+      '',
+      Buffer.from('not-jpeg').toString('base64'),
+      jpegBase64(1080, 1080),
+      Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64'),
+      Buffer.concat([Buffer.from(jpegBase64(), 'base64'), Buffer.alloc(4 * 1024 * 1024)]).toString('base64'),
+    ]) expect(() => validateProgressShareJpeg(invalid)).toThrow(/JPEG|1080|1350|large|empty/i);
+  });
+
+  test('caches validated captured bytes before upload and retries an ambiguous upload without recapturing', async () => {
+    const deps = dependencies();
+    const firstBytes = jpegBase64();
+    jest.mocked(deps.captureCard)
+      .mockResolvedValueOnce(firstBytes)
+      .mockResolvedValueOnce(jpegBase64(1080, 1350, 2));
+    jest.mocked(deps.uploadDerivedImage)
+      .mockRejectedValueOnce(new Error('upload response lost'))
+      .mockResolvedValueOnce({ mediaRef: 'https://feed.example/reconciled.jpg', sha256: digest });
+
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('upload response lost');
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).resolves.toBe(postId);
+
+    expect(deps.captureCard).toHaveBeenCalledTimes(1);
+    expect(deps.digestCapturedImage).toHaveBeenCalledTimes(1);
+    expect(deps.uploadDerivedImage).toHaveBeenNthCalledWith(1, firstBytes, 'jpg', operationId, ownerId);
+    expect(deps.uploadDerivedImage).toHaveBeenNthCalledWith(2, firstBytes, 'jpg', operationId, ownerId);
+  });
+
+  test('cancel reconciles a committed post before deleting an uploaded derivative', async () => {
+    const deps = dependencies();
+    jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('post response lost'));
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('post response lost');
+    jest.mocked(deps.findExistingPost).mockResolvedValueOnce(postId);
+
+    await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).resolves.toEqual({ status: 'published', postId });
+    expect(deps.findExistingPost).toHaveBeenCalledTimes(1);
+    expect(deps.deleteDerivedImage).not.toHaveBeenCalled();
+    expect(deps.markFeedPostPublished).toHaveBeenCalledWith(ownerId, postId);
+  });
+
+  test('cancel deletes only the exact owner and operation-bound derivative when no post committed', async () => {
+    const events: string[] = [];
+    const deps = dependencies(events);
+    jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('post failed'));
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('post failed');
+    jest.mocked(deps.findExistingPost).mockImplementationOnce(async () => { events.push('reconcile'); return null; });
+    jest.mocked(deps.deleteDerivedImage).mockImplementationOnce(async () => { events.push('delete'); });
+
+    await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).resolves.toEqual({ status: 'cancelled' });
+    expect(events.indexOf('reconcile')).toBeLessThan(events.indexOf('delete'));
+    expect(events.at(-1)).toBe('owner');
+    expect(deps.deleteDerivedImage).toHaveBeenCalledWith(
+      'https://feed.example/derived.jpg', digest, operationId, ownerId,
+    );
+  });
+
+  test('cancel retains uploaded recovery state when deletion is ambiguous and retries cleanup', async () => {
+    const deps = dependencies();
+    jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('post failed'));
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('post failed');
+    jest.mocked(deps.deleteDerivedImage)
+      .mockRejectedValueOnce(new Error('delete response lost'))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).rejects.toThrow(/cleanup|cancel/i);
+    await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).resolves.toEqual({ status: 'cancelled' });
+    expect(deps.findExistingPost).toHaveBeenCalledTimes(2);
+    expect(deps.deleteDerivedImage).toHaveBeenCalledTimes(2);
+  });
+
+  test('does not forget an uploaded derivative when the reviewed draft is replaced', async () => {
+    const deps = dependencies();
+    jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('post failed'));
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('post failed');
+
+    await expect(publishProgressPost({ snapshot, draft: draft({ caption: 'Replacement' }) }, deps)).rejects.toThrow('changed');
+    await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).resolves.toEqual({ status: 'cancelled' });
+    expect(deps.deleteDerivedImage).toHaveBeenCalledWith(
+      'https://feed.example/derived.jpg', digest, operationId, ownerId,
+    );
   });
 });

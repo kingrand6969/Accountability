@@ -1,7 +1,7 @@
 import { decode } from 'base64-arraybuffer';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
-import { uploadToR2WithDigest, type R2UploadedMedia } from '../lib/r2';
+import { isExpectedDigestMediaRef, uploadToR2WithDigest, type R2UploadedMedia } from '../lib/r2';
 import {
   classifyUploadFailure,
   estimateBase64Bytes,
@@ -37,6 +37,53 @@ export async function uploadPostImageForOwner(
   expectedOwnerId?: string,
 ): Promise<string> {
   return (await uploadPostImageResult(base64, ext, operationId, expectedOwnerId)).mediaRef;
+}
+
+const POST_OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+/** Deletes only the derivative bound to this owner, operation, and digest. */
+export async function deletePostImageForOperation(
+  mediaRef: string,
+  sha256: string,
+  operationId: string,
+  expectedOwnerId: string,
+): Promise<void> {
+  if (!POST_OPERATION_ID.test(operationId) || !SHA256_HEX.test(sha256)) {
+    throw new Error('Invalid post image cleanup identity.');
+  }
+  const { data, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (data.user?.id !== expectedOwnerId) throw new Error('Account changed.');
+
+  if (mediaRef.startsWith('r2://')) {
+    if (!isExpectedDigestMediaRef(mediaRef, 'post', sha256, 'image/jpeg') ||
+      !mediaRef.startsWith(`r2://post-images/${expectedOwnerId}/`)) {
+      throw new Error('The post image reference does not match this cleanup operation.');
+    }
+    const { data: signed, error } = await supabase.functions.invoke('r2-sign', { body: {
+      action: 'delete', kind: 'post', ext: 'jpg', contentType: 'image/jpeg',
+      sha256, operationId, expectedOwnerId, mediaRef,
+    } });
+    if (error) throw error;
+    const response = (signed ?? {}) as { deleteUrl?: string; mediaRef?: string; deleted?: boolean };
+    if (response.mediaRef !== mediaRef || (!response.deleteUrl && response.deleted !== true)) {
+      throw new Error('The cleanup service returned a mismatched image reference.');
+    }
+    if (response.deleted === true) return;
+    const deleteUrl = response.deleteUrl;
+    if (!deleteUrl) throw new Error('The cleanup service did not return a delete URL.');
+    const deleted = await fetch(deleteUrl, { method: 'DELETE' });
+    if (!deleted.ok && deleted.status !== 404) throw new Error(`Post image cleanup failed (${deleted.status}).`);
+    return;
+  }
+
+  const path = postImagePath(expectedOwnerId, operationId, 'jpg', sha256);
+  const bucket = supabase.storage.from('post-images');
+  const expectedPublicUrl = bucket.getPublicUrl(path).data.publicUrl;
+  if (mediaRef !== expectedPublicUrl) throw new Error('The post image reference does not match this cleanup operation.');
+  const { error } = await bucket.remove([path]);
+  if (error) throw error;
 }
 
 async function uploadPostImageResult(

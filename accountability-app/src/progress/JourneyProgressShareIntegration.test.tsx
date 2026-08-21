@@ -17,6 +17,7 @@ const mockGetInsights = jest.fn<(period: string, owner: string) => Promise<Recor
 const mockProgressSnapshotInput = jest.fn<(...args: unknown[]) => unknown>();
 const mockPrepare = jest.fn<() => Promise<ProgressShareSnapshot>>();
 const mockPublish = jest.fn<(...args: unknown[]) => Promise<string>>();
+const mockCancelPublish = jest.fn<(...args: unknown[]) => Promise<{ status: 'cancelled' } | { status: 'published'; postId: string }>>();
 const mockClearArtifacts = jest.fn();
 const mockCaptureRef = jest.fn<(ref: unknown, options: unknown) => Promise<string>>().mockResolvedValue('jpeg-base64');
 let mockLastStudioProps: Record<string, unknown> | null = null;
@@ -44,6 +45,7 @@ jest.mock('./api', () => ({
 jest.mock('../insights/api', () => ({ getInsights: (period: string, owner: string) => mockGetInsights(period, owner) }));
 jest.mock('react-native-view-shot', () => ({ captureRef: (ref: unknown, options: unknown) => mockCaptureRef(ref, options) }));
 jest.mock('./publishProgressPost', () => ({
+  cancelProgressPublish: (input: unknown, dependencies: unknown) => mockCancelPublish(input, dependencies),
   clearProgressPublishArtifacts: (...args: unknown[]) => mockClearArtifacts(...args),
   progressSnapshotInput: (owner: unknown, period: unknown, openedAt: unknown, insights: unknown, latest: unknown, photos: unknown) => mockProgressSnapshotInput(owner, period, openedAt, insights, latest, photos),
   prepareProgressShareSnapshot: (..._args: unknown[]) => mockPrepare(),
@@ -104,6 +106,7 @@ describe('Journey Progress Share Studio integration', () => {
     mockPrepare.mockResolvedValue(snapshot);
     mockProgressSnapshotInput.mockImplementation((...args) => ({ args }));
     mockPublish.mockResolvedValue('post-id');
+    mockCancelPublish.mockResolvedValue({ status: 'cancelled' });
     mockCaptureRef.mockResolvedValue('jpeg-base64');
   });
 
@@ -208,14 +211,30 @@ describe('Journey Progress Share Studio integration', () => {
     expect(mockClearArtifacts).toHaveBeenCalledWith('owner-a');
   });
 
-  test('explicit cancel clears an ambiguous owner-bound operation artifact', async () => {
+  test('explicit cancel reconciles and cleans an ambiguous owner-bound operation artifact', async () => {
     mockPublish.mockRejectedValueOnce(new Error('lost response'));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(<Route />); mounted.push(renderer); });
     await flush();
     await act(async () => { await renderer.root.findByProps({ accessibilityLabel: 'Share progress' }).props.onPress(); });
     await expect(renderer.root.findByProps({ accessibilityLabel: 'Mock publish progress' }).props.onPress()).rejects.toThrow('lost response');
-    act(() => (mockLastStudioProps!.onCancel as () => void)());
-    expect(mockClearArtifacts).toHaveBeenCalledWith('owner-a', '22222222-2222-4222-8222-222222222222');
+    await act(async () => { await (mockLastStudioProps!.onCancel as () => Promise<void>)(); });
+    expect(mockCancelPublish).toHaveBeenCalledWith({ snapshot, draft: expect.objectContaining({
+      ownerId: 'owner-a', operationId: '22222222-2222-4222-8222-222222222222',
+    }) }, undefined);
+    expect(mockClearArtifacts).not.toHaveBeenCalledWith('owner-a', '22222222-2222-4222-8222-222222222222');
+  });
+
+  test('keeps the Share Studio open with a recovery action when cancel cleanup is ambiguous', async () => {
+    mockPublish.mockRejectedValueOnce(new Error('lost response'));
+    mockCancelPublish.mockRejectedValueOnce(new Error('Cancel cleanup could not be confirmed.'));
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(<Route />); mounted.push(renderer); });
+    await flush();
+    await act(async () => { await renderer.root.findByProps({ accessibilityLabel: 'Share progress' }).props.onPress(); });
+    await expect(renderer.root.findByProps({ accessibilityLabel: 'Mock publish progress' }).props.onPress()).rejects.toThrow('lost response');
+    await act(async () => { await (mockLastStudioProps!.onCancel as () => Promise<void>)(); });
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Journey Share Studio' }).length).toBeGreaterThan(0);
+    expect(mockCancelPublish).toHaveBeenCalledTimes(1);
   });
 });

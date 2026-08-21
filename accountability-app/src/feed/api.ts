@@ -520,7 +520,7 @@ function matchesStandardPostOperation(
     && (row.activity_id ?? null) === expected.activity_id;
 }
 
-async function matchingStandardPostIdForOperation(
+async function matchingStandardPostPayloadId(
   userId: string,
   operationId: string,
   expected: StandardPostOperationPayload,
@@ -537,6 +537,35 @@ async function matchingStandardPostIdForOperation(
     throw new Error('This draft changed after the post was created. Refresh before posting again.');
   }
   return data.id as string;
+}
+
+/** Reconciles an exact standard-post payload without creating a new row. */
+export async function findMatchingStandardPostIdForOperation(input: {
+  expectedOwnerId: string;
+  operationId: string;
+  body: string;
+  imageUrl: string | null;
+  showPublicly: boolean;
+  postType: PostType;
+  shareData: Record<string, unknown>;
+}): Promise<string | null> {
+  if (!POST_OPERATION_ID.test(input.operationId)) throw new Error('Invalid post operation id.');
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  if (me !== input.expectedOwnerId) throw new Error('Account changed.');
+  const visibility = postVisibility(input.showPublicly);
+  return matchingStandardPostPayloadId(input.expectedOwnerId, input.operationId, {
+    body: input.body,
+    image_url: input.imageUrl,
+    group_id: null,
+    page_id: null,
+    event_id: null,
+    show_on_card: visibility.showOnCard,
+    audience: visibility.audience,
+    post_type: input.postType,
+    share_data: input.shareData,
+    activity_id: null,
+  });
 }
 
 const VERIFIED_RUN_SHARE_KEYS = [
@@ -739,7 +768,7 @@ export async function createPost(
     return postId;
   }
   const result = await executeIdempotentPost({
-    findExisting: () => matchingStandardPostIdForOperation(ownerId, operationId, postPayload),
+    findExisting: () => matchingStandardPostPayloadId(ownerId, operationId, postPayload),
     insert,
   });
   if (await currentUserId() !== ownerId) throw new Error('Account changed.');

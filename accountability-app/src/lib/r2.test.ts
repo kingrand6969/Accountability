@@ -64,6 +64,7 @@ describe('immutable R2 uploads', () => {
         'Content-Length': '3',
         'If-None-Match': '*',
         'x-amz-content-sha256': sha256,
+        'x-amz-meta-operation-id': operationId,
       }),
     }));
   });

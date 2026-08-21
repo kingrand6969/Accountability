@@ -154,6 +154,7 @@ async function uploadArrayBufferToR2(
         'Content-Length': String(bytes.byteLength),
         'x-amz-content-sha256': sha256,
         ...(options.operationId ? { 'If-None-Match': '*' } : {}),
+        ...(options.operationId ? { 'x-amz-meta-operation-id': options.operationId } : {}),
         'Cache-Control': 'private, max-age=0, no-store',
       },
       body: bytes,

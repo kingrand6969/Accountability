@@ -100,6 +100,10 @@ export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
   const sharePhotoUri = model.sharePhotoUri;
   const beforePhotoUri = model.beforePhoto?.uri ?? null;
   const latestPhotoUri = model.latestPhoto?.uri ?? null;
+  const photoDescription = [
+    model.beforePhoto ? `Before photo, ${formatProgressPhotoDate(model.beforePhoto.date)}` : null,
+    model.latestPhoto ? `Latest photo, ${formatProgressPhotoDate(model.latestPhoto.date)}` : null,
+  ].filter(Boolean).join('. ');
   const expectedMedia = useMemo(() => {
     const entries: [string, string][] = [];
     if (sharePhotoUri) entries.push(['share', sharePhotoUri]);
@@ -141,7 +145,7 @@ export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
     <View
       testID="progress-share-card"
       accessibilityRole="image"
-      accessibilityLabel={`${model.periodLabel.toLowerCase()}: ${model.metrics.map((metric) => `${metric.label} ${metric.value}`).join(', ')}`}
+      accessibilityLabel={`${model.periodLabel.toLowerCase()}: ${model.metrics.map((metric) => `${metric.label} ${metric.value}`).join(', ')}${photoDescription ? `. ${photoDescription}` : ''}`}
       style={[styles.card, { aspectRatio: PROGRESS_SHARE_ASPECT_RATIO }]}
     >
       {model.sharePhotoUri ? (
@@ -206,10 +210,14 @@ function ProgressImage({ label, slot, photo, fingerprint, onLoad, onError, style
       />
       <View style={styles.photoLabel}>
         <Text maxFontSizeMultiplier={1.2} style={styles.photoLabelText}>{label.toUpperCase()}</Text>
-        <Text maxFontSizeMultiplier={1.2} style={styles.photoDateText}>{new Date(photo.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.photoDateText}>{formatProgressPhotoDate(photo.date)}</Text>
       </View>
     </View>
   );
+}
+
+function formatProgressPhotoDate(value: string): string {
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({

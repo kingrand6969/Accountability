@@ -94,7 +94,8 @@ Deno.serve(async (req) => {
     if (authErr || !user) return json({ error: 'unauthorized' }, 401);
 
     // 2) Validate the request.
-    const { kind, ext, bytes, contentType, sha256, operationId, expectedOwnerId } = (await req.json().catch(() => ({}))) as {
+    const { action, kind, ext, bytes, contentType, sha256, operationId, expectedOwnerId, mediaRef } = (await req.json().catch(() => ({}))) as {
+      action?: 'delete';
       kind?: string;
       ext?: string;
       bytes?: number;
@@ -102,17 +103,13 @@ Deno.serve(async (req) => {
       sha256?: string;
       operationId?: string;
       expectedOwnerId?: string;
+      mediaRef?: string;
     };
     if (expectedOwnerId && expectedOwnerId !== user.id) {
       return json({ error: 'account changed' }, 403);
     }
     const cfg = KINDS[kind ?? ''];
     if (!cfg) return json({ error: 'invalid kind' }, 400);
-    // REQUIRE size + type (don't let a client omit them to skip the checks).
-    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) {
-      return json({ error: 'bytes required' }, 400);
-    }
-    if (bytes > MAX_BYTES[kind!]) return json({ error: 'file too large' }, 413);
     if (!contentType || !ALLOWED_TYPES.has(contentType)) {
       return json({ error: 'unsupported file type' }, 415);
     }
@@ -143,6 +140,41 @@ Deno.serve(async (req) => {
     if (operationId && (!['post', 'video', 'voice', 'share'].includes(kind!) || !OPERATION_ID.test(operationId))) {
       return json({ error: 'invalid operation id' }, 400);
     }
+
+    if (action === 'delete') {
+      if (kind !== 'post' || expectedOwnerId !== user.id || !operationId || !OPERATION_ID.test(operationId)) {
+        return json({ error: 'invalid cleanup identity' }, 400);
+      }
+      const filename = digestObjectFilename(sha256, safeExt);
+      const key = `${cfg.folder}/${user.id}/${filename}`;
+      const expectedMediaRef = `r2://${key}`;
+      if (mediaRef !== expectedMediaRef) return json({ error: 'media reference mismatch' }, 400);
+      const aws = new AwsClient({
+        accessKeyId: Deno.env.get('R2_ACCESS_KEY_ID')!,
+        secretAccessKey: Deno.env.get('R2_SECRET_ACCESS_KEY')!,
+        service: 's3',
+        region: 'auto',
+      });
+      const endpoint = `https://${Deno.env.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com/${Deno.env.get(
+        'R2_BUCKET',
+      )}/${key}`;
+      const existing = await aws.fetch(endpoint, { method: 'HEAD' });
+      if (existing.status === 404) return json({ deleted: true, mediaRef: expectedMediaRef });
+      if (!existing.ok) return json({ error: 'could not verify cleanup object' }, 503);
+      if (existing.headers.get('x-amz-meta-operation-id') !== operationId) {
+        return json({ error: 'cleanup operation mismatch' }, 409);
+      }
+      const signed = await aws.sign(new Request(`${endpoint}?X-Amz-Expires=300`, { method: 'DELETE' }), {
+        aws: { signQuery: true, allHeaders: true },
+      });
+      return json({ deleteUrl: signed.url, mediaRef: expectedMediaRef });
+    }
+
+    // REQUIRE size for uploads (don't let a client omit it to skip the checks).
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) {
+      return json({ error: 'bytes required' }, 400);
+    }
+    if (bytes > MAX_BYTES[kind!]) return json({ error: 'file too large' }, 413);
 
     // 3) Rate-limit: log this sign; a per-user BEFORE-INSERT trigger (migration
     //    0057) rejects the write once the hourly cap is hit → we return 429
@@ -179,6 +211,7 @@ Deno.serve(async (req) => {
       'content-length': String(bytes),
       'x-amz-content-sha256': sha256,
       ...(operationId ? { 'if-none-match': '*' } : {}),
+      ...(operationId ? { 'x-amz-meta-operation-id': operationId } : {}),
     };
     const signed = await aws.sign(
       new Request(`${endpoint}?X-Amz-Expires=300`, {

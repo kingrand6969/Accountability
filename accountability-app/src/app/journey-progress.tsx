@@ -12,7 +12,7 @@ import { calculateBmi } from '../progress/bmi';
 import { BodyCheckInSheet } from '../progress/BodyCheckInSheet';
 import { ProgressPhotoVault } from '../progress/ProgressPhotoVault';
 import { createProgressShareRenderModel, progressShareRenderModelFingerprint, ProgressShareCard, PROGRESS_SHARE_ASPECT_RATIO, type ProgressShareMediaState, type ProgressShareSnapshot } from '../progress/ProgressShareCard';
-import { clearProgressPublishArtifacts, prepareProgressShareSnapshot, progressSnapshotInput, publishProgressPost } from '../progress/publishProgressPost';
+import { cancelProgressPublish, clearProgressPublishArtifacts, prepareProgressShareSnapshot, progressSnapshotInput, publishProgressPost } from '../progress/publishProgressPost';
 import type { AddMeasurementInput, BodyMeasurement, ProgressPhoto } from '../progress/types';
 import { WeightTrendChart, type TrendPeriod } from '../progress/WeightTrendChart';
 import { ShareStudio, type ShareStudioResult, type ShareStudioPreviewState } from '../share/ShareStudio';
@@ -79,7 +79,7 @@ export default function JourneyProgress() {
   const sharePrepareLeaseRef = useRef<symbol | null>(null);
   const shareCardRef = useRef<View | null>(null);
   const mountedSharePreviewRef = useRef<MountedSharePreview | null>(null);
-  const shareOperationRef = useRef<{ ownerId: string; operationId: string } | null>(null);
+  const shareOperationRef = useRef<{ snapshot: ProgressShareSnapshot; draft: ShareStudioResult } | null>(null);
   const previousOwnerRef = useRef(ownerId);
   const [previewReadiness, setPreviewReadiness] = useState<(ProgressShareMediaState & { ownerId: string; ownerToken: symbol }) | null>(null);
   const feedShare = useMemo(() => feedShareAvailability(Platform.OS), []);
@@ -227,9 +227,22 @@ export default function JourneyProgress() {
     }
   };
 
-  const closeShareStudio = () => {
+  const closeShareStudio = async () => {
     const operation = shareOperationRef.current;
-    if (operation) clearProgressPublishArtifacts(operation.ownerId, operation.operationId);
+    if (operation) {
+      try {
+        const result = await cancelProgressPublish(operation);
+        if (result.status === 'published') {
+          Alert.alert('Shared to your feed', 'Your progress card was already posted and has been restored.');
+        }
+      } catch {
+        Alert.alert(
+          'Couldn’t finish cancelling',
+          'We kept the recovery action. Tap cancel again to confirm the post or remove its shared image.',
+        );
+        return;
+      }
+    }
     shareOperationRef.current = null;
     sharePrepareLeaseRef.current = null;
     mountedSharePreviewRef.current = null;
@@ -244,7 +257,7 @@ export default function JourneyProgress() {
     if (!active || active.ownerId !== ownerRef.current || active.ownerToken !== ownerToken) {
       throw new Error('Account changed.');
     }
-    shareOperationRef.current = { ownerId: active.ownerId, operationId: draft.operationId };
+    shareOperationRef.current = { snapshot: active.snapshot, draft };
     await publishProgressPost({ snapshot: active.snapshot, draft }, {
       captureCard: async (model, options) => {
         const fingerprint = progressShareRenderModelFingerprint(model);
