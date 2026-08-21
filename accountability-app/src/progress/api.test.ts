@@ -15,8 +15,11 @@ jest.mock('expo-crypto', () => ({ randomUUID: jest.fn() }));
 const OWNER = '11111111-1111-4111-8111-111111111111';
 const OTHER_OWNER = '22222222-2222-4222-8222-222222222222';
 const OPERATION = '33333333-3333-4333-8333-333333333333';
+const OTHER_OPERATION = '44444444-4444-4444-8444-444444444444';
+const ALPHA_OPERATION = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-type Response = { data: unknown; error: unknown };
+type Response = { data: unknown; error: unknown; status?: number };
+type AuthResponse = { owner: string | null; error?: unknown };
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -28,6 +31,7 @@ function deferred<T>() {
 
 function fixture(options: {
   owners?: (string | null)[];
+  authResponses?: AuthResponse[];
   listMeasurements?: Response;
   insertedMeasurement?: Response;
   listPhotos?: Response;
@@ -37,18 +41,26 @@ function fixture(options: {
   deletedPhoto?: Response;
   upload?: Response | Promise<Response>;
   remove?: Response | Promise<Response>;
+  uploadResponses?: (Response | Promise<Response>)[];
+  photoResponses?: Response[];
 } = {}) {
   const events: string[] = [];
-  const owners = [...(options.owners ?? [OWNER])];
-  let lastOwner = owners[owners.length - 1] ?? null;
+  const authResponses: AuthResponse[] = [
+    ...(options.authResponses ?? (options.owners ?? [OWNER]).map((owner) => ({ owner }))),
+  ];
+  let lastAuth: AuthResponse = authResponses[authResponses.length - 1] ?? { owner: null };
   const getUser = jest.fn(async () => {
-    if (owners.length > 0) lastOwner = owners.shift() ?? null;
-    events.push(`auth:${lastOwner ?? 'signed-out'}`);
-    return { data: { user: lastOwner ? { id: lastOwner } : null }, error: null };
+    if (authResponses.length > 0) lastAuth = authResponses.shift() ?? { owner: null };
+    events.push(`auth:${lastAuth.owner ?? 'signed-out'}`);
+    return {
+      data: { user: lastAuth.owner ? { id: lastAuth.owner } : null },
+      error: lastAuth.error ?? null,
+    };
   });
+  const uploadResponses = [...(options.uploadResponses ?? [])];
   const upload = jest.fn(async () => {
     events.push('upload');
-    return await (options.upload ?? { data: null, error: null });
+    return await (uploadResponses.shift() ?? options.upload ?? { data: null, error: null });
   });
   const remove = jest.fn(async () => {
     events.push('remove');
@@ -61,6 +73,7 @@ function fixture(options: {
   const photoExisting = options.existingPhoto ?? { data: null, error: null };
   const photoInsert = options.insertedPhoto ?? { data: null, error: null };
   const photoDelete = options.deletedPhoto ?? { data: null, error: null };
+  const photoResponses = [...(options.photoResponses ?? [])];
 
   const calls = {
     selects: [] as string[],
@@ -132,6 +145,12 @@ function fixture(options: {
       return orderedList(measurementList);
     }
     if (table === 'progress_photos') {
+      if (options.photoResponses !== undefined) {
+        return singleWrite(
+          photoResponses.shift() ?? { data: null, error: null },
+          'delete',
+        );
+      }
       if (options.deletedPhoto !== undefined) return singleWrite(photoDelete, 'delete');
       if (options.insertedPhoto !== undefined) {
         const call = photoCalls;
@@ -223,6 +242,18 @@ describe('measurement APIs', () => {
     );
   });
 
+  test('account change wins over a read error that completes for the previous owner', async () => {
+    const queryError = new Error('query failed');
+    const f = fixture({
+      owners: [OWNER, OTHER_OWNER],
+      listMeasurements: { data: null, error: queryError },
+    });
+
+    await expect(listMeasurements(OWNER, 52, f.deps)).rejects.toThrow(
+      'Account changed.',
+    );
+  });
+
   test('validates with BMI bounds, inserts the expected owner, and returns the confirmed row', async () => {
     const invalid = fixture({ insertedMeasurement: { data: null, error: null } });
     await expect(addMeasurement({ recordedAt: '2026-08-20T10:00:00.000Z', weightKg: 19, heightCm: 175 }, OWNER, invalid.deps)).rejects.toThrow(
@@ -247,10 +278,10 @@ describe('measurement APIs', () => {
 describe('progress photo APIs', () => {
   test('lists owner-bound photos in deterministic order and maps nullable numeric weight', async () => {
     const f = fixture({
-      listPhotos: { data: [{ id: 'p1', user_id: OWNER, storage_path: `${OWNER}/opaque.jpg`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: null }], error: null },
+      listPhotos: { data: [{ id: 'p1', user_id: OWNER, storage_path: `${OWNER}/${OPERATION}.jpg`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: null }], error: null },
     });
     await expect(listProgressPhotos(OWNER, f.deps)).resolves.toEqual([
-      { id: 'p1', storagePath: `${OWNER}/opaque.jpg`, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null },
+      { id: 'p1', storagePath: `${OWNER}/${OPERATION}.jpg`, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null },
     ]);
     expect(f.calls.selects).toContain('id,user_id,storage_path,captured_at,weight_kg');
     expect(f.calls.equals).toContainEqual(['user_id', OWNER]);
@@ -258,6 +289,19 @@ describe('progress photo APIs', () => {
       ['captured_at', { ascending: false }],
       ['id', { ascending: false }],
     ]);
+  });
+
+  test('fails closed when a stored photo path is not canonical', async () => {
+    const f = fixture({
+      listPhotos: {
+        data: [{ id: 'p1', user_id: OWNER, storage_path: `${OWNER}/${OPERATION}.png`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: null }],
+        error: null,
+      },
+    });
+
+    await expect(listProgressPhotos(OWNER, f.deps)).rejects.toThrow(
+      'Progress data could not be verified.',
+    );
   });
 
   test('uploads a local image to an opaque owner path before inserting its row', async () => {
@@ -287,6 +331,30 @@ describe('progress photo APIs', () => {
     await expect(saving).rejects.toThrow('Account changed.');
     expect(f.calls.inserts).toEqual([]);
     expect(f.remove).not.toHaveBeenCalled();
+  });
+
+  test('account change wins when upload fails after the active account switches', async () => {
+    const uploadError = new Error('upload failed');
+    const f = fixture({
+      owners: [OWNER, OWNER, OWNER, OTHER_OWNER],
+      existingPhoto: { data: null, error: null },
+      upload: { data: null, error: uploadError },
+    });
+
+    await expect(saveProgressPhoto({ localUri: 'file:///photo.jpg', capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null }, OWNER, OPERATION, f.deps)).rejects.toThrow(
+      'Account changed.',
+    );
+  });
+
+  test('never treats an unrelated upload conflict as an existing operation object', async () => {
+    const uploadError = { statusCode: '409', message: 'Bucket quota conflict' };
+    const f = fixture({
+      existingPhoto: { data: null, error: null },
+      upload: { data: null, error: uploadError },
+    });
+
+    await expect(saveProgressPhoto({ localUri: 'file:///photo.jpg', capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null }, OWNER, OPERATION, f.deps)).rejects.toBe(uploadError);
+    expect(f.calls.inserts).toEqual([]);
   });
 
   test('removes only its own object when insert definitely failed and confirmation proves no row', async () => {
@@ -329,12 +397,146 @@ describe('progress photo APIs', () => {
     expect(f.remove).not.toHaveBeenCalled();
   });
 
+  test('account change wins when failed-insert confirmation also fails after a switch', async () => {
+    const f = fixture({
+      owners: [OWNER, OWNER, OWNER, OWNER, OWNER, OTHER_OWNER],
+      photoResponses: [
+        { data: null, error: null },
+        { data: null, error: new Error('insert response lost') },
+        { data: null, error: new Error('confirmation failed') },
+      ],
+    });
+
+    await expect(saveProgressPhoto({ localUri: 'file:///photo.jpg', capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null }, OWNER, OPERATION, f.deps)).rejects.toThrow(
+      'Account changed.',
+    );
+    expect(f.remove).not.toHaveBeenCalled();
+  });
+
+  test('retries an ambiguous operation by accepting only an existing-object conflict and inserting metadata', async () => {
+    const insertError = new Error('insert response lost');
+    const row = { id: 'p-retry', user_id: OWNER, storage_path: `${OWNER}/${OPERATION}.jpg`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: null };
+    const f = fixture({
+      photoResponses: [
+        { data: null, error: null },
+        { data: null, error: insertError },
+        { data: null, error: null },
+        { data: null, error: null },
+        { data: row, error: null },
+      ],
+      uploadResponses: [
+        { data: null, error: null },
+        { data: null, error: { statusCode: '409', message: 'The resource already exists' } },
+      ],
+    });
+    const input = { localUri: 'file:///photo.jpg', capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null } as const;
+
+    await expect(saveProgressPhoto(input, OWNER, OPERATION, f.deps)).rejects.toBe(insertError);
+    await expect(saveProgressPhoto(input, OWNER, OPERATION, f.deps)).resolves.toEqual({
+      id: 'p-retry', storagePath: `${OWNER}/${OPERATION}.jpg`, capturedAt: input.capturedAt, weightKg: null,
+    });
+    expect(f.upload).toHaveBeenCalledTimes(2);
+    expect(f.calls.inserts).toHaveLength(2);
+  });
+
+  test('returns a confirmed same-operation row on replay without uploading again', async () => {
+    const row = { id: 'p-confirmed', user_id: OWNER, storage_path: `${OWNER}/${OPERATION}.jpg`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: '80' };
+    const f = fixture({ photoResponses: [{ data: row, error: null }] });
+
+    await expect(saveProgressPhoto({ localUri: 'file:///photo.jpg', capturedAt: row.captured_at, weightKg: 80 }, OWNER, OPERATION, f.deps)).resolves.toEqual({
+      id: 'p-confirmed', storagePath: row.storage_path, capturedAt: row.captured_at, weightKg: 80,
+    });
+    expect(f.upload).not.toHaveBeenCalled();
+    expect(f.calls.inserts).toEqual([]);
+  });
+
   test('deletes confirmed owner metadata before storage and stops on an account switch', async () => {
     const photo = { id: 'p1', storagePath: `${OWNER}/${OPERATION}.jpg`, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null } as const;
     const f = fixture({ owners: [OWNER, OTHER_OWNER], deletedPhoto: { data: { id: 'p1', user_id: OWNER, storage_path: photo.storagePath }, error: null } });
     await expect(deleteProgressPhoto(photo, OWNER, f.deps)).rejects.toThrow('Account changed.');
     expect(f.events).toContain('delete-row');
     expect(f.remove).not.toHaveBeenCalled();
+  });
+
+  test('includes the exact canonical path in the metadata delete predicate', async () => {
+    const stale = { id: 'p1', storagePath: `${OWNER}/${OTHER_OPERATION}.jpg`, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null } as const;
+    const f = fixture({ deletedPhoto: { data: null, error: null } });
+
+    await expect(deleteProgressPhoto(stale, OWNER, f.deps)).rejects.toThrow(
+      'Progress photo could not be verified.',
+    );
+    expect(f.calls.equals).toEqual([
+      ['id', stale.id],
+      ['user_id', OWNER],
+      ['storage_path', stale.storagePath],
+    ]);
+    expect(f.remove).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    `${OTHER_OWNER}/${OPERATION}.jpg`,
+    `${OWNER}/${OPERATION}.png`,
+    `${OWNER}/${OPERATION}.jpeg`,
+    `${OWNER}/not-a-uuid.jpg`,
+    `${OWNER}/${OPERATION}.jpg/extra`,
+    `${OWNER}/../${OPERATION}.jpg`,
+    `${OWNER}/${ALPHA_OPERATION.toUpperCase()}.jpg`,
+    `${OWNER}//${OPERATION}.jpg`,
+  ])('rejects non-canonical progress path %s before touching metadata', async (storagePath) => {
+    const f = fixture({ deletedPhoto: { data: null, error: null } });
+    await expect(deleteProgressPhoto({ id: 'p1', storagePath, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null }, OWNER, f.deps)).rejects.toThrow(
+      'Progress photo could not be verified.',
+    );
+    expect(f.from).not.toHaveBeenCalled();
+  });
+
+  test('account change wins when metadata deletion fails after a switch', async () => {
+    const f = fixture({
+      owners: [OWNER, OTHER_OWNER],
+      deletedPhoto: { data: null, error: new Error('delete failed') },
+    });
+    const photo = { id: 'p1', storagePath: `${OWNER}/${OPERATION}.jpg`, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null } as const;
+
+    await expect(deleteProgressPhoto(photo, OWNER, f.deps)).rejects.toThrow(
+      'Account changed.',
+    );
+  });
+
+  test('account change wins when storage removal fails after a switch', async () => {
+    const photo = { id: 'p1', storagePath: `${OWNER}/${OPERATION}.jpg`, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null } as const;
+    const f = fixture({
+      owners: [OWNER, OWNER, OTHER_OWNER],
+      deletedPhoto: { data: { id: photo.id, user_id: OWNER, storage_path: photo.storagePath }, error: null },
+      remove: { data: null, error: new Error('remove failed') },
+    });
+
+    await expect(deleteProgressPhoto(photo, OWNER, f.deps)).rejects.toThrow(
+      'Account changed.',
+    );
+  });
+
+  test('surfaces storage removal failure after confirmed metadata deletion without recreating a row', async () => {
+    const removalError = new Error('remove failed');
+    const photo = { id: 'p1', storagePath: `${OWNER}/${OPERATION}.jpg`, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null } as const;
+    const f = fixture({
+      owners: [OWNER, OWNER, OWNER],
+      deletedPhoto: { data: { id: photo.id, user_id: OWNER, storage_path: photo.storagePath }, error: null },
+      remove: { data: null, error: removalError },
+    });
+
+    await expect(deleteProgressPhoto(photo, OWNER, f.deps)).rejects.toBe(removalError);
+    expect(f.calls.inserts).toEqual([]);
+  });
+
+  test('uses safe signed-out copy and preserves authenticated provider errors', async () => {
+    const authError = new Error('provider unavailable');
+    const signedOut = fixture({ authResponses: [{ owner: null, error: authError }] });
+    await expect(listProgressPhotos(OWNER, signedOut.deps)).rejects.toThrow('Not signed in.');
+
+    const providerFailure = fixture({ authResponses: [{ owner: OWNER, error: authError }] });
+    await expect(saveProgressPhoto({ localUri: 'file:///photo.jpg', capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null }, OWNER, OPERATION, providerFailure.deps)).rejects.toBe(authError);
+    expect(providerFailure.from).not.toHaveBeenCalled();
+    expect(providerFailure.upload).not.toHaveBeenCalled();
   });
 
   test('never deletes a wrong-owner path and removes storage only after confirmed metadata deletion', async () => {

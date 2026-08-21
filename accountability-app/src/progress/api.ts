@@ -83,15 +83,19 @@ export async function listMeasurements(
 ): Promise<BodyMeasurement[]> {
   await assertOwner(expectedOwnerId, deps);
   const safeLimit = Math.min(104, Math.max(1, Math.trunc(Number.isFinite(limit) ? limit : 52)));
-  const { data, error } = await deps.client
-    .from('body_measurements')
-    .select(MEASUREMENT_COLUMNS)
-    .eq('user_id', expectedOwnerId)
-    .order('recorded_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(safeLimit);
+  const { data, error } = await withOwnerRecheck(
+    () =>
+      deps.client
+        .from('body_measurements')
+        .select(MEASUREMENT_COLUMNS)
+        .eq('user_id', expectedOwnerId)
+        .order('recorded_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(safeLimit),
+    expectedOwnerId,
+    deps,
+  );
   if (error) throw error;
-  await assertOwner(expectedOwnerId, deps);
   if (!Array.isArray(data)) throw new Error(INVALID_PROGRESS_DATA);
   return data.map((row) => mapMeasurement(row, expectedOwnerId));
 }
@@ -104,18 +108,22 @@ export async function addMeasurement(
   await assertOwner(expectedOwnerId, deps);
   assertValidBodyValues(input.weightKg, input.heightCm);
   const recordedAt = validIsoDate(input.recordedAt, INVALID_PROGRESS_DATA);
-  const { data, error } = await deps.client
-    .from('body_measurements')
-    .insert({
-      user_id: expectedOwnerId,
-      recorded_at: recordedAt,
-      weight_kg: input.weightKg,
-      height_cm: input.heightCm,
-    })
-    .select(MEASUREMENT_COLUMNS)
-    .single();
+  const { data, error } = await withOwnerRecheck(
+    () =>
+      deps.client
+        .from('body_measurements')
+        .insert({
+          user_id: expectedOwnerId,
+          recorded_at: recordedAt,
+          weight_kg: input.weightKg,
+          height_cm: input.heightCm,
+        })
+        .select(MEASUREMENT_COLUMNS)
+        .single(),
+    expectedOwnerId,
+    deps,
+  );
   if (error) throw error;
-  await assertOwner(expectedOwnerId, deps);
   return mapMeasurement(data, expectedOwnerId);
 }
 
@@ -124,14 +132,18 @@ export async function listProgressPhotos(
   deps: ProgressApiDependencies = defaultDependencies,
 ): Promise<ProgressPhoto[]> {
   await assertOwner(expectedOwnerId, deps);
-  const { data, error } = await deps.client
-    .from('progress_photos')
-    .select(PHOTO_COLUMNS)
-    .eq('user_id', expectedOwnerId)
-    .order('captured_at', { ascending: false })
-    .order('id', { ascending: false });
+  const { data, error } = await withOwnerRecheck(
+    () =>
+      deps.client
+        .from('progress_photos')
+        .select(PHOTO_COLUMNS)
+        .eq('user_id', expectedOwnerId)
+        .order('captured_at', { ascending: false })
+        .order('id', { ascending: false }),
+    expectedOwnerId,
+    deps,
+  );
   if (error) throw error;
-  await assertOwner(expectedOwnerId, deps);
   if (!Array.isArray(data)) throw new Error(INVALID_PROGRESS_DATA);
   return data.map((row) => mapProgressPhoto(row, expectedOwnerId));
 }
@@ -149,25 +161,32 @@ export async function saveProgressPhoto(
   const identity = operationId ?? deps.randomUUID();
   if (!UUID.test(identity)) throw new Error(INVALID_PROGRESS_PHOTO);
 
-  const image = await deps.readLocalImage(input.localUri);
-  await assertOwner(expectedOwnerId, deps);
+  const image = await withOwnerRecheck(
+    () => deps.readLocalImage(input.localUri),
+    expectedOwnerId,
+    deps,
+  );
   const contentType = safeImageContentType(image.contentType);
-  const extension = contentType === 'image/png' ? 'png' : 'jpg';
-  const storagePath = `${expectedOwnerId}/${identity}.${extension}`;
+  const storagePath = progressPhotoPath(expectedOwnerId, identity);
   const existing = await findPhotoByPath(storagePath, expectedOwnerId, deps);
-  await assertOwner(expectedOwnerId, deps);
   if (existing) {
     confirmEquivalentPhoto(existing, capturedAt, input.weightKg);
     return existing;
   }
 
   const storage = deps.client.storage.from(PROGRESS_PHOTO_BUCKET);
-  const upload = await storage.upload(storagePath, image.bytes, {
-    contentType,
-    upsert: false,
-  });
-  if (upload.error) throw upload.error;
-  await assertOwner(expectedOwnerId, deps);
+  const upload = await withOwnerRecheck(
+    () =>
+      storage.upload(storagePath, image.bytes, {
+        contentType,
+        upsert: false,
+      }),
+    expectedOwnerId,
+    deps,
+  );
+  if (upload.error && !isExistingObjectConflict(upload.error)) {
+    throw upload.error;
+  }
 
   const payload = {
     user_id: expectedOwnerId,
@@ -177,18 +196,23 @@ export async function saveProgressPhoto(
   };
   let insert: DatabaseResponse;
   try {
-    insert = await deps.client
-      .from('progress_photos')
-      .insert(payload)
-      .select(PHOTO_COLUMNS)
-      .single();
+    insert = await withOwnerRecheck(
+      () =>
+        deps.client
+          .from('progress_photos')
+          .insert(payload)
+          .select(PHOTO_COLUMNS)
+          .single(),
+      expectedOwnerId,
+      deps,
+    );
   } catch (insertError) {
+    if (isAccountChangedError(insertError)) throw insertError;
     return recoverPhotoInsert(storagePath, capturedAt, input.weightKg, expectedOwnerId, insertError, undefined, storage, deps);
   }
   if (insert.error) {
     return recoverPhotoInsert(storagePath, capturedAt, input.weightKg, expectedOwnerId, insert.error, insert.status, storage, deps);
   }
-  await assertOwner(expectedOwnerId, deps);
   return mapProgressPhoto(insert.data, expectedOwnerId);
 }
 
@@ -202,19 +226,31 @@ export async function deleteProgressPhoto(
   if (typeof photo.id !== 'string' || photo.id.length === 0) {
     throw new Error(INVALID_PROGRESS_PHOTO);
   }
-  const { data, error } = await deps.client
-    .from('progress_photos')
-    .delete()
-    .eq('id', photo.id)
-    .eq('user_id', expectedOwnerId)
-    .select(DELETE_PHOTO_COLUMNS)
-    .maybeSingle();
+  const { data, error } = await withOwnerRecheck(
+    () =>
+      deps.client
+        .from('progress_photos')
+        .delete()
+        .eq('id', photo.id)
+        .eq('user_id', expectedOwnerId)
+        .eq('storage_path', photo.storagePath)
+        .select(DELETE_PHOTO_COLUMNS)
+        .maybeSingle(),
+    expectedOwnerId,
+    deps,
+  );
   if (error) throw error;
   if (!isRecord(data) || data.id !== photo.id || data.user_id !== expectedOwnerId || data.storage_path !== photo.storagePath) {
     throw new Error(INVALID_PROGRESS_PHOTO);
   }
-  await assertOwner(expectedOwnerId, deps);
-  const removal = await deps.client.storage.from(PROGRESS_PHOTO_BUCKET).remove([photo.storagePath]);
+  const removal = await withOwnerRecheck(
+    () =>
+      deps.client.storage
+        .from(PROGRESS_PHOTO_BUCKET)
+        .remove([photo.storagePath]),
+    expectedOwnerId,
+    deps,
+  );
   if (removal.error) throw removal.error;
 }
 
@@ -234,12 +270,18 @@ async function findPhotoByPath(
   expectedOwnerId: string,
   deps: ProgressApiDependencies,
 ): Promise<ProgressPhoto | null> {
-  const { data, error } = await deps.client
-    .from('progress_photos')
-    .select(PHOTO_COLUMNS)
-    .eq('user_id', expectedOwnerId)
-    .eq('storage_path', storagePath)
-    .maybeSingle();
+  assertOwnerStoragePath(storagePath, expectedOwnerId);
+  const { data, error } = await withOwnerRecheck(
+    () =>
+      deps.client
+        .from('progress_photos')
+        .select(PHOTO_COLUMNS)
+        .eq('user_id', expectedOwnerId)
+        .eq('storage_path', storagePath)
+        .maybeSingle(),
+    expectedOwnerId,
+    deps,
+  );
   if (error) throw error;
   return data == null ? null : mapProgressPhoto(data, expectedOwnerId);
 }
@@ -259,20 +301,23 @@ async function recoverPhotoInsert(
   try {
     confirmed = await findPhotoByPath(storagePath, expectedOwnerId, deps);
   } catch (confirmationError) {
+    if (isAccountChangedError(confirmationError)) throw confirmationError;
     throw new AggregateError(
       [insertError, confirmationError],
       'The progress photo may have saved, but it could not be confirmed.',
     );
   }
   if (confirmed) {
-    await assertOwner(expectedOwnerId, deps);
     confirmEquivalentPhoto(confirmed, capturedAt, weightKg);
     return confirmed;
   }
 
   if (!isDefinitelyRejected(insertError, insertStatus)) throw insertError;
-  await assertOwner(expectedOwnerId, deps);
-  const cleanup = await storage.remove([storagePath]);
+  const cleanup = await withOwnerRecheck(
+    () => storage.remove([storagePath]),
+    expectedOwnerId,
+    deps,
+  );
   if (cleanup.error) {
     throw new AggregateError(
       [insertError, cleanup.error],
@@ -334,6 +379,13 @@ function isDefinitelyRejected(error: unknown, responseStatus?: number): boolean 
   return /^(?:23|22|PGRST)/.test(error.code);
 }
 
+function isExistingObjectConflict(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  const status = databaseNumber(error.statusCode ?? error.status);
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+  return status === 409 && /(?:already exists|duplicate)/.test(message);
+}
+
 function errorStatus(error: unknown): number | null {
   if (!isRecord(error)) return null;
   const status = databaseNumber(error.status);
@@ -369,15 +421,19 @@ function assertOwnerStoragePath(
   message = INVALID_PROGRESS_PHOTO,
 ): void {
   const prefix = `${expectedOwnerId}/`;
-  if (
-    !storagePath.startsWith(prefix) ||
-    storagePath.length <= prefix.length ||
-    storagePath.length > 220 ||
-    storagePath.includes('//') ||
-    storagePath.endsWith('/')
-  ) {
+  const filename = storagePath.startsWith(prefix)
+    ? storagePath.slice(prefix.length)
+    : '';
+  const identity = filename.endsWith('.jpg') ? filename.slice(0, -4) : '';
+  if (storagePath !== `${prefix}${identity}.jpg` || !UUID.test(identity)) {
     throw new Error(message);
   }
+}
+
+function progressPhotoPath(expectedOwnerId: string, identity: string): string {
+  const storagePath = `${expectedOwnerId}/${identity}.jpg`;
+  assertOwnerStoragePath(storagePath, expectedOwnerId);
+  return storagePath;
 }
 
 function safeImageContentType(value: string): 'image/jpeg' | 'image/png' {
@@ -386,4 +442,24 @@ function safeImageContentType(value: string): 'image/jpeg' | 'image/png' {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function withOwnerRecheck<T>(
+  operation: () => PromiseLike<T>,
+  expectedOwnerId: string,
+  deps: ProgressApiDependencies,
+): Promise<T> {
+  let result: T;
+  try {
+    result = await operation();
+  } catch (operationError) {
+    await assertOwner(expectedOwnerId, deps);
+    throw operationError;
+  }
+  await assertOwner(expectedOwnerId, deps);
+  return result;
+}
+
+function isAccountChangedError(error: unknown): boolean {
+  return error instanceof Error && error.message === 'Account changed.';
 }
