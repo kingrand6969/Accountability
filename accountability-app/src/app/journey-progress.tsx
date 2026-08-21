@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { captureRef } from 'react-native-view-shot';
 
 import { useAuth } from '../auth/AuthProvider';
 import { getInsights, type Insights } from '../insights/api';
@@ -10,8 +11,12 @@ import { addMeasurement, listMeasurements, listProgressPhotos } from '../progres
 import { calculateBmi } from '../progress/bmi';
 import { BodyCheckInSheet } from '../progress/BodyCheckInSheet';
 import { ProgressPhotoVault } from '../progress/ProgressPhotoVault';
+import { createProgressShareRenderModel, ProgressShareCard, PROGRESS_SHARE_ASPECT_RATIO, type ProgressShareSnapshot } from '../progress/ProgressShareCard';
+import { prepareProgressShareSnapshot, progressSnapshotInput, publishProgressPost } from '../progress/publishProgressPost';
 import type { AddMeasurementInput, BodyMeasurement, ProgressPhoto } from '../progress/types';
-import { WeightTrendChart } from '../progress/WeightTrendChart';
+import { WeightTrendChart, type TrendPeriod } from '../progress/WeightTrendChart';
+import { ShareStudio, type ShareStudioResult, type ShareStudioPreviewState } from '../share/ShareStudio';
+import { feedShareAvailability } from '../share/feedShareAvailability';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
 
@@ -30,6 +35,9 @@ type FocusLease = {
   readonly epoch: number;
   alive: boolean;
 };
+
+type ShareSession = Readonly<{ ownerId: string; ownerToken: symbol; snapshot: ProgressShareSnapshot }>;
+type SharePreparing = Readonly<{ ownerId: string; ownerToken: symbol; lease: symbol }>;
 
 function activeTime(seconds: number) {
   const minutes = Math.round(seconds / 60);
@@ -63,11 +71,19 @@ export default function JourneyProgress() {
   const [initialErrorOwner, setInitialErrorOwner] = useState<string | null>(null);
   const [refreshErrorOwner, setRefreshErrorOwner] = useState<string | null>(null);
   const [sheetState, setSheetState] = useState<{ ownerId: string; token: symbol } | null>(null);
+  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('week');
+  const [shareSession, setShareSession] = useState<ShareSession | null>(null);
+  const [sharePreparingState, setSharePreparingState] = useState<SharePreparing | null>(null);
+  const [shareErrorState, setShareErrorState] = useState<{ ownerId: string; ownerToken: symbol; message: string } | null>(null);
+  const sharePrepareLeaseRef = useRef<symbol | null>(null);
+  const shareCardRef = useRef<View | null>(null);
+  const feedShare = useMemo(() => feedShareAvailability(Platform.OS), []);
 
   useEffect(() => {
     mountedRef.current = true;
     ownerRef.current = ownerId;
     snapshotRef.current = snapshot;
+    sharePrepareLeaseRef.current = null;
   }, [ownerId, snapshot]);
 
   useEffect(() => {
@@ -137,6 +153,10 @@ export default function JourneyProgress() {
   const latest = current?.measurements.reduce<BodyMeasurement | undefined>((winner, item) =>
     !winner || new Date(item.recordedAt).getTime() > new Date(winner.recordedAt).getTime() ? item : winner,
   undefined);
+  const sharePreparing = sharePreparingState?.ownerId === ownerId && sharePreparingState.ownerToken === ownerToken;
+  const shareError = shareErrorState?.ownerId === ownerId && shareErrorState.ownerToken === ownerToken
+    ? shareErrorState.message
+    : null;
 
   const retry = () => { load(); };
   const saveMeasurement = async (input: AddMeasurementInput) => {
@@ -146,6 +166,94 @@ export default function JourneyProgress() {
     if (capturedOwner !== ownerRef.current) return;
     setSheetState(null);
     load();
+  };
+
+  const openShareStudio = async () => {
+    if (!current || !ownerId || sharePrepareLeaseRef.current) return;
+    const capturedOwner = ownerId;
+    const capturedOwnerToken = ownerToken;
+    const lease = Symbol(capturedOwner);
+    sharePrepareLeaseRef.current = lease;
+    setSharePreparingState({ ownerId: capturedOwner, ownerToken: capturedOwnerToken, lease });
+    setShareErrorState(null);
+    try {
+      const shareInsights = trendPeriod === 'month'
+        ? await getInsights('month', capturedOwner)
+        : current.insights;
+      if (
+        !mountedRef.current ||
+        sharePrepareLeaseRef.current !== lease ||
+        ownerRef.current !== capturedOwner
+      ) return;
+      const prepared = await prepareProgressShareSnapshot(progressSnapshotInput(
+        capturedOwner,
+        trendPeriod,
+        new Date(),
+        shareInsights,
+        latest,
+        feedShare.available ? current.photos : [],
+      ));
+      if (
+        !mountedRef.current ||
+        sharePrepareLeaseRef.current !== lease ||
+        ownerRef.current !== capturedOwner ||
+        capturedOwnerToken !== ownerToken
+      ) return;
+      setShareSession({ ownerId: capturedOwner, ownerToken: capturedOwnerToken, snapshot: prepared });
+    } catch {
+      if (mountedRef.current && sharePrepareLeaseRef.current === lease && ownerRef.current === capturedOwner) {
+        setShareErrorState({ ownerId: capturedOwner, ownerToken: capturedOwnerToken, message: 'Your progress share couldn’t open. Try again.' });
+      }
+    } finally {
+      if (sharePrepareLeaseRef.current === lease) sharePrepareLeaseRef.current = null;
+      if (mountedRef.current) setSharePreparingState((currentState) => currentState?.lease === lease ? null : currentState);
+    }
+  };
+
+  const closeShareStudio = () => {
+    sharePrepareLeaseRef.current = null;
+    setSharePreparingState(null);
+    setShareSession(null);
+    setShareErrorState(null);
+  };
+
+  const publishReviewedProgress = async (draft: ShareStudioResult) => {
+    const active = shareSession;
+    if (!active || active.ownerId !== ownerRef.current || active.ownerToken !== ownerToken) {
+      throw new Error('Account changed.');
+    }
+    await publishProgressPost({ snapshot: active.snapshot, draft }, {
+      captureCard: async (_model, options) => {
+        if (!shareCardRef.current || active.ownerId !== ownerRef.current || active.ownerToken !== ownerToken) {
+          throw new Error('Account changed.');
+        }
+        return captureRef(shareCardRef, {
+          format: options.format,
+          quality: options.quality,
+          result: 'base64',
+          width: options.width,
+          height: options.height,
+        });
+      },
+    });
+    if (active.ownerId !== ownerRef.current || active.ownerToken !== ownerToken) throw new Error('Account changed.');
+    if (draft.media.kind === 'photo') await draft.media.release().catch(() => {});
+    setShareSession(null);
+    Alert.alert('Shared to your feed', 'Your progress card is now on your feed.');
+  };
+
+  const renderProgressPreview = (state: ShareStudioPreviewState) => {
+    if (!shareSession) return null;
+    const model = createProgressShareRenderModel(shareSession.snapshot, {
+      context: state.context,
+      caption: state.caption,
+      media: state.media,
+    });
+    return (
+      <View ref={shareCardRef} collapsable={false} style={styles.shareCardCapture}>
+        <ProgressShareCard model={model} />
+      </View>
+    );
   };
 
   return (
@@ -201,9 +309,26 @@ export default function JourneyProgress() {
                 <Text style={styles.emptyText}>Add your weight and height to start a private progress record.</Text>
               </View>
             )}
-            <WeightTrendChart measurements={current.measurements} now={current.referenceTime} />
+            <WeightTrendChart measurements={current.measurements} now={current.referenceTime} period={trendPeriod} onPeriodChange={setTrendPeriod} />
             <Pressable accessibilityRole="button" accessibilityLabel="Add body check-in" onPress={() => ownerId && setSheetState({ ownerId, token: ownerToken })} style={styles.checkInButton}><Text style={styles.checkInButtonText}>{latest ? 'Add body check-in' : 'Start body check-in'}</Text></Pressable>
             <ProgressPhotoVault photos={current.photos} expectedOwnerId={current.ownerId} onSaved={() => load()} />
+            <View style={styles.shareSection}>
+              <Text style={styles.shareTitle}>Share your progress</Text>
+              <Text style={styles.shareCopy}>Review a 4:5 progress card, choose a selfie or photo, then decide who sees it.</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Share progress"
+                accessibilityHint="Opens Share Studio without posting"
+                accessibilityState={{ disabled: sharePreparing }}
+                disabled={sharePreparing}
+                onPress={openShareStudio}
+                style={({ pressed }) => [styles.shareButton, pressed && styles.pressed]}
+              >
+                {sharePreparing ? <ActivityIndicator color={theme.ink.inverse} /> : null}
+                <Text style={styles.shareButtonText}>{sharePreparing ? 'Preparing preview…' : 'Share progress'}</Text>
+              </Pressable>
+              {shareError ? <Text accessibilityRole="alert" style={styles.shareError}>{shareError}</Text> : null}
+            </View>
           </>
         ) : null}
       </ScrollView>
@@ -213,6 +338,19 @@ export default function JourneyProgress() {
           latestHeightCm={latest?.heightCm}
           onCancel={() => setSheetState(null)}
           onSave={saveMeasurement}
+        />
+      ) : null}
+      {!!ownerId && shareSession?.ownerId === ownerId && shareSession.ownerToken === ownerToken ? (
+        <ShareStudio
+          visible
+          expectedOwnerId={ownerId}
+          context={shareSession.snapshot.context}
+          defaultCaption=""
+          unavailableReason={feedShare.reason}
+          destinationPreviewAspectRatio={() => PROGRESS_SHARE_ASPECT_RATIO}
+          renderDestinationPreview={renderProgressPreview}
+          onContinue={publishReviewedProgress}
+          onCancel={closeShareStudio}
         />
       ) : null}
     </View>
@@ -255,4 +393,12 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   emptyText: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 13, lineHeight: 19, marginTop: spacing.xs },
   checkInButton: { minHeight: 48, marginTop: spacing.md, borderRadius: 12, backgroundColor: theme.ink.action, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   checkInButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
+  shareSection: { marginTop: spacing.section, borderTopWidth: 1, borderTopColor: theme.border.subtle, paddingTop: spacing.xl },
+  shareTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 20, lineHeight: 26 },
+  shareCopy: { color: theme.ink.secondary, fontFamily: font.regular, fontSize: 13.5, lineHeight: 20, marginTop: spacing.xs },
+  shareButton: { minHeight: 48, marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.ink.action, paddingHorizontal: spacing.lg },
+  shareButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
+  shareError: { color: theme.status.danger, fontFamily: font.medium, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
+  shareCardCapture: { width: '100%', aspectRatio: PROGRESS_SHARE_ASPECT_RATIO, overflow: 'hidden' },
+  pressed: { opacity: 0.72 },
 });

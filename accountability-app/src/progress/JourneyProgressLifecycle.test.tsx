@@ -44,6 +44,13 @@ jest.mock('./api', () => ({
   addMeasurement: (...args: unknown[]) => mockAddMeasurement(...args),
 }));
 jest.mock('../insights/api', () => ({ getInsights: (...args: unknown[]) => mockGetInsights(...args) }));
+jest.mock('./publishProgressPost', () => ({
+  progressSnapshotInput: jest.fn(),
+  prepareProgressShareSnapshot: jest.fn(),
+  publishProgressPost: jest.fn(),
+}));
+jest.mock('../share/ShareStudio', () => ({ ShareStudio: () => null }));
+jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn() }));
 
 const measurement = (id: string, weightKg: number, heightCm = 180, day = 20): BodyMeasurement => ({
   id,

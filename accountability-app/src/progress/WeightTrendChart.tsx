@@ -6,7 +6,7 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
 import type { BodyMeasurement } from './types';
 
-type TrendPeriod = 'week' | 'month';
+export type TrendPeriod = 'week' | 'month';
 
 function localWindow(now: Date, period: TrendPeriod) {
   const days = period === 'week' ? 7 : 30;
@@ -29,10 +29,20 @@ function chronological(measurements: readonly BodyMeasurement[], period: TrendPe
     });
 }
 
-export function WeightTrendChart({ measurements, now }: { measurements: readonly BodyMeasurement[]; now?: Date | number }) {
+export function WeightTrendChart({ measurements, now, period: controlledPeriod, onPeriodChange }: {
+  measurements: readonly BodyMeasurement[];
+  now?: Date | number;
+  period?: TrendPeriod;
+  onPeriodChange?: (period: TrendPeriod) => void;
+}) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const [period, setPeriod] = useState<TrendPeriod>('week');
+  const [internalPeriod, setInternalPeriod] = useState<TrendPeriod>('week');
+  const period = controlledPeriod ?? internalPeriod;
+  const setPeriod = (next: TrendPeriod) => {
+    if (controlledPeriod === undefined) setInternalPeriod(next);
+    onPeriodChange?.(next);
+  };
   const [defaultNow] = useState(Date.now);
   const nowTime = now instanceof Date ? now.getTime() : now ?? defaultNow;
   const referenceDate = useMemo(() => new Date(nowTime), [nowTime]);
