@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   createPrivateImageFileCache,
   createPrivateImageDiagnosticReporter,
+  isAwsSignedImageUrl,
   type PrivateImageFileSystem,
   privateImageDownloadExceedsLimit,
   runPrivateImageLegacyDownload,
@@ -11,6 +12,12 @@ import {
 const SIGNED_URL =
   'https://media.example/avatars/member/dog.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=secret';
 const PRIVATE_REF = 'r2://avatars/00000000-0000-4000-8000-000000000000/dog.jpg';
+const SUPABASE_SIGNED_URL = 'https://project.supabase.co/storage/v1/object/sign/progress-photos/member/photo.jpg?token=secret';
+
+it('accepts canonical Supabase Storage signed image URLs without accepting arbitrary HTTPS', () => {
+  expect(isAwsSignedImageUrl(SUPABASE_SIGNED_URL)).toBe(true);
+  expect(isAwsSignedImageUrl('https://project.supabase.co/storage/v1/object/public/progress-photos/photo.jpg')).toBe(false);
+});
 
 function jpegHeader(): Uint8Array {
   return Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);

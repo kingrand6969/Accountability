@@ -4,6 +4,7 @@ import {
   deleteProgressPhoto,
   listMeasurements,
   listProgressPhotos,
+  readProgressImageUri,
   saveProgressPhoto,
   type ProgressApiDependencies,
 } from './api';
@@ -26,6 +27,15 @@ const NON_V4_OPERATIONS = [
 const MAX_PROGRESS_IMAGE_BYTES = 20 * 1024 * 1024;
 const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]).buffer;
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).buffer;
+
+test('reads a web blob URI through fetch for private upload', async () => {
+  const fetcher: typeof fetch = async () => new globalThis.Response(new Blob([JPEG_BYTES], { type: 'image/jpeg' }));
+  await expect(readProgressImageUri('blob:https://app.example/photo', fetcher)).resolves.toEqual({
+    bytes: JPEG_BYTES,
+    size: JPEG_BYTES.byteLength,
+    mimeType: 'image/jpeg',
+  });
+});
 
 type Response = { data: unknown; error: unknown; status?: number };
 type AuthResponse = { owner: string | null; error?: unknown };
@@ -356,7 +366,10 @@ describe('progress photo APIs', () => {
     expect(f.calls.orders).toEqual([
       ['captured_at', { ascending: false }],
       ['id', { ascending: false }],
+      ['captured_at', { ascending: true }],
+      ['id', { ascending: true }],
     ]);
+    expect(f.calls.limits).toEqual([1, 1]);
   });
 
   test('fails closed when a stored photo path is not canonical', async () => {

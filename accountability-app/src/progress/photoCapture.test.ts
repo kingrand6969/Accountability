@@ -52,6 +52,7 @@ describe('chooseProgressPhoto', () => {
       width: 1200,
       height: 1600,
       capturedAt: new Date(2026, 7, 19, 14, 32, 11).toISOString(),
+      release: expect.any(Function),
     });
     expect(result).not.toHaveProperty('storagePath');
     expect(result).not.toHaveProperty('publicUrl');
@@ -116,6 +117,40 @@ describe('chooseProgressPhoto', () => {
     expect(deps.launchLibrary).toHaveBeenCalledTimes(1);
   });
 
+  test.each(['front-camera', 'rear-camera'] as const)('truthfully maps %s to the library on web', async (source) => {
+    const deps = dependencies({ platform: 'web' });
+    await chooseProgressPhoto(source, deps);
+    expect(deps.requestCameraPermission).not.toHaveBeenCalled();
+    expect(deps.launchCamera).not.toHaveBeenCalled();
+    expect(deps.launchLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  test('revokes a normalized web blob exactly once when released', async () => {
+    const revoke = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const deps = dependencies({
+      platform: 'web',
+      normalizeToJpeg: jest.fn<ProgressPhotoCaptureDependencies['normalizeToJpeg']>().mockResolvedValue({
+        uri: 'blob:https://app.example/normalized', width: 1200, height: 1600,
+      }),
+    });
+    const result = await chooseProgressPhoto('gallery', deps);
+    await result?.release();
+    await result?.release();
+    expect(revoke).toHaveBeenCalledTimes(1);
+    revoke.mockRestore();
+  });
+
+  test('releases an invalid normalized output before rejecting it', async () => {
+    const release = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const deps = dependencies({
+      normalizeToJpeg: jest.fn<ProgressPhotoCaptureDependencies['normalizeToJpeg']>().mockResolvedValue({
+        uri: 'file:///invalid.jpg', width: 0, height: 1600, release,
+      }),
+    });
+    await expect(chooseProgressPhoto('gallery', deps)).rejects.toThrow('valid photo');
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   test('rejects a malformed or non-image picker result before processing', async () => {
     const deps = dependencies({
       launchLibrary: jest.fn<ProgressPhotoCaptureDependencies['launchLibrary']>().mockResolvedValue({
@@ -125,6 +160,18 @@ describe('chooseProgressPhoto', () => {
     });
     await expect(chooseProgressPhoto('gallery', deps)).rejects.toThrow('valid photo');
     expect(deps.normalizeToJpeg).not.toHaveBeenCalled();
+  });
+
+  test.each([undefined, null])('accepts picker type %s and missing source dimensions when normalization succeeds', async (type) => {
+    const deps = dependencies({
+      launchLibrary: jest.fn<ProgressPhotoCaptureDependencies['launchLibrary']>().mockResolvedValue({
+        canceled: false,
+        assets: [{ uri: 'blob:https://app.example/picked', width: 0, height: undefined, type }],
+      }),
+    });
+    await expect(chooseProgressPhoto('gallery', deps)).resolves.toEqual(expect.objectContaining({
+      uri: 'file:///normalized.jpg', width: 1200, height: 1600,
+    }));
   });
 });
 

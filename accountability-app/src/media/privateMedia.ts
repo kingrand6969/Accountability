@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { clearPrivateImageFileCache } from './privateImageFileCache';
+import { notifyPrivateMediaCacheInvalidation } from './privateMediaInvalidation';
+export { subscribePrivateMediaCacheInvalidation } from './privateMediaInvalidation';
 
 export type ResolvedPrivateMedia = { url: string; expiresAt: string };
 type CacheEntry = ResolvedPrivateMedia & { expiresAtMs: number };
@@ -7,7 +9,6 @@ type CacheEntry = ResolvedPrivateMedia & { expiresAtMs: number };
 const PRIVATE_MEDIA_PREFIX = 'r2://';
 export const PRIVATE_MEDIA_REFRESH_HEADROOM_MS = 60_000;
 const cache = new Map<string, CacheEntry>();
-const invalidationListeners = new Set<() => void>();
 let cacheEpoch = 0;
 
 export function isPrivateMediaRef(value: string | null | undefined): value is string {
@@ -18,18 +19,7 @@ export function clearPrivateMediaCache(): void {
   cacheEpoch += 1;
   cache.clear();
   clearPrivateImageFileCache();
-  for (const listener of invalidationListeners) {
-    try {
-      listener();
-    } catch {
-      // Cache invalidation must never be blocked by a mounted consumer.
-    }
-  }
-}
-
-export function subscribePrivateMediaCacheInvalidation(listener: () => void): () => void {
-  invalidationListeners.add(listener);
-  return () => invalidationListeners.delete(listener);
+  notifyPrivateMediaCacheInvalidation();
 }
 
 export async function resolvePrivateMediaUrl(value: string): Promise<ResolvedPrivateMedia> {

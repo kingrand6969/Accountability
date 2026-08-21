@@ -19,7 +19,7 @@ const INVALID_PROGRESS_PHOTO = 'Progress photo could not be verified.';
 const INVALID_PROGRESS_IMAGE = 'Choose a valid JPEG or PNG image up to 20 MB.';
 const MAX_PROGRESS_IMAGE_BYTES = 20 * 1024 * 1024;
 const UUID_V4 = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
-const LOCAL_URI = /^(?:file|content|ph|assets-library):\/\//i;
+const LOCAL_URI = /^(?:(?:file|content|ph|assets-library):\/\/|blob:)/i;
 
 type DatabaseResponse = {
   readonly data: unknown;
@@ -70,14 +70,11 @@ export type ProgressApiDependencies = {
 const defaultDependencies: ProgressApiDependencies = {
   client: supabase as unknown as ProgressClient,
   async inspectLocalImage(localUri) {
-    const file = new File(localUri);
-    return {
-      size: file.size,
-      mimeType: file.type || undefined,
-    };
+    const image = await readProgressImageUri(localUri);
+    return { size: image.size, mimeType: image.mimeType };
   },
   async readLocalImage(localUri) {
-    return new File(localUri).arrayBuffer();
+    return (await readProgressImageUri(localUri)).bytes;
   },
   randomUUID: Crypto.randomUUID,
 };
@@ -140,20 +137,47 @@ export async function listProgressPhotos(
   deps: ProgressApiDependencies = defaultDependencies,
 ): Promise<ProgressPhoto[]> {
   await assertOwner(expectedOwnerId, deps);
-  const { data, error } = await withOwnerRecheck(
+  const latest = await withOwnerRecheck(
     () =>
       deps.client
         .from('progress_photos')
         .select(PHOTO_COLUMNS)
         .eq('user_id', expectedOwnerId)
         .order('captured_at', { ascending: false })
-        .order('id', { ascending: false }),
+        .order('id', { ascending: false })
+        .limit(1),
     expectedOwnerId,
     deps,
   );
-  if (error) throw error;
-  if (!Array.isArray(data)) throw new Error(INVALID_PROGRESS_DATA);
-  return data.map((row) => mapProgressPhoto(row, expectedOwnerId));
+  if (latest.error) throw latest.error;
+  if (!Array.isArray(latest.data)) throw new Error(INVALID_PROGRESS_DATA);
+  const earliest = await withOwnerRecheck(
+    () => deps.client
+      .from('progress_photos')
+      .select(PHOTO_COLUMNS)
+      .eq('user_id', expectedOwnerId)
+      .order('captured_at', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(1),
+    expectedOwnerId,
+    deps,
+  );
+  if (earliest.error) throw earliest.error;
+  if (!Array.isArray(earliest.data)) throw new Error(INVALID_PROGRESS_DATA);
+  const rows = [...latest.data.slice(0, 1), ...earliest.data.slice(0, 1)];
+  const photos = rows.map((row) => mapProgressPhoto(row, expectedOwnerId));
+  return [...new Map(photos.map((photo) => [photo.id, photo])).values()];
+}
+
+export async function readProgressImageUri(localUri: string, fetcher: typeof fetch = fetch) {
+  if (/^blob:/i.test(localUri)) {
+    const response = await fetcher(localUri);
+    if (!response.ok) throw new Error(INVALID_PROGRESS_IMAGE);
+    const blob = await response.blob();
+    return { bytes: await blob.arrayBuffer(), size: blob.size, mimeType: blob.type || undefined };
+  }
+  const file = new File(localUri);
+  return { bytes: await file.arrayBuffer(), size: file.size, mimeType: file.type || undefined };
 }
 
 export async function saveProgressPhoto(

@@ -3,6 +3,7 @@ import * as Crypto from 'expo-crypto';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppTheme } from '../ui/AppThemeProvider';
+import { subscribePrivateMediaCacheInvalidation } from '../media/privateMediaInvalidation';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { saveProgressPhoto } from './api';
 import { localDateKey, recordedAtForLocalDate } from './checkInDate';
@@ -21,8 +22,10 @@ type Props = Readonly<{
 }>;
 
 type Draft = Readonly<{ ownerId: string; ownerToken: symbol; photo: CapturedProgressPhoto; dateKey: string; weight: string; operationId: string }>;
-type ImageState = Readonly<{ ownerId: string; ownerToken: symbol; key: string; uris: Readonly<Record<string, string>>; failed: boolean }>;
+type ImageResult = Readonly<{ status: 'ready'; uri: string } | { status: 'error' }>;
+type ImageState = Readonly<{ ownerId: string; ownerToken: symbol; key: string; results: Readonly<Record<string, ImageResult>> }>;
 type BusyState = Readonly<{ ownerId: string; ownerToken: symbol }>;
+type FrozenSubmission = Readonly<{ ownerToken: symbol; input: SaveProgressPhotoInput; operationId: string }>;
 
 const PICK_ERROR = 'That photo couldn’t be opened. Try another.';
 const SAVE_ERROR = 'Your private photo couldn’t save. Try again.';
@@ -35,16 +38,25 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
   const activeOwnerTokenRef = useRef<symbol | null>(null);
   const pickingRef = useRef<symbol | null>(null);
   const savingRef = useRef<symbol | null>(null);
+  const draftRef = useRef<Draft | null>(null);
+  const submissionRef = useRef<FrozenSubmission | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pickingState, setPickingState] = useState<BusyState | null>(null);
   const [savingState, setSavingState] = useState<BusyState | null>(null);
   const [errorState, setErrorState] = useState<{ ownerId: string; ownerToken: symbol; message: string } | null>(null);
   const [imageState, setImageState] = useState<ImageState | null>(null);
   const [imageRetry, setImageRetry] = useState(0);
+  const [submittedToken, setSubmittedToken] = useState<symbol | null>(null);
 
   useEffect(() => {
     activeOwnerTokenRef.current = ownerToken;
     return () => {
+      const ownedDraft = draftRef.current;
+      if (ownedDraft?.ownerToken === ownerToken) {
+        draftRef.current = null;
+        void ownedDraft.photo.release();
+      }
+      if (submissionRef.current?.ownerToken === ownerToken) submissionRef.current = null;
       if (activeOwnerTokenRef.current === ownerToken) activeOwnerTokenRef.current = null;
     };
   }, [ownerToken]);
@@ -57,6 +69,7 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
   const preview = useMemo(() => selectProgressPreview(photos), [photos]);
   const previewKey = preview.map(({ photo }) => photo.id).join('|');
   const activeDraft = draft?.ownerId === expectedOwnerId && draft.ownerToken === ownerToken ? draft : null;
+  const submitted = submittedToken === ownerToken;
   const picking = pickingState?.ownerId === expectedOwnerId && pickingState.ownerToken === ownerToken;
   const saving = savingState?.ownerId === expectedOwnerId && savingState.ownerToken === ownerToken;
   const error = errorState?.ownerId === expectedOwnerId && errorState.ownerToken === ownerToken ? errorState.message : null;
@@ -67,17 +80,24 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
     const capturedOwner = expectedOwnerId;
     const capturedToken = ownerToken;
     let alive = true;
-    void Promise.all(preview.map(async ({ photo }) => [photo.id, (await resolvePhoto(photo.storagePath, capturedOwner)).localUri] as const))
-      .then((entries) => {
-        if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
-        setImageState({ ownerId: capturedOwner, ownerToken: capturedToken, key: previewKey, uris: Object.fromEntries(entries), failed: false });
-      })
-      .catch(() => {
-        if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
-        setImageState({ ownerId: capturedOwner, ownerToken: capturedToken, key: previewKey, uris: {}, failed: true });
-      });
+    for (const { photo } of preview) {
+      void resolvePhoto(photo.storagePath, capturedOwner)
+        .then(({ localUri }) => {
+          if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+          setImageState((current) => mergeImageResult(current, capturedOwner, capturedToken, previewKey, photo.id, { status: 'ready', uri: localUri }));
+        })
+        .catch(() => {
+          if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+          setImageState((current) => mergeImageResult(current, capturedOwner, capturedToken, previewKey, photo.id, { status: 'error' }));
+        });
+    }
     return () => { alive = false; };
   }, [expectedOwnerId, imageRetry, ownerToken, preview, previewKey, resolvePhoto]);
+
+  useEffect(() => subscribePrivateMediaCacheInvalidation(() => {
+    setImageState(null);
+    setImageRetry((value) => value + 1);
+  }), []);
 
   const pick = async (source: ProgressPhotoSource) => {
     if (pickingRef.current === ownerToken || savingRef.current === ownerToken) return;
@@ -86,13 +106,23 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
     pickingRef.current = capturedToken;
     setPickingState({ ownerId: capturedOwner, ownerToken: capturedToken });
     setErrorState(null);
+    let selected: CapturedProgressPhoto | null = null;
     try {
-      const selected = await choosePhoto(source);
-      if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef) || !selected) return;
+      selected = await choosePhoto(source);
+      if (!selected) return;
+      if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) {
+        await selected.release();
+        return;
+      }
       const selectedDate = new Date(selected.capturedAt);
       if (!Number.isFinite(selectedDate.getTime())) throw new Error('Invalid photo date.');
-      setDraft({ ownerId: capturedOwner, ownerToken: capturedToken, photo: selected, dateKey: localDateKey(selectedDate), weight: '', operationId: createOperationId() });
+      const nextDraft = { ownerId: capturedOwner, ownerToken: capturedToken, photo: selected, dateKey: localDateKey(selectedDate), weight: '', operationId: createOperationId() };
+      draftRef.current = nextDraft;
+      submissionRef.current = null;
+      setSubmittedToken(null);
+      setDraft(nextDraft);
     } catch (pickError) {
+      if (selected && draftRef.current?.photo !== selected) await selected.release();
       if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
       setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: permissionMessage(pickError) ?? PICK_ERROR });
     } finally {
@@ -103,6 +133,13 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
 
   const closeDraft = () => {
     if (savingRef.current === ownerToken) return;
+    const closing = draftRef.current;
+    if (closing?.ownerToken === ownerToken) {
+      draftRef.current = null;
+      void closing.photo.release();
+    }
+    submissionRef.current = null;
+    setSubmittedToken(null);
     setDraft(null);
     setErrorState(null);
   };
@@ -111,27 +148,37 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
     if (!activeDraft || savingRef.current === ownerToken) return;
     const capturedOwner = expectedOwnerId;
     const capturedToken = ownerToken;
-    let capturedAt: string;
-    let weightKg: number | null;
-    try {
-      capturedAt = recordedAtForLocalDate(activeDraft.dateKey, now());
-    } catch (dateError) {
-      setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: dateError instanceof Error && dateError.message.includes('future') ? 'Photo date cannot be in the future.' : 'Enter a valid photo date.' });
-      return;
-    }
-    try {
-      weightKg = optionalWeight(activeDraft.weight);
-    } catch {
-      setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: 'Weight must be between 20 and 500 kg with up to two decimals.' });
-      return;
+    let submission = submissionRef.current?.ownerToken === capturedToken ? submissionRef.current : null;
+    if (!submission) {
+      let capturedAt: string;
+      let weightKg: number | null;
+      try {
+        capturedAt = recordedAtForLocalDate(activeDraft.dateKey, now());
+      } catch (dateError) {
+        setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: dateError instanceof Error && dateError.message.includes('future') ? 'Photo date cannot be in the future.' : 'Enter a valid photo date.' });
+        return;
+      }
+      try {
+        weightKg = optionalWeight(activeDraft.weight);
+      } catch {
+        setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: 'Weight must be between 20 and 500 kg with up to two decimals.' });
+        return;
+      }
+      submission = { ownerToken: capturedToken, input: { localUri: activeDraft.photo.uri, capturedAt, weightKg }, operationId: activeDraft.operationId };
+      submissionRef.current = submission;
+      setSubmittedToken(capturedToken);
     }
     savingRef.current = capturedToken;
     setSavingState({ ownerId: capturedOwner, ownerToken: capturedToken });
     setErrorState(null);
     try {
-      const saved = await savePhoto({ localUri: activeDraft.photo.uri, capturedAt, weightKg }, capturedOwner, activeDraft.operationId);
+      const saved = await savePhoto(submission.input, capturedOwner, submission.operationId);
       if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+      draftRef.current = null;
+      submissionRef.current = null;
+      setSubmittedToken(null);
       setDraft(null);
+      await activeDraft.photo.release();
       onSaved?.(saved);
     } catch {
       if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: SAVE_ERROR });
@@ -162,25 +209,26 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
         </View>
       ) : (
         <View style={styles.comparison}>
-          {preview.map(({ label, photo }) => (
-            <PrivatePhotoCard
+          {preview.map(({ label, photo }) => {
+            const result = activeImages?.results[photo.id];
+            return <PrivatePhotoCard
               key={`${label}-${photo.id}`}
               label={label}
               photo={photo}
-              localUri={activeImages?.uris[photo.id] ?? null}
-              loading={!activeImages}
-              failed={activeImages?.failed ?? false}
+              localUri={result?.status === 'ready' ? result.uri : null}
+              loading={!result}
+              failed={result?.status === 'error'}
               onRetry={() => setImageRetry((value) => value + 1)}
               styles={styles}
-            />
-          ))}
+            />;
+          })}
         </View>
       )}
 
       {error && !activeDraft ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       <View testID="progress-photo-source-actions" style={styles.sourceActions}>
-        <SourceButton label="Take selfie" detail="Front camera" onPress={() => void pick('front-camera')} disabled={picking || saving} styles={styles} />
-        <SourceButton label="Take photo" detail="Rear camera" onPress={() => void pick('rear-camera')} disabled={picking || saving} styles={styles} />
+        <SourceButton label={Platform.OS === 'web' ? 'Choose selfie' : 'Take selfie'} detail={Platform.OS === 'web' ? 'Photo library on web' : 'Front camera'} onPress={() => void pick('front-camera')} disabled={picking || saving} styles={styles} />
+        <SourceButton label={Platform.OS === 'web' ? 'Choose photo' : 'Take photo'} detail={Platform.OS === 'web' ? 'Photo library on web' : 'Rear camera'} onPress={() => void pick('rear-camera')} disabled={picking || saving} styles={styles} />
         <SourceButton label="Choose from gallery" detail="Existing photo" onPress={() => void pick('gallery')} disabled={picking || saving} styles={styles} />
       </View>
       {picking ? (
@@ -202,10 +250,15 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
               accessibilityLabel="Progress photo date"
               value={activeDraft?.dateKey ?? ''}
               onChangeText={(value) => {
-                setDraft((current) => current?.ownerToken === ownerToken ? { ...current, dateKey: value } : current);
+                if (submissionRef.current?.ownerToken === ownerToken) return;
+                setDraft((current) => {
+                  const next = current?.ownerToken === ownerToken ? { ...current, dateKey: value } : current;
+                  draftRef.current = next;
+                  return next;
+                });
                 setErrorState(null);
               }}
-              editable={!saving}
+              editable={!saving && !submitted}
               maxLength={10}
               keyboardType="numbers-and-punctuation"
               placeholder="YYYY-MM-DD"
@@ -218,10 +271,15 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
               accessibilityLabel="Progress photo weight in kilograms"
               value={activeDraft?.weight ?? ''}
               onChangeText={(value) => {
-                setDraft((current) => current?.ownerToken === ownerToken ? { ...current, weight: value } : current);
+                if (submissionRef.current?.ownerToken === ownerToken) return;
+                setDraft((current) => {
+                  const next = current?.ownerToken === ownerToken ? { ...current, weight: value } : current;
+                  draftRef.current = next;
+                  return next;
+                });
                 setErrorState(null);
               }}
-              editable={!saving}
+              editable={!saving && !submitted}
               maxLength={7}
               keyboardType="decimal-pad"
               placeholder="kg"
@@ -229,6 +287,7 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
               style={[styles.dateInput, error && styles.invalid]}
             />
             {error && activeDraft ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+            {submitted && !saving ? <Text style={styles.dateHint}>Details are locked for this retry. Cancel and choose the photo again to edit.</Text> : null}
             <View style={styles.sheetActions}>
               <Pressable accessibilityRole="button" accessibilityLabel="Cancel private photo" accessibilityState={{ disabled: saving }} disabled={saving} onPress={closeDraft} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Text style={styles.secondaryButtonText}>Cancel</Text></Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="Save private progress photo" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving} onPress={() => void save()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
@@ -253,12 +312,26 @@ export function selectProgressPreview(photos: readonly ProgressPhoto[]) {
   for (let index = 1; index < photos.length; index += 1) {
     const candidate = photos[index];
     const candidateTime = new Date(candidate.capturedAt).getTime();
-    if (candidateTime < earliestTime) { earliest = candidate; earliestTime = candidateTime; }
-    if (candidateTime > latestTime) { latest = candidate; latestTime = candidateTime; }
+    if (candidateTime < earliestTime || (candidateTime === earliestTime && candidate.id.localeCompare(earliest.id) < 0)) { earliest = candidate; earliestTime = candidateTime; }
+    if (candidateTime > latestTime || (candidateTime === latestTime && candidate.id.localeCompare(latest.id) > 0)) { latest = candidate; latestTime = candidateTime; }
   }
   return earliest.id === latest.id
     ? [{ label: 'Before' as const, photo: earliest }]
     : [{ label: 'Before' as const, photo: earliest }, { label: 'Latest' as const, photo: latest }];
+}
+
+function mergeImageResult(
+  current: ImageState | null,
+  ownerId: string,
+  ownerToken: symbol,
+  key: string,
+  photoId: string,
+  result: ImageResult,
+): ImageState {
+  const results = current?.ownerId === ownerId && current.ownerToken === ownerToken && current.key === key
+    ? current.results
+    : {};
+  return { ownerId, ownerToken, key, results: { ...results, [photoId]: result } };
 }
 
 function PrivatePhotoCard({ label, photo, localUri, loading, failed, onRetry, styles }: { label: 'Before' | 'Latest'; photo: ProgressPhoto; localUri: string | null; loading: boolean; failed: boolean; onRetry: () => void; styles: ReturnType<typeof createStyles> }) {

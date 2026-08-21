@@ -1,7 +1,5 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import * as Crypto from 'expo-crypto';
-import type { File as ExpoFile, FileMode as ExpoFileMode } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 export type ProgressPhotoSource = 'front-camera' | 'rear-camera' | 'gallery';
@@ -11,6 +9,7 @@ export type CapturedProgressPhoto = Readonly<{
   capturedAt: string;
   width: number;
   height: number;
+  release: () => Promise<void>;
 }>;
 
 type PickerAssetLike = Readonly<{
@@ -42,7 +41,7 @@ export type ProgressPhotoCaptureDependencies = Readonly<{
   requestLibraryPermission: () => Promise<boolean>;
   launchCamera: (options: PickerOptions) => Promise<PickerResultLike>;
   launchLibrary: (options: PickerOptions) => Promise<PickerResultLike>;
-  normalizeToJpeg: (uri: string) => Promise<Readonly<{ uri: string; width: number; height: number }>>;
+  normalizeToJpeg: (uri: string) => Promise<Readonly<{ uri: string; width: number; height: number; release?: () => Promise<void> }>>;
 }>;
 
 export class PhotoPermissionDeniedError extends Error {
@@ -79,7 +78,11 @@ const progressPhotoImageDependencies: ProgressPhotoImageDependencies = {
     if (!data?.signedUrl) throw new Error('Private photo could not be opened.');
     return data.signedUrl;
   },
-  cachePrivateImage: cacheProgressPhotoImage,
+  async cachePrivateImage(signedUrl) {
+    if (Platform.OS === 'web') return signedUrl;
+    const { cachePrivateImageUrl } = await import('../media/privateImageFileCache');
+    return cachePrivateImageUrl(signedUrl);
+  },
 };
 
 export async function resolvePrivateProgressPhoto(
@@ -93,7 +96,8 @@ export async function resolvePrivateProgressPhoto(
   await assertImageOwner(expectedOwnerId, dependencies);
   const localUri = await dependencies.cachePrivateImage(signedUrl, expectedOwnerId);
   await assertImageOwner(expectedOwnerId, dependencies);
-  if (typeof localUri !== 'string' || !/^(?:file|content):\/\//i.test(localUri)) {
+  const supportedUri = Platform.OS === 'web' ? /^https:\/\//i : /^(?:file|content):\/\//i;
+  if (typeof localUri !== 'string' || !supportedUri.test(localUri)) {
     throw new Error('Private photo could not be opened.');
   }
   return { localUri };
@@ -153,11 +157,9 @@ export async function chooseProgressPhoto(
   const asset = result.assets?.[0];
   if (
     !asset ||
-    asset.type !== 'image' ||
+    (asset.type != null && asset.type !== 'image') ||
     typeof asset.uri !== 'string' ||
-    asset.uri.trim().length === 0 ||
-    !isPositiveDimension(asset.width) ||
-    !isPositiveDimension(asset.height)
+    asset.uri.trim().length === 0
   ) {
     throw new Error('Choose a valid photo and try again.');
   }
@@ -166,12 +168,14 @@ export async function chooseProgressPhoto(
   if (!Number.isFinite(fallback.getTime())) throw new Error('The current date could not be read.');
   const capturedAt = originalCaptureDate(asset.exif) ?? fallback;
   const normalized = await dependencies.normalizeToJpeg(asset.uri);
+  const release = onceAsync(normalized.release ?? (() => releaseNormalizedPhoto(normalized.uri, dependencies.platform)));
   if (
     typeof normalized.uri !== 'string' ||
     normalized.uri.trim().length === 0 ||
     !isPositiveDimension(normalized.width) ||
     !isPositiveDimension(normalized.height)
   ) {
+    await release();
     throw new Error('Choose a valid photo and try again.');
   }
   return {
@@ -179,6 +183,27 @@ export async function chooseProgressPhoto(
     width: normalized.width,
     height: normalized.height,
     capturedAt: capturedAt.toISOString(),
+    release,
+  };
+}
+
+async function releaseNormalizedPhoto(uri: string, platform: string): Promise<void> {
+  if (platform === 'web') {
+    if (/^blob:/i.test(uri)) URL.revokeObjectURL(uri);
+    return;
+  }
+  if (!/^file:\/\//i.test(uri)) return;
+  const { File } = await import('expo-file-system');
+  const file = new File(uri);
+  if (file.exists) file.delete();
+}
+
+function onceAsync(action: () => Promise<void>): () => Promise<void> {
+  let invoked = false;
+  return async () => {
+    if (invoked) return;
+    invoked = true;
+    try { await action(); } catch { /* Best-effort cleanup must not hide the user's action. */ }
   };
 }
 
@@ -238,82 +263,5 @@ function assertPrivateProgressPath(storagePath: string, expectedOwnerId: string)
   const uuidV4 = '[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}';
   if (!new RegExp(`^${escapedOwner}/${uuidV4}\\.jpg$`, 'i').test(storagePath)) {
     throw new Error('Private progress photo could not be verified.');
-  }
-}
-
-const MAX_PRIVATE_PHOTO_BYTES = 20 * 1024 * 1024;
-let cachedProgressOwner: string | null = null;
-let progressCacheEpoch = 0;
-let progressCacheSession: string | null = null;
-
-async function cacheProgressPhotoImage(signedUrl: string, expectedOwnerId: string): Promise<string> {
-  const { Directory, File, FileMode, Paths } = await import('expo-file-system');
-  const root = new Directory(Paths.cache, 'journey-progress-private');
-  if (cachedProgressOwner !== expectedOwnerId) {
-    progressCacheEpoch += 1;
-    if (root.exists) root.delete();
-    root.create({ idempotent: true, intermediates: true });
-    cachedProgressOwner = expectedOwnerId;
-    progressCacheSession = Crypto.randomUUID();
-  }
-  root.create({ idempotent: true, intermediates: true });
-  const session = new Directory(root, progressCacheSession ?? (progressCacheSession = Crypto.randomUUID()));
-  session.create({ idempotent: true, intermediates: true });
-  const requestEpoch = progressCacheEpoch;
-  const identity = signedImageIdentity(signedUrl);
-  const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, identity);
-  if (requestEpoch !== progressCacheEpoch || cachedProgressOwner !== expectedOwnerId) throw new Error('Account changed.');
-  const destination = new File(session, `${hash}.image`);
-  if (destination.exists && validCachedImage(destination, FileMode.ReadOnly)) return destination.uri;
-
-  const controller = new AbortController();
-  let oversized = false;
-  try {
-    await File.downloadFileAsync(signedUrl, destination, {
-      idempotent: true,
-      signal: controller.signal,
-      onProgress: ({ bytesWritten, totalBytes }) => {
-        if (bytesWritten > MAX_PRIVATE_PHOTO_BYTES || totalBytes > MAX_PRIVATE_PHOTO_BYTES) {
-          oversized = true;
-          controller.abort();
-        }
-      },
-    });
-  } catch (error) {
-    if (destination.exists) destination.delete();
-    if (oversized) throw new Error('Private photo is too large.');
-    throw error;
-  }
-  if (requestEpoch !== progressCacheEpoch || cachedProgressOwner !== expectedOwnerId) {
-    if (destination.exists) destination.delete();
-    throw new Error('Account changed.');
-  }
-  if (!validCachedImage(destination, FileMode.ReadOnly)) {
-    if (destination.exists) destination.delete();
-    throw new Error('Private photo could not be opened.');
-  }
-  return destination.uri;
-}
-
-function signedImageIdentity(value: string) {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:') throw new Error('Invalid private photo URL.');
-    return `${url.origin}${url.pathname}`;
-  } catch {
-    throw new Error('Private photo could not be opened.');
-  }
-}
-
-function validCachedImage(file: ExpoFile, readOnlyMode: ExpoFileMode) {
-  if (!file.exists || file.size < 8 || file.size > MAX_PRIVATE_PHOTO_BYTES) return false;
-  const handle = file.open(readOnlyMode);
-  try {
-    const header = handle.readBytes(8);
-    const jpeg = header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
-    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, index) => header[index] === byte);
-    return jpeg || png;
-  } finally {
-    handle.close();
   }
 }

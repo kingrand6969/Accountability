@@ -200,7 +200,9 @@ function withoutTrailingSlash(value: string): string {
 function canonicalPrivateImageIdentity(value: string): string | null {
   try {
     const url = new URL(value);
-    if (url.protocol !== 'https:' || !url.searchParams.has('X-Amz-Algorithm')) return null;
+    const awsSigned = url.searchParams.has('X-Amz-Algorithm');
+    const supabaseSigned = url.pathname.includes('/storage/v1/object/sign/') && url.searchParams.has('token');
+    if (url.protocol !== 'https:' || (!awsSigned && !supabaseSigned)) return null;
     return `${url.origin}${url.pathname}`;
   } catch {
     return null;

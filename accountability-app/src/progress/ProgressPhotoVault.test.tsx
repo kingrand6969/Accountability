@@ -4,10 +4,17 @@ import { Image, KeyboardAvoidingView, Modal, ScrollView, StyleSheet, Text } from
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import type { CapturedProgressPhoto, ProgressPhotoSource } from './photoCapture';
-import { ProgressPhotoVault } from './ProgressPhotoVault';
+import { ProgressPhotoVault, selectProgressPreview } from './ProgressPhotoVault';
 import type { ProgressPhoto } from './types';
 
+const mockPrivateMediaListeners = new Set<() => void>();
 jest.mock('./api', () => ({ saveProgressPhoto: jest.fn() }));
+jest.mock('../media/privateMediaInvalidation', () => ({
+  subscribePrivateMediaCacheInvalidation: (listener: () => void) => {
+    mockPrivateMediaListeners.add(listener);
+    return () => mockPrivateMediaListeners.delete(listener);
+  },
+}));
 jest.mock('../ui/AppThemeProvider', () => {
   const { themeColors } = jest.requireActual<typeof import('../ui/theme')>('../ui/theme');
   return { useAppTheme: () => ({ mode: 'light', colors: themeColors('light'), setMode: jest.fn() }) };
@@ -19,6 +26,7 @@ const CAPTURED: CapturedProgressPhoto = {
   width: 1200,
   height: 1600,
   capturedAt: '2026-08-19T02:00:00.000Z',
+  release: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
 };
 
 function photo(id: string, capturedAt: string, weightKg: number | null = null): ProgressPhoto {
@@ -83,7 +91,7 @@ afterEach(() => {
   for (const renderer of mounted.splice(0)) act(() => renderer.unmount());
 });
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => { jest.clearAllMocks(); mockPrivateMediaListeners.clear(); });
 
 describe('ProgressPhotoVault', () => {
   test.each(photoSources)('offers %s as an explicit private source', async (label, source) => {
@@ -107,6 +115,26 @@ describe('ProgressPhotoVault', () => {
     expect(renderer.root.findByType(Modal).props.visible).toBe(false);
     expect(savePhoto).not.toHaveBeenCalled();
     expect(textOf(renderer)).not.toContain('Feed');
+    expect(CAPTURED.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('releases the normalized draft after save and stale capture completion', async () => {
+    const savedDraft = { ...CAPTURED, release: jest.fn<() => Promise<void>>().mockResolvedValue(undefined) };
+    const chooseSaved = jest.fn<(source: ProgressPhotoSource) => Promise<CapturedProgressPhoto | null>>().mockResolvedValue(savedDraft);
+    const { renderer } = renderVault({ choosePhoto: chooseSaved });
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Take selfie' }).props.onPress());
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Save private progress photo' }).props.onPress());
+    expect(savedDraft.release).toHaveBeenCalledTimes(1);
+
+    const pending = deferred<CapturedProgressPhoto | null>();
+    const staleDraft = { ...CAPTURED, release: jest.fn<() => Promise<void>>().mockResolvedValue(undefined) };
+    const choosePhoto = jest.fn<(source: ProgressPhotoSource) => Promise<CapturedProgressPhoto | null>>().mockReturnValue(pending.promise);
+    await act(async () => renderer.update(<ProgressPhotoVault photos={[]} expectedOwnerId="owner-a" choosePhoto={choosePhoto} />));
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Take selfie' }).props.onPress());
+    await act(async () => renderer.update(<ProgressPhotoVault photos={[]} expectedOwnerId="owner-b" choosePhoto={choosePhoto} />));
+    pending.resolve(staleDraft);
+    await flush();
+    expect(staleDraft.release).toHaveBeenCalledTimes(1);
   });
 
   test('lets the member edit the date and only explicit Save calls the private API', async () => {
@@ -145,7 +173,16 @@ describe('ProgressPhotoVault', () => {
     await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Take selfie' }).props.onPress());
     await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Save private progress photo' }).props.onPress());
     expect(textOf(renderer)).toContain('couldn’t save');
+    const date = renderer.root.findByProps({ accessibilityLabel: 'Progress photo date' });
+    const weight = renderer.root.findByProps({ accessibilityLabel: 'Progress photo weight in kilograms' });
+    expect(date.props.editable).toBe(false);
+    expect(weight.props.editable).toBe(false);
+    act(() => {
+      date.props.onChangeText('2026-08-01');
+      weight.props.onChangeText('99');
+    });
     await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Save private progress photo' }).props.onPress());
+    expect(savePhoto.mock.calls[1][0]).toEqual(savePhoto.mock.calls[0][0]);
     expect(savePhoto.mock.calls.map((call) => call[2])).toEqual([
       '11111111-1111-4111-8111-111111111111',
       '11111111-1111-4111-8111-111111111111',
@@ -263,6 +300,38 @@ describe('ProgressPhotoVault', () => {
       { uri: 'file:///private-cache/opaque.jpg' },
       { uri: 'file:///private-cache/opaque.jpg' },
     ]);
+  });
+
+  test('resolves Before and Latest independently when one private image fails', async () => {
+    const first = photo('first', '2026-08-01T12:00:00.000Z');
+    const latest = photo('latest', '2026-08-20T12:00:00.000Z');
+    const resolvePhoto = jest.fn<NonNullable<React.ComponentProps<typeof ProgressPhotoVault>['resolvePhoto']>>()
+      .mockResolvedValueOnce({ localUri: 'file:///private-cache/first.jpg' })
+      .mockRejectedValueOnce(new Error('latest denied'));
+    const { renderer } = renderVault({ photos: [first, latest], resolvePhoto });
+    await flush();
+    expect(renderer.root.findAllByType(Image).map((image) => image.props.source)).toContainEqual({ uri: 'file:///private-cache/first.jpg' });
+    expect(textOf(renderer)).toContain('Private photo couldn’t load');
+  });
+
+  test('drops resolved private images and reauthorizes after auth cache invalidation', async () => {
+    const first = photo('first', '2026-08-01T12:00:00.000Z');
+    const resolvePhoto = jest.fn<NonNullable<React.ComponentProps<typeof ProgressPhotoVault>['resolvePhoto']>>()
+      .mockResolvedValueOnce({ localUri: 'file:///private-cache/session-one.jpg' })
+      .mockResolvedValueOnce({ localUri: 'file:///private-cache/session-two.jpg' });
+    const { renderer } = renderVault({ photos: [first], resolvePhoto });
+    await flush();
+    expect(renderer.root.findAllByType(Image).map((image) => image.props.source)).toContainEqual({ uri: 'file:///private-cache/session-one.jpg' });
+    await act(async () => { for (const listener of mockPrivateMediaListeners) listener(); });
+    await flush();
+    expect(resolvePhoto).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findAllByType(Image).map((image) => image.props.source)).not.toContainEqual({ uri: 'file:///private-cache/session-one.jpg' });
+  });
+
+  test('uses IDs as a deterministic tie breaker for equal capture dates', () => {
+    const capturedAt = '2026-08-19T12:00:00.000Z';
+    expect(selectProgressPreview([photo('z-last', capturedAt), photo('a-first', capturedAt)]).map(({ photo: item }) => item.id))
+      .toEqual(['a-first', 'z-last']);
   });
 
   test('shows a truthful private-image error and drops stale resolver completion after owner switch', async () => {
