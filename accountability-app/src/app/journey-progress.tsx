@@ -203,7 +203,7 @@ export default function JourneyProgress() {
             )}
             <WeightTrendChart measurements={current.measurements} now={current.referenceTime} />
             <Pressable accessibilityRole="button" accessibilityLabel="Add body check-in" onPress={() => ownerId && setSheetState({ ownerId, token: ownerToken })} style={styles.checkInButton}><Text style={styles.checkInButtonText}>{latest ? 'Add body check-in' : 'Start body check-in'}</Text></Pressable>
-            <ProgressPhotoVault photos={current.photos} />
+            <ProgressPhotoVault photos={current.photos} expectedOwnerId={current.ownerId} onSaved={() => load()} />
           </>
         ) : null}
       </ScrollView>

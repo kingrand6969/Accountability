@@ -1,46 +1,277 @@
-import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
-import type { ProgressPhoto } from './types';
+import { saveProgressPhoto } from './api';
+import { localDateKey, recordedAtForLocalDate } from './checkInDate';
+import { chooseProgressPhoto, type CapturedProgressPhoto, type ProgressPhotoSource } from './photoCapture';
+import type { ProgressPhoto, SaveProgressPhotoInput } from './types';
 
-export function ProgressPhotoVault({ photos }: { photos: readonly ProgressPhoto[] }) {
+type Props = Readonly<{
+  photos: readonly ProgressPhoto[];
+  expectedOwnerId: string;
+  onSaved?: (photo: ProgressPhoto) => void;
+  choosePhoto?: (source: ProgressPhotoSource) => Promise<CapturedProgressPhoto | null>;
+  savePhoto?: (input: SaveProgressPhotoInput, expectedOwnerId: string) => Promise<ProgressPhoto>;
+  now?: () => Date;
+}>;
+
+type Draft = Readonly<{ ownerId: string; photo: CapturedProgressPhoto; dateKey: string }>;
+
+const PICK_ERROR = 'That photo couldn’t be opened. Try another.';
+const SAVE_ERROR = 'Your private photo couldn’t save. Try again.';
+
+export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePhoto = chooseProgressPhoto, savePhoto = saveProgressPhoto, now = () => new Date() }: Props) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const mountedRef = useRef(true);
+  const ownerToken = useMemo(() => Symbol(expectedOwnerId), [expectedOwnerId]);
+  const activeOwnerTokenRef = useRef<symbol | null>(null);
+  const pickingRef = useRef<string | null>(null);
+  const savingRef = useRef<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [pickingOwner, setPickingOwner] = useState<string | null>(null);
+  const [savingOwner, setSavingOwner] = useState<string | null>(null);
+  const [errorState, setErrorState] = useState<{ ownerId: string; message: string } | null>(null);
+
+  useEffect(() => {
+    activeOwnerTokenRef.current = ownerToken;
+    return () => {
+      if (activeOwnerTokenRef.current === ownerToken) activeOwnerTokenRef.current = null;
+    };
+  }, [ownerToken]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const preview = useMemo(() => selectProgressPreview(photos), [photos]);
+  const activeDraft = draft?.ownerId === expectedOwnerId ? draft : null;
+  const picking = pickingOwner === expectedOwnerId;
+  const saving = savingOwner === expectedOwnerId;
+  const error = errorState?.ownerId === expectedOwnerId ? errorState.message : null;
+
+  const pick = async (source: ProgressPhotoSource) => {
+    if (pickingRef.current === expectedOwnerId || savingRef.current === expectedOwnerId) return;
+    const capturedOwner = expectedOwnerId;
+    const capturedToken = ownerToken;
+    pickingRef.current = expectedOwnerId;
+    setPickingOwner(expectedOwnerId);
+    setErrorState(null);
+    try {
+      const selected = await choosePhoto(source);
+      if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef) || !selected) return;
+      const selectedDate = new Date(selected.capturedAt);
+      if (!Number.isFinite(selectedDate.getTime())) throw new Error('Invalid photo date.');
+      setDraft({ ownerId: capturedOwner, photo: selected, dateKey: localDateKey(selectedDate) });
+    } catch (pickError) {
+      if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+      setErrorState({ ownerId: capturedOwner, message: permissionMessage(pickError) ?? PICK_ERROR });
+    } finally {
+      if (pickingRef.current === capturedOwner) pickingRef.current = null;
+      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setPickingOwner(null);
+    }
+  };
+
+  const closeDraft = () => {
+    if (savingRef.current === expectedOwnerId) return;
+    setDraft(null);
+    setErrorState(null);
+  };
+
+  const save = async () => {
+    if (!activeDraft || savingRef.current === expectedOwnerId) return;
+    const capturedOwner = expectedOwnerId;
+    const capturedToken = ownerToken;
+    let capturedAt: string;
+    try {
+      capturedAt = recordedAtForLocalDate(activeDraft.dateKey, now());
+    } catch (dateError) {
+      setErrorState({ ownerId: capturedOwner, message: dateError instanceof Error && dateError.message.includes('future') ? 'Photo date cannot be in the future.' : 'Enter a valid photo date.' });
+      return;
+    }
+    savingRef.current = capturedOwner;
+    setSavingOwner(capturedOwner);
+    setErrorState(null);
+    try {
+      const saved = await savePhoto({ localUri: activeDraft.photo.uri, capturedAt, weightKg: null }, capturedOwner);
+      if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+      setDraft(null);
+      onSaved?.(saved);
+    } catch {
+      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setErrorState({ ownerId: capturedOwner, message: SAVE_ERROR });
+    } finally {
+      if (savingRef.current === capturedOwner) savingRef.current = null;
+      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setSavingOwner(null);
+    }
+  };
+
   return (
     <View style={styles.section}>
-      <Text style={styles.title}>Appearance progress</Text>
-      <Text style={styles.private}>Private · Only you can see this</Text>
-      {photos.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No private progress photos yet</Text>
-          <Text style={styles.emptyCopy}>Your saved appearance check-ins will stay private here.</Text>
+      <View style={styles.headingRow}>
+        <View style={styles.headingCopy}>
+          <Text style={styles.title}>Appearance progress</Text>
+          <Text style={styles.private}>Private · Only you can see this</Text>
         </View>
-      ) : photos.map((photo) => (
-        <View key={photo.id} style={styles.photo} accessibilityLabel={`Private progress photo from ${new Date(photo.capturedAt).toLocaleDateString()}`}>
-          <View style={styles.placeholder}><Text style={styles.placeholderText}>Private photo</Text></View>
-          <View style={styles.photoMeta}>
-            <Text style={styles.photoDate}>{new Date(photo.capturedAt).toLocaleDateString()}</Text>
-            {photo.weightKg == null ? null : <Text style={styles.photoWeight}>{photo.weightKg.toFixed(1)} kg</Text>}
+        <View accessibilityLabel="Private progress photos" style={styles.lockBadge}><Text style={styles.lockText}>PRIVATE</Text></View>
+      </View>
+      <Text style={styles.intro}>Add dated photos to compare changes over time. Nothing is posted when you take or choose a photo.</Text>
+
+      {preview.length === 0 ? (
+        <View style={styles.empty}>
+          <View style={styles.emptyMark}><Text style={styles.emptyMarkText}>＋</Text></View>
+          <View style={styles.emptyCopyWrap}>
+            <Text style={styles.emptyTitle}>No private progress photos yet</Text>
+            <Text style={styles.emptyCopy}>Your first saved photo becomes Before. Your newest becomes Latest.</Text>
           </View>
         </View>
-      ))}
+      ) : (
+        <View style={styles.comparison}>
+          {preview.map(({ label, photo }) => <PrivatePhotoCard key={`${label}-${photo.id}`} label={label} photo={photo} styles={styles} />)}
+        </View>
+      )}
+
+      {error && !activeDraft ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      <View testID="progress-photo-source-actions" style={styles.sourceActions}>
+        <SourceButton label="Take selfie" detail="Front camera" onPress={() => void pick('front-camera')} disabled={picking || saving} styles={styles} />
+        <SourceButton label="Take photo" detail="Rear camera" onPress={() => void pick('rear-camera')} disabled={picking || saving} styles={styles} />
+        <SourceButton label="Choose from gallery" detail="Existing photo" onPress={() => void pick('gallery')} disabled={picking || saving} styles={styles} />
+      </View>
+      {picking ? (
+        <View accessibilityRole="progressbar" accessibilityLabel="Opening private photo picker" style={styles.pickingRow}>
+          <ActivityIndicator color={theme.ink.action} /><Text style={styles.pickingText}>Opening photos…</Text>
+        </View>
+      ) : null}
+
+      <Modal visible={!!activeDraft} transparent animationType="slide" onRequestClose={closeDraft}>
+        <View style={styles.scrim}>
+          <View accessibilityViewIsModal style={styles.sheet}>
+            <Text accessibilityRole="header" style={styles.sheetTitle}>Review private photo</Text>
+            <Text style={styles.sheetCopy}>Not saved yet. Confirm the date, then save it only to your private progress.</Text>
+            {activeDraft ? <Image source={{ uri: activeDraft.photo.uri }} accessibilityLabel="Selected private progress photo preview" resizeMode="cover" style={styles.previewImage} /> : null}
+            <Text style={styles.fieldLabel}>Photo date</Text>
+            <TextInput
+              accessibilityLabel="Progress photo date"
+              value={activeDraft?.dateKey ?? ''}
+              onChangeText={(value) => {
+                setDraft((current) => current?.ownerId === expectedOwnerId ? { ...current, dateKey: value } : current);
+                setErrorState(null);
+              }}
+              editable={!saving}
+              maxLength={10}
+              keyboardType="numbers-and-punctuation"
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.ink.muted}
+              style={[styles.dateInput, error && styles.invalid]}
+            />
+            <Text style={styles.dateHint}>Use YYYY-MM-DD. You can correct the original photo date.</Text>
+            {error && activeDraft ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+            <View style={styles.sheetActions}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Cancel private photo" accessibilityState={{ disabled: saving }} disabled={saving} onPress={closeDraft} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Text style={styles.secondaryButtonText}>Cancel</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Save private progress photo" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving} onPress={() => void save()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+                {saving ? <ActivityIndicator color={theme.ink.inverse} /> : <Text style={styles.primaryButtonText}>Save privately</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
+export function selectProgressPreview(photos: readonly ProgressPhoto[]) {
+  if (photos.length === 0) return [];
+  let earliest = photos[0];
+  let latest = photos[0];
+  let earliestTime = new Date(earliest.capturedAt).getTime();
+  let latestTime = earliestTime;
+  for (let index = 1; index < photos.length; index += 1) {
+    const candidate = photos[index];
+    const candidateTime = new Date(candidate.capturedAt).getTime();
+    if (candidateTime < earliestTime) { earliest = candidate; earliestTime = candidateTime; }
+    if (candidateTime > latestTime) { latest = candidate; latestTime = candidateTime; }
+  }
+  return earliest.id === latest.id
+    ? [{ label: 'Before' as const, photo: earliest }]
+    : [{ label: 'Before' as const, photo: earliest }, { label: 'Latest' as const, photo: latest }];
+}
+
+function PrivatePhotoCard({ label, photo, styles }: { label: 'Before' | 'Latest'; photo: ProgressPhoto; styles: ReturnType<typeof createStyles> }) {
+  const date = new Date(photo.capturedAt).toLocaleDateString();
+  return (
+    <View accessibilityLabel={`Private ${label} progress photo from ${date}`} style={styles.photoCard}>
+      <View style={styles.photoPlaceholder}><Text style={styles.photoPlaceholderText}>PRIVATE PHOTO</Text></View>
+      <Text style={styles.photoLabel}>{label}</Text><Text style={styles.photoDate}>{date}</Text>
+      {photo.weightKg == null ? null : <Text style={styles.photoWeight}>{photo.weightKg.toFixed(1)} kg</Text>}
+    </View>
+  );
+}
+
+function SourceButton({ label, detail, onPress, disabled, styles }: { label: string; detail: string; onPress: () => void; disabled: boolean; styles: ReturnType<typeof createStyles> }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={detail} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.sourceButton, pressed && styles.pressed]}>
+      <Text style={styles.sourceLabel}>{label}</Text><Text style={styles.sourceDetail}>{detail}</Text>
+    </Pressable>
+  );
+}
+
+function permissionMessage(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('permissionKind' in error)) return null;
+  return error.permissionKind === 'camera'
+    ? 'Camera access is off. Enable it in Settings to take a progress photo.'
+    : error.permissionKind === 'gallery'
+      ? 'Photo library access is off. Enable it in Settings to choose a progress photo.'
+      : null;
+}
+
+function isCurrent(token: symbol, activeOwnerTokenRef: React.MutableRefObject<symbol | null>, mountedRef: React.MutableRefObject<boolean>) {
+  return mountedRef.current && activeOwnerTokenRef.current === token;
+}
+
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   section: { marginTop: spacing.section },
+  headingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  headingCopy: { flexGrow: 1, flexShrink: 1, minWidth: 180 },
   title: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 20 },
-  private: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5, marginTop: spacing.xs },
-  empty: { marginTop: spacing.md, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 16, padding: spacing.lg },
-  emptyTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15 },
+  private: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18, marginTop: spacing.xs },
+  lockBadge: { borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.muted, borderRadius: 8, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  lockText: { color: theme.ink.secondary, fontFamily: font.bold, fontSize: 9, letterSpacing: 1.1 },
+  intro: { color: theme.ink.secondary, fontFamily: font.regular, fontSize: 13.5, lineHeight: 20, marginTop: spacing.md },
+  empty: { marginTop: spacing.md, minHeight: 104, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 16, padding: spacing.lg },
+  emptyMark: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surface.muted },
+  emptyMarkText: { color: theme.ink.action, fontFamily: font.regular, fontSize: 26 },
+  emptyCopyWrap: { flex: 1, minWidth: 0 },
+  emptyTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15, lineHeight: 20 },
   emptyCopy: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 13, lineHeight: 19, marginTop: spacing.xs },
-  photo: { minHeight: 88, marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 16, padding: spacing.md },
-  placeholder: { width: 64, height: 64, borderRadius: 12, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
-  placeholderText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 10, textAlign: 'center' },
-  photoMeta: { flex: 1 },
-  photoDate: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 14 },
-  photoWeight: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5, marginTop: spacing.xs },
+  comparison: { marginTop: spacing.md, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  photoCard: { flexGrow: 1, flexBasis: 144, minWidth: 132, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 16, padding: spacing.sm },
+  photoPlaceholder: { aspectRatio: 4 / 3, borderRadius: 12, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
+  photoPlaceholderText: { color: theme.ink.muted, fontFamily: font.bold, fontSize: 9, letterSpacing: 1 },
+  photoLabel: { color: theme.ink.action, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8, marginTop: spacing.sm },
+  photoDate: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
+  photoWeight: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18, marginTop: spacing.xs },
+  sourceActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  sourceButton: { minHeight: 56, flexGrow: 1, flexBasis: 138, justifyContent: 'center', borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 12, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  sourceLabel: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13.5, lineHeight: 18 },
+  sourceDetail: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 11.5, lineHeight: 17, marginTop: 2 },
+  pickingRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  pickingText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 13 },
+  error: { color: theme.status.danger, fontFamily: font.medium, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
+  scrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: theme.interaction.scrim },
+  sheet: { width: '100%', maxWidth: 640, maxHeight: '94%', alignSelf: 'center', backgroundColor: theme.surface.canvas, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xxl },
+  sheetTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 21, lineHeight: 27 },
+  sheetCopy: { color: theme.ink.secondary, fontFamily: font.regular, fontSize: 13.5, lineHeight: 20, marginTop: spacing.xs },
+  previewImage: { width: '100%', maxHeight: 320, aspectRatio: 4 / 3, borderRadius: 14, backgroundColor: theme.surface.muted, marginTop: spacing.md },
+  fieldLabel: { color: theme.ink.secondary, fontFamily: font.semibold, fontSize: 13, marginTop: spacing.md, marginBottom: spacing.xs },
+  dateInput: { minHeight: 48, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 12, paddingHorizontal: spacing.md, color: theme.ink.primary, fontFamily: font.medium, fontSize: 16 },
+  invalid: { borderColor: theme.border.danger },
+  dateHint: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 12, lineHeight: 17, marginTop: spacing.xs },
+  sheetActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.lg },
+  secondaryButton: { minHeight: 48, minWidth: 112, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 12, paddingHorizontal: spacing.lg },
+  secondaryButtonText: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 14 },
+  primaryButton: { minHeight: 48, minWidth: 152, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.ink.action, paddingHorizontal: spacing.lg },
+  primaryButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
+  pressed: { opacity: 0.7 },
 });
