@@ -4,10 +4,11 @@ import { useRouter } from 'expo-router';
 import { font, themeColors, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
-export type JourneySection = 'momentum' | 'path' | 'journal';
+export type JourneySection = 'momentum' | 'progress' | 'path' | 'journal';
 
-const TABS: { key: JourneySection; label: string; route: '/activity' | '/journey-path' | '/today' }[] = [
+const TABS: { key: JourneySection; label: string; route: '/activity' | '/journey-progress' | '/journey-path' | '/today' }[] = [
   { key: 'momentum', label: 'Momentum', route: '/activity' },
+  { key: 'progress', label: 'Progress', route: '/journey-progress' },
   { key: 'path', label: 'Path', route: '/journey-path' },
   { key: 'journal', label: 'Journal', route: '/today' },
 ];

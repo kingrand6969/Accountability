@@ -269,6 +269,7 @@ function RootNavigator() {
           name="journey-path"
           options={{ headerShown: true, title: 'Journey Path' }}
         />
+        <Stack.Screen name="journey-progress" options={{ headerShown: false }} />
         <Stack.Screen name="groups" options={{ headerShown: true, title: 'Groups' }} />
         <Stack.Screen name="group/[id]" options={{ headerShown: true, title: 'Group' }} />
         <Stack.Screen name="group-new" options={{ headerShown: true, title: 'New Group' }} />
