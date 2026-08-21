@@ -17,6 +17,11 @@ const OTHER_OWNER = '22222222-2222-4222-8222-222222222222';
 const OPERATION = '33333333-3333-4333-8333-333333333333';
 const OTHER_OPERATION = '44444444-4444-4444-8444-444444444444';
 const ALPHA_OPERATION = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const NON_V4_OPERATIONS = [
+  'aaaaaaaa-aaaa-1aaa-8aaa-aaaaaaaaaaaa',
+  'aaaaaaaa-aaaa-3aaa-8aaa-aaaaaaaaaaaa',
+  'aaaaaaaa-aaaa-5aaa-8aaa-aaaaaaaaaaaa',
+] as const;
 
 type Response = { data: unknown; error: unknown; status?: number };
 type AuthResponse = { owner: string | null; error?: unknown };
@@ -320,6 +325,20 @@ describe('progress photo APIs', () => {
     expect(f.calls.inserts).toContainEqual({ user_id: OWNER, storage_path: `${OWNER}/${OPERATION}.jpg`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: 81.5 });
   });
 
+  test.each(NON_V4_OPERATIONS)(
+    'rejects non-v4 operation id %s before reading or writing',
+    async (operationId) => {
+      const f = fixture();
+
+      await expect(saveProgressPhoto({ localUri: 'file:///photo.jpg', capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null }, OWNER, operationId, f.deps)).rejects.toThrow(
+        'Progress photo could not be verified.',
+      );
+      expect(f.deps.readLocalImage).not.toHaveBeenCalled();
+      expect(f.from).not.toHaveBeenCalled();
+      expect(f.upload).not.toHaveBeenCalled();
+    },
+  );
+
   test('does not insert or clean up under a different account after upload completes', async () => {
     const upload = deferred<Response>();
     const f = fixture({ owners: [OWNER, OWNER, OWNER, OTHER_OWNER], existingPhoto: { data: null, error: null }, upload: upload.promise });
@@ -439,7 +458,7 @@ describe('progress photo APIs', () => {
     expect(f.calls.inserts).toHaveLength(2);
   });
 
-  test('returns a confirmed same-operation row on replay without uploading again', async () => {
+  test('accepts a lowercase canonical v4 operation path and replays its confirmed row', async () => {
     const row = { id: 'p-confirmed', user_id: OWNER, storage_path: `${OWNER}/${OPERATION}.jpg`, captured_at: '2026-08-21T10:00:00.000Z', weight_kg: '80' };
     const f = fixture({ photoResponses: [{ data: row, error: null }] });
 
@@ -482,6 +501,7 @@ describe('progress photo APIs', () => {
     `${OWNER}/../${OPERATION}.jpg`,
     `${OWNER}/${ALPHA_OPERATION.toUpperCase()}.jpg`,
     `${OWNER}//${OPERATION}.jpg`,
+    ...NON_V4_OPERATIONS.map((operationId) => `${OWNER}/${operationId}.jpg`),
   ])('rejects non-canonical progress path %s before touching metadata', async (storagePath) => {
     const f = fixture({ deletedPhoto: { data: null, error: null } });
     await expect(deleteProgressPhoto({ id: 'p1', storagePath, capturedAt: '2026-08-21T10:00:00.000Z', weightKg: null }, OWNER, f.deps)).rejects.toThrow(

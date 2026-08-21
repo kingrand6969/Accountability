@@ -16,7 +16,7 @@ const DELETE_PHOTO_COLUMNS = 'id,user_id,storage_path';
 const PROGRESS_PHOTO_BUCKET = 'progress-photos';
 const INVALID_PROGRESS_DATA = 'Progress data could not be verified.';
 const INVALID_PROGRESS_PHOTO = 'Progress photo could not be verified.';
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const UUID_V4 = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const LOCAL_URI = /^(?:file|content|ph|assets-library):\/\//i;
 
 type DatabaseResponse = {
@@ -159,7 +159,7 @@ export async function saveProgressPhoto(
   const capturedAt = validIsoDate(input.capturedAt, INVALID_PROGRESS_PHOTO);
   validateOptionalWeight(input.weightKg);
   const identity = operationId ?? deps.randomUUID();
-  if (!UUID.test(identity)) throw new Error(INVALID_PROGRESS_PHOTO);
+  if (!UUID_V4.test(identity)) throw new Error(INVALID_PROGRESS_PHOTO);
 
   const image = await withOwnerRecheck(
     () => deps.readLocalImage(input.localUri),
@@ -425,7 +425,7 @@ function assertOwnerStoragePath(
     ? storagePath.slice(prefix.length)
     : '';
   const identity = filename.endsWith('.jpg') ? filename.slice(0, -4) : '';
-  if (storagePath !== `${prefix}${identity}.jpg` || !UUID.test(identity)) {
+  if (storagePath !== `${prefix}${identity}.jpg` || !UUID_V4.test(identity)) {
     throw new Error(message);
   }
 }
