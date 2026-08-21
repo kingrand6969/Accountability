@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(require.resolve('../app/compose'), 'utf8');
+const mediaActions = readFileSync(require.resolve('./ComposerMediaActions'), 'utf8');
 
 describe('Compose appearance contract', () => {
   test('uses the live manual app theme instead of module-static light colors', () => {
@@ -18,7 +19,7 @@ describe('Compose appearance contract', () => {
     expect(source).toContain('borderColor: theme.border.subtle');
     expect(source).toContain('backgroundColor: theme.interaction.skeleton');
     expect(source).toContain('color: theme.status.danger');
-    expect(source).toContain('tint={theme.ink.action}');
+    expect(mediaActions).toContain('return theme.ink.action');
     expect(source).toContain('backgroundColor: theme.status.successSoft');
   });
 

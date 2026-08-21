@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -80,6 +81,7 @@ import {
 import { PhotoPermissionDeniedError } from '../progress/photoCapture';
 import { PostVisibilitySwitch } from '../share/PostVisibilitySwitch';
 import { captureComposerSelfie } from '../entry/composerSelfie';
+import { ComposerMediaActions } from '../entry/ComposerMediaActions';
 
 type CleanupRecovery = {
   successMessage: string;
@@ -90,6 +92,7 @@ type CleanupRecovery = {
 
 export default function Compose() {
   const router = useRouter();
+  const windowMetrics = useWindowDimensions();
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const routerRef = useRef(router);
@@ -1244,10 +1247,12 @@ export default function Compose() {
             {!editingId ? <Pressable
               style={styles.previewRemove}
               onPress={clearPhoto}
-              hitSlop={8}
+              accessibilityRole="button"
               accessibilityLabel={pickedVideo ? 'Remove video' : 'Remove photo'}
             >
-              <Ionicons name="close" size={15} color={theme.ink.inverse} />
+              <View style={styles.previewRemoveVisual}>
+                <Ionicons name="close" size={15} color={theme.ink.inverse} />
+              </View>
             </Pressable> : null}
             {!editingId && !pickedVideo ? <View style={styles.photoOpts}>
               <Pressable
@@ -1268,6 +1273,8 @@ export default function Compose() {
               <Pressable
                 style={({ pressed }) => [styles.optRow, pressed && styles.pressed]}
                 onPress={openTagPicker}
+                accessibilityRole="button"
+                accessibilityLabel={tagged.length > 0 ? 'Change tagged buddies' : 'Tag buddies'}
               >
                 <Ionicons
                   name={tagged.length > 0 ? 'people' : 'person-add-outline'}
@@ -1276,7 +1283,6 @@ export default function Compose() {
                 />
                 <Text
                   style={[styles.optText, tagged.length > 0 && { color: theme.ink.action }]}
-                  numberOfLines={1}
                 >
                   {tagged.length > 0
                     ? taggedLabel(tagged.map((b) => ({ name: b.name })))
@@ -1329,37 +1335,48 @@ export default function Compose() {
       </ScrollView>
 
       {/* bottom action bar */}
-      {!remoteSucceeded ? <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <Action
-          icon="camera-outline"
-          tint={theme.ink.action}
-          label="Take selfie"
-          disabled={eventOpen || !draftReady || !ownerId}
-          onPress={() => requestMediaPicker('selfie')}
+      {!remoteSucceeded ? (
+        <ComposerMediaActions
+          availableWidth={windowMetrics.width}
+          fontScale={windowMetrics.fontScale}
+          bottomInset={insets.bottom}
+          actions={[
+            {
+              id: 'selfie',
+              icon: 'camera-outline',
+              tone: 'action',
+              label: 'Take selfie',
+              disabled: eventOpen || !draftReady || !ownerId,
+              onPress: () => requestMediaPicker('selfie'),
+            },
+            {
+              id: 'photo',
+              icon: 'image-outline',
+              tone: 'action',
+              label: 'Choose photo',
+              disabled: eventOpen,
+              onPress: () => requestMediaPicker('photo'),
+            },
+            {
+              id: 'video',
+              icon: 'videocam-outline',
+              tone: 'danger',
+              label: 'Choose video',
+              disabled: eventOpen,
+              onPress: () => requestMediaPicker('video'),
+            },
+            {
+              id: 'event',
+              icon: eventOpen ? 'calendar' : 'calendar-outline',
+              tone: 'success',
+              label: 'Event',
+              active: eventOpen,
+              disabled: hasAttachedMedia,
+              onPress: toggleEventMode,
+            },
+          ]}
         />
-        <Action
-          icon="image-outline"
-          tint={theme.ink.action}
-          label="Photo"
-          disabled={eventOpen}
-          onPress={() => requestMediaPicker('photo')}
-        />
-        <Action
-          icon="videocam-outline"
-          tint={theme.status.danger}
-          label="Video"
-          disabled={eventOpen}
-          onPress={() => requestMediaPicker('video')}
-        />
-        <Action
-          icon={eventOpen ? 'calendar' : 'calendar-outline'}
-          tint={theme.status.success}
-          label="Event"
-          active={eventOpen}
-          disabled={hasAttachedMedia}
-          onPress={toggleEventMode}
-        />
-      </View> : null}
+      ) : null}
 
       {/* buddy tag picker */}
       <Modal
@@ -1410,42 +1427,6 @@ export default function Compose() {
   );
 }
 
-function Action({
-  icon,
-  tint,
-  label,
-  active,
-  disabled = false,
-  onPress,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  tint: string;
-  label: string;
-  active?: boolean;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  const { colors: theme } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.action,
-        active && styles.actionActive,
-        disabled && styles.actionDisabled,
-        pressed && !disabled && styles.pressed,
-      ]}
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-    >
-      <Ionicons name={icon} size={20} color={tint} />
-      <Text style={styles.actionLabel}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function createStyles(theme: AppThemeColors) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.surface.card },
@@ -1491,7 +1472,7 @@ function createStyles(theme: AppThemeColors) {
   cleanupRecoveryActions: { flexDirection: 'row', gap: spacing.sm },
   cleanupClose: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -1502,7 +1483,7 @@ function createStyles(theme: AppThemeColors) {
   cleanupCloseText: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 14 },
   cleanupRetry: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.sm,
@@ -1525,8 +1506,14 @@ function createStyles(theme: AppThemeColors) {
   videoPreview: { width: 200 },
   previewRemove: {
     position: 'absolute',
-    top: -6,
-    right: -6,
+    top: -18,
+    right: -18,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewRemoveVisual: {
     backgroundColor: theme.ink.primary,
     borderRadius: 12,
     width: 24,
@@ -1535,8 +1522,8 @@ function createStyles(theme: AppThemeColors) {
     justifyContent: 'center',
   },
   photoOpts: { gap: 4 },
-  optRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34 },
-  optText: { fontFamily: font.semibold, fontSize: 13.5, color: theme.ink.secondary },
+  optRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 48 },
+  optText: { flexShrink: 1, fontFamily: font.semibold, fontSize: 13.5, lineHeight: 19, color: theme.ink.secondary },
   eventForm: { gap: spacing.sm },
   eventInput: {
     borderWidth: 1,
@@ -1549,30 +1536,7 @@ function createStyles(theme: AppThemeColors) {
     backgroundColor: theme.surface.muted,
   },
   eventHint: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted, lineHeight: 18 },
-  actionBar: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.border.subtle,
-  },
-  action: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    backgroundColor: theme.surface.muted,
-    borderWidth: 1,
-    borderColor: theme.border.subtle,
-    borderRadius: radius.md,
-    paddingVertical: 12,
-    minHeight: 48,
-  },
-  actionActive: { backgroundColor: theme.status.successSoft, borderColor: theme.status.success },
   actionDisabled: { opacity: theme.interaction.disabledOpacity },
-  actionLabel: { fontFamily: font.bold, fontSize: 14, color: theme.ink.primary },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: theme.interaction.scrim,
@@ -1606,7 +1570,7 @@ function createStyles(theme: AppThemeColors) {
   tagDone: {
     backgroundColor: theme.ink.action,
     borderRadius: radius.md,
-    minHeight: 46,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: spacing.sm,

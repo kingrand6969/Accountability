@@ -32,7 +32,7 @@ describe('Composer universal visibility contract', () => {
 
   test('adds a front-camera selfie path through the shared capture adapter and owns cleanup', () => {
     expect(compose).toContain('captureComposerSelfie({');
-    expect(compose).toContain("label=\"Take selfie\"");
+    expect(compose).toContain("label: 'Take selfie'");
     expect(compose).toContain('releaseEditorPhoto()');
     expect(compose).toContain('releaseEditedPhotoUri(photo.uri)');
     expect(compose).toContain('PhotoPermissionDeniedError');
