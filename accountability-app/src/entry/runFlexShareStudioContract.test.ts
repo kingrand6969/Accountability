@@ -8,10 +8,15 @@ const winCard = readFileSync(resolve(process.cwd(), 'src/app/win-card.tsx'), 'ut
 describe('Run and Flex Share Studio integration', () => {
   test('Run opens the reusable studio and preserves its operation and visibility draft', () => {
     expect(run).toContain("import { ShareStudio");
+    expect(run).toContain('createRunShareMediaOverrideController');
+    expect(run).toContain('uploadRunFeedImage');
     expect(run).toContain('<ShareStudio');
     expect(run).toMatch(/operationId:\s*draft!\.operationId/);
     expect(run).toMatch(/showPublicly:\s*draft!\.showPublicly/);
     expect(run).toMatch(/await onDestination\('feed', draft\);[\s\S]*?await draft\.media\.release\(\)\.catch/);
+    expect(run).toMatch(/const restored = shareMediaOverride\.current!\.cancel\(\)/);
+    expect(run).toMatch(/const committed = shareMediaOverride\.current!\.commit\(\)/);
+    expect(run).not.toMatch(/setPhotoUri\(draft\.media\.uri\)/);
     expect(run).toMatch(/function cancelRunShareStudio\(\)[\s\S]*?feedOperation\.current = null;[\s\S]*?setShareStudioVisible\(false\)/);
     expect(run).not.toContain("setAudience('buddies')");
   });

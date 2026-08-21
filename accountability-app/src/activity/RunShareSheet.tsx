@@ -83,6 +83,11 @@ import {
   type AchievementStoryOperation,
 } from '../entry/achievementCompletion';
 import { ShareStudio, type ShareStudioResult } from '../share/ShareStudio';
+import {
+  createRunShareMediaOverrideController,
+  uploadRunFeedImage,
+  type RunSharePresentation,
+} from './runShareMediaOverride';
 
 const LIME = '#c6f24e';
 
@@ -198,6 +203,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const cardRef = useRef<View>(null);
   const stagedMedia = useRef<RunMediaCacheItem | null>(null);
   const processedPhotoMedia = useRef<RunMediaCacheItem | null>(null);
+  const shareMediaOverride = useRef<ReturnType<
+    typeof createRunShareMediaOverrideController
+  > | null>(null);
+  if (!shareMediaOverride.current) {
+    shareMediaOverride.current = createRunShareMediaOverrideController();
+  }
   const renderGeneration = useRef(0);
   const capturedSourceLeases = useRef<ReturnType<
     typeof createBeautyCaptureLeaseSlot
@@ -261,6 +272,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         setFormat('feed');
         setMediaFit('cover');
         setShareStudioVisible(false);
+        shareMediaOverride.current!.clear();
         setShowEnds(false);
         setBeautyStage(null);
         setBeautySource(null);
@@ -351,6 +363,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     }
     void capturedSourceLeases.current!.releaseAll();
     feedOperation.current = null;
+    shareMediaOverride.current!.clear();
     hasPersistentDestination.current = false;
     let active = true;
     queueMicrotask(() => {
@@ -672,7 +685,6 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               )
               .catch(() => {});
             Alert.alert('Posted 🎉', 'Your run is on your feed.');
-            await closeEditor();
             return;
           }
           throw new Error('Saving run images is available on your phone.');
@@ -716,12 +728,15 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
                 : Promise.resolve(null),
             ),
           uploadToFeed: async (uri) => {
-            boundary.assertOwned();
-            const base64 = await new File(uri).base64();
-            boundary.assertOwned();
-            return boundary.runSideEffect(() =>
-              uploadPostImage(base64, 'jpg', operationId ?? undefined),
-            );
+            return uploadRunFeedImage({
+              uri,
+              operationId: operationId ?? undefined,
+              expectedOwnerId: run.ownerId!,
+            }, {
+              readBase64: async (sourceUri) => new File(sourceUri).base64(),
+              uploadPostImage,
+              assertOwned: boundary.assertOwned,
+            });
           },
           createFeedPost: (imageUrl) =>
             boundary.runSideEffect(() => createRunPostIdempotent({
@@ -757,7 +772,6 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           const tmp = await capture('tmpfile');
           boundary.assertOwned();
           promptCrossShare(feedContext!.metadata.body, tmp);
-          await closeEditor();
         }
       } finally {
         setActiveDestination(null);
@@ -806,23 +820,50 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     boundary.assertOwned();
     if (draft.ownerId !== run.ownerId) throw new Error('Account changed.');
     if (draft.media.kind === 'photo') {
-      setPhotoUri(draft.media.uri);
-      setOriginalRatio(draft.media.width / draft.media.height);
-      setPhotoKind(draft.media.source === 'selfie' ? 'selfie' : 'gallery');
-      setMode('photo');
-      releaseProcessedPhotoAfterReplacement();
+      applyRunSharePresentation(shareMediaOverride.current!.stage(
+        { mode, photoUri, photoKind, originalRatio },
+        processedPhotoMedia.current,
+        {
+          operationId: draft.operationId,
+          uri: draft.media.uri,
+          source: draft.media.source,
+          width: draft.media.width,
+          height: draft.media.height,
+        },
+      ));
       await nextRunSharePaint();
       boundary.assertOwned();
     }
     await onDestination('feed', draft);
+    const committed = shareMediaOverride.current!.commit();
+    if (committed) {
+      processedPhotoMedia.current = null;
+      if (committed.releasePrevious) {
+        await runMediaCache.release(committed.releasePrevious.id, 'editor').catch(() => {});
+      }
+    }
     if (draft.media.kind === 'photo') {
       await draft.media.release().catch(() => {});
     }
+    setShareStudioVisible(false);
+    await closeEditor();
   }
 
   function cancelRunShareStudio(): void {
+    const restored = shareMediaOverride.current!.cancel();
+    if (restored) {
+      processedPhotoMedia.current = restored.processedPhoto;
+      applyRunSharePresentation(restored.presentation);
+    }
     feedOperation.current = null;
     setShareStudioVisible(false);
+  }
+
+  function applyRunSharePresentation(presentation: RunSharePresentation): void {
+    setMode(presentation.mode);
+    setPhotoUri(presentation.photoUri);
+    setPhotoKind(presentation.photoKind);
+    setOriginalRatio(presentation.originalRatio);
   }
 
   if (!ownerMatches) {
