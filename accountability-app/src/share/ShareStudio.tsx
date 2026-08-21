@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,6 +22,7 @@ import { createShareStudioStyles } from './ShareStudio.styles';
 import {
   createShareStudioResult,
   canonicalShareStudioContext,
+  hasBodyStats,
   SHARE_CAPTION_LIMIT,
   type ShareStudioContext,
   type ShareStudioResult,
@@ -29,6 +31,7 @@ import {
 export { SHARE_CAPTION_LIMIT, type ShareStudioContext, type ShareStudioResult } from './shareStudioDraft';
 
 type MediaChoice = 'card' | 'selfie' | 'gallery';
+export type ShareMediaCapabilities = Readonly<{ card: boolean; selfie: boolean; gallery: boolean }>;
 type Props = Readonly<{
   visible: boolean;
   expectedOwnerId: string;
@@ -37,7 +40,8 @@ type Props = Readonly<{
   onContinue: (result: ShareStudioResult) => void | Promise<void>;
   onCancel: () => void;
   choosePhoto?: (source: ProgressPhotoSource) => Promise<CapturedProgressPhoto | null>;
-  continueLabel?: string;
+  createOperationId?: () => string;
+  mediaCapabilities?: Partial<ShareMediaCapabilities>;
 }>;
 
 const mediaOptions: readonly Readonly<{
@@ -48,11 +52,27 @@ const mediaOptions: readonly Readonly<{
 }>[] = [
   { id: 'card', label: 'Card only', detail: 'Share your result without a new photo.', icon: 'stats-chart-outline' },
   { id: 'selfie', label: 'Take selfie', detail: 'Use the front camera for this share.', icon: 'camera-outline' },
-  { id: 'gallery', label: 'Choose photo', detail: 'Pick one photo for this share.', icon: 'image-outline' },
+  { id: 'gallery', label: 'Choose photo', detail: 'Choose one from your photo library.', icon: 'image-outline' },
 ];
 
+export function resolveShareMediaCapabilities(
+  platform: string,
+  requested?: Partial<ShareMediaCapabilities>,
+): ShareMediaCapabilities {
+  const resolved = {
+    card: requested?.card ?? true,
+    selfie: requested?.selfie ?? platform !== 'web',
+    gallery: requested?.gallery ?? true,
+  };
+  if (!resolved.card && !resolved.selfie && !resolved.gallery) {
+    throw new Error('Share Studio needs at least one supported media option.');
+  }
+  return resolved;
+}
+
 export function ShareStudio(props: Props) {
-  return <ShareStudioSession key={`${props.expectedOwnerId}:${props.visible ? 'open' : 'closed'}`} {...props} />;
+  if (!props.visible) return null;
+  return <ShareStudioSession key={props.expectedOwnerId} {...props} />;
 }
 
 function ShareStudioSession({
@@ -63,15 +83,25 @@ function ShareStudioSession({
   onContinue,
   onCancel,
   choosePhoto = chooseProgressPhoto,
-  continueLabel = 'Continue',
+  createOperationId = Crypto.randomUUID,
+  mediaCapabilities,
 }: Props) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createShareStudioStyles(theme), [theme]);
-  const shareContext = useMemo(() => canonicalShareStudioContext(context), [context]);
-  const [choice, setChoice] = useState<MediaChoice>('card');
+  const capabilities = useMemo(
+    () => resolveShareMediaCapabilities(Platform.OS, mediaCapabilities),
+    [mediaCapabilities],
+  );
+  const availableMediaOptions = useMemo(
+    () => mediaOptions.filter((option) => capabilities[option.id]),
+    [capabilities],
+  );
+  const [choice, setChoice] = useState<MediaChoice>(availableMediaOptions[0].id);
   const [photo, setPhoto] = useState<CapturedProgressPhoto | null>(null);
   const [caption, setCaption] = useState(defaultCaption.slice(0, SHARE_CAPTION_LIMIT));
   const [showPublicly, setShowPublicly] = useState(false);
+  const [includeBodyStats, setIncludeBodyStats] = useState(false);
+  const [retryDraft, setRetryDraft] = useState<ShareStudioResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [continuing, setContinuing] = useState(false);
@@ -80,12 +110,20 @@ function ShareStudioSession({
   const photoRef = useRef<CapturedProgressPhoto | null>(null);
   const pickerFlight = useRef(false);
   const continueFlight = useRef(false);
+  const [operationId] = useState(createOperationId);
+  const containsBodyStats = useMemo(() => hasBodyStats(context), [context]);
+  const shareContext = useMemo(
+    () => canonicalShareStudioContext(context, includeBodyStats),
+    [context, includeBodyStats],
+  );
+  const draftLocked = retryDraft !== null;
+  const mediaReady = choice === 'card' ? capabilities.card : photo !== null;
 
   const releaseOwnedPhoto = useCallback(async () => {
     const owned = photoRef.current;
     photoRef.current = null;
     setPhoto(null);
-    if (owned) await owned.release();
+    await safeRelease(owned);
   }, []);
 
   useEffect(() => {
@@ -94,12 +132,12 @@ function ShareStudioSession({
       mounted.current = false;
       const owned = photoRef.current;
       photoRef.current = null;
-      void owned?.release();
+      void safeRelease(owned);
     };
   }, []);
 
   const selectMedia = useCallback(async (next: MediaChoice) => {
-    if (picking || continuing || pickerFlight.current) return;
+    if (picking || continuing || draftLocked || pickerFlight.current || !capabilities[next]) return;
     setError(null);
     if (next === 'card') {
       await releaseOwnedPhoto();
@@ -114,12 +152,12 @@ function ShareStudioSession({
       const selected = await choosePhoto(source);
       if (!selected) return;
       if (!mounted.current || lease !== ownerLease.current) {
-        await selected.release();
+        await safeRelease(selected);
         return;
       }
       await releaseOwnedPhoto();
       if (!mounted.current || lease !== ownerLease.current) {
-        await selected.release();
+        await safeRelease(selected);
         return;
       }
       photoRef.current = selected;
@@ -134,7 +172,7 @@ function ShareStudioSession({
         setPicking(false);
       }
     }
-  }, [choosePhoto, continuing, picking, releaseOwnedPhoto]);
+  }, [capabilities, choosePhoto, continuing, draftLocked, picking, releaseOwnedPhoto]);
 
   const cancel = useCallback(() => {
     if (continuing || continueFlight.current) return;
@@ -146,7 +184,7 @@ function ShareStudioSession({
   }, [continuing, expectedOwnerId, onCancel, releaseOwnedPhoto]);
 
   const proceed = useCallback(async () => {
-    if (picking || continuing || continueFlight.current) return;
+    if (picking || continuing || !mediaReady || continueFlight.current) return;
     const lease = ownerLease.current;
     try {
       const media = photo && choice !== 'card'
@@ -160,22 +198,28 @@ function ShareStudioSession({
           release: photo.release,
         }
         : { kind: 'card' as const };
-      const result = createShareStudioResult({
+      const result = retryDraft ?? createShareStudioResult({
         ownerId: expectedOwnerId,
+        operationId,
         context: shareContext,
         caption,
         showPublicly,
+        includeBodyStats,
         media,
       });
+      if (!retryDraft) setRetryDraft(result);
       continueFlight.current = true;
       setContinuing(true);
-      // Continue transfers ownership of a selected temporary file to the parent.
-      if (media.kind === 'photo') {
-        photoRef.current = null;
-        setPhoto(null);
-        setChoice('card');
-      }
       await onContinue(result);
+      if (mounted.current && lease === ownerLease.current) {
+        // A successful callback transfers ownership of its selected temporary file.
+        if (result.media.kind === 'photo') {
+          photoRef.current = null;
+          setPhoto(null);
+          setChoice(availableMediaOptions[0].id);
+        }
+        setRetryDraft(null);
+      }
     } catch (cause) {
       if (mounted.current && lease === ownerLease.current) setError(messageOf(cause));
     } finally {
@@ -184,7 +228,7 @@ function ShareStudioSession({
         setContinuing(false);
       }
     }
-  }, [caption, choice, continuing, expectedOwnerId, onContinue, photo, picking, shareContext, showPublicly]);
+  }, [availableMediaOptions, caption, choice, continuing, expectedOwnerId, includeBodyStats, mediaReady, onContinue, operationId, photo, picking, retryDraft, shareContext, showPublicly]);
 
   const summary = showPublicly
     ? 'Public · also shown on your Buddy Card'
@@ -247,16 +291,16 @@ function ShareStudioSession({
             <Text style={styles.sectionTitle}>Add to your card</Text>
             <Text style={styles.sectionCopy}>Choose how this share looks. A selected photo is used only for this share.</Text>
             <View accessibilityRole="radiogroup" style={styles.mediaOptions}>
-              {mediaOptions.map((option) => {
-                const selected = choice === option.id;
+              {availableMediaOptions.map((option) => {
+                const selected = choice === option.id && (option.id === 'card' || photo !== null);
                 return (
                   <Pressable
                     key={option.id}
                     accessibilityRole="radio"
                     accessibilityLabel={option.label}
                     accessibilityHint={option.detail}
-                    accessibilityState={{ selected, disabled: picking || continuing }}
-                    disabled={picking || continuing}
+                    accessibilityState={{ selected, disabled: picking || continuing || draftLocked }}
+                    disabled={picking || continuing || draftLocked}
                     onPress={() => void selectMedia(option.id)}
                     style={({ pressed }) => [styles.mediaOption, selected && styles.mediaSelected, pressed && styles.pressed]}
                   >
@@ -283,6 +327,7 @@ function ShareStudioSession({
               accessibilityHint={`Optional, up to ${SHARE_CAPTION_LIMIT} characters`}
               value={caption}
               onChangeText={setCaption}
+              editable={!continuing && !draftLocked}
               maxLength={SHARE_CAPTION_LIMIT}
               multiline
               scrollEnabled
@@ -293,20 +338,45 @@ function ShareStudioSession({
             />
           </View>
 
+          {containsBodyStats ? (
+            <View style={styles.bodyStatsRow}>
+              <View style={styles.visibilityCopy}>
+                <Text style={styles.visibilityTitle}>Include body stats</Text>
+                <Text style={styles.visibilitySummary}>Weight, BMI, and body measurements stay private unless you turn this on.</Text>
+              </View>
+              <View testID="include-body-stats-target" style={styles.switchTarget}>
+                <Switch
+                  testID="include-body-stats-switch"
+                  accessibilityRole="switch"
+                  accessibilityLabel="Include body stats"
+                  accessibilityHint="Adds up to three body and workout metrics to this share"
+                  accessibilityState={{ checked: includeBodyStats, disabled: continuing || draftLocked }}
+                  value={includeBodyStats}
+                  onValueChange={setIncludeBodyStats}
+                  disabled={continuing || draftLocked}
+                  hitSlop={{ top: 9, right: 6, bottom: 9, left: 6 }}
+                  trackColor={{ false: theme.border.strong, true: theme.ink.action }}
+                />
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.visibility}>
             <View style={styles.visibilityCopy}>
               <Text testID="buddy-card-switch-label" style={styles.visibilityTitle}>Show on Buddy Card too</Text>
+              <Text style={styles.visibilityConsequence}>Turn on to make this post Public and show it on your Buddy Card.</Text>
               <Text accessibilityLiveRegion="polite" style={styles.visibilitySummary}>{summary}</Text>
             </View>
             <View testID="buddy-card-switch-target" style={styles.switchTarget}>
               <Switch
+                testID="buddy-card-visibility-switch"
                 accessibilityRole="switch"
                 accessibilityLabel={visibilityCopy.accessibilityLabel}
                 accessibilityHint={visibilityCopy.helper}
-                accessibilityState={{ checked: showPublicly, disabled: continuing }}
+                accessibilityState={{ checked: showPublicly, disabled: continuing || draftLocked }}
                 value={showPublicly}
                 onValueChange={setShowPublicly}
-                disabled={continuing}
+                disabled={continuing || draftLocked}
                 hitSlop={{ top: 9, right: 6, bottom: 9, left: 6 }}
                 trackColor={{ false: theme.border.strong, true: theme.ink.action }}
               />
@@ -316,16 +386,17 @@ function ShareStudioSession({
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
 
           <Pressable
+            testID="share-studio-primary-action"
             accessibilityRole="button"
-            accessibilityLabel="Continue sharing"
+            accessibilityLabel={visibilityCopy.postAction}
             accessibilityHint="Returns this share draft for review or publishing"
-            accessibilityState={{ disabled: picking || continuing, busy: continuing }}
-            disabled={picking || continuing}
+            accessibilityState={{ disabled: picking || continuing || !mediaReady, busy: continuing }}
+            disabled={picking || continuing || !mediaReady}
             onPress={() => void proceed()}
-            style={({ pressed }) => [styles.continueButton, (picking || continuing) && styles.disabled, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.continueButton, (picking || continuing || !mediaReady) && styles.disabled, pressed && styles.pressed]}
           >
             {continuing ? <ActivityIndicator color={theme.ink.inverse} /> : null}
-            <Text style={styles.continueText}>{continueLabel}</Text>
+            <Text style={styles.continueText}>{visibilityCopy.postAction}</Text>
             {!continuing ? <Ionicons name="arrow-forward" size={20} color={theme.ink.inverse} /> : null}
           </Pressable>
         </ScrollView>
@@ -345,4 +416,13 @@ function permissionMessage(cause: unknown): string {
 
 function messageOf(cause: unknown): string {
   return cause instanceof Error && cause.message ? cause.message : 'That could not be completed. Try again.';
+}
+
+async function safeRelease(photo: CapturedProgressPhoto | null): Promise<void> {
+  if (!photo) return;
+  try {
+    await photo.release();
+  } catch {
+    // Cleanup is best effort; a locked temp file must not leak its replacement.
+  }
 }
