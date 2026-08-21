@@ -34,6 +34,22 @@ export function composerMediaLeaseIsCurrent(
   );
 }
 
+/**
+ * Applies a post-commit result only while its original Composer context is
+ * current. Once persistence has committed, a stale callback is a UI no-op:
+ * durable storage remains owned by the committed draft descriptor.
+ */
+export function applyCommittedComposerMedia<T>(input: {
+  lease: ComposerMediaLease | null;
+  current: () => ComposerMediaLeaseState;
+  committed: T;
+  apply: (committed: T) => void;
+}): boolean {
+  if (!composerMediaLeaseIsCurrent(input.lease, input.current())) return false;
+  input.apply(input.committed);
+  return true;
+}
+
 export async function runComposerPickerLease<T>(input: {
   lease: ComposerMediaLease | null;
   current: () => ComposerMediaLeaseState;

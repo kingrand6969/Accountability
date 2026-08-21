@@ -1,5 +1,9 @@
 import { describe, expect, jest, test } from '@jest/globals';
-import { createComposerMediaLease, runComposerPickerLease } from './composerMediaLease';
+import {
+  applyCommittedComposerMedia,
+  createComposerMediaLease,
+  runComposerPickerLease,
+} from './composerMediaLease';
 
 describe('Composer media picker lease', () => {
   test.each(['A to B', 'A to B to A', 'unmount'])(
@@ -76,4 +80,30 @@ describe('Composer media picker lease', () => {
       expect(discard).toHaveBeenCalledWith('durable-result');
     },
   );
+
+  test('keeps committed media intact when its UI callback becomes stale', () => {
+    let mountToken = 8;
+    const descriptor = { uri: 'file:///document/compose-drafts/owner-a/draft-a/committed.jpg' };
+    let durableFileExists = true;
+    const applyToUi = jest.fn(() => {
+      durableFileExists = false;
+    });
+    const lease = createComposerMediaLease('owner-a', mountToken, 3);
+
+    // Persistence has already committed the descriptor. A context change now
+    // makes only the UI callback stale; it must not roll back durable storage.
+    mountToken = 9;
+    expect(applyCommittedComposerMedia({
+      lease,
+      current: () => ({
+        owner: 'owner-a', mountToken, requestToken: 3, active: true, editing: false,
+      }),
+      committed: descriptor,
+      apply: applyToUi,
+    })).toBe(false);
+
+    expect(applyToUi).not.toHaveBeenCalled();
+    expect(descriptor.uri).toContain('committed.jpg');
+    expect(durableFileExists).toBe(true);
+  });
 });

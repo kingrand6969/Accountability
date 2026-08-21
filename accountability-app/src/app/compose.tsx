@@ -85,9 +85,11 @@ import { PostVisibilitySwitch } from '../share/PostVisibilitySwitch';
 import { captureComposerSelfie } from '../entry/composerSelfie';
 import { ComposerMediaActions, type ComposerMediaActionItem } from '../entry/ComposerMediaActions';
 import {
+  applyCommittedComposerMedia,
   composerMediaLeaseIsCurrent,
   createComposerMediaLease,
   type ComposerMediaLease,
+  type ComposerMediaLeaseState,
 } from '../entry/composerMediaLease';
 
 type CleanupRecovery = {
@@ -432,25 +434,18 @@ export default function Compose() {
     if (release) void release();
   }
 
-  function mediaLeaseIsCurrent(lease: ComposerMediaLease | null) {
-    return composerMediaLeaseIsCurrent(lease, {
+  function currentMediaLeaseState(): ComposerMediaLeaseState {
+    return {
       owner: ownerRef.current,
       mountToken: mountTokenRef.current,
       requestToken: mediaRequestTokenRef.current,
       active: mountedRef.current,
       editing: Boolean(editingIdRef.current),
-    });
+    };
   }
 
-  function discardDurableUri(uri: string) {
-    try {
-      if (Platform.OS !== 'web' && /^file:\/\//i.test(uri)) {
-        const file = new File(uri);
-        if (file.exists) file.delete();
-      }
-    } catch {
-      // Stale picker cleanup is best-effort and never touches the active draft.
-    }
+  function mediaLeaseIsCurrent(lease: ComposerMediaLease | null) {
+    return composerMediaLeaseIsCurrent(lease, currentMediaLeaseState());
   }
 
   function discardPickerResult(result: ImagePicker.ImagePickerResult) {
@@ -937,16 +932,19 @@ export default function Compose() {
       return;
     }
     void makeMediaDurable(photo.uri, 'jpg', 'image/jpeg', 'photo', lease)
-      .then(async (durable) => {
-        if (!mediaLeaseIsCurrent(lease)) {
-          discardDurableUri(durable.uri);
-          return;
-        }
-        setPickedVideo(null);
-        setPickedBase64(photo.base64);
-        setPickedExt('jpg');
-        setPreviewUri(durable.uri);
-        setEditorUri(null);
+      .then((durable) => {
+        applyCommittedComposerMedia({
+          lease,
+          current: currentMediaLeaseState,
+          committed: durable,
+          apply: (committed) => {
+            setPickedVideo(null);
+            setPickedBase64(photo.base64);
+            setPickedExt('jpg');
+            setPreviewUri(committed.uri);
+            setEditorUri(null);
+          },
+        });
       })
       .catch((error) => {
         if (mediaLeaseIsCurrent(lease)) {

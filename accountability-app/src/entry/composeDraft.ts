@@ -159,7 +159,8 @@ async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage,
   }
   if (pending) await storage.removeItem(pendingKey);
   const drafts: ComposeDraftV2[] = [];
-  const seenDraftIds = new Set<string>();
+  const seenDraftIdentities = new Set<string>();
+  const authoritativeV2Identities = new Set<string>();
   const retained: string[] = [];
   const legacyRetained: string[] = [];
   let cleanedInvalid = 0;
@@ -171,17 +172,23 @@ async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage,
       ? key === legacyComposeDraftKey(ownerId, draft.kind, draft.draftId)
       : true;
     if (draft && exactKey && hasRestorableDraftContent(draft)) {
+      const identity = `${draft.kind}:${draft.draftId}`;
       if (legacy) {
-        await saveComposeDraftUnlocked(draft, storage);
-        const migratedKey = composeDraftKey(ownerId, draft.kind, draft.draftId);
-        if (!retained.includes(migratedKey)) retained.push(migratedKey);
+        if (!authoritativeV2Identities.has(identity)) {
+          await saveComposeDraftUnlocked(draft, storage);
+          const migratedKey = composeDraftKey(ownerId, draft.kind, draft.draftId);
+          if (!retained.includes(migratedKey)) retained.push(migratedKey);
+          authoritativeV2Identities.add(identity);
+        }
         if (key === legacyPending) await storage.removeItem(legacyPendingKey);
+      } else {
+        authoritativeV2Identities.add(identity);
       }
       if (legacy) legacyRetained.push(key);
       else retained.push(key);
-      if (!seenDraftIds.has(draft.draftId)) {
+      if (!seenDraftIdentities.has(identity)) {
         drafts.push(draft);
-        seenDraftIds.add(draft.draftId);
+        seenDraftIdentities.add(identity);
       }
       if (adapter) await cleanupOrphanTemps(ownerId, draft.draftId, adapter);
     } else if (draft) {

@@ -120,6 +120,45 @@ describe('compose draft contract', () => {
     expect(await storage.getItem(legacyPending)).toBeNull();
   });
 
+  test('keeps an existing newer V2 authoritative when a stale V1 record is retained', async () => {
+    const v2Key = composeDraftKey(OWNER, 'new', DRAFT);
+    const v1Key = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const v1Index = `compose-draft-index:v1:${OWNER}`;
+    const v1Pending = `compose-draft-pending:v1:${OWNER}`;
+    const newerV2: ComposeDraftV2 = {
+      ...validDraft,
+      body: 'newer V2 work',
+      updatedAt: '2026-08-23T00:00:00.000Z',
+    };
+    const {
+      showPublicly: _show,
+      visibilityChanged: _changed,
+      audience: _audience,
+      showOnCard: _showOnCard,
+      ...legacyBase
+    } = validDraft;
+    const staleV1 = {
+      ...legacyBase,
+      version: 1,
+      body: 'stale V1 work',
+      updatedAt: '2026-08-20T00:00:00.000Z',
+      audience: 'buddies',
+      showOnCard: false,
+    };
+    const storage = memoryStorage(new Map([
+      [composeDraftIndexKey(OWNER), JSON.stringify([v2Key])],
+      [v2Key, JSON.stringify(newerV2)],
+      [v1Index, JSON.stringify([v1Key])],
+      [v1Pending, v1Key],
+      [v1Key, JSON.stringify(staleV1)],
+    ]));
+
+    expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([newerV2]);
+    expect(JSON.parse((await storage.getItem(v2Key))!)).toEqual(newerV2);
+    expect(await storage.getItem(v1Key)).not.toBeNull();
+    expect(await storage.getItem(v1Pending)).toBeNull();
+  });
+
   test.each([
     ['wrong owner', `compose-draft:v1:${DRAFT}:new:${DRAFT}`, JSON.stringify(validDraft)],
     ['wrong prefix', `compose-draft:v2:${OWNER}:new:${DRAFT}`, JSON.stringify(validDraft)],
