@@ -5,6 +5,7 @@ import { afterEach, describe, expect, jest, test } from '@jest/globals';
 
 import {
   createProgressShareRenderModel,
+  progressShareRenderModelFingerprint,
   ProgressShareCard,
   PROGRESS_SHARE_ASPECT_RATIO,
   type ProgressShareSnapshot,
@@ -25,6 +26,7 @@ const snapshot: ProgressShareSnapshot = Object.freeze({
   tasksDone: 8,
   weightKg: 72.4,
   bmi: 22.3,
+  bodyMeasurement: Object.freeze({ id: 'measurement-1', recordedAt: '2026-08-22T07:00:00.000Z', weightKg: 72.4, heightCm: 180 }),
   context: Object.freeze({
     title: 'My weekly progress',
     date: '22 Aug 2026',
@@ -122,5 +124,52 @@ describe('ProgressShareCard', () => {
     act(() => renderer.update(<ProgressShareCard model={photoModel} />));
     expect(renderer.root.findAllByType(Image).map((node) => node.props.source.uri)).toEqual(['file:///new-selfie.jpg']);
     expect(renderer.root.findAllByType(View).some((node) => node.props.testID === 'progress-before-after')).toBe(false);
+  });
+
+  test('reports loading/error/ready only for the current render fingerprint and ignores stale image completion', () => {
+    const onMediaStateChange = jest.fn();
+    const firstModel = createProgressShareRenderModel(snapshot, draft());
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<ProgressShareCard model={firstModel} onMediaStateChange={onMediaStateChange} />); });
+    mounted.push(renderer);
+    const firstFingerprint = progressShareRenderModelFingerprint(firstModel);
+    expect(onMediaStateChange).toHaveBeenLastCalledWith({ fingerprint: firstFingerprint, status: 'loading' });
+    const oldBefore = renderer.root.findAllByType(Image)[0];
+    const oldLatest = renderer.root.findAllByType(Image)[1];
+    const staleLatestLoad = oldLatest.props.onLoad as () => void;
+    act(() => oldBefore.props.onLoad());
+    expect(onMediaStateChange).not.toHaveBeenLastCalledWith({ fingerprint: firstFingerprint, status: 'ready' });
+
+    const nextDraft = draft({ media: {
+      kind: 'photo', source: 'gallery', uri: 'file:///replacement.jpg', width: 1200, height: 1500,
+      capturedAt: '2026-08-22T09:00:00.000Z', release: jest.fn(async () => {}),
+    } });
+    const nextModel = createProgressShareRenderModel(snapshot, nextDraft);
+    const nextFingerprint = progressShareRenderModelFingerprint(nextModel);
+    act(() => renderer.update(<ProgressShareCard model={nextModel} onMediaStateChange={onMediaStateChange} />));
+    expect(onMediaStateChange).toHaveBeenLastCalledWith({ fingerprint: nextFingerprint, status: 'loading' });
+    act(() => staleLatestLoad());
+    expect(onMediaStateChange).not.toHaveBeenLastCalledWith({ fingerprint: nextFingerprint, status: 'ready' });
+
+    const replacement = renderer.root.findByType(Image);
+    act(() => replacement.props.onError());
+    expect(onMediaStateChange).toHaveBeenLastCalledWith(expect.objectContaining({ fingerprint: nextFingerprint, status: 'error' }));
+    act(() => replacement.props.onLoad());
+    expect(onMediaStateChange).not.toHaveBeenLastCalledWith({ fingerprint: nextFingerprint, status: 'ready' });
+  });
+
+  test('does not return a ready identical render fingerprint to loading on a parent rerender', () => {
+    const onMediaStateChange = jest.fn();
+    const firstModel = createProgressShareRenderModel(snapshot, draft());
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<ProgressShareCard model={firstModel} onMediaStateChange={onMediaStateChange} />); });
+    mounted.push(renderer);
+    const images = renderer.root.findAllByType(Image);
+    act(() => { images[0].props.onLoad(); images[1].props.onLoad(); });
+    expect(onMediaStateChange).toHaveBeenLastCalledWith({ fingerprint: progressShareRenderModelFingerprint(firstModel), status: 'ready' });
+    const callsAfterReady = onMediaStateChange.mock.calls.length;
+    const identicalModel = createProgressShareRenderModel(snapshot, draft());
+    act(() => renderer.update(<ProgressShareCard model={identicalModel} onMediaStateChange={onMediaStateChange} />));
+    expect(onMediaStateChange).toHaveBeenCalledTimes(callsAfterReady);
   });
 });

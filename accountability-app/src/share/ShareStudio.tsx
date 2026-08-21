@@ -40,6 +40,11 @@ export type ShareStudioPreviewState = Readonly<{
   showPublicly: boolean;
   includeBodyStats: boolean;
 }>;
+export type DestinationPreviewReadiness = Readonly<{
+  fingerprint: string;
+  status: 'loading' | 'error' | 'ready';
+  message?: string;
+}>;
 type Props = Readonly<{
   visible: boolean;
   expectedOwnerId: string;
@@ -52,6 +57,8 @@ type Props = Readonly<{
   mediaCapabilities?: Partial<ShareMediaCapabilities>;
   renderDestinationPreview?: (state: ShareStudioPreviewState) => ReactNode;
   destinationPreviewAspectRatio?: (state: ShareStudioPreviewState) => number;
+  destinationPreviewFingerprint?: (state: ShareStudioPreviewState) => string;
+  destinationPreviewReadiness?: DestinationPreviewReadiness | null;
   unavailableReason?: string | null;
 }>;
 
@@ -129,6 +136,8 @@ function ShareStudioSession({
   mediaCapabilities,
   renderDestinationPreview,
   destinationPreviewAspectRatio,
+  destinationPreviewFingerprint,
+  destinationPreviewReadiness,
 }: Props) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createShareStudioStyles(theme), [theme]);
@@ -161,11 +170,31 @@ function ShareStudioSession({
     [context, includeBodyStats],
   );
   const draftLocked = retryDraft !== null;
-  const mediaReady = choice === 'card' ? capabilities.card : photo !== null;
+  const selectedMediaReady = choice === 'card' ? capabilities.card : photo !== null;
   const previewMedia = useMemo(
     () => selectedShareMedia(choice, photo),
     [choice, photo],
   );
+  const previewState: ShareStudioPreviewState = {
+    context: shareContext,
+    media: previewMedia,
+    caption,
+    showPublicly,
+    includeBodyStats,
+  };
+  const previewFingerprint = destinationPreviewFingerprint?.(previewState) ?? null;
+  const reviewedPreviewReady = previewFingerprint === null || (
+    destinationPreviewReadiness?.fingerprint === previewFingerprint &&
+    destinationPreviewReadiness.status === 'ready'
+  );
+  const previewError = previewFingerprint !== null &&
+    destinationPreviewReadiness?.fingerprint === previewFingerprint &&
+    destinationPreviewReadiness.status === 'error'
+    ? destinationPreviewReadiness.message ?? 'The reviewed preview could not load. Choose another photo.'
+    : null;
+  const previewLoading = previewFingerprint !== null && !reviewedPreviewReady && !previewError;
+  const mediaReady = selectedMediaReady && reviewedPreviewReady;
+  const previewRatio = destinationPreviewAspectRatio?.(previewState);
 
   const releaseOwnedPhoto = useCallback(async () => {
     const owned = photoRef.current;
@@ -270,14 +299,6 @@ function ShareStudioSession({
   }, [availableMediaOptions, caption, continuing, expectedOwnerId, includeBodyStats, mediaReady, onContinue, operationId, picking, previewMedia, retryDraft, shareContext, showPublicly]);
 
   const visibilityCopy = postVisibilityCopy(showPublicly);
-  const previewState: ShareStudioPreviewState = {
-    context: shareContext,
-    media: previewMedia,
-    caption,
-    showPublicly,
-    includeBodyStats,
-  };
-  const previewRatio = destinationPreviewAspectRatio?.(previewState);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={cancel} transparent={false}>
@@ -415,6 +436,8 @@ function ShareStudioSession({
             disabled={continuing || draftLocked}
           />
 
+          {previewLoading ? <View style={styles.statusRow}><ActivityIndicator color={theme.ink.action} /><Text style={styles.statusText}>Preparing reviewed preview…</Text></View> : null}
+          {previewError ? <Text accessibilityRole="alert" style={styles.error}>{previewError}</Text> : null}
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
 
           <Pressable

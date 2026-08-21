@@ -84,6 +84,35 @@ async function flush() {
 }
 
 describe('ShareStudio', () => {
+  test('gates Post on the exact destination fingerprint readiness and shows an actionable image error', async () => {
+    const fingerprint = (state: { media: ShareStudioResult['media'] }) => state.media.kind === 'card' ? 'card-fingerprint' : state.media.uri;
+    const { renderer, onContinue } = renderStudio({
+      destinationPreviewFingerprint: fingerprint,
+      destinationPreviewReadiness: { fingerprint: 'stale-fingerprint', status: 'ready' },
+      renderDestinationPreview: () => <Text>Reviewed destination</Text>,
+    });
+    expect(renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.disabled).toBe(true);
+    await act(async () => renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.onPress());
+    expect(onContinue).not.toHaveBeenCalled();
+
+    act(() => renderer.update(<ShareStudio
+      visible expectedOwnerId="owner-a" context={context} onContinue={onContinue} onCancel={jest.fn()}
+      destinationPreviewFingerprint={fingerprint}
+      destinationPreviewReadiness={{ fingerprint: 'card-fingerprint', status: 'error', message: 'That image could not load. Choose another photo.' }}
+      renderDestinationPreview={() => <Text>Reviewed destination</Text>}
+    />));
+    expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).props.children).toContain('Choose another photo');
+    expect(renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.disabled).toBe(true);
+
+    act(() => renderer.update(<ShareStudio
+      visible expectedOwnerId="owner-a" context={context} onContinue={onContinue} onCancel={jest.fn()}
+      destinationPreviewFingerprint={fingerprint}
+      destinationPreviewReadiness={{ fingerprint: 'card-fingerprint', status: 'ready' }}
+      renderDestinationPreview={() => <Text>Reviewed destination</Text>}
+    />));
+    expect(renderer.root.findByProps({ testID: 'share-studio-primary-action' }).props.disabled).toBe(false);
+  });
+
   test('renders a parent destination preview from the same media returned on Continue', async () => {
     const previewStates: { media: ShareStudioResult['media']; title: string }[] = [];
     const photo = captured('file:///truthful-preview.jpg');

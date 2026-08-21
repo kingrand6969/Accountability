@@ -1,12 +1,15 @@
-import { describe, expect, jest, test } from '@jest/globals';
+import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import type { ShareStudioResult } from '../share/shareStudioDraft';
 import type { ProgressShareSnapshot } from './ProgressShareCard';
 import {
   buildProgressShareData,
   assertProgressPhotoRowsCurrent,
+  assertProgressShareSourcesCurrent,
   prepareProgressShareSnapshot,
   publishProgressPost,
+  progressShareSnapshotForDraft,
+  clearProgressPublishArtifacts,
   type ProgressPostDependencies,
 } from './publishProgressPost';
 
@@ -31,6 +34,7 @@ const snapshot: ProgressShareSnapshot = Object.freeze({
   tasksDone: 8,
   weightKg: 72.4,
   bmi: 22.3,
+  bodyMeasurement: Object.freeze({ id: 'measurement-1', recordedAt: '2026-08-22T07:00:00.000Z', weightKg: 72.4, heightCm: 180 }),
   context: Object.freeze({
     title: 'My weekly progress',
     date: '22 Aug 2026',
@@ -62,10 +66,26 @@ function draft(overrides: Partial<ShareStudioResult> = {}): ShareStudioResult {
   };
 }
 
+function bodyDraft(overrides: Partial<ShareStudioResult> = {}): ShareStudioResult {
+  return draft({
+    includeBodyStats: true,
+    context: {
+      title: snapshot.context.title,
+      date: snapshot.context.date,
+      metrics: [
+        { label: 'Current weight', value: '72.4 kg', sensitivity: 'body' },
+        { label: 'BMI', value: '22.3', sensitivity: 'body' },
+        { label: 'Workouts', value: '4', sensitivity: 'standard' },
+      ],
+    },
+    ...overrides,
+  });
+}
+
 function dependencies(events: string[] = []): ProgressPostDependencies {
   return {
     assertOwner: jest.fn(async () => { events.push('owner'); }),
-    validatePrivatePhotos: jest.fn(async () => { events.push('validate'); }),
+    revalidateSources: jest.fn(async () => { events.push('validate'); }),
     captureCard: jest.fn<ProgressPostDependencies['captureCard']>(async (_model, options) => {
       events.push(`capture:${options.width}x${options.height}:${options.format}`);
       return 'jpeg-base64';
@@ -80,6 +100,37 @@ function dependencies(events: string[] = []): ProgressPostDependencies {
 }
 
 describe('Journey progress Feed publishing', () => {
+  beforeEach(() => clearProgressPublishArtifacts());
+
+  test('revalidates only the exact sources used by the reviewed renderer and sensitive opt-in', () => {
+    const rows = snapshot.privatePhotos.map((photo) => ({ id: photo.id, storagePath: photo.storagePath, capturedAt: photo.capturedAt, weightKg: null }));
+    const measurementRows = [{ id: 'measurement-1', recordedAt: '2026-08-22T07:00:00.000Z', weightKg: 72.4, heightCm: 180 }];
+    expect(() => assertProgressShareSourcesCurrent(snapshot, draft(), { measurements: [], photos: rows })).not.toThrow();
+    expect(() => assertProgressShareSourcesCurrent(snapshot, bodyDraft(), { measurements: measurementRows, photos: rows })).not.toThrow();
+    expect(() => assertProgressShareSourcesCurrent(snapshot, { ...draft(), media: {
+      kind: 'photo', source: 'selfie', uri: 'file:///new.jpg', width: 100, height: 125,
+      capturedAt: '2026-08-22T08:00:00.000Z', release: jest.fn(async () => {}),
+    } }, { measurements: [], photos: [] })).not.toThrow();
+    expect(() => assertProgressShareSourcesCurrent(snapshot, bodyDraft(), { measurements: [{ ...measurementRows[0], weightKg: 71 }], photos: rows })).toThrow('changed');
+    expect(() => assertProgressShareSourcesCurrent(snapshot, draft(), { measurements: [], photos: rows.slice(1) })).toThrow('changed');
+  });
+
+  test('reduces the publishing snapshot to only private sources actually used by that draft', () => {
+    const selectedPhotoDraft = { ...draft(), media: {
+      kind: 'photo' as const, source: 'gallery' as const, uri: 'file:///selected.jpg', width: 100, height: 125,
+      capturedAt: '2026-08-22T08:00:00.000Z', release: jest.fn(async () => {}),
+    } };
+    expect(progressShareSnapshotForDraft(snapshot, selectedPhotoDraft)).toMatchObject({
+      privatePhotos: [], bodyMeasurement: null, weightKg: null, bmi: null,
+    });
+    expect(progressShareSnapshotForDraft(snapshot, bodyDraft())).toMatchObject({
+      privatePhotos: snapshot.privatePhotos,
+      bodyMeasurement: snapshot.bodyMeasurement,
+      weightKg: 72.4,
+      bmi: 22.3,
+    });
+  });
+
   test('revalidates every frozen private photo identity without accepting replacement rows', () => {
     const rows = snapshot.privatePhotos.map((photo) => ({
       id: photo.id, storagePath: photo.storagePath, capturedAt: photo.capturedAt, weightKg: null,
@@ -106,6 +157,7 @@ describe('Journey progress Feed publishing', () => {
       tasksDone: 8,
       weightKg: 72.4,
       bmi: 22.3,
+      bodyMeasurement: { id: 'measurement-1', recordedAt: '2026-08-22T07:00:00.000Z', weightKg: 72.4, heightCm: 180 },
       photos,
     }, { assertOwner, resolvePrivatePhoto });
 
@@ -119,6 +171,12 @@ describe('Journey progress Feed publishing', () => {
       { label: 'Current weight', value: '72.4 kg', sensitivity: 'body' },
       { label: 'BMI', value: '22.3', sensitivity: 'body' },
     ]);
+    await expect(prepareProgressShareSnapshot({
+      ownerId, period: 'week', openedAt: new Date('2026-08-22T08:00:00.000Z'),
+      workouts: 1, activeDays: 1, tasksDone: 1, weightKg: 72.4, bmi: 22.3,
+      bodyMeasurement: { id: 'measurement-1', recordedAt: '2026-08-22T07:00:00.000Z', weightKg: 71, heightCm: 180 },
+      photos: [],
+    }, { assertOwner, resolvePrivatePhoto })).rejects.toThrow('measurement');
   });
 
   test('keeps hidden weight, BMI, private refs, and signed URLs out of typed share data', () => {
@@ -130,7 +188,7 @@ describe('Journey progress Feed publishing', () => {
     const serialized = JSON.stringify(hidden);
     expect(serialized).not.toMatch(/72\.4|22\.3|weight|bmi|storage|private|signed/i);
 
-    const visible = buildProgressShareData(snapshot, draft({ includeBodyStats: true }), digest);
+    const visible = buildProgressShareData(snapshot, bodyDraft(), digest);
     expect(visible).toMatchObject({ weight_kg: 72.4, bmi: 22.3 });
   });
 
@@ -141,7 +199,8 @@ describe('Journey progress Feed publishing', () => {
 
     expect(events).toEqual([
       'owner', 'validate', 'owner', 'capture:1080x1350:jpg', 'owner',
-      `upload:jpg:${operationId}:${ownerId}`, 'owner', 'post', 'owner', 'mark',
+      'validate', 'owner', `upload:jpg:${operationId}:${ownerId}`, 'owner',
+      'validate', 'owner', 'post', 'owner', 'mark',
     ]);
     expect(deps.uploadDerivedImage).toHaveBeenCalledWith('jpeg-base64', 'jpg', operationId, ownerId);
     expect(deps.createPost).toHaveBeenCalledWith(
@@ -177,8 +236,8 @@ describe('Journey progress Feed publishing', () => {
       });
       await expect(publishProgressPost({ snapshot: { ...snapshot, ownerId: `${ownerId}-${failAt}` }, draft: { ...draft(), ownerId: `${ownerId}-${failAt}`, operationId: `22222222-2222-4222-8222-22222222222${failAt}` } }, deps)).rejects.toThrow('Account changed.');
       if (failAt <= 2) expect(deps.captureCard).not.toHaveBeenCalled();
-      if (failAt <= 3) expect(deps.uploadDerivedImage).not.toHaveBeenCalled();
-      if (failAt <= 4) expect(deps.createPost).not.toHaveBeenCalled();
+      if (failAt <= 4) expect(deps.uploadDerivedImage).not.toHaveBeenCalled();
+      if (failAt <= 6) expect(deps.createPost).not.toHaveBeenCalled();
       expect(deps.markFeedPostPublished).not.toHaveBeenCalled();
     }
   });
@@ -205,8 +264,27 @@ describe('Journey progress Feed publishing', () => {
     await expect(publishProgressPost({ snapshot, draft: draft() }, retryDeps)).rejects.toThrow('lost response');
     await expect(publishProgressPost({ snapshot, draft: draft() }, retryDeps)).resolves.toBe(postId);
     expect(retryDeps.uploadDerivedImage).toHaveBeenNthCalledWith(1, 'jpeg-base64', 'jpg', operationId, ownerId);
-    expect(retryDeps.uploadDerivedImage).toHaveBeenNthCalledWith(2, 'jpeg-base64', 'jpg', operationId, ownerId);
+    expect(retryDeps.uploadDerivedImage).toHaveBeenCalledTimes(1);
     expect(jest.mocked(retryDeps.createPost).mock.calls[0]).toEqual(jest.mocked(retryDeps.createPost).mock.calls[1]);
+  });
+
+  test('reuses the exact captured and uploaded artifact after an ambiguous create failure', async () => {
+    const deps = dependencies();
+    const upload = jest.mocked(deps.uploadDerivedImage)
+      .mockResolvedValueOnce({ mediaRef: 'https://feed.example/original.jpg', sha256: 'a'.repeat(64) })
+      .mockResolvedValueOnce({ mediaRef: 'https://feed.example/changed.jpg', sha256: 'b'.repeat(64) });
+    jest.mocked(deps.captureCard)
+      .mockResolvedValueOnce('first-capture')
+      .mockResolvedValueOnce('changed-capture');
+    jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('lost response')).mockResolvedValueOnce(postId);
+
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('lost response');
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).resolves.toBe(postId);
+
+    expect(deps.captureCard).toHaveBeenCalledTimes(1);
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(deps.createPost).mock.calls[1]?.[1]).toBe('https://feed.example/original.jpg');
+    expect(jest.mocked(deps.createPost).mock.calls[1]?.[6]?.shareData).toMatchObject({ client_media_sha256: 'a'.repeat(64) });
   });
 
   test('rejects a mutated or foreign draft before any side effect', async () => {

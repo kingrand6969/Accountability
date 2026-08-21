@@ -45,6 +45,7 @@ jest.mock('./api', () => ({
 }));
 jest.mock('../insights/api', () => ({ getInsights: (...args: unknown[]) => mockGetInsights(...args) }));
 jest.mock('./publishProgressPost', () => ({
+  clearProgressPublishArtifacts: jest.fn(),
   progressSnapshotInput: jest.fn(),
   prepareProgressShareSnapshot: jest.fn(),
   publishProgressPost: jest.fn(),

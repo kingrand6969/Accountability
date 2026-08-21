@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import type { ShareStudioContext, ShareStudioResult } from '../share/shareStudioDraft';
@@ -27,6 +27,7 @@ export type ProgressShareSnapshot = Readonly<{
   tasksDone: number;
   weightKg: number | null;
   bmi: number | null;
+  bodyMeasurement: Readonly<{ id: string; recordedAt: string; weightKg: number; heightCm: number }> | null;
   context: ShareStudioContext;
   privatePhotos: readonly ProgressSharePrivatePhoto[];
 }>;
@@ -40,6 +41,12 @@ export type ProgressShareRenderModel = Readonly<{
   sharePhotoUri: string | null;
   beforePhoto: Readonly<{ uri: string; date: string }> | null;
   latestPhoto: Readonly<{ uri: string; date: string }> | null;
+}>;
+
+export type ProgressShareMediaState = Readonly<{
+  fingerprint: string;
+  status: 'loading' | 'error' | 'ready';
+  message?: string;
 }>;
 
 /** Builds the one immutable renderer input used by both review and capture. */
@@ -62,10 +69,74 @@ export function createProgressShareRenderModel(
   });
 }
 
-export function ProgressShareCard({ model }: Readonly<{ model: ProgressShareRenderModel }>) {
+export function progressShareRenderModelFingerprint(model: ProgressShareRenderModel): string {
+  return JSON.stringify({
+    title: model.title,
+    date: model.date,
+    periodLabel: model.periodLabel,
+    metrics: model.metrics,
+    caption: model.caption,
+    sharePhotoUri: model.sharePhotoUri,
+    beforePhoto: model.beforePhoto,
+    latestPhoto: model.latestPhoto,
+  });
+}
+
+export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
+  model: ProgressShareRenderModel;
+  onMediaStateChange?: (state: ProgressShareMediaState) => void;
+}>) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const hasComparison = model.beforePhoto !== null;
+  const fingerprint = progressShareRenderModelFingerprint(model);
+  const callbackRef = useRef(onMediaStateChange);
+  const mediaStateRef = useRef<{
+    fingerprint: string;
+    expected: ReadonlyMap<string, string>;
+    loaded: Set<string>;
+    failed: boolean;
+  } | null>(null);
+  const sharePhotoUri = model.sharePhotoUri;
+  const beforePhotoUri = model.beforePhoto?.uri ?? null;
+  const latestPhotoUri = model.latestPhoto?.uri ?? null;
+  const expectedMedia = useMemo(() => {
+    const entries: [string, string][] = [];
+    if (sharePhotoUri) entries.push(['share', sharePhotoUri]);
+    else {
+      if (beforePhotoUri) entries.push(['before', beforePhotoUri]);
+      if (latestPhotoUri) entries.push(['latest', latestPhotoUri]);
+    }
+    return new Map(entries);
+  }, [beforePhotoUri, latestPhotoUri, sharePhotoUri]);
+
+  useEffect(() => {
+    callbackRef.current = onMediaStateChange;
+  }, [onMediaStateChange]);
+
+  useEffect(() => {
+    mediaStateRef.current = { fingerprint, expected: expectedMedia, loaded: new Set(), failed: false };
+    callbackRef.current?.(expectedMedia.size === 0
+      ? { fingerprint, status: 'ready' }
+      : { fingerprint, status: 'loading' });
+  }, [expectedMedia, fingerprint]);
+
+  const mediaLoaded = (slot: string, uri: string, eventFingerprint: string) => {
+    const current = mediaStateRef.current;
+    if (!current || current.fingerprint !== eventFingerprint || current.failed || current.expected.get(slot) !== uri) return;
+    current.loaded.add(slot);
+    if (current.loaded.size === current.expected.size) callbackRef.current?.({ fingerprint: eventFingerprint, status: 'ready' });
+  };
+  const mediaFailed = (slot: string, uri: string, eventFingerprint: string) => {
+    const current = mediaStateRef.current;
+    if (!current || current.fingerprint !== eventFingerprint || current.failed || current.expected.get(slot) !== uri) return;
+    current.failed = true;
+    callbackRef.current?.({
+      fingerprint: eventFingerprint,
+      status: 'error',
+      message: 'That image could not load. Choose another photo or use Card only.',
+    });
+  };
   return (
     <View
       testID="progress-share-card"
@@ -74,11 +145,16 @@ export function ProgressShareCard({ model }: Readonly<{ model: ProgressShareRend
       style={[styles.card, { aspectRatio: PROGRESS_SHARE_ASPECT_RATIO }]}
     >
       {model.sharePhotoUri ? (
-        <Image source={{ uri: model.sharePhotoUri }} resizeMode="cover" style={styles.heroPhoto} accessible={false} />
+        <Image
+          key={`${fingerprint}:share:${model.sharePhotoUri}`}
+          source={{ uri: model.sharePhotoUri }} resizeMode="cover" style={styles.heroPhoto} accessible={false}
+          onLoad={() => mediaLoaded('share', model.sharePhotoUri!, fingerprint)}
+          onError={() => mediaFailed('share', model.sharePhotoUri!, fingerprint)}
+        />
       ) : hasComparison ? (
         <View testID="progress-before-after" style={styles.comparison}>
-          <ProgressImage label="Before" photo={model.beforePhoto!} styles={styles} />
-          {model.latestPhoto ? <ProgressImage label="Latest" photo={model.latestPhoto} styles={styles} /> : null}
+          <ProgressImage label="Before" slot="before" photo={model.beforePhoto!} fingerprint={fingerprint} onLoad={mediaLoaded} onError={mediaFailed} styles={styles} />
+          {model.latestPhoto ? <ProgressImage label="Latest" slot="latest" photo={model.latestPhoto} fingerprint={fingerprint} onLoad={mediaLoaded} onError={mediaFailed} styles={styles} /> : null}
         </View>
       ) : (
         <View style={styles.emptyVisual}>
@@ -111,14 +187,23 @@ export function ProgressShareCard({ model }: Readonly<{ model: ProgressShareRend
   );
 }
 
-function ProgressImage({ label, photo, styles }: Readonly<{
+function ProgressImage({ label, slot, photo, fingerprint, onLoad, onError, styles }: Readonly<{
   label: 'Before' | 'Latest';
+  slot: 'before' | 'latest';
   photo: Readonly<{ uri: string; date: string }>;
+  fingerprint: string;
+  onLoad: (slot: string, uri: string, fingerprint: string) => void;
+  onError: (slot: string, uri: string, fingerprint: string) => void;
   styles: ReturnType<typeof createStyles>;
 }>) {
   return (
     <View style={styles.comparisonItem}>
-      <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.comparisonPhoto} accessible={false} />
+      <Image
+        key={`${fingerprint}:${slot}:${photo.uri}`}
+        source={{ uri: photo.uri }} resizeMode="cover" style={styles.comparisonPhoto} accessible={false}
+        onLoad={() => onLoad(slot, photo.uri, fingerprint)}
+        onError={() => onError(slot, photo.uri, fingerprint)}
+      />
       <View style={styles.photoLabel}>
         <Text maxFontSizeMultiplier={1.2} style={styles.photoLabelText}>{label.toUpperCase()}</Text>
         <Text maxFontSizeMultiplier={1.2} style={styles.photoDateText}>{new Date(photo.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>

@@ -11,8 +11,8 @@ import { addMeasurement, listMeasurements, listProgressPhotos } from '../progres
 import { calculateBmi } from '../progress/bmi';
 import { BodyCheckInSheet } from '../progress/BodyCheckInSheet';
 import { ProgressPhotoVault } from '../progress/ProgressPhotoVault';
-import { createProgressShareRenderModel, ProgressShareCard, PROGRESS_SHARE_ASPECT_RATIO, type ProgressShareSnapshot } from '../progress/ProgressShareCard';
-import { prepareProgressShareSnapshot, progressSnapshotInput, publishProgressPost } from '../progress/publishProgressPost';
+import { createProgressShareRenderModel, progressShareRenderModelFingerprint, ProgressShareCard, PROGRESS_SHARE_ASPECT_RATIO, type ProgressShareMediaState, type ProgressShareSnapshot } from '../progress/ProgressShareCard';
+import { clearProgressPublishArtifacts, prepareProgressShareSnapshot, progressSnapshotInput, publishProgressPost } from '../progress/publishProgressPost';
 import type { AddMeasurementInput, BodyMeasurement, ProgressPhoto } from '../progress/types';
 import { WeightTrendChart, type TrendPeriod } from '../progress/WeightTrendChart';
 import { ShareStudio, type ShareStudioResult, type ShareStudioPreviewState } from '../share/ShareStudio';
@@ -38,6 +38,7 @@ type FocusLease = {
 
 type ShareSession = Readonly<{ ownerId: string; ownerToken: symbol; snapshot: ProgressShareSnapshot }>;
 type SharePreparing = Readonly<{ ownerId: string; ownerToken: symbol; lease: symbol }>;
+type MountedSharePreview = Readonly<{ ownerId: string; ownerToken: symbol; fingerprint: string }>;
 
 function activeTime(seconds: number) {
   const minutes = Math.round(seconds / 60);
@@ -77,18 +78,31 @@ export default function JourneyProgress() {
   const [shareErrorState, setShareErrorState] = useState<{ ownerId: string; ownerToken: symbol; message: string } | null>(null);
   const sharePrepareLeaseRef = useRef<symbol | null>(null);
   const shareCardRef = useRef<View | null>(null);
+  const mountedSharePreviewRef = useRef<MountedSharePreview | null>(null);
+  const shareOperationRef = useRef<{ ownerId: string; operationId: string } | null>(null);
+  const previousOwnerRef = useRef(ownerId);
+  const [previewReadiness, setPreviewReadiness] = useState<(ProgressShareMediaState & { ownerId: string; ownerToken: symbol }) | null>(null);
   const feedShare = useMemo(() => feedShareAvailability(Platform.OS), []);
 
   useEffect(() => {
+    const previousOwner = previousOwnerRef.current;
+    const ownerChanged = previousOwner !== ownerId;
+    if (previousOwner && ownerChanged) clearProgressPublishArtifacts(previousOwner);
+    previousOwnerRef.current = ownerId;
     mountedRef.current = true;
     ownerRef.current = ownerId;
     snapshotRef.current = snapshot;
     sharePrepareLeaseRef.current = null;
+    if (ownerChanged) {
+      mountedSharePreviewRef.current = null;
+      shareOperationRef.current = null;
+    }
   }, [ownerId, snapshot]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
+      if (ownerRef.current) clearProgressPublishArtifacts(ownerRef.current);
       mountedRef.current = false;
       generationRef.current += 1;
     };
@@ -169,7 +183,8 @@ export default function JourneyProgress() {
   };
 
   const openShareStudio = async () => {
-    if (!current || !ownerId || sharePrepareLeaseRef.current) return;
+    const capturedFocus = activeFocusRef.current;
+    if (!current || !ownerId || !capturedFocus?.alive || sharePrepareLeaseRef.current) return;
     const capturedOwner = ownerId;
     const capturedOwnerToken = ownerToken;
     const lease = Symbol(capturedOwner);
@@ -177,13 +192,13 @@ export default function JourneyProgress() {
     setSharePreparingState({ ownerId: capturedOwner, ownerToken: capturedOwnerToken, lease });
     setShareErrorState(null);
     try {
-      const shareInsights = trendPeriod === 'month'
-        ? await getInsights('month', capturedOwner)
-        : current.insights;
+      const shareInsights = await getInsights(trendPeriod, capturedOwner);
       if (
         !mountedRef.current ||
         sharePrepareLeaseRef.current !== lease ||
-        ownerRef.current !== capturedOwner
+        ownerRef.current !== capturedOwner ||
+        !capturedFocus.alive ||
+        activeFocusRef.current !== capturedFocus
       ) return;
       const prepared = await prepareProgressShareSnapshot(progressSnapshotInput(
         capturedOwner,
@@ -197,7 +212,9 @@ export default function JourneyProgress() {
         !mountedRef.current ||
         sharePrepareLeaseRef.current !== lease ||
         ownerRef.current !== capturedOwner ||
-        capturedOwnerToken !== ownerToken
+        capturedOwnerToken !== ownerToken ||
+        !capturedFocus.alive ||
+        activeFocusRef.current !== capturedFocus
       ) return;
       setShareSession({ ownerId: capturedOwner, ownerToken: capturedOwnerToken, snapshot: prepared });
     } catch {
@@ -211,7 +228,12 @@ export default function JourneyProgress() {
   };
 
   const closeShareStudio = () => {
+    const operation = shareOperationRef.current;
+    if (operation) clearProgressPublishArtifacts(operation.ownerId, operation.operationId);
+    shareOperationRef.current = null;
     sharePrepareLeaseRef.current = null;
+    mountedSharePreviewRef.current = null;
+    setPreviewReadiness(null);
     setSharePreparingState(null);
     setShareSession(null);
     setShareErrorState(null);
@@ -222,10 +244,19 @@ export default function JourneyProgress() {
     if (!active || active.ownerId !== ownerRef.current || active.ownerToken !== ownerToken) {
       throw new Error('Account changed.');
     }
+    shareOperationRef.current = { ownerId: active.ownerId, operationId: draft.operationId };
     await publishProgressPost({ snapshot: active.snapshot, draft }, {
-      captureCard: async (_model, options) => {
+      captureCard: async (model, options) => {
+        const fingerprint = progressShareRenderModelFingerprint(model);
+        const mountedPreview = mountedSharePreviewRef.current;
+        const readiness = previewReadiness;
         if (!shareCardRef.current || active.ownerId !== ownerRef.current || active.ownerToken !== ownerToken) {
           throw new Error('Account changed.');
+        }
+        if (!mountedPreview || mountedPreview.ownerId !== active.ownerId || mountedPreview.ownerToken !== active.ownerToken ||
+          mountedPreview.fingerprint !== fingerprint || readiness?.ownerId !== active.ownerId ||
+          readiness.ownerToken !== active.ownerToken || readiness.fingerprint !== fingerprint || readiness.status !== 'ready') {
+          throw new Error('The reviewed progress preview is not ready. Change media and try again.');
         }
         return captureRef(shareCardRef, {
           format: options.format,
@@ -238,6 +269,9 @@ export default function JourneyProgress() {
     });
     if (active.ownerId !== ownerRef.current || active.ownerToken !== ownerToken) throw new Error('Account changed.');
     if (draft.media.kind === 'photo') await draft.media.release().catch(() => {});
+    shareOperationRef.current = null;
+    mountedSharePreviewRef.current = null;
+    setPreviewReadiness(null);
     setShareSession(null);
     Alert.alert('Shared to your feed', 'Your progress card is now on your feed.');
   };
@@ -249,9 +283,17 @@ export default function JourneyProgress() {
       caption: state.caption,
       media: state.media,
     });
+    const fingerprint = progressShareRenderModelFingerprint(model);
+    mountedSharePreviewRef.current = { ownerId: shareSession.ownerId, ownerToken: shareSession.ownerToken, fingerprint };
     return (
       <View ref={shareCardRef} collapsable={false} style={styles.shareCardCapture}>
-        <ProgressShareCard model={model} />
+        <ProgressShareCard
+          model={model}
+          onMediaStateChange={(state) => {
+            if (shareSession.ownerId !== ownerRef.current || shareSession.ownerToken !== ownerToken) return;
+            setPreviewReadiness({ ...state, ownerId: shareSession.ownerId, ownerToken: shareSession.ownerToken });
+          }}
+        />
       </View>
     );
   };
@@ -348,6 +390,14 @@ export default function JourneyProgress() {
           defaultCaption=""
           unavailableReason={feedShare.reason}
           destinationPreviewAspectRatio={() => PROGRESS_SHARE_ASPECT_RATIO}
+          destinationPreviewFingerprint={(state) => progressShareRenderModelFingerprint(createProgressShareRenderModel(shareSession.snapshot, {
+            context: state.context,
+            caption: state.caption,
+            media: state.media,
+          }))}
+          destinationPreviewReadiness={previewReadiness?.ownerId === ownerId && previewReadiness.ownerToken === ownerToken
+            ? previewReadiness
+            : null}
           renderDestinationPreview={renderProgressPreview}
           onContinue={publishReviewedProgress}
           onCancel={closeShareStudio}
