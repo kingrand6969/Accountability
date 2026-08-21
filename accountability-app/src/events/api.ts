@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { normalizeStoredPostVisibility, postVisibility } from '../progress/visibility';
 
 export type PostEvent = {
   id: string;
@@ -42,7 +43,14 @@ export async function createEvent(input: {
   message: string;
   audience: 'buddies' | 'public';
   showOnCard: boolean;
+  showPublicly?: boolean;
 }): Promise<EventAnnouncement> {
+  const visibility = input.showPublicly === undefined
+    ? normalizeStoredPostVisibility({
+      audience: input.audience,
+      showOnCard: input.showOnCard,
+    })
+    : postVisibility(input.showPublicly);
   const { data, error } = await supabase.rpc('create_event_announcement', {
     p_expected_owner: input.expectedOwnerId,
     p_operation_id: input.operationId,
@@ -50,8 +58,8 @@ export async function createEvent(input: {
     p_starts_at: input.startsAtIso,
     p_location: input.location,
     p_message: input.message,
-    p_audience: input.audience,
-    p_show_on_card: input.audience === 'public' && input.showOnCard,
+    p_audience: visibility.audience,
+    p_show_on_card: visibility.showOnCard,
   });
   if (error) throw error;
 

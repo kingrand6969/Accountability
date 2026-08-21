@@ -36,6 +36,11 @@ const input = {
   showOnCard: true,
 };
 
+const visibilityCases: [boolean, 'buddies' | 'public', boolean][] = [
+  [false, 'buddies', false],
+  [true, 'public', true],
+];
+
 beforeEach(() => {
   mockRpc.mockReset();
   mockFrom.mockReset();
@@ -83,6 +88,38 @@ describe('createEvent', () => {
     });
 
     await createEvent({ ...input, audience: 'buddies', showOnCard: true });
+
+    expect(mockRpc).toHaveBeenCalledWith('create_event_announcement', expect.objectContaining({
+      p_audience: 'buddies',
+      p_show_on_card: false,
+    }));
+  });
+
+  test.each(visibilityCases)('maps the event visibility switch %p to one canonical RPC pair', async (
+    showPublicly,
+    audience,
+    showOnCard,
+  ) => {
+    mockRpc.mockResolvedValue({
+      data: [{ result_group_id: 'g', result_event_id: 'e', result_post_id: 'p' }],
+      error: null,
+    });
+
+    await createEvent({ ...input, showPublicly });
+
+    expect(mockRpc).toHaveBeenCalledWith('create_event_announcement', expect.objectContaining({
+      p_audience: audience,
+      p_show_on_card: showOnCard,
+    }));
+  });
+
+  test('normalizes a tampered legacy public-without-card event toward Buddies only', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ result_group_id: 'g', result_event_id: 'e', result_post_id: 'p' }],
+      error: null,
+    });
+
+    await createEvent({ ...input, audience: 'public', showOnCard: false });
 
     expect(mockRpc).toHaveBeenCalledWith('create_event_announcement', expect.objectContaining({
       p_audience: 'buddies',

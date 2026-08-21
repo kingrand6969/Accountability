@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { createPost, executeIdempotentPost } from './api';
+import {
+  createPost,
+  createRunPostIdempotent,
+  executeIdempotentPost,
+  updatePostVisibility,
+} from './api';
 import { supabase } from '../lib/supabase';
 import { isExistingPostImageError, mayUseStorageFallback, postImagePath } from './uploadPostImage';
 
@@ -18,6 +23,11 @@ jest.mock('../lib/r2', () => ({
 }));
 
 const operationId = '123e4567-e89b-42d3-a456-426614174000';
+
+const visibilityCases: [boolean, 'buddies' | 'public', boolean][] = [
+  [false, 'buddies', false],
+  [true, 'public', true],
+];
 
 type PostQuery = {
   select: jest.Mock;
@@ -245,6 +255,119 @@ describe('idempotent Feed post creation', () => {
       share_data: {},
       activity_id: null,
     });
+  });
+
+  test('personal standard posts derive both columns from one boolean', async () => {
+    const query = postQuery();
+
+    await createPost('Public progress', null, null, null, null, false, {
+      audience: 'buddies',
+      showPublicly: true,
+    });
+
+    expect(query.insert).toHaveBeenCalledWith(expect.objectContaining({
+      audience: 'public',
+      show_on_card: true,
+    }));
+  });
+
+  test('normalizes a tampered legacy personal combination toward Buddies only', async () => {
+    const query = postQuery();
+
+    await createPost('Keep this private', null, null, null, null, true, {
+      audience: 'buddies',
+    });
+
+    expect(query.insert).toHaveBeenCalledWith(expect.objectContaining({
+      audience: 'buddies',
+      show_on_card: false,
+    }));
+  });
+
+  test.each(visibilityCases)('run switch %p persists the matching canonical state', async (
+    showPublicly,
+    audience,
+    showOnCard,
+  ) => {
+    const query = postQuery({ existingPostIds: [null] });
+
+    await createRunPostIdempotent({
+      body: 'Morning run',
+      imageUrl: null,
+      operationId,
+      showPublicly,
+      activityId: 'activity-1',
+      shareData: {},
+      expectedOwnerId: 'member-1',
+    });
+
+    expect(query.insert).toHaveBeenCalledWith(expect.objectContaining({
+      audience,
+      show_on_card: showOnCard,
+    }));
+  });
+
+  test('run rejects an account mismatch before querying posts', async () => {
+    const query = postQuery();
+
+    await expect(createRunPostIdempotent({
+      body: 'Account A run',
+      imageUrl: null,
+      operationId,
+      showPublicly: false,
+      activityId: 'activity-1',
+      shareData: {},
+      expectedOwnerId: 'member-a',
+    })).rejects.toThrow('Account changed.');
+
+    expect(query.select).not.toHaveBeenCalled();
+    expect(query.insert).not.toHaveBeenCalled();
+  });
+
+  test('run stops when the account changes after its operation lookup', async () => {
+    const query = postQuery({ existingPostIds: [null] });
+    mockedSupabase.auth.getUser
+      .mockResolvedValueOnce({ data: { user: { id: 'member-1' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'member-2' } }, error: null });
+
+    await expect(createRunPostIdempotent({
+      body: 'Account A run',
+      imageUrl: null,
+      operationId,
+      showPublicly: true,
+      activityId: 'activity-1',
+      shareData: {},
+      expectedOwnerId: 'member-1',
+    })).rejects.toThrow('Account changed.');
+
+    expect(query.insert).not.toHaveBeenCalled();
+  });
+
+  test('standard post stops when the account changes before insert', async () => {
+    const query = postQuery();
+    mockedSupabase.auth.getUser
+      .mockResolvedValueOnce({ data: { user: { id: 'member-1' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'member-2' } }, error: null });
+
+    await expect(createPost('Account A progress', null, null, null, null, false, {
+      showPublicly: false,
+      expectedOwnerId: 'member-1',
+    })).rejects.toThrow('Account changed.');
+
+    expect(query.insert).not.toHaveBeenCalled();
+  });
+
+  test('visibility updates audience and Buddy Card eligibility in one owner-bound write', async () => {
+    const secondEq = jest.fn(async () => ({ error: null }));
+    const firstEq = jest.fn(() => ({ eq: secondEq }));
+    const update = jest.fn(() => ({ eq: firstEq }));
+    mockedSupabase.from.mockReturnValue({ update });
+
+    await updatePostVisibility('post-1', true, 'member-1');
+
+    expect(update).toHaveBeenCalledWith({ audience: 'public', show_on_card: true });
+    expect(firstEq).toHaveBeenCalledWith('id', 'post-1');
+    expect(secondEq).toHaveBeenCalledWith('user_id', 'member-1');
   });
 });
 

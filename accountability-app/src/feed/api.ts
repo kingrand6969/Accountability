@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
 import type { FeedPost, PostAudience, PostComment, PostType } from './types';
+import { normalizeStoredPostVisibility, postVisibility } from '../progress/visibility';
 import { File } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import { uploadBytesToR2 } from '../lib/r2';
@@ -545,27 +546,38 @@ export async function createRunPostIdempotent(input: {
   body: string;
   imageUrl: string | null;
   operationId: string;
-  audience: Exclude<PostAudience, 'group'>;
+  audience?: Exclude<PostAudience, 'group'>;
+  showPublicly?: boolean;
   activityId: string;
   shareData: Record<string, unknown>;
+  expectedOwnerId?: string;
 }): Promise<IdempotentPostResult> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
+  if (input.expectedOwnerId && me !== input.expectedOwnerId) {
+    throw new Error('Account changed.');
+  }
+  const ownerId = input.expectedOwnerId ?? me;
+  const visibility = postVisibility(
+    input.showPublicly ?? input.audience === 'public',
+  );
 
-  return executeIdempotentPost({
-    findExisting: () => postIdForOperation(me, input.operationId),
+  const result = await executeIdempotentPost({
+    findExisting: () => postIdForOperation(ownerId, input.operationId),
     insert: async () => {
+      const currentOwner = await currentUserId();
+      if (currentOwner !== ownerId) throw new Error('Account changed.');
       const { data, error } = await supabase
         .from('posts')
         .insert({
-          user_id: me,
+          user_id: ownerId,
           body: input.body,
           image_url: input.imageUrl,
           group_id: null,
           page_id: null,
           event_id: null,
-          show_on_card: false,
-          audience: input.audience,
+          show_on_card: visibility.showOnCard,
+          audience: visibility.audience,
           post_type: 'run',
           share_data: input.shareData,
           activity_id: input.activityId,
@@ -577,6 +589,8 @@ export async function createRunPostIdempotent(input: {
       return data.id as string;
     },
   });
+  if (await currentUserId() !== ownerId) throw new Error('Account changed.');
+  return result;
 }
 
 export async function createPost(
@@ -593,6 +607,7 @@ export async function createPost(
     activityId?: string | null;
     operationId?: string;
     expectedOwnerId?: string;
+    showPublicly?: boolean;
   } = {},
 ): Promise<string> {
   const operationId = options.operationId;
@@ -604,23 +619,31 @@ export async function createPost(
   if (options.expectedOwnerId && me !== options.expectedOwnerId) {
     throw new Error('Account changed.');
   }
+  const ownerId = options.expectedOwnerId ?? me;
+  const personalVisibility = options.showPublicly === undefined
+    ? normalizeStoredPostVisibility({
+      audience: options.audience ?? 'buddies',
+      showOnCard,
+    })
+    : postVisibility(options.showPublicly);
   const postPayload: StandardPostOperationPayload = {
     body,
     image_url: imageUrl,
     group_id: groupId,
     page_id: pageId,
     event_id: eventId,
-    show_on_card: showOnCard,
-    audience: groupId ? 'group' : pageId ? 'public' : (options.audience ?? 'buddies'),
+    show_on_card: groupId || pageId ? showOnCard : personalVisibility.showOnCard,
+    audience: groupId ? 'group' : pageId ? 'public' : personalVisibility.audience,
     post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
     share_data: options.shareData ?? {},
     activity_id: options.activityId ?? null,
   };
   const insert = async (): Promise<string> => {
+    if (await currentUserId() !== ownerId) throw new Error('Account changed.');
     const { data, error } = await supabase
       .from('posts')
       .insert({
-        user_id: me,
+        user_id: ownerId,
         ...postPayload,
         ...(operationId ? { client_operation_id: operationId } : {}),
       })
@@ -630,11 +653,16 @@ export async function createPost(
     return data.id as string;
   };
 
-  if (!operationId) return insert();
+  if (!operationId) {
+    const postId = await insert();
+    if (await currentUserId() !== ownerId) throw new Error('Account changed.');
+    return postId;
+  }
   const result = await executeIdempotentPost({
-    findExisting: () => matchingStandardPostIdForOperation(me, operationId, postPayload),
+    findExisting: () => matchingStandardPostIdForOperation(ownerId, operationId, postPayload),
     insert,
   });
+  if (await currentUserId() !== ownerId) throw new Error('Account changed.');
   return result.postId;
 }
 
@@ -644,8 +672,25 @@ export async function updatePost(postId: string, body: string): Promise<void> {
 }
 
 export async function updatePostAudience(postId: string, audience: Exclude<PostAudience, 'group'>): Promise<void> {
-  const { error } = await supabase.from('posts').update({ audience }).eq('id', postId);
+  return updatePostVisibility(postId, audience === 'public');
+}
+
+export async function updatePostVisibility(
+  postId: string,
+  showPublicly: boolean,
+  expectedOwnerId?: string,
+): Promise<void> {
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  if (expectedOwnerId && me !== expectedOwnerId) throw new Error('Account changed.');
+  const visibility = postVisibility(showPublicly);
+  const { error } = await supabase
+    .from('posts')
+    .update({ audience: visibility.audience, show_on_card: visibility.showOnCard })
+    .eq('id', postId)
+    .eq('user_id', me);
   if (error) throw error;
+  if (await currentUserId() !== me) throw new Error('Account changed.');
 }
 
 /** Tag buddies on a post (author-only; RLS also requires they're your buddies). */
