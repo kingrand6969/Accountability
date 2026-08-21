@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { chooseProgressPhoto, type ProgressPhotoCaptureDependencies } from './photoCapture';
+import {
+  chooseProgressPhoto,
+  resolvePrivateProgressPhoto,
+  type ProgressPhotoCaptureDependencies,
+  type ProgressPhotoImageDependencies,
+} from './photoCapture';
 
 const NOW = new Date(2026, 7, 22, 9, 15, 0, 0);
 
@@ -120,5 +125,55 @@ describe('chooseProgressPhoto', () => {
     });
     await expect(chooseProgressPhoto('gallery', deps)).rejects.toThrow('valid photo');
     expect(deps.normalizeToJpeg).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolvePrivateProgressPhoto', () => {
+  const path = 'owner-a/11111111-1111-4111-8111-111111111111.jpg';
+
+  function imageDependencies(overrides: Partial<ProgressPhotoImageDependencies> = {}): ProgressPhotoImageDependencies {
+    return {
+      currentOwnerId: jest.fn<() => Promise<string>>().mockResolvedValue('owner-a'),
+      createSignedUrl: jest.fn<ProgressPhotoImageDependencies['createSignedUrl']>().mockResolvedValue('https://private.example/signed-secret'),
+      cachePrivateImage: jest.fn<ProgressPhotoImageDependencies['cachePrivateImage']>().mockResolvedValue('file:///private-cache/opaque.jpg'),
+      ...overrides,
+    };
+  }
+
+  test('resolves an owner path through a short-lived signed URL into an opaque local cache URI', async () => {
+    const deps = imageDependencies();
+    await expect(resolvePrivateProgressPhoto(path, 'owner-a', deps)).resolves.toEqual({ localUri: 'file:///private-cache/opaque.jpg' });
+    expect(deps.createSignedUrl).toHaveBeenCalledWith(path, 300);
+    expect(deps.cachePrivateImage).toHaveBeenCalledWith('https://private.example/signed-secret', 'owner-a');
+    expect(deps.currentOwnerId).toHaveBeenCalledTimes(3);
+  });
+
+  test('rejects another owner path before minting access', async () => {
+    const deps = imageDependencies();
+    await expect(resolvePrivateProgressPhoto(
+      'owner-b/11111111-1111-4111-8111-111111111111.jpg',
+      'owner-a',
+      deps,
+    )).rejects.toThrow('verified');
+    expect(deps.createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  test('rejects an account switch after signing or caching without returning the image', async () => {
+    const deps = imageDependencies({
+      currentOwnerId: jest.fn<() => Promise<string>>()
+        .mockResolvedValueOnce('owner-a')
+        .mockResolvedValueOnce('owner-b'),
+    });
+    await expect(resolvePrivateProgressPhoto(path, 'owner-a', deps)).rejects.toThrow('Account changed.');
+    expect(deps.cachePrivateImage).not.toHaveBeenCalled();
+  });
+
+  test('never returns the storage path or signed URL in its public result model', async () => {
+    const result = await resolvePrivateProgressPhoto(path, 'owner-a', imageDependencies());
+    expect(result).toEqual({ localUri: 'file:///private-cache/opaque.jpg' });
+    expect(result).not.toHaveProperty('storagePath');
+    expect(result).not.toHaveProperty('signedUrl');
+    expect(JSON.stringify(result)).not.toContain('signed-secret');
+    expect(JSON.stringify(result)).not.toContain(path);
   });
 });

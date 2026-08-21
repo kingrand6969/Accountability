@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as Crypto from 'expo-crypto';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { saveProgressPhoto } from './api';
 import { localDateKey, recordedAtForLocalDate } from './checkInDate';
-import { chooseProgressPhoto, type CapturedProgressPhoto, type ProgressPhotoSource } from './photoCapture';
+import { chooseProgressPhoto, resolvePrivateProgressPhoto, type CapturedProgressPhoto, type ProgressPhotoSource, type ResolvedProgressPhoto } from './photoCapture';
 import type { ProgressPhoto, SaveProgressPhotoInput } from './types';
 
 type Props = Readonly<{
@@ -13,27 +14,33 @@ type Props = Readonly<{
   expectedOwnerId: string;
   onSaved?: (photo: ProgressPhoto) => void;
   choosePhoto?: (source: ProgressPhotoSource) => Promise<CapturedProgressPhoto | null>;
-  savePhoto?: (input: SaveProgressPhotoInput, expectedOwnerId: string) => Promise<ProgressPhoto>;
+  savePhoto?: (input: SaveProgressPhotoInput, expectedOwnerId: string, operationId: string) => Promise<ProgressPhoto>;
+  resolvePhoto?: (storagePath: string, expectedOwnerId: string) => Promise<ResolvedProgressPhoto>;
+  createOperationId?: () => string;
   now?: () => Date;
 }>;
 
-type Draft = Readonly<{ ownerId: string; photo: CapturedProgressPhoto; dateKey: string }>;
+type Draft = Readonly<{ ownerId: string; ownerToken: symbol; photo: CapturedProgressPhoto; dateKey: string; weight: string; operationId: string }>;
+type ImageState = Readonly<{ ownerId: string; ownerToken: symbol; key: string; uris: Readonly<Record<string, string>>; failed: boolean }>;
+type BusyState = Readonly<{ ownerId: string; ownerToken: symbol }>;
 
 const PICK_ERROR = 'That photo couldn’t be opened. Try another.';
 const SAVE_ERROR = 'Your private photo couldn’t save. Try again.';
 
-export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePhoto = chooseProgressPhoto, savePhoto = saveProgressPhoto, now = () => new Date() }: Props) {
+export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePhoto = chooseProgressPhoto, savePhoto = saveProgressPhoto, resolvePhoto = resolvePrivateProgressPhoto, createOperationId = Crypto.randomUUID, now = () => new Date() }: Props) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const mountedRef = useRef(true);
   const ownerToken = useMemo(() => Symbol(expectedOwnerId), [expectedOwnerId]);
   const activeOwnerTokenRef = useRef<symbol | null>(null);
-  const pickingRef = useRef<string | null>(null);
-  const savingRef = useRef<string | null>(null);
+  const pickingRef = useRef<symbol | null>(null);
+  const savingRef = useRef<symbol | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [pickingOwner, setPickingOwner] = useState<string | null>(null);
-  const [savingOwner, setSavingOwner] = useState<string | null>(null);
-  const [errorState, setErrorState] = useState<{ ownerId: string; message: string } | null>(null);
+  const [pickingState, setPickingState] = useState<BusyState | null>(null);
+  const [savingState, setSavingState] = useState<BusyState | null>(null);
+  const [errorState, setErrorState] = useState<{ ownerId: string; ownerToken: symbol; message: string } | null>(null);
+  const [imageState, setImageState] = useState<ImageState | null>(null);
+  const [imageRetry, setImageRetry] = useState(0);
 
   useEffect(() => {
     activeOwnerTokenRef.current = ownerToken;
@@ -48,63 +55,89 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
   }, []);
 
   const preview = useMemo(() => selectProgressPreview(photos), [photos]);
-  const activeDraft = draft?.ownerId === expectedOwnerId ? draft : null;
-  const picking = pickingOwner === expectedOwnerId;
-  const saving = savingOwner === expectedOwnerId;
-  const error = errorState?.ownerId === expectedOwnerId ? errorState.message : null;
+  const previewKey = preview.map(({ photo }) => photo.id).join('|');
+  const activeDraft = draft?.ownerId === expectedOwnerId && draft.ownerToken === ownerToken ? draft : null;
+  const picking = pickingState?.ownerId === expectedOwnerId && pickingState.ownerToken === ownerToken;
+  const saving = savingState?.ownerId === expectedOwnerId && savingState.ownerToken === ownerToken;
+  const error = errorState?.ownerId === expectedOwnerId && errorState.ownerToken === ownerToken ? errorState.message : null;
+  const activeImages = imageState?.ownerId === expectedOwnerId && imageState.ownerToken === ownerToken && imageState.key === previewKey ? imageState : null;
 
-  const pick = async (source: ProgressPhotoSource) => {
-    if (pickingRef.current === expectedOwnerId || savingRef.current === expectedOwnerId) return;
+  useEffect(() => {
+    if (preview.length === 0) return;
     const capturedOwner = expectedOwnerId;
     const capturedToken = ownerToken;
-    pickingRef.current = expectedOwnerId;
-    setPickingOwner(expectedOwnerId);
+    let alive = true;
+    void Promise.all(preview.map(async ({ photo }) => [photo.id, (await resolvePhoto(photo.storagePath, capturedOwner)).localUri] as const))
+      .then((entries) => {
+        if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+        setImageState({ ownerId: capturedOwner, ownerToken: capturedToken, key: previewKey, uris: Object.fromEntries(entries), failed: false });
+      })
+      .catch(() => {
+        if (!alive || !isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
+        setImageState({ ownerId: capturedOwner, ownerToken: capturedToken, key: previewKey, uris: {}, failed: true });
+      });
+    return () => { alive = false; };
+  }, [expectedOwnerId, imageRetry, ownerToken, preview, previewKey, resolvePhoto]);
+
+  const pick = async (source: ProgressPhotoSource) => {
+    if (pickingRef.current === ownerToken || savingRef.current === ownerToken) return;
+    const capturedOwner = expectedOwnerId;
+    const capturedToken = ownerToken;
+    pickingRef.current = capturedToken;
+    setPickingState({ ownerId: capturedOwner, ownerToken: capturedToken });
     setErrorState(null);
     try {
       const selected = await choosePhoto(source);
       if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef) || !selected) return;
       const selectedDate = new Date(selected.capturedAt);
       if (!Number.isFinite(selectedDate.getTime())) throw new Error('Invalid photo date.');
-      setDraft({ ownerId: capturedOwner, photo: selected, dateKey: localDateKey(selectedDate) });
+      setDraft({ ownerId: capturedOwner, ownerToken: capturedToken, photo: selected, dateKey: localDateKey(selectedDate), weight: '', operationId: createOperationId() });
     } catch (pickError) {
       if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
-      setErrorState({ ownerId: capturedOwner, message: permissionMessage(pickError) ?? PICK_ERROR });
+      setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: permissionMessage(pickError) ?? PICK_ERROR });
     } finally {
-      if (pickingRef.current === capturedOwner) pickingRef.current = null;
-      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setPickingOwner(null);
+      if (pickingRef.current === capturedToken) pickingRef.current = null;
+      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setPickingState(null);
     }
   };
 
   const closeDraft = () => {
-    if (savingRef.current === expectedOwnerId) return;
+    if (savingRef.current === ownerToken) return;
     setDraft(null);
     setErrorState(null);
   };
 
   const save = async () => {
-    if (!activeDraft || savingRef.current === expectedOwnerId) return;
+    if (!activeDraft || savingRef.current === ownerToken) return;
     const capturedOwner = expectedOwnerId;
     const capturedToken = ownerToken;
     let capturedAt: string;
+    let weightKg: number | null;
     try {
       capturedAt = recordedAtForLocalDate(activeDraft.dateKey, now());
     } catch (dateError) {
-      setErrorState({ ownerId: capturedOwner, message: dateError instanceof Error && dateError.message.includes('future') ? 'Photo date cannot be in the future.' : 'Enter a valid photo date.' });
+      setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: dateError instanceof Error && dateError.message.includes('future') ? 'Photo date cannot be in the future.' : 'Enter a valid photo date.' });
       return;
     }
-    savingRef.current = capturedOwner;
-    setSavingOwner(capturedOwner);
+    try {
+      weightKg = optionalWeight(activeDraft.weight);
+    } catch {
+      setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: 'Weight must be between 20 and 500 kg with up to two decimals.' });
+      return;
+    }
+    savingRef.current = capturedToken;
+    setSavingState({ ownerId: capturedOwner, ownerToken: capturedToken });
     setErrorState(null);
     try {
-      const saved = await savePhoto({ localUri: activeDraft.photo.uri, capturedAt, weightKg: null }, capturedOwner);
+      const saved = await savePhoto({ localUri: activeDraft.photo.uri, capturedAt, weightKg }, capturedOwner, activeDraft.operationId);
       if (!isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) return;
       setDraft(null);
       onSaved?.(saved);
     } catch {
-      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setErrorState({ ownerId: capturedOwner, message: SAVE_ERROR });
+      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setErrorState({ ownerId: capturedOwner, ownerToken: capturedToken, message: SAVE_ERROR });
     } finally {
-      if (savingRef.current === capturedOwner) savingRef.current = null;
-      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setSavingOwner(null);
+      if (savingRef.current === capturedToken) savingRef.current = null;
+      if (isCurrent(capturedToken, activeOwnerTokenRef, mountedRef)) setSavingState(null);
     }
   };
 
@@ -129,7 +162,18 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
         </View>
       ) : (
         <View style={styles.comparison}>
-          {preview.map(({ label, photo }) => <PrivatePhotoCard key={`${label}-${photo.id}`} label={label} photo={photo} styles={styles} />)}
+          {preview.map(({ label, photo }) => (
+            <PrivatePhotoCard
+              key={`${label}-${photo.id}`}
+              label={label}
+              photo={photo}
+              localUri={activeImages?.uris[photo.id] ?? null}
+              loading={!activeImages}
+              failed={activeImages?.failed ?? false}
+              onRetry={() => setImageRetry((value) => value + 1)}
+              styles={styles}
+            />
+          ))}
         </View>
       )}
 
@@ -146,8 +190,10 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
       ) : null}
 
       <Modal visible={!!activeDraft} transparent animationType="slide" onRequestClose={closeDraft}>
-        <View style={styles.scrim}>
-          <View accessibilityViewIsModal style={styles.sheet}>
+        <KeyboardAvoidingView style={styles.modalSafe} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.scrim}>
+            <View accessibilityViewIsModal style={styles.sheet}>
+              <ScrollView testID="progress-photo-modal-scroll" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetScroll}>
             <Text accessibilityRole="header" style={styles.sheetTitle}>Review private photo</Text>
             <Text style={styles.sheetCopy}>Not saved yet. Confirm the date, then save it only to your private progress.</Text>
             {activeDraft ? <Image source={{ uri: activeDraft.photo.uri }} accessibilityLabel="Selected private progress photo preview" resizeMode="cover" style={styles.previewImage} /> : null}
@@ -156,7 +202,7 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
               accessibilityLabel="Progress photo date"
               value={activeDraft?.dateKey ?? ''}
               onChangeText={(value) => {
-                setDraft((current) => current?.ownerId === expectedOwnerId ? { ...current, dateKey: value } : current);
+                setDraft((current) => current?.ownerToken === ownerToken ? { ...current, dateKey: value } : current);
                 setErrorState(null);
               }}
               editable={!saving}
@@ -167,6 +213,21 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
               style={[styles.dateInput, error && styles.invalid]}
             />
             <Text style={styles.dateHint}>Use YYYY-MM-DD. You can correct the original photo date.</Text>
+            <Text style={styles.fieldLabel}>Weight on this date (optional)</Text>
+            <TextInput
+              accessibilityLabel="Progress photo weight in kilograms"
+              value={activeDraft?.weight ?? ''}
+              onChangeText={(value) => {
+                setDraft((current) => current?.ownerToken === ownerToken ? { ...current, weight: value } : current);
+                setErrorState(null);
+              }}
+              editable={!saving}
+              maxLength={7}
+              keyboardType="decimal-pad"
+              placeholder="kg"
+              placeholderTextColor={theme.ink.muted}
+              style={[styles.dateInput, error && styles.invalid]}
+            />
             {error && activeDraft ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
             <View style={styles.sheetActions}>
               <Pressable accessibilityRole="button" accessibilityLabel="Cancel private photo" accessibilityState={{ disabled: saving }} disabled={saving} onPress={closeDraft} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Text style={styles.secondaryButtonText}>Cancel</Text></Pressable>
@@ -174,8 +235,10 @@ export function ProgressPhotoVault({ photos, expectedOwnerId, onSaved, choosePho
                 {saving ? <ActivityIndicator color={theme.ink.inverse} /> : <Text style={styles.primaryButtonText}>Save privately</Text>}
               </Pressable>
             </View>
+              </ScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -198,11 +261,18 @@ export function selectProgressPreview(photos: readonly ProgressPhoto[]) {
     : [{ label: 'Before' as const, photo: earliest }, { label: 'Latest' as const, photo: latest }];
 }
 
-function PrivatePhotoCard({ label, photo, styles }: { label: 'Before' | 'Latest'; photo: ProgressPhoto; styles: ReturnType<typeof createStyles> }) {
+function PrivatePhotoCard({ label, photo, localUri, loading, failed, onRetry, styles }: { label: 'Before' | 'Latest'; photo: ProgressPhoto; localUri: string | null; loading: boolean; failed: boolean; onRetry: () => void; styles: ReturnType<typeof createStyles> }) {
   const date = new Date(photo.capturedAt).toLocaleDateString();
   return (
     <View accessibilityLabel={`Private ${label} progress photo from ${date}`} style={styles.photoCard}>
-      <View style={styles.photoPlaceholder}><Text style={styles.photoPlaceholderText}>PRIVATE PHOTO</Text></View>
+      {localUri ? (
+        <Image source={{ uri: localUri }} accessibilityLabel={`Private ${label} progress photo`} resizeMode="cover" style={styles.savedPhoto} />
+      ) : (
+        <View style={styles.photoPlaceholder}>
+          {loading ? <><ActivityIndicator /><Text style={styles.photoPlaceholderText}>Loading private photo…</Text></> : null}
+          {failed ? <><Text style={styles.photoPlaceholderText}>Private photo couldn’t load.</Text><Pressable accessibilityRole="button" accessibilityLabel={`Retry ${label} private photo`} onPress={onRetry} style={styles.photoRetry}><Text style={styles.photoRetryText}>Retry</Text></Pressable></> : null}
+        </View>
+      )}
       <Text style={styles.photoLabel}>{label}</Text><Text style={styles.photoDate}>{date}</Text>
       {photo.weightKg == null ? null : <Text style={styles.photoWeight}>{photo.weightKg.toFixed(1)} kg</Text>}
     </View>
@@ -230,6 +300,15 @@ function isCurrent(token: symbol, activeOwnerTokenRef: React.MutableRefObject<sy
   return mountedRef.current && activeOwnerTokenRef.current === token;
 }
 
+function optionalWeight(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(trimmed)) throw new Error('Invalid weight.');
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 20 || parsed > 500) throw new Error('Invalid weight.');
+  return Math.round((parsed + Number.EPSILON) * 100) / 100;
+}
+
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   section: { marginTop: spacing.section },
   headingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
@@ -248,7 +327,10 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   comparison: { marginTop: spacing.md, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   photoCard: { flexGrow: 1, flexBasis: 144, minWidth: 132, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 16, padding: spacing.sm },
   photoPlaceholder: { aspectRatio: 4 / 3, borderRadius: 12, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
-  photoPlaceholderText: { color: theme.ink.muted, fontFamily: font.bold, fontSize: 9, letterSpacing: 1 },
+  savedPhoto: { width: '100%', aspectRatio: 4 / 3, borderRadius: 12, backgroundColor: theme.surface.muted },
+  photoPlaceholderText: { color: theme.ink.muted, fontFamily: font.bold, fontSize: 10, lineHeight: 15, textAlign: 'center', paddingHorizontal: spacing.xs },
+  photoRetry: { minHeight: 48, justifyContent: 'center', paddingHorizontal: spacing.md },
+  photoRetryText: { color: theme.ink.action, fontFamily: font.bold, fontSize: 12 },
   photoLabel: { color: theme.ink.action, fontFamily: font.bold, fontSize: 11, letterSpacing: 0.8, marginTop: spacing.sm },
   photoDate: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 14, lineHeight: 20, marginTop: spacing.xs },
   photoWeight: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18, marginTop: spacing.xs },
@@ -259,11 +341,13 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   pickingRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   pickingText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 13 },
   error: { color: theme.status.danger, fontFamily: font.medium, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
+  modalSafe: { flex: 1 },
   scrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: theme.interaction.scrim },
-  sheet: { width: '100%', maxWidth: 640, maxHeight: '94%', alignSelf: 'center', backgroundColor: theme.surface.canvas, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: spacing.lg, paddingBottom: spacing.xxl },
+  sheet: { width: '100%', maxWidth: 640, maxHeight: '94%', alignSelf: 'center', backgroundColor: theme.surface.canvas, borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: 'hidden' },
+  sheetScroll: { flexGrow: 1, padding: spacing.lg, paddingBottom: spacing.xxl },
   sheetTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 21, lineHeight: 27 },
   sheetCopy: { color: theme.ink.secondary, fontFamily: font.regular, fontSize: 13.5, lineHeight: 20, marginTop: spacing.xs },
-  previewImage: { width: '100%', maxHeight: 320, aspectRatio: 4 / 3, borderRadius: 14, backgroundColor: theme.surface.muted, marginTop: spacing.md },
+  previewImage: { width: '100%', maxHeight: 280, aspectRatio: 4 / 3, borderRadius: 14, backgroundColor: theme.surface.muted, marginTop: spacing.md },
   fieldLabel: { color: theme.ink.secondary, fontFamily: font.semibold, fontSize: 13, marginTop: spacing.md, marginBottom: spacing.xs },
   dateInput: { minHeight: 48, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card, borderRadius: 12, paddingHorizontal: spacing.md, color: theme.ink.primary, fontFamily: font.medium, fontSize: 16 },
   invalid: { borderColor: theme.border.danger },
