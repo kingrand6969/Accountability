@@ -105,6 +105,26 @@ async function withOwnerLock<T>(ownerId: string, action: () => Promise<T>): Prom
   }
 }
 
+async function removeExactLegacyDraft(draft: ComposeDraftV2, storage: DraftStorage): Promise<void> {
+  const key = legacyComposeDraftKey(draft.ownerId, draft.kind, draft.draftId);
+  const raw = await storage.getItem(key);
+  const legacy = raw ? parseComposeDraft(raw, draft.ownerId) : null;
+  if (!legacy || legacy.kind !== draft.kind || legacy.draftId !== draft.draftId) return;
+
+  // Remove the payload before its recovery references. If a later storage
+  // operation fails, stale index/pending entries cannot resurrect its media.
+  await storage.removeItem(key);
+  const indexKey = `compose-draft-index:v1:${draft.ownerId}`;
+  const index = parseIndex(await storage.getItem(indexKey), draft.ownerId, 1);
+  const retained = index.filter((item) => item !== key);
+  if (retained.length !== index.length) {
+    if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));
+    else await storage.removeItem(indexKey);
+  }
+  const pendingKey = `compose-draft-pending:v1:${draft.ownerId}`;
+  if (await storage.getItem(pendingKey) === key) await storage.removeItem(pendingKey);
+}
+
 async function saveComposeDraftUnlocked(draft: ComposeDraftV2, storage: DraftStorage): Promise<void> {
   const rollbackVisibility = draft.showPublicly
     ? { audience: 'public' as const, showOnCard: true }
@@ -117,6 +137,7 @@ async function saveComposeDraftUnlocked(draft: ComposeDraftV2, storage: DraftSto
   const pendingKey = composeDraftPendingKey(draft.ownerId);
   const index = parseIndex(await storage.getItem(indexKey), draft.ownerId);
   if (!hasRestorableDraftContent(normalizedDraft)) {
+    await removeExactLegacyDraft(normalizedDraft, storage);
     const retained = index.filter((item) => item !== key);
     await storage.removeItem(key);
     if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));

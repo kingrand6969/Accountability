@@ -159,6 +159,84 @@ describe('compose draft contract', () => {
     expect(await storage.getItem(v1Pending)).toBeNull();
   });
 
+  test('saving an empty V2 removes its exact retained V1 so media cannot resurrect', async () => {
+    const v2Key = composeDraftKey(OWNER, 'new', DRAFT);
+    const v1Key = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const v1Index = `compose-draft-index:v1:${OWNER}`;
+    const v1Pending = `compose-draft-pending:v1:${OWNER}`;
+    const media = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'c'.repeat(64)}.jpg`,
+      extension: 'jpg',
+      mimeType: 'image/jpeg',
+      byteCount: 42,
+      sha256: 'c'.repeat(64),
+      kind: 'photo' as const,
+    };
+    const {
+      showPublicly: _show,
+      visibilityChanged: _changed,
+      audience: _audience,
+      showOnCard: _showOnCard,
+      ...legacyBase
+    } = validDraft;
+    const legacy = {
+      ...legacyBase,
+      version: 1,
+      body: '',
+      media,
+      audience: 'buddies',
+      showOnCard: false,
+    };
+    const storage = memoryStorage(new Map([
+      [v1Index, JSON.stringify([v1Key])],
+      [v1Pending, v1Key],
+      [v1Key, JSON.stringify(legacy)],
+    ]));
+
+    const migrated = (await loadComposeDrafts(OWNER, storage)).drafts[0]!;
+    expect(migrated.media).toEqual(media);
+    // Model a retained rollback recovery pointer that exists when the user
+    // deliberately clears the migrated draft.
+    await storage.setItem(v1Pending, v1Key);
+    await saveComposeDraft({ ...migrated, body: '', media: null }, storage);
+
+    expect(await loadComposeDrafts(OWNER, storage)).toEqual({ drafts: [], cleanedInvalid: 0 });
+    expect(await storage.getItem(v2Key)).toBeNull();
+    expect(await storage.getItem(composeDraftIndexKey(OWNER))).toBeNull();
+    expect(await storage.getItem(v1Key)).toBeNull();
+    expect(await storage.getItem(v1Index)).toBeNull();
+    expect(await storage.getItem(v1Pending)).toBeNull();
+  });
+
+  test('empty V2 cleanup preserves other legacy draft identities and recovery pointers', async () => {
+    const otherDraftId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const exactV1Key = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const otherV1Key = `compose-draft:v1:${OWNER}:new:${otherDraftId}`;
+    const v1Index = `compose-draft-index:v1:${OWNER}`;
+    const v1Pending = `compose-draft-pending:v1:${OWNER}`;
+    const { showPublicly: _show, visibilityChanged: _changed, ...legacyBase } = validDraft;
+    const exactLegacy = { ...legacyBase, version: 1, body: 'exact draft' };
+    const otherLegacy = {
+      ...legacyBase,
+      version: 1,
+      draftId: otherDraftId,
+      body: 'other draft',
+    };
+    const storage = memoryStorage(new Map([
+      [v1Index, JSON.stringify([exactV1Key, otherV1Key])],
+      [v1Pending, otherV1Key],
+      [exactV1Key, JSON.stringify(exactLegacy)],
+      [otherV1Key, JSON.stringify(otherLegacy)],
+    ]));
+
+    await saveComposeDraft({ ...validDraft, body: '', media: null }, storage);
+
+    expect(await storage.getItem(exactV1Key)).toBeNull();
+    expect(await storage.getItem(otherV1Key)).not.toBeNull();
+    expect(JSON.parse((await storage.getItem(v1Index))!)).toEqual([otherV1Key]);
+    expect(await storage.getItem(v1Pending)).toBe(otherV1Key);
+  });
+
   test.each([
     ['wrong owner', `compose-draft:v1:${DRAFT}:new:${DRAFT}`, JSON.stringify(validDraft)],
     ['wrong prefix', `compose-draft:v2:${OWNER}:new:${DRAFT}`, JSON.stringify(validDraft)],
