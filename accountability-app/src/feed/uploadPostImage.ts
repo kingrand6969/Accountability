@@ -1,7 +1,12 @@
 import { decode } from 'base64-arraybuffer';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '../lib/supabase';
-import { isExpectedDigestMediaRef, uploadToR2WithDigest, type R2UploadedMedia } from '../lib/r2';
+import {
+  isExpectedDigestMediaRef,
+  isExpectedOperationDigestMediaRef,
+  uploadToR2WithDigest,
+  type R2UploadedMedia,
+} from '../lib/r2';
 import {
   classifyUploadFailure,
   estimateBase64Bytes,
@@ -28,6 +33,16 @@ export async function uploadPostImageWithDigest(
   expectedOwnerId?: string,
 ): Promise<R2UploadedMedia> {
   return uploadPostImageResult(base64, ext, operationId, expectedOwnerId);
+}
+
+/** Journey derivatives use an operation-isolated object even when bytes match another post. */
+export async function uploadJourneyProgressImageWithDigest(
+  base64: string,
+  ext: string,
+  operationId: string,
+  expectedOwnerId: string,
+): Promise<R2UploadedMedia> {
+  return uploadPostImageResult(base64, ext, operationId, expectedOwnerId, 'operation');
 }
 
 export async function uploadPostImageForOwner(
@@ -88,15 +103,70 @@ export async function deletePostImageForOperation(
   return 'deleted';
 }
 
+export async function deleteJourneyProgressImageForOperation(
+  mediaRef: string,
+  sha256: string,
+  operationId: string,
+  expectedOwnerId: string,
+): Promise<'deleted' | 'shared'> {
+  if (!POST_OPERATION_ID.test(operationId) || !SHA256_HEX.test(sha256)) {
+    throw new Error('Invalid Journey image cleanup identity.');
+  }
+  const { data, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (data.user?.id !== expectedOwnerId) throw new Error('Account changed.');
+
+  if (mediaRef.startsWith('r2://')) {
+    const ownerPrefix = `r2://post-images/${expectedOwnerId}/`;
+    const operationScoped = isExpectedOperationDigestMediaRef(
+      mediaRef, 'post', operationId, sha256, 'image/jpeg', expectedOwnerId,
+    );
+    if (!operationScoped && isExpectedDigestMediaRef(mediaRef, 'post', sha256, 'image/jpeg') &&
+      mediaRef.startsWith(ownerPrefix)) {
+      // Older Journey builds used an owner-shared digest object. It cannot be
+      // deleted without risking another published operation, so only release
+      // the local recovery record.
+      return 'shared';
+    }
+    if (!operationScoped || !mediaRef.startsWith(ownerPrefix)) {
+      throw new Error('The Journey image reference does not match this operation.');
+    }
+    const { data: signed, error } = await supabase.functions.invoke('r2-sign', { body: {
+      action: 'delete', kind: 'post', ext: 'jpg', contentType: 'image/jpeg', keyMode: 'operation',
+      sha256, operationId, expectedOwnerId, mediaRef,
+    } });
+    if (error) throw error;
+    const response = (signed ?? {}) as { deleteUrl?: string; mediaRef?: string; deleted?: boolean };
+    if (response.mediaRef !== mediaRef || (!response.deleteUrl && response.deleted !== true)) {
+      throw new Error('The cleanup service returned a mismatched Journey image reference.');
+    }
+    if (response.deleted === true) return 'deleted';
+    const deleted = await fetch(response.deleteUrl!, { method: 'DELETE' });
+    if (!deleted.ok && deleted.status !== 404) throw new Error(`Journey image cleanup failed (${deleted.status}).`);
+    return 'deleted';
+  }
+
+  // The existing Supabase fallback already includes owner, operation, and digest.
+  const path = postImagePath(expectedOwnerId, operationId, 'jpg', sha256);
+  const bucket = supabase.storage.from('post-images');
+  if (mediaRef !== bucket.getPublicUrl(path).data.publicUrl) {
+    throw new Error('The Journey image reference does not match this operation.');
+  }
+  const { error } = await bucket.remove([path]);
+  if (error) throw error;
+  return 'deleted';
+}
+
 async function uploadPostImageResult(
   base64: string,
   ext: string,
   operationId?: string,
   expectedOwnerId?: string,
+  keyMode?: 'operation',
 ): Promise<R2UploadedMedia> {
   const bytes = estimateBase64Bytes(base64);
   try {
-    const uploaded = await uploadToR2WithDigest(base64, 'post', ext, { operationId, expectedOwnerId });
+    const uploaded = await uploadToR2WithDigest(base64, 'post', ext, { operationId, expectedOwnerId, keyMode });
     void recordUploadEvent({ provider: 'r2', kind: 'post', outcome: 'success', bytes });
     return uploaded;
   } catch (e) {

@@ -3,7 +3,10 @@ import * as Crypto from 'expo-crypto';
 
 import { createPost, findMatchingStandardPostIdForOperation, findMyPostByOperationId } from '../feed/api';
 import { markFeedPostPublished } from '../feed/feedPublishSignal';
-import { deletePostImageForOperation, uploadPostImageWithDigest } from '../feed/uploadPostImage';
+import {
+  deleteJourneyProgressImageForOperation,
+  uploadJourneyProgressImageWithDigest,
+} from '../feed/uploadPostImage';
 import type { Insights } from '../insights/api';
 import { supabase } from '../lib/supabase';
 import { canonicalShareStudioContext, type ShareStudioResult } from '../share/shareStudioDraft';
@@ -182,7 +185,7 @@ export type ProgressPostDependencies = {
     model: ProgressShareRenderModel,
     options: Readonly<{ width: number; height: number; format: 'jpg'; quality: number }>,
   ) => Promise<string>;
-  uploadDerivedImage: typeof uploadPostImageWithDigest;
+  uploadDerivedImage: typeof uploadJourneyProgressImageWithDigest;
   digestCapturedImage: (bytes: Uint8Array) => Promise<string>;
   createPost: typeof createPost;
   markFeedPostPublished: typeof markFeedPostPublished;
@@ -194,7 +197,7 @@ export type ProgressPostDependencies = {
     showPublicly: boolean;
     shareData: ProgressFeedShareData;
   }>) => Promise<string | null>;
-  deleteDerivedImage: typeof deletePostImageForOperation;
+  deleteDerivedImage: typeof deleteJourneyProgressImageForOperation;
   findPostByOperationId: (operationId: string, ownerId: string) => Promise<string | null>;
   recordUploadedRecovery: (entry: ProgressShareRecoveryEntry) => Promise<void>;
   clearUploadedRecovery: (ownerId: string, operationId: string) => Promise<void>;
@@ -213,7 +216,7 @@ const defaultDependencies: ProgressPostDependencies = {
   async captureCard() {
     throw new Error('The reviewed progress card is not ready.');
   },
-  uploadDerivedImage: uploadPostImageWithDigest,
+  uploadDerivedImage: uploadJourneyProgressImageWithDigest,
   async digestCapturedImage(bytes) {
     const owned = Uint8Array.from(bytes);
     const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, owned.buffer);
@@ -230,7 +233,7 @@ const defaultDependencies: ProgressPostDependencies = {
     postType: 'milestone',
     shareData: input.shareData,
   }),
-  deleteDerivedImage: deletePostImageForOperation,
+  deleteDerivedImage: deleteJourneyProgressImageForOperation,
   findPostByOperationId: async (operationId, ownerId) => {
     await assertCurrentOwner(ownerId);
     const postId = await findMyPostByOperationId(operationId);
@@ -392,6 +395,12 @@ async function publishOnce(
     artifact = Object.freeze({ ...artifact, persistenceSucceeded: true });
     retainProgressPublishArtifact(artifact);
     await dependencies.assertOwner(snapshot.ownerId);
+  }
+  if (artifact.stage === 'uploaded' && !artifact.persistenceSucceeded) {
+    await dependencies.assertOwner(snapshot.ownerId);
+    await dependencies.recordUploadedRecovery(recoveryEntryForArtifact(artifact));
+    artifact = Object.freeze({ ...artifact, persistenceSucceeded: true });
+    retainProgressPublishArtifact(artifact);
   }
   await dependencies.revalidateSources(snapshot, draft);
   await dependencies.assertOwner(snapshot.ownerId);

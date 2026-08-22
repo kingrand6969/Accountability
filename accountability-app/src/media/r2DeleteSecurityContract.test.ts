@@ -12,4 +12,10 @@ describe('R2 operation cleanup signer', () => {
     expect(source).toContain('deleteUrl');
     expect(source).toMatch(/x-amz-meta-operation-id[\s\S]*?shared:\s*true/);
   });
+
+  test('operation-scoped cleanup derives the exact owner, operation, digest path', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'supabase/functions/r2-sign/index.ts'), 'utf8');
+    expect(source).toContain('operationDigestObjectFilename(operationId, sha256, safeExt)');
+    expect(source).toMatch(/keyMode === 'operation'[\s\S]*?operationDigestObjectFilename/);
+  });
 });

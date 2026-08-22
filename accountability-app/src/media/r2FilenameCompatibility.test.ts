@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from '@jest/globals';
 
-import { digestObjectFilename } from '../../supabase/functions/_shared/r2ObjectKey';
+import { digestObjectFilename, operationDigestObjectFilename } from '../../supabase/functions/_shared/r2ObjectKey';
 
 const MEMBER = '00000000-0000-4000-8000-000000000001';
 const DIGEST_A = 'a'.repeat(64);
@@ -65,5 +65,16 @@ describe('digest R2 filename compatibility', () => {
   test('legacy UUID filenames remain readable without loosening validators', () => {
     const legacy = `r2://post-images/${MEMBER}/123e4567-e89b-42d3-a456-426614174000.jpg`;
     expect(privateRef.test(legacy)).toBe(true);
+  });
+
+  test('operation-scoped Journey filenames remain readable and separate identical bytes', () => {
+    const operationA = '123e4567-e89b-42d3-a456-426614174000';
+    const operationB = '223e4567-e89b-42d3-a456-426614174000';
+    const first = operationDigestObjectFilename(operationA, DIGEST_A, 'jpg');
+    const second = operationDigestObjectFilename(operationB, DIGEST_A, 'jpg');
+    expect(first).toBe(`${operationA}/${DIGEST_A}.jpg`);
+    expect(first).not.toBe(second);
+    expect(privateRef.test(`r2://post-images/${MEMBER}/${first}`)).toBe(true);
+    expect(privateRef.test(`r2://post-images/${MEMBER}/${second}`)).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { supabase } from './supabase';
-import { isExpectedDigestMediaRef, uploadToR2WithDigest } from './r2';
+import { isExpectedDigestMediaRef, isExpectedOperationDigestMediaRef, uploadToR2WithDigest } from './r2';
 
 jest.mock('./supabase', () => ({
   supabase: {
@@ -76,6 +76,59 @@ describe('immutable R2 uploads', () => {
       mediaRef: `r2://post-images/${memberId}/${sha256}.jpg`,
       sha256,
     });
+  });
+
+  test('uses an exact operation-scoped object for Journey derivatives and safely accepts same-operation 412', async () => {
+    const operationRef = `r2://post-images/${memberId}/${operationId}/${sha256}.jpg`;
+    invoke.mockResolvedValue({
+      data: { uploadUrl: 'https://uploads.example/journey', mediaRef: operationRef },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({ ok: false, status: 412 })) as unknown as typeof fetch;
+
+    await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', {
+      operationId,
+      expectedOwnerId: memberId,
+      keyMode: 'operation',
+    })).resolves.toEqual({ mediaRef: operationRef, sha256 });
+    expect(invoke).toHaveBeenCalledWith('r2-sign', { body: expect.objectContaining({
+      operationId,
+      expectedOwnerId: memberId,
+      keyMode: 'operation',
+    }) });
+    expect(isExpectedOperationDigestMediaRef(operationRef, 'post', operationId, sha256, 'image/jpeg')).toBe(true);
+  });
+
+  test('rejects another operation object even when owner and digest match', async () => {
+    const otherOperation = '223e4567-e89b-42d3-a456-426614174000';
+    const otherRef = `r2://post-images/${memberId}/${otherOperation}/${sha256}.jpg`;
+    invoke.mockResolvedValue({ data: { uploadUrl: 'https://uploads.example/other', mediaRef: otherRef }, error: null } as never);
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
+
+    await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', {
+      operationId,
+      keyMode: 'operation',
+    })).rejects.toThrow('Upload service is out of date.');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('rejects an operation object signed into another owner namespace', async () => {
+    const foreignOwner = '00000000-0000-4000-8000-000000000099';
+    invoke.mockResolvedValue({
+      data: {
+        uploadUrl: 'https://uploads.example/foreign',
+        mediaRef: `r2://post-images/${foreignOwner}/${operationId}/${sha256}.jpg`,
+      },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
+
+    await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', {
+      operationId,
+      expectedOwnerId: memberId,
+      keyMode: 'operation',
+    })).rejects.toThrow('Upload service is out of date.');
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test('re-signs and retries a conditional conflict instead of claiming an upload succeeded', async () => {

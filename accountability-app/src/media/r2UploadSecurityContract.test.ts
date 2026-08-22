@@ -16,4 +16,10 @@ describe('R2 signer security contract', () => {
     expect(source).toContain("'if-none-match': '*'");
     expect(source).toMatch(/operationId\s*\?\s*\{[^}]*'if-none-match'/s);
   });
+
+  test('offers an operation-scoped key only for exact post operations', () => {
+    expect(source).toContain("keyMode === 'operation'");
+    expect(source).toContain('operationDigestObjectFilename(operationId, sha256, safeExt)');
+    expect(source).toMatch(/keyMode.*operation[\s\S]*?kind !== 'post'/);
+  });
 });

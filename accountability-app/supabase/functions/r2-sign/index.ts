@@ -13,7 +13,7 @@
 // Deploy:  supabase functions deploy r2-sign
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { AwsClient } from 'npm:aws4fetch@1.0.20';
-import { digestObjectFilename } from '../_shared/r2ObjectKey.ts';
+import { digestObjectFilename, operationDigestObjectFilename } from '../_shared/r2ObjectKey.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     if (authErr || !user) return json({ error: 'unauthorized' }, 401);
 
     // 2) Validate the request.
-    const { action, kind, ext, bytes, contentType, sha256, operationId, expectedOwnerId, mediaRef } = (await req.json().catch(() => ({}))) as {
+    const { action, kind, ext, bytes, contentType, sha256, operationId, expectedOwnerId, mediaRef, keyMode } = (await req.json().catch(() => ({}))) as {
       action?: 'delete';
       kind?: string;
       ext?: string;
@@ -104,6 +104,7 @@ Deno.serve(async (req) => {
       operationId?: string;
       expectedOwnerId?: string;
       mediaRef?: string;
+      keyMode?: 'operation';
     };
     if (expectedOwnerId && expectedOwnerId !== user.id) {
       return json({ error: 'account changed' }, 403);
@@ -140,12 +141,17 @@ Deno.serve(async (req) => {
     if (operationId && (!['post', 'video', 'voice', 'share'].includes(kind!) || !OPERATION_ID.test(operationId))) {
       return json({ error: 'invalid operation id' }, 400);
     }
+    if (keyMode !== undefined && (
+      keyMode !== 'operation' || kind !== 'post' || !operationId || !OPERATION_ID.test(operationId)
+    )) return json({ error: 'invalid key mode' }, 400);
 
     if (action === 'delete') {
       if (kind !== 'post' || expectedOwnerId !== user.id || !operationId || !OPERATION_ID.test(operationId)) {
         return json({ error: 'invalid cleanup identity' }, 400);
       }
-      const filename = digestObjectFilename(sha256, safeExt);
+      const filename = keyMode === 'operation'
+        ? operationDigestObjectFilename(operationId, sha256, safeExt)
+        : digestObjectFilename(sha256, safeExt);
       const key = `${cfg.folder}/${user.id}/${filename}`;
       const expectedMediaRef = `r2://${key}`;
       if (mediaRef !== expectedMediaRef) return json({ error: 'media reference mismatch' }, 400);
@@ -162,6 +168,7 @@ Deno.serve(async (req) => {
       if (existing.status === 404) return json({ deleted: true, mediaRef: expectedMediaRef });
       if (!existing.ok) return json({ error: 'could not verify cleanup object' }, 503);
       if (existing.headers.get('x-amz-meta-operation-id') !== operationId) {
+        if (keyMode === 'operation') return json({ error: 'cleanup operation metadata mismatch' }, 409);
         // Digest addressing intentionally lets identical bytes share one owner-scoped
         // object. A different operation must release its recovery record without
         // deleting the object owned by the first operation.
@@ -190,6 +197,8 @@ Deno.serve(async (req) => {
     // 4) Build the object key, scoped to this user's folder (their own space).
     const filename = cfg.stable
       ? `${cfg.folder}.${safeExt}`
+      : keyMode === 'operation'
+        ? operationDigestObjectFilename(operationId!, sha256, safeExt)
       : operationId
         ? digestObjectFilename(sha256, safeExt)
         : `${crypto.randomUUID()}.${safeExt}`;

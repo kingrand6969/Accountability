@@ -8,7 +8,7 @@ const responseHeaders = {
   'Cache-Control': 'private, no-store',
   'Vary': 'Authorization',
 };
-const PRIVATE_REF = /^r2:\/\/(avatars|covers|post-images|post-videos|voice-encouragements)\/[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,100}$/i;
+const PRIVATE_REF = /^r2:\/\/(avatars|covers|post-images|post-videos|voice-encouragements)\/[0-9a-f-]{36}\/(?:[A-Za-z0-9._-]{1,100}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[a-f0-9]{64}\.(?:jpg|png))$/i;
 const BYTE_IMAGE_FOLDERS = new Set(['avatars', 'covers', 'post-images']);
 const BYTE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const BYTE_IMAGE_MAX_BYTES = 20 * 1024 * 1024;

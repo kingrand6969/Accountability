@@ -3,7 +3,11 @@ import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
 
 export type R2Kind = 'avatar' | 'cover' | 'post' | 'video' | 'voice' | 'share';
-export type R2UploadOptions = { operationId?: string; expectedOwnerId?: string };
+export type R2UploadOptions = {
+  operationId?: string;
+  expectedOwnerId?: string;
+  keyMode?: 'operation';
+};
 export type R2UploadedMedia = { mediaRef: string; sha256: string };
 
 export const R2_UPLOAD_MAX_BYTES: Readonly<Record<R2Kind, number>> = {
@@ -58,6 +62,27 @@ export function isExpectedDigestMediaRef(
   return extra === undefined
     && /^[0-9a-f-]{36}$/i.test(ownerId ?? '')
     && filename === `${sha256}.${extension}`;
+}
+
+/** Validates the exact owner-scoped object identity returned for a Journey operation. */
+export function isExpectedOperationDigestMediaRef(
+  mediaRef: string,
+  kind: R2Kind,
+  operationId: string,
+  sha256: string,
+  contentType: string,
+  expectedOwnerId?: string,
+): boolean {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId) ||
+    !/^[a-f0-9]{64}$/.test(sha256)) return false;
+  const extension = extensionForContentType(contentType);
+  if (!extension) return false;
+  const prefix = `r2://${R2_FOLDER[kind]}/`;
+  if (!mediaRef.startsWith(prefix)) return false;
+  const [ownerId, operationSegment, filename, extra] = mediaRef.slice(prefix.length).split('/');
+  return extra === undefined && /^[0-9a-f-]{36}$/i.test(ownerId ?? '') &&
+    (expectedOwnerId === undefined || ownerId === expectedOwnerId) &&
+    operationSegment === operationId && filename === `${sha256}.${extension}`;
 }
 
 /**
@@ -139,12 +164,18 @@ async function uploadArrayBufferToR2(
         sha256,
         operationId: options.operationId,
         expectedOwnerId: options.expectedOwnerId,
+        keyMode: options.keyMode,
       },
     });
     if (error) throw error;
     const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };
     if (!uploadUrl || !mediaRef) throw new Error('Could not get an upload URL.');
-    if (options.operationId && !isExpectedDigestMediaRef(mediaRef, kind, sha256, contentType)) {
+    const expectedReference = options.keyMode === 'operation'
+      ? Boolean(options.operationId && isExpectedOperationDigestMediaRef(
+        mediaRef, kind, options.operationId, sha256, contentType, options.expectedOwnerId,
+      ))
+      : !options.operationId || isExpectedDigestMediaRef(mediaRef, kind, sha256, contentType);
+    if (!expectedReference) {
       throw new Error('Upload service is out of date. Please try again shortly.');
     }
     const put = await fetch(uploadUrl, {

@@ -23,7 +23,10 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 jest.mock('../feed/api', () => ({ createPost: jest.fn() }));
 jest.mock('../feed/feedPublishSignal', () => ({ markFeedPostPublished: jest.fn() }));
-jest.mock('../feed/uploadPostImage', () => ({ uploadPostImageWithDigest: jest.fn() }));
+jest.mock('../feed/uploadPostImage', () => ({
+  uploadJourneyProgressImageWithDigest: jest.fn(),
+  deleteJourneyProgressImageForOperation: jest.fn(),
+}));
 jest.mock('../lib/supabase', () => ({ supabase: { auth: { getUser: jest.fn() } } }));
 jest.mock('./api', () => ({ listProgressPhotos: jest.fn() }));
 jest.mock('./photoCapture', () => ({ resolvePrivateProgressPhoto: jest.fn() }));
@@ -405,6 +408,48 @@ describe('Journey progress Feed publishing', () => {
     expect(deps.deleteDerivedImage).toHaveBeenCalledWith(
       'https://feed.example/derived.jpg', digest, operationId, ownerId,
     );
+  });
+
+  test('blocks Post retries until the uploaded artifact is durably recoverable', async () => {
+    const deps = dependencies();
+    jest.mocked(deps.recordUploadedRecovery)
+      .mockRejectedValueOnce(new Error('storage unavailable'))
+      .mockRejectedValueOnce(new Error('storage still unavailable'))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('storage unavailable');
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('storage still unavailable');
+    expect(deps.createPost).not.toHaveBeenCalled();
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).resolves.toBe(postId);
+    expect(deps.uploadDerivedImage).toHaveBeenCalledTimes(1);
+    expect(deps.recordUploadedRecovery).toHaveBeenCalledTimes(3);
+    expect(deps.createPost).toHaveBeenCalledTimes(1);
+  });
+
+  test('reconciles an ambiguous create from durable recovery after a restart', async () => {
+    const deps = dependencies();
+    jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('create response lost'));
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('create response lost');
+    expect(deps.recordUploadedRecovery).toHaveBeenCalledTimes(1);
+
+    clearProgressPublishArtifacts(ownerId, operationId);
+    jest.mocked(deps.listUploadedRecovery).mockResolvedValueOnce([{
+      ownerId,
+      operationId,
+      mediaRef: 'https://feed.example/derived.jpg',
+      sha256: digest,
+      artifactFingerprint: `${operationId}:${digest}`,
+      status: 'uploaded',
+      createdAt: 1,
+      updatedAt: 1,
+      expired: false,
+    }]);
+    jest.mocked(deps.findPostByOperationId).mockResolvedValueOnce(postId);
+
+    await expect(resumeProgressShareRecovery(ownerId, deps)).resolves.toEqual({ resolved: 1, pending: 0 });
+    expect(deps.markFeedPostPublished).toHaveBeenCalledWith(ownerId, postId);
+    expect(deps.deleteDerivedImage).not.toHaveBeenCalled();
+    expect(deps.clearUploadedRecovery).toHaveBeenCalledWith(ownerId, operationId);
   });
 
   test('owner teardown cannot forget an unpersisted upload and owner return recovers it', async () => {
