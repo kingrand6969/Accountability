@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, test } from '@jest/globals';
 
 import { digestObjectFilename, operationDigestObjectFilename } from '../../supabase/functions/_shared/r2ObjectKey';
+import { parsePostImageObjectRef } from '../../supabase/functions/_shared/postImageRef';
 
 const MEMBER = '00000000-0000-4000-8000-000000000001';
 const DIGEST_A = 'a'.repeat(64);
@@ -76,5 +77,10 @@ describe('digest R2 filename compatibility', () => {
     expect(first).not.toBe(second);
     expect(privateRef.test(`r2://post-images/${MEMBER}/${first}`)).toBe(true);
     expect(privateRef.test(`r2://post-images/${MEMBER}/${second}`)).toBe(true);
+    expect(parsePostImageObjectRef(`r2://post-images/${MEMBER}/${first}`, MEMBER)).toEqual({
+      ownerId: MEMBER,
+      key: `post-images/${MEMBER}/${first}`,
+      format: 'operation',
+    });
   });
 });

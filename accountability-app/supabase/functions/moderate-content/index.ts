@@ -1,5 +1,6 @@
 // Supabase Edge Function: moderate-content
 // AI-confirmed violations are hidden and flagged atomically by the service-only RPC.
+import { parsePostImageObjectRef } from '../_shared/postImageRef.ts';
 
 export type ModerationDecision =
   | { outcome: 'safe'; categories: string[]; maxScore: number }
@@ -14,7 +15,7 @@ const CATEGORY_NAMES = new Set([
   'violence', 'violence/graphic',
 ]);
 
-type SourceRow = { text: string; image: string | null };
+type SourceRow = { text: string; image: string | null; ownerId?: string };
 type QuarantineArgs = {
   p_source_table: string;
   p_source_id: string;
@@ -27,7 +28,7 @@ type Dependencies = {
   trustedSupabaseUrl: string | undefined;
   trustedMediaUrl?: string | undefined;
   loadSource(table: string, id: string): Promise<SourceRow | null>;
-  resolveModerationImage(raw: string): Promise<string | null>;
+  resolveModerationImage(raw: string, expectedOwnerId?: string): Promise<string | null>;
   moderate(input: unknown[]): Promise<unknown>;
   quarantine(args: QuarantineArgs): Promise<{ data: boolean | null; error: unknown }>;
   log?: (event: { outcome: string; attempt: number }) => void;
@@ -79,14 +80,14 @@ type R2ResolverConfig = {
 };
 
 export function createModerationImageResolver(config: R2ResolverConfig) {
-  return async (raw: string): Promise<string | null> => {
+  return async (raw: string, expectedOwnerId?: string): Promise<string | null> => {
     const direct = validateModerationImageUrl(raw, config.trustedSupabaseUrl);
     if (direct) return direct;
     const required = [config.r2AccountId, config.r2AccessKeyId, config.r2SecretAccessKey, config.r2Bucket];
-    if (required.some((value) => typeof value !== 'string' || value.length === 0) || raw.length > 256) return null;
-    const match = /^r2:\/\/post-images\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:jpe?g|png|webp))$/i.exec(raw);
-    if (!match || !/^[a-z0-9]+$/i.test(config.r2AccountId!) || !/^[A-Za-z0-9._-]+$/.test(config.r2Bucket!)) return null;
-    const key = `post-images/${match[1]}/${match[2]}`;
+    if (required.some((value) => typeof value !== 'string' || value.length === 0)) return null;
+    const parsedRef = parsePostImageObjectRef(raw, expectedOwnerId);
+    if (!parsedRef || !/^[a-z0-9]+$/i.test(config.r2AccountId!) || !/^[A-Za-z0-9._-]+$/.test(config.r2Bucket!)) return null;
+    const key = parsedRef.key;
     const trustedR2Url = `https://${config.r2AccountId}.r2.cloudflarestorage.com`;
     const endpoint = `${trustedR2Url}/${config.r2Bucket}/${key}?X-Amz-Expires=300`;
     try {
@@ -154,7 +155,7 @@ export function createModerationHandler(deps: Dependencies) {
       const row = await deps.loadSource(body.table, body.id);
       if (!row) return json({ ok: true, outcome: 'safe', reason: 'row gone' });
       if (!row.text.trim() && !row.image) return json({ ok: true, outcome: 'safe', reason: 'nothing to check' });
-      const image = row.image ? await deps.resolveModerationImage(row.image).catch(() => null) : null;
+      const image = row.image ? await deps.resolveModerationImage(row.image, row.ownerId).catch(() => null) : null;
       if (!row.text.trim() && row.image && !image) return json({
         ok: false, outcome: 'unsupported_media', retryable: true, attempt, retry: retryPolicy(attempt, reason),
       }, 503);
@@ -205,10 +206,10 @@ export async function startModerationServer(): Promise<void> {
     import('npm:aws4fetch@1.0.20'),
   ]);
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  const columns: Record<string, { text: string; image?: string }> = {
-    posts: { text: 'body', image: 'image_url' },
-    post_comments: { text: 'body' },
-    stories: { text: 'caption', image: 'image_url' },
+  const columns: Record<string, { text: string; image?: string; owner: string }> = {
+    posts: { text: 'body', image: 'image_url', owner: 'user_id' },
+    post_comments: { text: 'body', owner: 'user_id' },
+    stories: { text: 'caption', image: 'image_url', owner: 'user_id' },
   };
   const resolveModerationImage = createModerationImageResolver({
     trustedSupabaseUrl: Deno.env.get('SUPABASE_URL'),
@@ -227,12 +228,16 @@ export async function startModerationServer(): Promise<void> {
     resolveModerationImage,
     async loadSource(table, id) {
       const src = columns[table];
-      const selected = [src.text, ...(src.image ? [src.image] : [])].join(',');
+      const selected = [src.text, ...(src.image ? [src.image] : []), src.owner].join(',');
       const { data, error } = await admin.from(table).select(selected).eq('id', id).maybeSingle();
       if (error) throw error;
       if (!data) return null;
       const row = data as Record<string, string | null>;
-      return { text: row[src.text] ?? '', image: src.image ? row[src.image] ?? null : null };
+      return {
+        text: row[src.text] ?? '',
+        image: src.image ? row[src.image] ?? null : null,
+        ownerId: row[src.owner] ?? undefined,
+      };
     },
     async moderate(input) {
       const key = Deno.env.get('OPENAI_API_KEY');
