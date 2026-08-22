@@ -395,6 +395,34 @@ describe('Journey progress Feed publishing', () => {
     expect(deps.createPost).not.toHaveBeenCalled();
   });
 
+  test('keeps an uploaded live artifact actionable when durable recording fails so Cancel deletes it', async () => {
+    const deps = dependencies();
+    jest.mocked(deps.recordUploadedRecovery).mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('storage unavailable');
+    expect(deps.uploadDerivedImage).toHaveBeenCalledTimes(1);
+    await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).resolves.toEqual({ status: 'cancelled' });
+    expect(deps.deleteDerivedImage).toHaveBeenCalledWith(
+      'https://feed.example/derived.jpg', digest, operationId, ownerId,
+    );
+  });
+
+  test('owner teardown cannot forget an unpersisted upload and owner return recovers it', async () => {
+    const deps = dependencies();
+    jest.mocked(deps.recordUploadedRecovery).mockRejectedValue(new Error('storage unavailable'));
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('storage unavailable');
+
+    clearProgressPublishArtifacts(ownerId, undefined, deps);
+    await Promise.resolve();
+    jest.mocked(deps.recordUploadedRecovery).mockResolvedValueOnce(undefined);
+    jest.mocked(deps.listUploadedRecovery).mockResolvedValue([]);
+    jest.mocked(deps.findPostByOperationId).mockResolvedValue(null);
+    await expect(resumeProgressShareRecovery(ownerId, deps)).resolves.toEqual({ resolved: 1, pending: 0 });
+    expect(deps.deleteDerivedImage).toHaveBeenCalledWith(
+      'https://feed.example/derived.jpg', digest, operationId, ownerId,
+    );
+  });
+
   test('cancel reconciles a committed post before deleting an uploaded derivative', async () => {
     const deps = dependencies();
     jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('post response lost'));

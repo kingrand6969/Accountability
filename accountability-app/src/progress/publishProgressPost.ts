@@ -262,6 +262,7 @@ type CapturedProgressArtifact = ProgressPublishArtifactBase & Readonly<{
 type UploadedProgressArtifact = ProgressPublishArtifactBase & Readonly<{
   stage: 'uploaded';
   mediaRef: string;
+  persistenceSucceeded: boolean;
   cleanupPending?: boolean;
 }>;
 type ProgressPublishArtifact = CapturedProgressArtifact | UploadedProgressArtifact;
@@ -271,14 +272,25 @@ const CAPTURE_ARTIFACT_TOTAL_BYTES = 8 * 1024 * 1024;
 const ARTIFACT_MAX_AGE_MS = 30 * 60 * 1000;
 const publishArtifacts = new Map<string, ProgressPublishArtifact>();
 
-export function clearProgressPublishArtifacts(ownerId?: string, operationId?: string): void {
+export function clearProgressPublishArtifacts(
+  ownerId?: string,
+  operationId?: string,
+  dependencyOverrides: Partial<ProgressPostDependencies> = {},
+): void {
+  const dependencies = { ...defaultDependencies, ...dependencyOverrides };
   for (const [key, artifact] of publishArtifacts) {
     const matches = (ownerId === undefined || artifact.ownerId === ownerId) &&
       (operationId === undefined || artifact.operationId === operationId);
     if (!matches) continue;
-    // Uploaded recovery is durable; component/account teardown can clear every
-    // live artifact, including sensitive captured bytes, without losing cleanup.
-    publishArtifacts.delete(key);
+    if (ownerId === undefined || artifact.stage === 'captured' || artifact.persistenceSucceeded) {
+      publishArtifacts.delete(key);
+      continue;
+    }
+    // Storage failed after upload. Teardown retries persistence, but keeps the
+    // live non-sensitive registry entry until that succeeds.
+    void dependencies.recordUploadedRecovery(recoveryEntryForArtifact(artifact)).then(() => {
+      if (publishArtifacts.get(key) === artifact) publishArtifacts.delete(key);
+    }).catch(() => {});
   }
 }
 
@@ -354,23 +366,17 @@ async function publishOnce(
   if (artifact.stage === 'captured') {
     await dependencies.revalidateSources(snapshot, draft);
     await dependencies.assertOwner(snapshot.ownerId);
+    if ([...publishArtifacts.values()].filter(
+      (candidate) => candidate.stage === 'uploaded' && !candidate.persistenceSucceeded,
+    ).length >= ARTIFACT_LIMIT) {
+      throw new Error('Journey share recovery is at capacity. Reconcile an earlier upload before continuing.');
+    }
     await dependencies.assertUploadedRecoveryCapacity(snapshot.ownerId, draft.operationId);
     await dependencies.assertOwner(snapshot.ownerId);
     const uploaded = await dependencies.uploadDerivedImage(artifact.base64, 'jpg', draft.operationId, snapshot.ownerId);
     if (uploaded.sha256 !== artifact.sha256) {
       throw new Error('The uploaded progress image did not match the reviewed capture.');
     }
-    const uploadedAt = Date.now();
-    await dependencies.recordUploadedRecovery(Object.freeze({
-      ownerId: snapshot.ownerId,
-      operationId: draft.operationId,
-      mediaRef: uploaded.mediaRef,
-      sha256: uploaded.sha256,
-      artifactFingerprint: recoveryArtifactFingerprint(draft.operationId, uploaded.sha256),
-      status: 'uploaded' as const,
-      createdAt: uploadedAt,
-      updatedAt: uploadedAt,
-    }));
     artifact = Object.freeze({
       stage: 'uploaded' as const,
       ownerId: snapshot.ownerId,
@@ -378,8 +384,12 @@ async function publishOnce(
       draftFingerprint,
       mediaRef: uploaded.mediaRef,
       sha256: uploaded.sha256,
+      persistenceSucceeded: false,
       createdAt: Date.now(),
     });
+    retainProgressPublishArtifact(artifact);
+    await dependencies.recordUploadedRecovery(recoveryEntryForArtifact(artifact));
+    artifact = Object.freeze({ ...artifact, persistenceSucceeded: true });
     retainProgressPublishArtifact(artifact);
     await dependencies.assertOwner(snapshot.ownerId);
   }
@@ -481,9 +491,42 @@ export async function resumeProgressShareRecovery(
 ): Promise<Readonly<{ resolved: number; pending: number }>> {
   const dependencies = { ...defaultDependencies, ...dependencyOverrides };
   await dependencies.assertOwner(ownerId);
-  const entries = await dependencies.listUploadedRecovery(ownerId);
+  const live = [...publishArtifacts.values()].filter(
+    (artifact): artifact is UploadedProgressArtifact =>
+      artifact.stage === 'uploaded' && artifact.ownerId === ownerId && !artifact.persistenceSucceeded,
+  );
+  const recoveredLive: ListedProgressShareRecovery[] = [];
+  const directlyResolved = new Set<string>();
   let resolved = 0;
   let pending = 0;
+  for (const artifact of live) {
+    try {
+      const entry = recoveryEntryForArtifact(artifact);
+      await dependencies.recordUploadedRecovery(entry);
+      const persisted = Object.freeze({ ...artifact, persistenceSucceeded: true });
+      publishArtifacts.set(`${artifact.ownerId}:${artifact.operationId}`, persisted);
+      recoveredLive.push(Object.freeze({ ...entry, expired: false }));
+    } catch {
+      try {
+        await dependencies.assertOwner(ownerId);
+        const postId = await dependencies.findPostByOperationId(artifact.operationId, ownerId);
+        await dependencies.assertOwner(ownerId);
+        if (postId) dependencies.markFeedPostPublished(ownerId, postId);
+        else await dependencies.deleteDerivedImage(artifact.mediaRef, artifact.sha256, artifact.operationId, ownerId);
+        publishArtifacts.delete(`${artifact.ownerId}:${artifact.operationId}`);
+        directlyResolved.add(artifact.operationId);
+        resolved += 1;
+      } catch {
+        pending += 1;
+      }
+    }
+  }
+  const durable = (await dependencies.listUploadedRecovery(ownerId)).filter(
+    (entry) => !directlyResolved.has(entry.operationId),
+  );
+  const entries = [...durable, ...recoveredLive.filter((entry) =>
+    !durable.some((candidate) => candidate.operationId === entry.operationId),
+  )];
   for (const entry of entries) {
     try {
       await dependencies.assertOwner(ownerId);
@@ -496,6 +539,7 @@ export async function resumeProgressShareRecovery(
         await dependencies.assertOwner(ownerId);
       }
       await dependencies.clearUploadedRecovery(ownerId, entry.operationId);
+      publishArtifacts.delete(`${ownerId}:${entry.operationId}`);
       resolved += 1;
     } catch {
       pending += 1;
@@ -619,6 +663,19 @@ function progressPostBody(snapshot: ProgressShareSnapshot, draft: ShareStudioRes
 
 function recoveryArtifactFingerprint(operationId: string, sha256: string): string {
   return `${operationId}:${sha256}`;
+}
+
+function recoveryEntryForArtifact(artifact: UploadedProgressArtifact): ProgressShareRecoveryEntry {
+  return Object.freeze({
+    ownerId: artifact.ownerId,
+    operationId: artifact.operationId,
+    mediaRef: artifact.mediaRef,
+    sha256: artifact.sha256,
+    artifactFingerprint: recoveryArtifactFingerprint(artifact.operationId, artifact.sha256),
+    status: artifact.cleanupPending ? 'cleanup_pending' as const : 'uploaded' as const,
+    createdAt: artifact.createdAt,
+    updatedAt: Date.now(),
+  });
 }
 
 export function validateProgressShareJpeg(base64: string): Readonly<{

@@ -120,6 +120,14 @@ export default function JourneyProgress() {
   const runShareRecovery = useCallback(async (capturedOwner: string, capturedToken: symbol) => {
     if (recoveryFlightRef.current.has(capturedToken)) return;
     recoveryFlightRef.current.add(capturedToken);
+    setRecoveryState((currentState) => ({
+      ownerId: capturedOwner,
+      ownerToken: capturedToken,
+      pending: currentState?.ownerId === capturedOwner && currentState.ownerToken === capturedToken
+        ? currentState.pending
+        : 0,
+      running: true,
+    }));
     try {
       const result = await resumeProgressShareRecovery(capturedOwner);
       if (mountedRef.current && ownerRef.current === capturedOwner && ownerToken === capturedToken) {
@@ -131,6 +139,11 @@ export default function JourneyProgress() {
       }
     } finally {
       recoveryFlightRef.current.delete(capturedToken);
+      if (mountedRef.current && ownerRef.current === capturedOwner && ownerToken === capturedToken) {
+        setRecoveryState((currentState) => currentState?.ownerId === capturedOwner && currentState.ownerToken === capturedToken
+          ? { ...currentState, running: false }
+          : currentState);
+      }
     }
   }, [ownerToken]);
 

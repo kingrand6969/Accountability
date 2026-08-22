@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- route loads after mutable Jest mocks */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import type { ShareStudioResult } from '../share/shareStudioDraft';
@@ -263,12 +263,21 @@ describe('Journey Progress Share Studio integration', () => {
   });
 
   test('shows an actionable retry while durable cleanup remains ambiguous', async () => {
-    mockResumeRecovery.mockResolvedValueOnce({ resolved: 0, pending: 1 }).mockResolvedValueOnce({ resolved: 1, pending: 0 });
+    let finishRetry!: (result: { resolved: number; pending: number }) => void;
+    mockResumeRecovery
+      .mockResolvedValueOnce({ resolved: 0, pending: 1 })
+      .mockReturnValueOnce(new Promise((resolve) => { finishRetry = resolve; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(<Route />); mounted.push(renderer); });
     await flush();
     const retry = renderer.root.findByProps({ accessibilityLabel: 'Retry progress share cleanup' });
-    await act(async () => { await retry.props.onPress(); });
+    act(() => { void retry.props.onPress(); });
+    await flush();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry progress share cleanup' }).props.accessibilityState)
+      .toEqual({ disabled: true });
+    expect(renderer.root.findAllByType(Text).some((node) => node.props.children === 'Checking…')).toBe(true);
+    finishRetry({ resolved: 1, pending: 0 });
+    await flush();
     expect(mockResumeRecovery).toHaveBeenCalledTimes(2);
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Retry progress share cleanup' })).toHaveLength(0);
   });
