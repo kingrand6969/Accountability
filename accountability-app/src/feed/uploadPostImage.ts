@@ -48,7 +48,7 @@ export async function deletePostImageForOperation(
   sha256: string,
   operationId: string,
   expectedOwnerId: string,
-): Promise<void> {
+): Promise<'deleted' | 'shared'> {
   if (!POST_OPERATION_ID.test(operationId) || !SHA256_HEX.test(sha256)) {
     throw new Error('Invalid post image cleanup identity.');
   }
@@ -66,16 +66,17 @@ export async function deletePostImageForOperation(
       sha256, operationId, expectedOwnerId, mediaRef,
     } });
     if (error) throw error;
-    const response = (signed ?? {}) as { deleteUrl?: string; mediaRef?: string; deleted?: boolean };
-    if (response.mediaRef !== mediaRef || (!response.deleteUrl && response.deleted !== true)) {
+    const response = (signed ?? {}) as { deleteUrl?: string; mediaRef?: string; deleted?: boolean; shared?: boolean };
+    if (response.mediaRef !== mediaRef || (!response.deleteUrl && response.deleted !== true && response.shared !== true)) {
       throw new Error('The cleanup service returned a mismatched image reference.');
     }
-    if (response.deleted === true) return;
+    if (response.shared === true) return 'shared';
+    if (response.deleted === true) return 'deleted';
     const deleteUrl = response.deleteUrl;
     if (!deleteUrl) throw new Error('The cleanup service did not return a delete URL.');
     const deleted = await fetch(deleteUrl, { method: 'DELETE' });
     if (!deleted.ok && deleted.status !== 404) throw new Error(`Post image cleanup failed (${deleted.status}).`);
-    return;
+    return 'deleted';
   }
 
   const path = postImagePath(expectedOwnerId, operationId, 'jpg', sha256);
@@ -84,6 +85,7 @@ export async function deletePostImageForOperation(
   if (mediaRef !== expectedPublicUrl) throw new Error('The post image reference does not match this cleanup operation.');
   const { error } = await bucket.remove([path]);
   if (error) throw error;
+  return 'deleted';
 }
 
 async function uploadPostImageResult(

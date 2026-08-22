@@ -29,7 +29,7 @@ describe('operation-bound post image cleanup', () => {
     } as never);
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
 
-    await expect(deletePostImageForOperation(mediaRef, sha256, operationId, ownerId)).resolves.toBeUndefined();
+    await expect(deletePostImageForOperation(mediaRef, sha256, operationId, ownerId)).resolves.toBe('deleted');
 
     expect(supabase.functions.invoke).toHaveBeenCalledWith('r2-sign', { body: {
       action: 'delete', kind: 'post', ext: 'jpg', contentType: 'image/jpeg',
@@ -44,5 +44,16 @@ describe('operation-bound post image cleanup', () => {
       `r2://post-images/${ownerId}/${'b'.repeat(64)}.jpg`, sha256, operationId, ownerId,
     )).rejects.toThrow(/reference|image/i);
     expect(supabase.functions.invoke).not.toHaveBeenCalled();
+  });
+
+  test('accepts a verified same-owner shared digest without deleting the other operation object', async () => {
+    jest.mocked(supabase.functions.invoke).mockResolvedValue({
+      data: { shared: true, mediaRef }, error: null,
+    } as never);
+    const fetchMock = jest.spyOn(globalThis, 'fetch');
+
+    await expect(deletePostImageForOperation(mediaRef, sha256, operationId, ownerId)).resolves.toBe('shared');
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
   });
 });

@@ -12,7 +12,7 @@ import { calculateBmi } from '../progress/bmi';
 import { BodyCheckInSheet } from '../progress/BodyCheckInSheet';
 import { ProgressPhotoVault } from '../progress/ProgressPhotoVault';
 import { createProgressShareRenderModel, progressShareRenderModelFingerprint, ProgressShareCard, PROGRESS_SHARE_ASPECT_RATIO, type ProgressShareMediaState, type ProgressShareSnapshot } from '../progress/ProgressShareCard';
-import { cancelProgressPublish, clearProgressPublishArtifacts, prepareProgressShareSnapshot, progressSnapshotInput, publishProgressPost } from '../progress/publishProgressPost';
+import { cancelProgressPublish, clearProgressPublishArtifacts, prepareProgressShareSnapshot, progressSnapshotInput, publishProgressPost, resumeProgressShareRecovery } from '../progress/publishProgressPost';
 import type { AddMeasurementInput, BodyMeasurement, ProgressPhoto } from '../progress/types';
 import { WeightTrendChart, type TrendPeriod } from '../progress/WeightTrendChart';
 import { ShareStudio, type ShareStudioResult, type ShareStudioPreviewState } from '../share/ShareStudio';
@@ -82,6 +82,8 @@ export default function JourneyProgress() {
   const shareOperationRef = useRef<{ snapshot: ProgressShareSnapshot; draft: ShareStudioResult } | null>(null);
   const previousOwnerRef = useRef(ownerId);
   const [previewReadiness, setPreviewReadiness] = useState<(ProgressShareMediaState & { ownerId: string; ownerToken: symbol }) | null>(null);
+  const [recoveryState, setRecoveryState] = useState<{ ownerId: string; ownerToken: symbol; pending: number; running: boolean } | null>(null);
+  const recoveryFlightRef = useRef(new Set<symbol>());
   const feedShare = useMemo(() => feedShareAvailability(Platform.OS), []);
 
   useEffect(() => {
@@ -91,11 +93,18 @@ export default function JourneyProgress() {
     previousOwnerRef.current = ownerId;
     mountedRef.current = true;
     ownerRef.current = ownerId;
-    snapshotRef.current = snapshot;
     sharePrepareLeaseRef.current = null;
     if (ownerChanged) {
+      snapshotRef.current = null;
+      setSnapshot(null);
       mountedSharePreviewRef.current = null;
       shareOperationRef.current = null;
+      setShareSession(null);
+      setPreviewReadiness(null);
+      setSharePreparingState(null);
+      setShareErrorState(null);
+    } else {
+      snapshotRef.current = snapshot;
     }
   }, [ownerId, snapshot]);
 
@@ -107,6 +116,27 @@ export default function JourneyProgress() {
       generationRef.current += 1;
     };
   }, []);
+
+  const runShareRecovery = useCallback(async (capturedOwner: string, capturedToken: symbol) => {
+    if (recoveryFlightRef.current.has(capturedToken)) return;
+    recoveryFlightRef.current.add(capturedToken);
+    try {
+      const result = await resumeProgressShareRecovery(capturedOwner);
+      if (mountedRef.current && ownerRef.current === capturedOwner && ownerToken === capturedToken) {
+        setRecoveryState({ ownerId: capturedOwner, ownerToken: capturedToken, pending: result.pending, running: false });
+      }
+    } catch {
+      if (mountedRef.current && ownerRef.current === capturedOwner && ownerToken === capturedToken) {
+        setRecoveryState({ ownerId: capturedOwner, ownerToken: capturedToken, pending: 1, running: false });
+      }
+    } finally {
+      recoveryFlightRef.current.delete(capturedToken);
+    }
+  }, [ownerToken]);
+
+  useEffect(() => {
+    if (ownerId) void Promise.resolve().then(() => runShareRecovery(ownerId, ownerToken));
+  }, [ownerId, ownerToken, runShareRecovery]);
 
   const load = useCallback((focus = activeFocusRef.current) => {
     if (!ownerId || !focus?.alive || activeFocusRef.current !== focus) return () => {};
@@ -323,6 +353,22 @@ export default function JourneyProgress() {
         </View>
         <JourneyTabs active="progress" />
 
+        {recoveryState?.ownerId === ownerId && recoveryState.ownerToken === ownerToken && recoveryState.pending > 0 ? (
+          <View accessibilityRole="alert" style={styles.recoveryNotice}>
+            <Text style={styles.recoveryText}>A previous progress share still needs a safe cleanup check.</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry progress share cleanup"
+              accessibilityState={{ disabled: recoveryState.running }}
+              disabled={recoveryState.running}
+              onPress={() => ownerId && runShareRecovery(ownerId, ownerToken)}
+              style={styles.recoveryButton}
+            >
+              <Text style={styles.retryText}>{recoveryState.running ? 'Checking…' : 'Retry cleanup'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {loading ? (
           <View accessibilityRole="progressbar" accessibilityLabel="Loading journey progress" style={styles.loader}>
             <ActivityIndicator color={theme.ink.action} />
@@ -462,6 +508,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   shareButton: { minHeight: 48, marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: theme.ink.action, paddingHorizontal: spacing.lg },
   shareButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
   shareError: { color: theme.status.danger, fontFamily: font.medium, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
+  recoveryNotice: { marginTop: spacing.md, padding: spacing.md, borderRadius: 12, borderWidth: 1, borderColor: theme.border.danger, backgroundColor: theme.surface.card },
+  recoveryText: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
+  recoveryButton: { minHeight: 48, marginTop: spacing.sm, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: 10, backgroundColor: theme.ink.action },
   shareCardCapture: { width: '100%', aspectRatio: PROGRESS_SHARE_ASPECT_RATIO, overflow: 'hidden' },
   pressed: { opacity: 0.72 },
 });

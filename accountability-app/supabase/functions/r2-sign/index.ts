@@ -162,7 +162,10 @@ Deno.serve(async (req) => {
       if (existing.status === 404) return json({ deleted: true, mediaRef: expectedMediaRef });
       if (!existing.ok) return json({ error: 'could not verify cleanup object' }, 503);
       if (existing.headers.get('x-amz-meta-operation-id') !== operationId) {
-        return json({ error: 'cleanup operation mismatch' }, 409);
+        // Digest addressing intentionally lets identical bytes share one owner-scoped
+        // object. A different operation must release its recovery record without
+        // deleting the object owned by the first operation.
+        return json({ shared: true, mediaRef: expectedMediaRef });
       }
       const signed = await aws.sign(new Request(`${endpoint}?X-Amz-Expires=300`, { method: 'DELETE' }), {
         aws: { signQuery: true, allHeaders: true },

@@ -10,5 +10,6 @@ describe('R2 operation cleanup signer', () => {
     expect(source).toMatch(/mediaRef.*expectedMediaRef/);
     expect(source).toMatch(/method:\s*'DELETE'/);
     expect(source).toContain('deleteUrl');
+    expect(source).toMatch(/x-amz-meta-operation-id[\s\S]*?shared:\s*true/);
   });
 });

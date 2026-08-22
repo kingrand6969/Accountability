@@ -10,10 +10,16 @@ import {
   publishProgressPost,
   progressShareSnapshotForDraft,
   clearProgressPublishArtifacts,
+  resumeProgressShareRecovery,
   cancelProgressPublish,
   validateProgressShareJpeg,
   type ProgressPostDependencies,
 } from './publishProgressPost';
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: { getItem: jest.fn(async () => null), setItem: jest.fn(async () => {}) },
+}));
 
 jest.mock('../feed/api', () => ({ createPost: jest.fn() }));
 jest.mock('../feed/feedPublishSignal', () => ({ markFeedPostPublished: jest.fn() }));
@@ -114,7 +120,13 @@ function dependencies(events: string[] = []): ProgressPostDependencies {
     createPost: jest.fn(async () => { events.push('post'); return postId; }) as ProgressPostDependencies['createPost'],
     markFeedPostPublished: jest.fn((_owner, _post) => { events.push('mark'); }),
     findExistingPost: jest.fn(async () => null),
-    deleteDerivedImage: jest.fn(async () => {}),
+    findPostByOperationId: jest.fn(async () => null),
+    deleteDerivedImage: jest.fn(async () => 'deleted' as const),
+    recordUploadedRecovery: jest.fn(async () => { events.push('record-recovery'); }),
+    clearUploadedRecovery: jest.fn(async () => { events.push('clear-recovery'); }),
+    updateUploadedRecoveryStatus: jest.fn(async () => { events.push('update-recovery'); }),
+    listUploadedRecovery: jest.fn(async () => []),
+    assertUploadedRecoveryCapacity: jest.fn(async () => {}),
   };
 }
 
@@ -218,8 +230,8 @@ describe('Journey progress Feed publishing', () => {
 
     expect(events).toEqual([
       'owner', 'validate', 'owner', 'capture:1080x1350:jpg', 'owner',
-      'validate', 'owner', `upload:jpg:${operationId}:${ownerId}`, 'owner',
-      'validate', 'owner', 'post', 'owner', 'mark',
+      'validate', 'owner', 'owner', `upload:jpg:${operationId}:${ownerId}`, 'record-recovery', 'owner',
+      'validate', 'owner', 'post', 'owner', 'mark', 'clear-recovery',
     ]);
     expect(deps.uploadDerivedImage).toHaveBeenCalledWith(jpegBase64(), 'jpg', operationId, ownerId);
     expect(deps.createPost).toHaveBeenCalledWith(
@@ -366,6 +378,23 @@ describe('Journey progress Feed publishing', () => {
     expect(deps.uploadDerivedImage).toHaveBeenNthCalledWith(2, firstBytes, 'jpg', operationId, ownerId);
   });
 
+  test('durably records the returned upload before the first post-upload owner check', async () => {
+    const events: string[] = [];
+    const deps = dependencies(events);
+    let ownerChecks = 0;
+    deps.assertOwner = jest.fn(async () => {
+      ownerChecks += 1;
+      events.push(`owner:${ownerChecks}`);
+      if (ownerChecks === 6) throw new Error('Account changed.');
+    });
+
+    await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('Account changed.');
+
+    expect(events.indexOf('record-recovery')).toBeGreaterThan(events.findIndex((event) => event.startsWith('upload:')));
+    expect(events.indexOf('record-recovery')).toBeLessThan(events.indexOf('owner:6'));
+    expect(deps.createPost).not.toHaveBeenCalled();
+  });
+
   test('cancel reconciles a committed post before deleting an uploaded derivative', async () => {
     const deps = dependencies();
     jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('post response lost'));
@@ -384,11 +413,11 @@ describe('Journey progress Feed publishing', () => {
     jest.mocked(deps.createPost).mockRejectedValueOnce(new Error('post failed'));
     await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('post failed');
     jest.mocked(deps.findExistingPost).mockImplementationOnce(async () => { events.push('reconcile'); return null; });
-    jest.mocked(deps.deleteDerivedImage).mockImplementationOnce(async () => { events.push('delete'); });
+    jest.mocked(deps.deleteDerivedImage).mockImplementationOnce(async () => { events.push('delete'); return 'deleted'; });
 
     await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).resolves.toEqual({ status: 'cancelled' });
     expect(events.indexOf('reconcile')).toBeLessThan(events.indexOf('delete'));
-    expect(events.at(-1)).toBe('owner');
+    expect(events.at(-1)).toBe('clear-recovery');
     expect(deps.deleteDerivedImage).toHaveBeenCalledWith(
       'https://feed.example/derived.jpg', digest, operationId, ownerId,
     );
@@ -400,7 +429,7 @@ describe('Journey progress Feed publishing', () => {
     await expect(publishProgressPost({ snapshot, draft: draft() }, deps)).rejects.toThrow('post failed');
     jest.mocked(deps.deleteDerivedImage)
       .mockRejectedValueOnce(new Error('delete response lost'))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce('deleted');
 
     await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).rejects.toThrow(/cleanup|cancel/i);
     await expect(cancelProgressPublish({ snapshot, draft: draft() }, deps)).resolves.toEqual({ status: 'cancelled' });
@@ -418,5 +447,33 @@ describe('Journey progress Feed publishing', () => {
     expect(deps.deleteDerivedImage).toHaveBeenCalledWith(
       'https://feed.example/derived.jpg', digest, operationId, ownerId,
     );
+  });
+
+  test('resumes durable recovery after restart by preserving committed posts and deleting absent derivatives', async () => {
+    const deps = dependencies();
+    const entries = [
+      { ownerId, operationId, mediaRef: 'r2://post-images/11111111-1111-4111-8111-111111111111/' + digest + '.jpg', sha256: digest, artifactFingerprint: `${operationId}:${digest}`, status: 'uploaded' as const, createdAt: 1, updatedAt: 1, expired: false },
+      { ownerId, operationId: '44444444-4444-4444-8444-444444444444', mediaRef: 'https://feed.example/second.jpg', sha256: 'b'.repeat(64), artifactFingerprint: `44444444-4444-4444-8444-444444444444:${'b'.repeat(64)}`, status: 'cleanup_pending' as const, createdAt: 2, updatedAt: 2, expired: true },
+    ];
+    jest.mocked(deps.listUploadedRecovery).mockResolvedValue(entries);
+    jest.mocked(deps.findPostByOperationId).mockResolvedValueOnce(postId).mockResolvedValueOnce(null);
+    jest.mocked(deps.deleteDerivedImage).mockResolvedValueOnce('deleted');
+
+    await expect(resumeProgressShareRecovery(ownerId, deps)).resolves.toEqual({ resolved: 2, pending: 0 });
+    expect(deps.markFeedPostPublished).toHaveBeenCalledWith(ownerId, postId);
+    expect(deps.deleteDerivedImage).toHaveBeenCalledWith(entries[1].mediaRef, entries[1].sha256, entries[1].operationId, ownerId);
+    expect(deps.clearUploadedRecovery).toHaveBeenCalledTimes(2);
+  });
+
+  test('keeps ambiguous durable recovery pending and retryable without deleting it', async () => {
+    const deps = dependencies();
+    const entry = { ownerId, operationId, mediaRef: `r2://post-images/${ownerId}/${digest}.jpg`, sha256: digest, artifactFingerprint: `${operationId}:${digest}`, status: 'uploaded' as const, createdAt: 1, updatedAt: 1, expired: false };
+    jest.mocked(deps.listUploadedRecovery).mockResolvedValue([entry]);
+    jest.mocked(deps.findPostByOperationId).mockRejectedValueOnce(new Error('network ambiguous'));
+
+    await expect(resumeProgressShareRecovery(ownerId, deps)).resolves.toEqual({ resolved: 0, pending: 1 });
+    expect(deps.deleteDerivedImage).not.toHaveBeenCalled();
+    expect(deps.clearUploadedRecovery).not.toHaveBeenCalled();
+    expect(deps.updateUploadedRecoveryStatus).toHaveBeenCalledWith(ownerId, operationId, 'cleanup_pending');
   });
 });

@@ -1,7 +1,7 @@
 import { decode } from 'base64-arraybuffer';
 import * as Crypto from 'expo-crypto';
 
-import { createPost, findMatchingStandardPostIdForOperation } from '../feed/api';
+import { createPost, findMatchingStandardPostIdForOperation, findMyPostByOperationId } from '../feed/api';
 import { markFeedPostPublished } from '../feed/feedPublishSignal';
 import { deletePostImageForOperation, uploadPostImageWithDigest } from '../feed/uploadPostImage';
 import type { Insights } from '../insights/api';
@@ -21,6 +21,15 @@ import {
 } from './ProgressShareCard';
 import type { BodyMeasurement, ProgressPhoto } from './types';
 import { postVisibility } from './visibility';
+import {
+  clearProgressShareRecovery,
+  assertProgressShareRecoveryCapacity,
+  listProgressShareRecovery,
+  recordProgressShareRecovery,
+  updateProgressShareRecoveryStatus,
+  type ListedProgressShareRecovery,
+  type ProgressShareRecoveryEntry,
+} from './progressShareRecovery';
 
 const SHA256_HEX = /^[0-9a-f]{64}$/u;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
@@ -186,6 +195,16 @@ export type ProgressPostDependencies = {
     shareData: ProgressFeedShareData;
   }>) => Promise<string | null>;
   deleteDerivedImage: typeof deletePostImageForOperation;
+  findPostByOperationId: (operationId: string, ownerId: string) => Promise<string | null>;
+  recordUploadedRecovery: (entry: ProgressShareRecoveryEntry) => Promise<void>;
+  clearUploadedRecovery: (ownerId: string, operationId: string) => Promise<void>;
+  updateUploadedRecoveryStatus: (
+    ownerId: string,
+    operationId: string,
+    status: 'cleanup_pending',
+  ) => Promise<void>;
+  listUploadedRecovery: (ownerId: string) => Promise<ListedProgressShareRecovery[]>;
+  assertUploadedRecoveryCapacity: (ownerId: string, operationId: string) => Promise<void>;
 };
 
 const defaultDependencies: ProgressPostDependencies = {
@@ -212,6 +231,19 @@ const defaultDependencies: ProgressPostDependencies = {
     shareData: input.shareData,
   }),
   deleteDerivedImage: deletePostImageForOperation,
+  findPostByOperationId: async (operationId, ownerId) => {
+    await assertCurrentOwner(ownerId);
+    const postId = await findMyPostByOperationId(operationId);
+    await assertCurrentOwner(ownerId);
+    return postId;
+  },
+  recordUploadedRecovery: (entry) => recordProgressShareRecovery(entry),
+  clearUploadedRecovery: (ownerId, operationId) => clearProgressShareRecovery(ownerId, operationId),
+  updateUploadedRecoveryStatus: (ownerId, operationId, status) =>
+    updateProgressShareRecoveryStatus(ownerId, operationId, status),
+  listUploadedRecovery: (ownerId) => listProgressShareRecovery(ownerId),
+  assertUploadedRecoveryCapacity: (ownerId, operationId) =>
+    assertProgressShareRecoveryCapacity(ownerId, operationId),
 };
 
 const inFlightPublishes = new Map<string, Readonly<{ fingerprint: string; promise: Promise<string> }>>();
@@ -244,9 +276,9 @@ export function clearProgressPublishArtifacts(ownerId?: string, operationId?: st
     const matches = (ownerId === undefined || artifact.ownerId === ownerId) &&
       (operationId === undefined || artifact.operationId === operationId);
     if (!matches) continue;
-    // Account changes may discard private captured bytes, but must not forget a
-    // remote derivative that still needs reconciliation or deletion.
-    if (artifact.stage === 'captured' || ownerId === undefined) publishArtifacts.delete(key);
+    // Uploaded recovery is durable; component/account teardown can clear every
+    // live artifact, including sensitive captured bytes, without losing cleanup.
+    publishArtifacts.delete(key);
   }
 }
 
@@ -322,11 +354,23 @@ async function publishOnce(
   if (artifact.stage === 'captured') {
     await dependencies.revalidateSources(snapshot, draft);
     await dependencies.assertOwner(snapshot.ownerId);
-    const uploaded = await dependencies.uploadDerivedImage(artifact.base64, 'jpg', draft.operationId, snapshot.ownerId);
+    await dependencies.assertUploadedRecoveryCapacity(snapshot.ownerId, draft.operationId);
     await dependencies.assertOwner(snapshot.ownerId);
+    const uploaded = await dependencies.uploadDerivedImage(artifact.base64, 'jpg', draft.operationId, snapshot.ownerId);
     if (uploaded.sha256 !== artifact.sha256) {
       throw new Error('The uploaded progress image did not match the reviewed capture.');
     }
+    const uploadedAt = Date.now();
+    await dependencies.recordUploadedRecovery(Object.freeze({
+      ownerId: snapshot.ownerId,
+      operationId: draft.operationId,
+      mediaRef: uploaded.mediaRef,
+      sha256: uploaded.sha256,
+      artifactFingerprint: recoveryArtifactFingerprint(draft.operationId, uploaded.sha256),
+      status: 'uploaded' as const,
+      createdAt: uploadedAt,
+      updatedAt: uploadedAt,
+    }));
     artifact = Object.freeze({
       stage: 'uploaded' as const,
       ownerId: snapshot.ownerId,
@@ -337,6 +381,7 @@ async function publishOnce(
       createdAt: Date.now(),
     });
     retainProgressPublishArtifact(artifact);
+    await dependencies.assertOwner(snapshot.ownerId);
   }
   await dependencies.revalidateSources(snapshot, draft);
   await dependencies.assertOwner(snapshot.ownerId);
@@ -359,6 +404,7 @@ async function publishOnce(
   );
   await dependencies.assertOwner(snapshot.ownerId);
   dependencies.markFeedPostPublished(snapshot.ownerId, postId);
+  await dependencies.clearUploadedRecovery(snapshot.ownerId, draft.operationId);
   publishArtifacts.delete(`${snapshot.ownerId}:${draft.operationId}`);
   return postId;
 }
@@ -403,6 +449,7 @@ export async function cancelProgressPublish(
   await dependencies.assertOwner(snapshot.ownerId);
   if (postId) {
     dependencies.markFeedPostPublished(snapshot.ownerId, postId);
+    await dependencies.clearUploadedRecovery(snapshot.ownerId, input.draft.operationId);
     publishArtifacts.delete(key);
     return { status: 'published', postId };
   }
@@ -414,12 +461,48 @@ export async function cancelProgressPublish(
       snapshot.ownerId,
     );
     await dependencies.assertOwner(snapshot.ownerId);
+    await dependencies.clearUploadedRecovery(snapshot.ownerId, input.draft.operationId);
     publishArtifacts.delete(key);
     return { status: 'cancelled' };
   } catch (error) {
     publishArtifacts.set(key, Object.freeze({ ...artifact, cleanupPending: true }));
+    await dependencies.updateUploadedRecoveryStatus(
+      snapshot.ownerId,
+      input.draft.operationId,
+      'cleanup_pending',
+    ).catch(() => {});
     throw new AggregateError([error], 'Cancel cleanup could not be confirmed. Try cancel again.');
   }
+}
+
+export async function resumeProgressShareRecovery(
+  ownerId: string,
+  dependencyOverrides: Partial<ProgressPostDependencies> = {},
+): Promise<Readonly<{ resolved: number; pending: number }>> {
+  const dependencies = { ...defaultDependencies, ...dependencyOverrides };
+  await dependencies.assertOwner(ownerId);
+  const entries = await dependencies.listUploadedRecovery(ownerId);
+  let resolved = 0;
+  let pending = 0;
+  for (const entry of entries) {
+    try {
+      await dependencies.assertOwner(ownerId);
+      const postId = await dependencies.findPostByOperationId(entry.operationId, ownerId);
+      await dependencies.assertOwner(ownerId);
+      if (postId) {
+        dependencies.markFeedPostPublished(ownerId, postId);
+      } else {
+        await dependencies.deleteDerivedImage(entry.mediaRef, entry.sha256, entry.operationId, ownerId);
+        await dependencies.assertOwner(ownerId);
+      }
+      await dependencies.clearUploadedRecovery(ownerId, entry.operationId);
+      resolved += 1;
+    } catch {
+      pending += 1;
+      await dependencies.updateUploadedRecoveryStatus(ownerId, entry.operationId, 'cleanup_pending').catch(() => {});
+    }
+  }
+  return Object.freeze({ resolved, pending });
 }
 
 async function assertCurrentOwner(expectedOwnerId: string): Promise<void> {
@@ -532,6 +615,10 @@ function pruneProgressPublishArtifacts(now = Date.now()): void {
 
 function progressPostBody(snapshot: ProgressShareSnapshot, draft: ShareStudioResult): string {
   return draft.caption || `Sharing my ${snapshot.period === 'week' ? 'weekly' : 'monthly'} progress.`;
+}
+
+function recoveryArtifactFingerprint(operationId: string, sha256: string): string {
+  return `${operationId}:${sha256}`;
 }
 
 export function validateProgressShareJpeg(base64: string): Readonly<{

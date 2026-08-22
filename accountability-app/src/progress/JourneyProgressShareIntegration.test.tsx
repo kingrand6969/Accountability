@@ -18,6 +18,7 @@ const mockProgressSnapshotInput = jest.fn<(...args: unknown[]) => unknown>();
 const mockPrepare = jest.fn<() => Promise<ProgressShareSnapshot>>();
 const mockPublish = jest.fn<(...args: unknown[]) => Promise<string>>();
 const mockCancelPublish = jest.fn<(...args: unknown[]) => Promise<{ status: 'cancelled' } | { status: 'published'; postId: string }>>();
+const mockResumeRecovery = jest.fn<(ownerId: string) => Promise<{ resolved: number; pending: number }>>();
 const mockClearArtifacts = jest.fn();
 const mockCaptureRef = jest.fn<(ref: unknown, options: unknown) => Promise<string>>().mockResolvedValue('jpeg-base64');
 let mockLastStudioProps: Record<string, unknown> | null = null;
@@ -50,6 +51,7 @@ jest.mock('./publishProgressPost', () => ({
   progressSnapshotInput: (owner: unknown, period: unknown, openedAt: unknown, insights: unknown, latest: unknown, photos: unknown) => mockProgressSnapshotInput(owner, period, openedAt, insights, latest, photos),
   prepareProgressShareSnapshot: (..._args: unknown[]) => mockPrepare(),
   publishProgressPost: (input: unknown, dependencies: unknown) => mockPublish(input, dependencies),
+  resumeProgressShareRecovery: (ownerId: string) => mockResumeRecovery(ownerId),
 }));
 jest.mock('../share/ShareStudio', () => ({
   ShareStudio: (props: any) => {
@@ -107,6 +109,7 @@ describe('Journey Progress Share Studio integration', () => {
     mockProgressSnapshotInput.mockImplementation((...args) => ({ args }));
     mockPublish.mockResolvedValue('post-id');
     mockCancelPublish.mockResolvedValue({ status: 'cancelled' });
+    mockResumeRecovery.mockResolvedValue({ resolved: 0, pending: 0 });
     mockCaptureRef.mockResolvedValue('jpeg-base64');
   });
 
@@ -236,5 +239,37 @@ describe('Journey Progress Share Studio integration', () => {
     await act(async () => { await (mockLastStudioProps!.onCancel as () => Promise<void>)(); });
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Journey Share Studio' }).length).toBeGreaterThan(0);
     expect(mockCancelPublish).toHaveBeenCalledTimes(1);
+  });
+
+  test('resumes durable uploaded recovery on A to B to A activation and remount', async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(<Route />); mounted.push(renderer); });
+    await flush();
+    expect(mockResumeRecovery).toHaveBeenCalledWith('owner-a');
+
+    mockOwnerId = 'owner-b';
+    await act(async () => { renderer.update(<Route />); });
+    await flush();
+    expect(mockResumeRecovery).toHaveBeenCalledWith('owner-b');
+    mockOwnerId = 'owner-a';
+    await act(async () => { renderer.update(<Route />); });
+    await flush();
+    expect(mockResumeRecovery.mock.calls.filter(([owner]) => owner === 'owner-a')).toHaveLength(2);
+
+    act(() => renderer.unmount());
+    await act(async () => { renderer = TestRenderer.create(<Route />); mounted.push(renderer); });
+    await flush();
+    expect(mockResumeRecovery.mock.calls.filter(([owner]) => owner === 'owner-a')).toHaveLength(3);
+  });
+
+  test('shows an actionable retry while durable cleanup remains ambiguous', async () => {
+    mockResumeRecovery.mockResolvedValueOnce({ resolved: 0, pending: 1 }).mockResolvedValueOnce({ resolved: 1, pending: 0 });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(<Route />); mounted.push(renderer); });
+    await flush();
+    const retry = renderer.root.findByProps({ accessibilityLabel: 'Retry progress share cleanup' });
+    await act(async () => { await retry.props.onPress(); });
+    expect(mockResumeRecovery).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Retry progress share cleanup' })).toHaveLength(0);
   });
 });
