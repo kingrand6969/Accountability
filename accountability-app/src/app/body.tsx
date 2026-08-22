@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +26,7 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 import { EditorialBackdrop } from '../journey/EditorialBackdrop';
 import { listRecentJourneyItems, pillarCompletion } from '../journey/data';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
+import { WorkoutPhotoHero } from '../progress/WorkoutPhotoHero';
 
 const ACTIONS = [
   { label: 'My plan', sub: 'Build or continue this week', icon: 'walk-outline' as const, route: '/gym-plan' },
@@ -128,11 +128,7 @@ export default function BodyScreen() {
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
-              {exercise?.images?.[0] ? (
-                <Image source={{ uri: exercise.images[0] }} style={styles.heroImage} resizeMode="cover" />
-              ) : (
-                <Ionicons name="barbell-outline" size={88} color="rgba(255,255,255,0.15)" style={styles.heroFallback} />
-              )}
+              <WorkoutPhotoHero exercise={exercise} workoutTitle={workoutTitle} />
               <LinearGradient colors={['rgba(3,13,28,0.06)', 'rgba(3,13,28,0.93)']} style={StyleSheet.absoluteFill} />
               <View style={styles.heroCopy}>
                 <Text style={styles.heroKicker}>TODAY’S WORKOUT</Text>
@@ -243,8 +239,6 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   errorText: { flex: 1, color: palette.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
   hero: { height: 226, borderRadius: 16, overflow: 'hidden', justifyContent: 'flex-end' },
   pressed: { opacity: 0.7 },
-  heroImage: { position: 'absolute', right: 0, top: 0, bottom: 0, width: '62%' },
-  heroFallback: { position: 'absolute', right: 32, top: 62 },
   heroCopy: { padding: 16, width: '78%' },
   heroKicker: { color: '#BED3EB', fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1.1 },
   heroTitle: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 26, lineHeight: 30, marginTop: 3 },
