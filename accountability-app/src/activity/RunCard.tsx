@@ -217,10 +217,18 @@ function RunCardMap(props: OsmMapProps) {
   return <MapComponent {...props} />;
 }
 
-function Header({ title, timestamp, fontFamily, ink, muted, align = 'left' }: LayoutData & { align?: 'left' | 'center' | 'right' }) {
+function Header({
+  title,
+  timestamp,
+  fontFamily,
+  ink,
+  muted,
+  align = 'left',
+  titleLines = 1,
+}: LayoutData & { align?: 'left' | 'center' | 'right'; titleLines?: 1 | 2 }) {
   return (
     <View style={[styles.header, align === 'center' && styles.centered, align === 'right' && styles.rightAligned]}>
-      <Text numberOfLines={2} adjustsFontSizeToFit style={[styles.title, { color: ink, fontFamily, textAlign: align }]}>{title}</Text>
+      <Text numberOfLines={titleLines} adjustsFontSizeToFit style={[styles.title, { color: ink, fontFamily, textAlign: align }]}>{title}</Text>
       {timestamp ? <Text style={[styles.timestamp, { color: muted, textAlign: align }]}>{timestamp}</Text> : null}
     </View>
   );
@@ -315,7 +323,7 @@ function RightRail(data: LayoutData) {
   return (
     <View style={styles.full}>
       <View testID="right-rail-identity" style={styles.topLeftIdentity}>
-        <Header {...data} />
+        <Header {...data} titleLines={2} />
       </View>
       <View testID="right-rail-performance" style={styles.rightRailPerformance}>
         <Distance data={data} align="right" size="small" />
@@ -401,8 +409,8 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  topLeftIdentity: { position: 'absolute', left: '6%', top: '6%' },
-  bottomLeftIdentity: { position: 'absolute', left: '6%', bottom: '6%' },
+  topLeftIdentity: { position: 'absolute', left: '6%', right: '46%', top: '6%' },
+  bottomLeftIdentity: { position: 'absolute', left: '6%', right: '46%', bottom: '6%' },
   bottomRightPrivacy: { position: 'absolute', right: '6%', bottom: '6%' },
   stackMini: { marginTop: 9, gap: 7, alignItems: 'center' },
   eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 7, letterSpacing: 1.5 },

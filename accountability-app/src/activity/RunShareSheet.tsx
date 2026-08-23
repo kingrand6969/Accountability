@@ -107,6 +107,20 @@ import {
 
 const LIME = '#c6f24e';
 
+export function runCardBackgroundButtonPlacement(layout: RunShareLayout) {
+  switch (layout) {
+    case 'center-stack':
+    case 'editorial-stack':
+      return { top: 12, left: 12 } as const;
+    case 'right-rail':
+      return { bottom: 12, left: 12 } as const;
+    case 'data-horizon':
+      return { top: '43%', right: 12 } as const;
+    default:
+      return { top: 12, right: 12 } as const;
+  }
+}
+
 export type FinishedRun = {
   activityId: string | null;
   ownerId: string | null;
@@ -1113,7 +1127,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           showEndpoints={showEnds}
         />
         <Pressable
-          style={styles.changeBackgroundButton}
+          style={[
+            styles.changeBackgroundButton,
+            runCardBackgroundButtonPlacement(layout),
+          ]}
           onPress={() => setBackgroundPickerVisible(true)}
           disabled={busy}
           accessibilityRole="button"
@@ -1514,8 +1531,6 @@ const styles = StyleSheet.create({
   preview: { position: 'relative', justifyContent: 'center' },
   changeBackgroundButton: {
     position: 'absolute',
-    left: 12,
-    bottom: 12,
     width: 48,
     height: 48,
     borderRadius: 16,

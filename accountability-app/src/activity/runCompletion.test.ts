@@ -25,6 +25,7 @@ import type { QueuedActivity } from './offlineQueueTypes';
 import {
   createRunEditorSafeCloser,
   handleRunEditorHardwareBack,
+  runCardBackgroundButtonPlacement,
 } from './RunShareSheet';
 
 jest.mock('../lib/supabase', () => ({ supabase: {} }));
@@ -74,6 +75,16 @@ describe('RunShareSheet Memories ownership', () => {
     expect(source).toMatch(
       /saveToMemories:\s*\(uri\)\s*=>[\s\S]{0,180}saveImageToMemories\(uri,\s*null,\s*null,\s*run\.ownerId!\)/,
     );
+  });
+});
+
+describe('Run card background control placement', () => {
+  it('stays on the card without covering each layout’s approved identity or data regions', () => {
+    expect(runCardBackgroundButtonPlacement('center-stack')).toEqual({ top: 12, left: 12 });
+    expect(runCardBackgroundButtonPlacement('right-rail')).toEqual({ bottom: 12, left: 12 });
+    expect(runCardBackgroundButtonPlacement('data-horizon')).toEqual({ top: '43%', right: 12 });
+    expect(runCardBackgroundButtonPlacement('editorial-stack')).toEqual({ top: 12, left: 12 });
+    expect(runCardBackgroundButtonPlacement('map-focus')).toEqual({ top: 12, right: 12 });
   });
 });
 

@@ -64,7 +64,10 @@ describe('RunCard approved five-layout composition', () => {
       position: 'absolute', top: '10%', left: 0, right: 0, alignItems: 'center',
     });
     expect(flatStyle(renderer, 'center-stack-identity')).toMatchObject({
-      position: 'absolute', left: '6%', bottom: '6%',
+      position: 'absolute', left: '6%', right: '46%', bottom: '6%',
+    });
+    expect(renderer.root.findByProps({ children: 'Sunday Run' }).props).toMatchObject({
+      numberOfLines: 1,
     });
     expect(flatStyle(renderer, 'center-stack-privacy')).toMatchObject({
       position: 'absolute', right: '6%', bottom: '6%',
