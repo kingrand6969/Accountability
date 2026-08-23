@@ -1,5 +1,6 @@
 export type LatLng = { lat: number; lng: number };
 export type MapMarker = LatLng & { label?: string; color?: string };
+export type MapFitPadding = { top: number; right: number; bottom: number; left: number };
 
 const ACCENT = '#2563eb';
 
@@ -15,12 +16,14 @@ export function buildOsmHtml(opts: {
   interactive?: boolean;
   tiles?: 'osm' | 'dark';
   showLatestMarker?: boolean;
+  fitPadding?: MapFitPadding;
 }): string {
   const markers = opts.markers ?? [];
   const route = opts.route ?? [];
   const interactive = opts.interactive !== false;
   const showLatestMarker = opts.showLatestMarker !== false;
   const dark = opts.tiles === 'dark';
+  const fitPadding = opts.fitPadding ?? { top: 28, right: 28, bottom: 28, left: 28 };
   const tileUrl = dark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -51,6 +54,7 @@ export function buildOsmHtml(opts: {
   var markers = ${safeJson(markers)};
   var interactive = ${interactive ? 'true' : 'false'};
   var showLatestMarker = ${showLatestMarker ? 'true' : 'false'};
+  var fitPadding = ${safeJson(fitPadding)};
   var map = L.map('map', {
     zoomControl: interactive, dragging: interactive, scrollWheelZoom: interactive,
     doubleClickZoom: interactive, boxZoom: interactive, keyboard: interactive, tap: interactive,
@@ -84,7 +88,11 @@ export function buildOsmHtml(opts: {
     var b = [];
     if (line) { line.getLatLngs().forEach(function (p) { b.push(p); }); }
     markers.forEach(function (m) { b.push([m.lat, m.lng]); });
-    if (b.length > 1) { map.fitBounds(b, { padding: [28, 28], maxZoom: 16 }); }
+    if (b.length > 1) { map.fitBounds(b, {
+      paddingTopLeft: [fitPadding.left, fitPadding.top],
+      paddingBottomRight: [fitPadding.right, fitPadding.bottom],
+      maxZoom: 16
+    }); }
     else if (b.length === 1) { map.setView(b[0], 15); }
     else { map.setView([20, 0], 2); }
   }
@@ -111,7 +119,11 @@ export function buildOsmHtml(opts: {
   window.__updateRoute = function (pts, center) {
     drawRoute(pts);
     if (center) { map.setView([center.lat, center.lng], map.getZoom() < 14 ? 16 : map.getZoom()); }
-    else if (line) { try { map.fitBounds(line.getBounds(), { padding: [28, 28], maxZoom: 17 }); } catch (e) {} }
+    else if (line) { try { map.fitBounds(line.getBounds(), {
+      paddingTopLeft: [fitPadding.left, fitPadding.top],
+      paddingBottomRight: [fitPadding.right, fitPadding.bottom],
+      maxZoom: 17
+    }); } catch (e) {} }
   };
   function onMsg(e) {
     try { var d = JSON.parse(e.data); if (d && d.type === 'route') { window.__updateRoute(d.route, d.center); } } catch (err) {}

@@ -5,12 +5,20 @@ import { buildOsmHtml, type LatLng, type MapMarker } from './osmHtml';
 
 export type OsmMapHandle = { setRoute: (route: LatLng[], center?: LatLng) => void };
 
+export type MapFitPadding = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
 export type OsmMapProps = {
   markers?: MapMarker[];
   route?: LatLng[];
   interactive?: boolean;
   tiles?: 'osm' | 'dark';
   showLatestMarker?: boolean;
+  fitPadding?: MapFitPadding;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -21,16 +29,25 @@ export type OsmMapProps = {
  * pass high-frequency updates through the ref, not props.
  */
 export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
-  { markers = [], route = [], interactive = true, tiles = 'osm', showLatestMarker = true, style },
+  {
+    markers = [],
+    route = [],
+    interactive = true,
+    tiles = 'osm',
+    showLatestMarker = true,
+    fitPadding,
+    style,
+  },
   ref,
 ) {
   const webRef = useRef<WebView>(null);
-  const serializedMapData = JSON.stringify({ markers, route });
+  const serializedMapData = JSON.stringify({ markers, route, fitPadding });
   const html = useMemo(
     () => {
       const stableMapData = JSON.parse(serializedMapData) as {
         markers: MapMarker[];
         route: LatLng[];
+        fitPadding?: MapFitPadding;
       };
       return buildOsmHtml({ ...stableMapData, interactive, tiles, showLatestMarker });
     },

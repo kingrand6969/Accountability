@@ -1,7 +1,7 @@
 import { forwardRef, type ReactNode } from 'react';
 import { ImageBackground, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { OsmMapProps } from '../ui/OsmMap';
+import type { MapFitPadding, OsmMapProps } from '../ui/OsmMap';
 import { RouteTrace } from './RouteTrace';
 import { estimateCalories, formatDuration, formatKm, formatPace, type Pt } from './geo';
 import {
@@ -69,6 +69,7 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
   const duration = formatDuration(durationS);
   const calories = String(estimateCalories('run', distanceM));
   const route = points.map((point) => ({ lat: point.lat, lng: point.lon }));
+  const fitPadding = runCardRoutePadding(layout, width, height);
   const markers = showEndpoints && route.length > 1
     ? [
         { ...route[0], color: '#16A36A' },
@@ -99,7 +100,7 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
             stroke={5}
             showEndpoints={showEndpoints}
             endStyle="dot"
-            pad={{ top: height * 0.2, bottom: height * 0.24, left: width * 0.17, right: width * 0.17 }}
+            pad={fitPadding}
           />
         </View>
       ) : null}
@@ -146,6 +147,7 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
             markers={markers}
             interactive={false}
             showLatestMarker={false}
+            fitPadding={fitPadding}
             tiles={light ? 'osm' : 'dark'}
             style={StyleSheet.absoluteFill}
           />
@@ -155,6 +157,27 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
     </View>
   );
 });
+
+export function runCardRoutePadding(
+  layout: RunShareLayout,
+  width: number,
+  height: number,
+): MapFitPadding {
+  const ratios: Record<RunShareLayout, readonly [number, number, number, number]> = {
+    'center-stack': [0.31, 0.24, 0.18, 0.24],
+    'right-rail': [0.24, 0.46, 0.18, 0.13],
+    'data-horizon': [0.22, 0.12, 0.19, 0.28],
+    'editorial-stack': [0.33, 0.22, 0.19, 0.22],
+    'map-focus': [0.19, 0.17, 0.36, 0.17],
+  };
+  const [top, right, bottom, left] = ratios[layout];
+  return {
+    top: Math.round(height * top),
+    right: Math.round(width * right),
+    bottom: Math.round(height * bottom),
+    left: Math.round(width * left),
+  };
+}
 
 type LayoutData = {
   title: string;
@@ -203,13 +226,21 @@ function Header({ title, timestamp, fontFamily, ink, muted, align = 'left' }: La
   );
 }
 
-function Distance({ data, align = 'left', size = 'large' }: { data: LayoutData; align?: 'left' | 'center' | 'right'; size?: 'large' | 'medium' }) {
+function Distance({ data, align = 'left', size = 'large' }: {
+  data: LayoutData;
+  align?: 'left' | 'center' | 'right';
+  size?: 'large' | 'medium' | 'small';
+}) {
   return (
     <View style={[styles.distanceBlock, align === 'center' && styles.centered, align === 'right' && styles.rightAligned]}>
       <Text style={[styles.eyebrow, { color: data.muted, textAlign: align }]}>DISTANCE</Text>
       <View style={[styles.distanceRow, align === 'center' && styles.justifyCenter, align === 'right' && styles.justifyEnd]}>
         <Text adjustsFontSizeToFit numberOfLines={1} style={[
-          size === 'large' ? styles.distanceLarge : styles.distanceMedium,
+          size === 'large'
+            ? styles.distanceLarge
+            : size === 'medium'
+              ? styles.distanceMedium
+              : styles.distanceSmall,
           data.compact && styles.distanceCompact,
           { color: data.ink, fontFamily: data.fontFamily },
         ]}>{data.distance}</Text>
@@ -219,10 +250,20 @@ function Distance({ data, align = 'left', size = 'large' }: { data: LayoutData; 
   );
 }
 
-function Stat({ value, label, data, align = 'left' }: { value: string; label: string; data: LayoutData; align?: 'left' | 'center' | 'right' }) {
+function Stat({ value, label, data, align = 'left', compact = false }: {
+  value: string;
+  label: string;
+  data: LayoutData;
+  align?: 'left' | 'center' | 'right';
+  compact?: boolean;
+}) {
   return (
     <View style={[styles.stat, align === 'center' && styles.centered, align === 'right' && styles.rightAligned]}>
-      <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.statValue, { color: data.ink, fontFamily: data.fontFamily, textAlign: align }]}>{value}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={[
+        styles.statValue,
+        compact && styles.statValueCompact,
+        { color: data.ink, fontFamily: data.fontFamily, textAlign: align },
+      ]}>{value}</Text>
       <Text style={[styles.statLabel, { color: data.muted, textAlign: align }]}>{label}</Text>
     </View>
   );
@@ -253,9 +294,19 @@ function Privacy({ data }: { data: LayoutData }) {
 function CenterStack(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <Header {...data} align="center" />
-      <View style={styles.centerHero}><Distance data={data} align="center" /></View>
-      <View style={styles.bottomPanel}><StatRow data={data} /><Privacy data={data} /></View>
+      <View testID="center-stack-performance" style={styles.centerStackPerformance}>
+        <Distance data={data} align="center" size="small" />
+        <View style={styles.stackMini}>
+          <Stat value={data.pace} label="PACE" data={data} align="center" compact />
+          <Stat value={data.duration} label="TIME" data={data} align="center" compact />
+        </View>
+      </View>
+      <View testID="center-stack-identity" style={styles.bottomLeftIdentity}>
+        <Header {...data} />
+      </View>
+      <View testID="center-stack-privacy" style={styles.bottomRightPrivacy}>
+        <Privacy data={data} />
+      </View>
     </View>
   );
 }
@@ -263,12 +314,15 @@ function CenterStack(data: LayoutData) {
 function RightRail(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <Header {...data} />
-      <View style={styles.rightRail}>
-        <Distance data={data} align="right" size="medium" />
-        <View style={styles.railLine} />
-        <Stat value={data.duration} label="TIME" data={data} align="right" />
-        <Stat value={data.pace} label="PACE /KM" data={data} align="right" />
+      <View testID="right-rail-identity" style={styles.topLeftIdentity}>
+        <Header {...data} />
+      </View>
+      <View testID="right-rail-performance" style={styles.rightRailPerformance}>
+        <Distance data={data} align="right" size="small" />
+        <Stat value={data.pace} label="PACE" data={data} align="right" compact />
+        <Stat value={data.duration} label="TIME" data={data} align="right" compact />
+      </View>
+      <View testID="right-rail-privacy" style={styles.bottomRightPrivacy}>
         <Privacy data={data} />
       </View>
     </View>
@@ -278,10 +332,17 @@ function RightRail(data: LayoutData) {
 function DataHorizon(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <Header {...data} />
-      <View style={styles.horizonPanel}>
-        <View style={styles.horizonTop}><Distance data={data} size="medium" /><Privacy data={data} /></View>
-        <StatRow data={data} />
+      <View testID="data-horizon-performance" style={styles.dataHorizonPerformance}>
+        <Stat value={data.distance} label="KM" data={data} compact />
+        <Stat value={data.pace} label="PACE /KM" data={data} compact />
+        <Stat value={data.duration} label="TIME" data={data} compact />
+        <Stat value={data.calories} label="KCAL" data={data} compact />
+      </View>
+      <View testID="data-horizon-identity" style={styles.bottomLeftIdentity}>
+        <Header {...data} />
+      </View>
+      <View testID="data-horizon-privacy" style={styles.bottomRightPrivacy}>
+        <Privacy data={data} />
       </View>
     </View>
   );
@@ -290,11 +351,18 @@ function DataHorizon(data: LayoutData) {
 function EditorialStack(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <View style={styles.editorialHeader}><Header {...data} /><Privacy data={data} /></View>
-      <View style={styles.editorialStats}>
-        <Distance data={data} />
-        <Stat value={data.pace} label="PACE /KM" data={data} />
-        <Stat value={data.duration} label="TIME" data={data} />
+      <View testID="editorial-stack-performance" style={styles.editorialStackPerformance}>
+        <Distance data={data} align="center" size="medium" />
+        <View style={styles.editorialMini}>
+          <Stat value={data.pace} label="PACE" data={data} align="center" compact />
+          <Stat value={data.duration} label="TIME" data={data} align="center" compact />
+        </View>
+      </View>
+      <View testID="editorial-stack-identity" style={styles.bottomLeftIdentity}>
+        <Header {...data} />
+      </View>
+      <View testID="editorial-stack-privacy" style={styles.bottomRightPrivacy}>
+        <Privacy data={data} />
       </View>
     </View>
   );
@@ -303,8 +371,10 @@ function EditorialStack(data: LayoutData) {
 function MapFocus(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <Header {...data} />
-      <View style={styles.mapFocusBottom}>
+      <View testID="map-focus-identity" style={styles.topLeftIdentity}>
+        <Header {...data} />
+      </View>
+      <View testID="map-focus-performance" style={styles.mapFocusBottom}>
         <View style={styles.distancePrivacy}><Distance data={data} /><Privacy data={data} /></View>
         <StatRow data={data} />
       </View>
@@ -324,18 +394,29 @@ const styles = StyleSheet.create({
   rightAligned: { alignItems: 'flex-end' },
   justifyCenter: { justifyContent: 'center' },
   justifyEnd: { justifyContent: 'flex-end' },
-  centerHero: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: '8%' },
-  bottomPanel: { gap: 12 },
+  centerStackPerformance: {
+    position: 'absolute',
+    top: '10%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  topLeftIdentity: { position: 'absolute', left: '6%', top: '6%' },
+  bottomLeftIdentity: { position: 'absolute', left: '6%', bottom: '6%' },
+  bottomRightPrivacy: { position: 'absolute', right: '6%', bottom: '6%' },
+  stackMini: { marginTop: 9, gap: 7, alignItems: 'center' },
   eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 7, letterSpacing: 1.5 },
   distanceBlock: { alignSelf: 'stretch' },
   distanceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
   distanceLarge: { fontSize: 67, lineHeight: 72, letterSpacing: -3.6 },
   distanceMedium: { fontSize: 48, lineHeight: 53, letterSpacing: -2.4 },
+  distanceSmall: { fontSize: 35, lineHeight: 40, letterSpacing: -1.6 },
   distanceCompact: { fontSize: 42, lineHeight: 47 },
   distanceUnit: { fontFamily: 'Inter_800ExtraBold', fontSize: 13, marginBottom: 10 },
   statRow: { minHeight: 47, flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.42)', paddingTop: 10 },
   stat: { minWidth: 56, flexShrink: 1 },
   statValue: { fontSize: 19, lineHeight: 22, letterSpacing: -0.45 },
+  statValueCompact: { fontSize: 14, lineHeight: 17, letterSpacing: -0.2 },
   statLabel: { marginTop: 3, fontFamily: 'Inter_700Bold', fontSize: 6, letterSpacing: 0.9 },
   statDivider: { width: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.28)', marginHorizontal: 5 },
   privacyPill: { minHeight: 28, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 6 },
@@ -343,12 +424,31 @@ const styles = StyleSheet.create({
   checkActive: { backgroundColor: ROUTE, borderColor: ROUTE },
   checkText: { color: '#07121A', fontFamily: 'Inter_800ExtraBold', fontSize: 11, lineHeight: 13 },
   privacyText: { fontFamily: 'Inter_700Bold', fontSize: 6, letterSpacing: 0.55 },
-  rightRail: { position: 'absolute', right: '6%', top: '26%', bottom: '8%', width: '40%', justifyContent: 'space-between', alignItems: 'flex-end', paddingLeft: 13, borderLeftWidth: 2, borderLeftColor: ROUTE },
-  railLine: { alignSelf: 'stretch', height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.4)' },
-  horizonPanel: { position: 'absolute', left: '6%', right: '6%', bottom: '6%', gap: 8 },
-  horizonTop: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 },
-  editorialHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  editorialStats: { position: 'absolute', left: '6%', bottom: '8%', gap: 12 },
-  mapFocusBottom: { position: 'absolute', left: '6%', right: '6%', bottom: '6%', gap: 7 },
+  rightRailPerformance: {
+    position: 'absolute',
+    right: '6%',
+    top: '10%',
+    width: '32%',
+    alignItems: 'flex-end',
+    gap: 11,
+  },
+  dataHorizonPerformance: {
+    position: 'absolute',
+    left: '6%',
+    right: '6%',
+    top: '6%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  editorialStackPerformance: {
+    position: 'absolute',
+    top: '9%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  editorialMini: { marginTop: 9, flexDirection: 'row', gap: 28 },
+  mapFocusBottom: { position: 'absolute', left: '6%', right: '6%', bottom: '5%', gap: 7 },
   distancePrivacy: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 },
 });
