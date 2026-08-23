@@ -14,10 +14,12 @@ export function buildOsmHtml(opts: {
   route?: LatLng[];
   interactive?: boolean;
   tiles?: 'osm' | 'dark';
+  showLatestMarker?: boolean;
 }): string {
   const markers = opts.markers ?? [];
   const route = opts.route ?? [];
   const interactive = opts.interactive !== false;
+  const showLatestMarker = opts.showLatestMarker !== false;
   const dark = opts.tiles === 'dark';
   const tileUrl = dark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
@@ -48,6 +50,7 @@ export function buildOsmHtml(opts: {
   var route = ${safeJson(route)};
   var markers = ${safeJson(markers)};
   var interactive = ${interactive ? 'true' : 'false'};
+  var showLatestMarker = ${showLatestMarker ? 'true' : 'false'};
   var map = L.map('map', {
     zoomControl: interactive, dragging: interactive, scrollWheelZoom: interactive,
     doubleClickZoom: interactive, boxZoom: interactive, keyboard: interactive, tap: interactive,
@@ -64,13 +67,15 @@ export function buildOsmHtml(opts: {
     if (pts && pts.length) {
       var ll = pts.map(function (p) { return [p.lat, p.lng]; });
       line = L.polyline(ll, { color: '${dark ? '#c6f24e' : ACCENT}', weight: 5, opacity: 0.95, lineJoin: 'round' }).addTo(map);
-      // a "you are here" dot at the latest point
-      var last = ll[ll.length - 1];
-      if (posMarker) { posMarker.setLatLng(last); }
-      else {
-        posMarker = L.marker(last, { icon: L.divIcon({ className: '',
-          html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid ${dark ? '#c6f24e' : ACCENT};box-shadow:0 1px 6px rgba(0,0,0,0.5)"></div>',
-          iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
+      if (showLatestMarker) {
+        // a "you are here" dot at the latest point
+        var last = ll[ll.length - 1];
+        if (posMarker) { posMarker.setLatLng(last); }
+        else {
+          posMarker = L.marker(last, { icon: L.divIcon({ className: '',
+            html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid ${dark ? '#c6f24e' : ACCENT};box-shadow:0 1px 6px rgba(0,0,0,0.5)"></div>',
+            iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
+        }
       }
     }
   }

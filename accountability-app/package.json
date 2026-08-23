@@ -4,9 +4,12 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
+    "@expo-google-fonts/bowlby-one-sc": "^0.4.1",
     "@expo-google-fonts/caveat": "^0.4.2",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@expo-google-fonts/sora": "^0.4.2",
+    "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@expo/ui": "~56.0.23",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",

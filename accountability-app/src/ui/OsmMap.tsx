@@ -10,6 +10,7 @@ export type OsmMapProps = {
   route?: LatLng[];
   interactive?: boolean;
   tiles?: 'osm' | 'dark';
+  showLatestMarker?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -20,7 +21,7 @@ export type OsmMapProps = {
  * pass high-frequency updates through the ref, not props.
  */
 export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
-  { markers = [], route = [], interactive = true, tiles = 'osm', style },
+  { markers = [], route = [], interactive = true, tiles = 'osm', showLatestMarker = true, style },
   ref,
 ) {
   const webRef = useRef<WebView>(null);
@@ -31,9 +32,9 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
         markers: MapMarker[];
         route: LatLng[];
       };
-      return buildOsmHtml({ ...stableMapData, interactive, tiles });
+      return buildOsmHtml({ ...stableMapData, interactive, tiles, showLatestMarker });
     },
-    [serializedMapData, interactive, tiles],
+    [serializedMapData, interactive, tiles, showLatestMarker],
   );
 
   useImperativeHandle(ref, () => ({

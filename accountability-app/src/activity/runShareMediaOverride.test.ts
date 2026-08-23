@@ -31,6 +31,14 @@ const studioDraft = {
   height: 1600,
 };
 
+const appearance = {
+  layout: 'map-focus' as const,
+  font: 'momentum' as const,
+  showTimestamp: true,
+  theme: 'night' as const,
+  completedAt: '2026-08-23T10:18:00.000Z',
+};
+
 describe('Run Share Studio media override', () => {
   test('Card only previews the existing selfie with exact private route and format inputs', () => {
     const frozen = freezeRunShareRenderInputs({
@@ -38,6 +46,7 @@ describe('Run Share Studio media override', () => {
       format: 'feed',
       mediaFit: 'contain',
       showEnds: false,
+      appearance,
       points: [{ lat: -31.95, lon: 115.86 }],
       distanceM: 5200,
       durationS: 1800,
@@ -48,6 +57,8 @@ describe('Run Share Studio media override', () => {
       presentation: editedPresentation,
     });
     expect(frozen.showEnds).toBe(false);
+    expect(frozen.appearance).toEqual(appearance);
+    expect(Object.isFrozen(frozen.appearance)).toBe(true);
     expect(frozen.points).toHaveLength(1);
   });
 
@@ -57,6 +68,7 @@ describe('Run Share Studio media override', () => {
       format: 'square',
       mediaFit: 'cover',
       showEnds: true,
+      appearance: { ...appearance, layout: 'right-rail', font: 'strong' },
       points: [{ lat: 1, lon: 2 }, { lat: 3, lon: 4 }],
       distanceM: 1000,
       durationS: 400,
@@ -71,6 +83,7 @@ describe('Run Share Studio media override', () => {
       format: 'portrait',
       mediaFit: 'cover',
       showEnds: false,
+      appearance: { ...appearance, layout: 'center-stack', showTimestamp: false },
       points: [{ lat: 1, lon: 2 }],
       distanceM: 10000,
       durationS: 3600,

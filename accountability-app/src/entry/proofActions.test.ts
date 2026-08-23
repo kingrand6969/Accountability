@@ -291,7 +291,7 @@ describe('proof action state', () => {
     for (const destinationCall of [
       'publishFlexFeedPost({',
       'Sharing.shareAsync(uri',
-      'MediaLibrary.createAssetAsync(uri)',
+      'createPhonePhoto(uri)',
       'saveImageToMemories(uri, null, null, expectedProofOwner(token))',
     ]) {
       const index = source.indexOf(destinationCall);

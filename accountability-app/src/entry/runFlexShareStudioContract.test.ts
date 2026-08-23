@@ -24,12 +24,17 @@ describe('Run and Flex Share Studio integration', () => {
     expect(run).not.toMatch(/setPhotoUri\(draft\.media\.uri\)/);
     expect(run).toMatch(/function cancelRunShareStudio\(\)[\s\S]*?feedOperation\.current = null;[\s\S]*?setShareStudioVisible\(false\)/);
     expect(run).not.toContain("setAudience('buddies')");
+    expect(run).toContain('onContinueToFeed={openFeedStudio}');
+    expect(run).not.toContain('<AchievementSharePrompt');
+    expect(run).toContain('date: new Date(run.completedAt).toLocaleDateString()');
   });
 
-  test('Run keeps rear camera and adds an explicit gallery choice before posting', () => {
-    expect(run).toContain('label="Take selfie"');
-    expect(run).toContain('label="Take photo"');
-    expect(run).toContain('label="Choose photo"');
+  test('Run keeps the camera button compact and offers all background sources before posting', () => {
+    expect(run).toContain('accessibilityLabel="Change Run card background"');
+    expect(run).toContain('label="Selfie"');
+    expect(run).toContain('label="Camera"');
+    expect(run).toContain('label="Gallery"');
+    expect(run).toContain('label="Route map"');
     expect(run).toMatch(/modeRow:\s*\{[\s\S]*?flexWrap:\s*'wrap'/);
     expect(run).toMatch(/modeBtn:\s*\{[\s\S]*?minHeight:\s*48/);
   });

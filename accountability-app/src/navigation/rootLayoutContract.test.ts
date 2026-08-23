@@ -36,6 +36,15 @@ describe('root layout contract', () => {
     expect(layoutSource).toContain(
       "import { Caveat_600SemiBold } from '@expo-google-fonts/caveat/600SemiBold';",
     );
+    expect(layoutSource).toContain(
+      "import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk/700Bold';",
+    );
+    expect(layoutSource).toContain(
+      "import { Sora_700Bold } from '@expo-google-fonts/sora/700Bold';",
+    );
+    expect(layoutSource).toContain(
+      "import { BowlbyOneSC_400Regular } from '@expo-google-fonts/bowlby-one-sc/400Regular';",
+    );
 
     for (const font of [
       'Anton_400Regular',
@@ -46,6 +55,9 @@ describe('root layout contract', () => {
       'Inter_800ExtraBold',
       'PlayfairDisplay_700Bold',
       'Caveat_600SemiBold',
+      'SpaceGrotesk_700Bold',
+      'Sora_700Bold',
+      'BowlbyOneSC_400Regular',
     ]) {
       expect(layoutSource).toMatch(new RegExp(`\\n\\s+${font},`));
     }

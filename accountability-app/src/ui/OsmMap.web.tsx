@@ -8,7 +8,7 @@ import type { OsmMapHandle, OsmMapProps } from './OsmMap';
  * Live updates go through postMessage to the iframe (mirrors the native ref API).
  */
 export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
-  { markers = [], route = [], interactive = true, tiles = 'osm', style },
+  { markers = [], route = [], interactive = true, tiles = 'osm', showLatestMarker = true, style },
   ref,
 ) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -19,9 +19,9 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
         markers: MapMarker[];
         route: LatLng[];
       };
-      return buildOsmHtml({ ...stableMapData, interactive, tiles });
+      return buildOsmHtml({ ...stableMapData, interactive, tiles, showLatestMarker });
     },
-    [serializedMapData, interactive, tiles],
+    [serializedMapData, interactive, tiles, showLatestMarker],
   );
 
   useImperativeHandle(ref, () => ({

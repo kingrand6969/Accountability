@@ -74,6 +74,11 @@ import { contentMaxWidth } from '../../ui/responsive';
 import { useAuth } from '../../auth/AuthProvider';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
+import {
+  completedRunTimestamp,
+  createDefaultRunShareAppearance,
+  runCardTitle,
+} from '../../activity/runShareAppearance';
 
 const LIME = '#c6f24e';
 const BG = '#101319';
@@ -496,15 +501,18 @@ export default function ActivityTrack() {
     hapticImpact();
     if (Platform.OS === 'web') {
       // no GPS in a browser — let the user preview the shareable run card
+      const completedAt = new Date().toISOString();
       setShareRun({
         activityId: null,
-        ownerId: null,
+        ownerId: session?.user.id ?? null,
         syncStatus: null,
         type,
         distance: totalDistanceMeters(SAMPLE_ROUTE),
         elapsed: 31 * 60 + 12,
         points: SAMPLE_ROUTE,
-        title: `${timeOfDay()} ${TYPES.find((t) => t.value === type)?.label ?? 'run'}`,
+        title: runCardTitle(type, completedAt),
+        completedAt,
+        cardTheme: createDefaultRunShareAppearance(completedAt).theme,
       });
       return;
     }
@@ -593,6 +601,10 @@ export default function ActivityTrack() {
       recordingRef.current = null;
       setDetailOwnerId(null);
       // saved to the log — now offer the shareable run card
+      const completedAt = completedRunTimestamp(
+        p.activity.started_at,
+        p.activity.duration_s,
+      );
       setShareRun({
         activityId: queued.id,
         ownerId: queued.ownerId,
@@ -601,7 +613,9 @@ export default function ActivityTrack() {
         distance: p.activity.distance_m,
         elapsed: p.activity.duration_s,
         points: p.activity.route,
-        title: `${timeOfDay()} ${TYPES.find((t) => t.value === p.activity.type)?.label ?? 'run'}`,
+        title: runCardTitle(p.activity.type, completedAt),
+        completedAt,
+        cardTheme: createDefaultRunShareAppearance(completedAt).theme,
       });
     } catch (e) {
       setPending(p);

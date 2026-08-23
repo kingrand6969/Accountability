@@ -7,27 +7,27 @@ function source(path: string): string {
 }
 
 describe('achievement sharing integration', () => {
-  test('run completion uses the generated run card for confirmed Feed and My Day shares', () => {
+  test('run completion uses the generated run card for explicit Feed and My Day shares', () => {
     const sheet = source('src/activity/RunShareSheet.tsx');
 
     expect(sheet).toContain("import { addStoryIdempotent } from '../stories/api'");
-    expect(sheet).toContain("import { AchievementSharePrompt } from '../entry/AchievementSharePrompt'");
-    expect(sheet).toContain('<AchievementSharePrompt');
+    expect(sheet).not.toContain('<AchievementSharePrompt');
     expect(sheet).toContain('setShareStudioVisible(true)');
     expect(sheet).toContain('<ShareStudio');
     expect(sheet).toContain('onContinue={publishRunDraft}');
-    expect(sheet).toContain('onStory={onStoryDestination}');
+    expect(sheet).toContain('onMyDay={onStoryDestination}');
     expect(sheet).toContain('addStoryIdempotent({');
-    expect(sheet).toContain('onPrivate={() => closeEditor()}');
   });
 
-  test('the run Feed action opens confirmation instead of publishing directly', () => {
+  test('the run Feed action opens the caption and visibility studio directly', () => {
     const sheet = source('src/activity/RunShareSheet.tsx');
     const actions = source('src/activity/RunMediaActions.tsx');
 
-    expect(sheet).toContain('onShareAchievement={() => setSharePromptVisible(true)}');
+    expect(sheet).toContain('onContinueToFeed={openFeedStudio}');
+    expect(sheet).toContain('function openFeedStudio(): void');
+    expect(actions).toContain('Continue to Feed');
     expect(actions).not.toContain("destination: 'feed'");
-    expect(actions).not.toContain('disabled={disabled || working || feedReason !== null}');
+    expect(actions).toContain("destination: 'story'");
   });
 
   test('a workout opens the reusable achievement card only when its checklist becomes complete', () => {

@@ -7,6 +7,7 @@ import {
   formatDurationLong,
   formatPace,
   trimRouteEnds,
+  privacySafeRoute,
 } from './geo';
 
 // ~0.001° latitude ≈ 111 m — build a straight line of such steps
@@ -24,6 +25,24 @@ describe('trimRouteEnds', () => {
   it('keeps the full route when too short to trim', () => {
     const pts = line(3);
     expect(trimRouteEnds(pts, 130)).toEqual(pts);
+  });
+});
+
+describe('privacySafeRoute', () => {
+  it('uses the trimmed route when a real privacy zone fits', () => {
+    const pts = line(10);
+    const shared = privacySafeRoute(pts, 130);
+    expect(shared[0]).not.toEqual(pts[0]);
+    expect(shared[shared.length - 1]).not.toEqual(pts[pts.length - 1]);
+  });
+
+  it('fails closed instead of exposing an untrimmable short route', () => {
+    expect(privacySafeRoute(line(3), 130)).toEqual([]);
+  });
+
+  it('drops exact endpoints from a short route with enough interior geometry', () => {
+    const pts = line(4);
+    expect(privacySafeRoute(pts, 500)).toEqual(pts.slice(1, -1));
   });
 });
 

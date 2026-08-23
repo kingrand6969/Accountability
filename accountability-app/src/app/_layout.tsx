@@ -13,6 +13,9 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { Inter_800ExtraBold } from '@expo-google-fonts/inter/800ExtraBold';
 import { PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display/700Bold';
 import { Caveat_600SemiBold } from '@expo-google-fonts/caveat/600SemiBold';
+import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk/700Bold';
+import { Sora_700Bold } from '@expo-google-fonts/sora/700Bold';
+import { BowlbyOneSC_400Regular } from '@expo-google-fonts/bowlby-one-sc/400Regular';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { captureReferralFromLaunch, redeemPendingReferral } from '../profiles/referrals';
 import { ProProvider } from '../pro/ProProvider';
@@ -187,6 +190,9 @@ function RootNavigator() {
     Inter_800ExtraBold,
     PlayfairDisplay_700Bold,
     Caveat_600SemiBold,
+    SpaceGrotesk_700Bold,
+    Sora_700Bold,
+    BowlbyOneSC_400Regular,
   });
 
   if (loading || (!fontsLoaded && !fontError)) {

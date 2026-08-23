@@ -19,19 +19,29 @@ type DestinationState = {
 
 export type RunMediaActionsProps = {
   onDestination(destination: RunMediaDestination): Promise<void>;
-  onShareAchievement(): void;
+  onContinueToFeed(): void;
+  onMyDay(): Promise<void>;
   disabled?: boolean;
   activityQueued?: boolean;
   feedDisabledReason?: string;
 };
 
+type UtilityDestination = Exclude<RunMediaDestination, 'feed'> | 'story';
+
 const actions: readonly {
-  destination: RunMediaDestination;
+  destination: UtilityDestination;
   label: string;
   progressLabel: string;
   successLabel: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
+  {
+    destination: 'story',
+    label: 'Add to My Day',
+    progressLabel: 'Adding to My Day…',
+    successLabel: 'Added to My Day',
+    icon: 'sparkles-outline',
+  },
   {
     destination: 'memories',
     label: 'Save to Memories',
@@ -55,11 +65,11 @@ const actions: readonly {
   },
 ];
 
-const initialState = (): Record<RunMediaDestination, DestinationState> => ({
+const initialState = (): Record<UtilityDestination, DestinationState> => ({
   memories: { status: 'idle', error: null },
   phone: { status: 'idle', error: null },
   share: { status: 'idle', error: null },
-  feed: { status: 'idle', error: null },
+  story: { status: 'idle', error: null },
 });
 
 export function feedDisabledReasonFor(
@@ -78,7 +88,8 @@ export function runMediaErrorMessage(error: unknown): string {
 
 export function RunMediaActions({
   onDestination,
-  onShareAchievement,
+  onContinueToFeed,
+  onMyDay,
   disabled = false,
   activityQueued = false,
   feedDisabledReason,
@@ -87,14 +98,15 @@ export function RunMediaActions({
   const working = actions.some(({ destination }) => states[destination].status === 'working');
   const feedReason = feedDisabledReasonFor(activityQueued, feedDisabledReason);
 
-  async function run(destination: RunMediaDestination) {
-    if (disabled || working || (destination === 'feed' && feedReason)) return;
+  async function run(destination: UtilityDestination) {
+    if (disabled || working) return;
     setStates((current) => ({
       ...current,
       [destination]: { status: 'working', error: null },
     }));
     try {
-      await onDestination(destination);
+      if (destination === 'story') await onMyDay();
+      else await onDestination(destination);
       setStates((current) => ({
         ...current,
         [destination]: { status: 'success', error: null },
@@ -112,29 +124,27 @@ export function RunMediaActions({
 
   return (
     <View style={styles.container} accessibilityLabel="Run image destinations">
+      <Pressable
+        style={({ pressed }) => [
+          styles.feedAction,
+          (disabled || working || !!feedReason) && styles.disabled,
+          pressed && !disabled && !working && !feedReason && styles.pressed,
+        ]}
+        onPress={onContinueToFeed}
+        disabled={disabled || working || !!feedReason}
+        accessibilityRole="button"
+        accessibilityLabel="Continue to Feed"
+        accessibilityHint={feedReason ?? 'Review your caption and who can see the Run post'}
+        accessibilityState={{ disabled: disabled || working || !!feedReason }}
+      >
+        <Text style={styles.feedActionText}>Continue to Feed</Text>
+        <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+      </Pressable>
+      {feedReason ? <Text style={styles.disabledReason}>{feedReason}</Text> : null}
       <View style={styles.grid}>
-        <View style={styles.cell}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.action,
-              styles.feedAction,
-              (disabled || working) && styles.disabled,
-              pressed && !disabled && !working && styles.pressed,
-            ]}
-            onPress={onShareAchievement}
-            disabled={disabled || working}
-            accessibilityRole="button"
-            accessibilityLabel="Share achievement"
-            accessibilityState={{ disabled: disabled || working }}
-          >
-            <Ionicons name="trophy-outline" size={18} color="#101319" />
-            <Text style={[styles.actionText, styles.feedActionText]}>Share achievement</Text>
-          </Pressable>
-        </View>
         {actions.map((action) => {
           const state = states[action.destination];
-          const feedDisabled = action.destination === 'feed' && feedReason !== null;
-          const actionDisabled = disabled || working || feedDisabled;
+          const actionDisabled = disabled || working;
           const label =
             state.status === 'working'
               ? action.progressLabel
@@ -147,7 +157,6 @@ export function RunMediaActions({
               <Pressable
                 style={({ pressed }) => [
                   styles.action,
-                  action.destination === 'feed' && styles.feedAction,
                   state.status === 'success' && styles.successAction,
                   actionDisabled && styles.disabled,
                   pressed && !actionDisabled && styles.pressed,
@@ -156,26 +165,24 @@ export function RunMediaActions({
                 disabled={actionDisabled}
                 accessibilityRole="button"
                 accessibilityLabel={action.label}
-                accessibilityHint={feedDisabled ? feedReason : undefined}
                 accessibilityState={{
                   disabled: actionDisabled,
                   busy: state.status === 'working',
                 }}
               >
                 {state.status === 'working' ? (
-                  <ActivityIndicator size="small" color={action.destination === 'feed' ? '#101319' : '#fff'} />
+                  <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Ionicons
                     name={state.status === 'success' ? 'checkmark-circle' : action.icon}
                     size={18}
-                    color={action.destination === 'feed' ? '#101319' : state.status === 'success' ? LIME : '#fff'}
+                    color={state.status === 'success' ? LIME : '#fff'}
                   />
                 )}
                 <Text
                   style={[
                     styles.actionText,
-                    action.destination === 'feed' && styles.feedActionText,
-                    state.status === 'success' && action.destination !== 'feed' && styles.successText,
+                    state.status === 'success' && styles.successText,
                   ]}
                 >
                   {label}
@@ -185,8 +192,6 @@ export function RunMediaActions({
                 <Text style={styles.error} accessibilityRole="alert">
                   {state.error}
                 </Text>
-              ) : feedDisabled ? (
-                <Text style={styles.disabledReason}>{feedReason}</Text>
               ) : null}
             </View>
           );
@@ -206,13 +211,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    marginTop: 10,
   },
   cell: {
     width: '48%',
     flexGrow: 1,
   },
   action: {
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
@@ -224,8 +230,19 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   feedAction: {
-    backgroundColor: LIME,
-    borderColor: LIME,
+    minHeight: 56,
+    borderRadius: 18,
+    backgroundColor: '#FF642F',
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    shadowColor: '#FF642F',
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 5,
   },
   successAction: {
     borderColor: 'rgba(198,242,78,0.55)',
@@ -237,7 +254,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   feedActionText: {
-    color: '#101319',
+    color: '#FFFFFF',
+    fontFamily: font.extrabold,
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   successText: {
     color: LIME,

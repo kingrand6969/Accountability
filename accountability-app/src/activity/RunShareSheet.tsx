@@ -9,6 +9,7 @@ import {
 import {
   Alert,
   BackHandler,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -21,11 +22,10 @@ import {
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
 import { File } from 'expo-file-system';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { RunCard } from './RunCard';
-import { formatDurationLong, formatKm, formatPace, trimRouteEnds, type Pt } from './geo';
+import { formatDurationLong, formatKm, formatPace, privacySafeRoute, type Pt } from './geo';
 import type { ActivityType } from './api';
 import {
   createRunPostIdempotent,
@@ -76,7 +76,6 @@ import {
 import type { BeautyCaptureSource } from './beauty/cameraMode';
 import { DEFAULT_BEAUTY } from './beauty/types';
 import { addStoryIdempotent } from '../stories/api';
-import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
 import {
   retainAchievementStoryOperation,
   type AchievementCompletion,
@@ -92,6 +91,19 @@ import {
   type RunSharePresentation,
 } from './runShareMediaOverride';
 import { feedShareAvailability } from '../share/feedShareAvailability';
+import {
+  RUN_SHARE_FONTS,
+  RUN_SHARE_LAYOUTS,
+  routeEndpointVisibilityIntent,
+  type RunCardTheme,
+  type RunShareFont,
+  type RunShareLayout,
+} from './runShareAppearance';
+import { RunShareOptionSelect } from './RunShareOptionSelect';
+import {
+  createPhonePhoto,
+  requestPhonePhotoPermission,
+} from '../media/phoneMediaLibrary';
 
 const LIME = '#c6f24e';
 
@@ -104,6 +116,8 @@ export type FinishedRun = {
   elapsed: number;
   points: Pt[];
   title: string;
+  completedAt: string;
+  cardTheme: RunCardTheme;
   // A saved run may still be queued locally, so there is no truthful resulting
   // server streak yet. The completion remains a run until sync establishes it.
 };
@@ -118,6 +132,10 @@ type RunFeedOperationMetadata = {
     format: RunShareFormat;
     media_fit: RunMediaFit;
     route_ends_visible: boolean;
+    layout: RunShareLayout;
+    font: RunShareFont;
+    recorded_time_visible: boolean;
+    card_theme: RunCardTheme;
   };
   selfie: boolean;
   distanceKm: number;
@@ -196,9 +214,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const [format, setFormat] = useState<RunShareFormat>('feed');
   const [mediaFit, setMediaFit] = useState<RunMediaFit>('cover');
   const [activeDestination, setActiveDestination] = useState<RunMediaDestination | null>(null);
-  const [sharePromptVisible, setSharePromptVisible] = useState(true);
   const [shareStudioVisible, setShareStudioVisible] = useState(false);
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
+  const [layout, setLayout] = useState<RunShareLayout>('map-focus');
+  const [cardFont, setCardFont] = useState<RunShareFont>('momentum');
+  const [showTimestamp, setShowTimestamp] = useState(true);
+  const [backgroundPickerVisible, setBackgroundPickerVisible] = useState(false);
   const [beautyStage, setBeautyStage] = useState<'camera' | 'editor' | null>(
     null,
   );
@@ -282,6 +303,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         shareStudioRunInputs.current = null;
         shareStudioCaptureSize.current = null;
         setShowEnds(false);
+        setLayout('map-focus');
+        setCardFont('momentum');
+        setShowTimestamp(true);
+        setBackgroundPickerVisible(false);
         setBeautyStage(null);
         setBeautySource(null);
       },
@@ -386,6 +411,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       setMode('map');
       setShareStudioVisible(false);
       setShowEnds(false);
+      setLayout('map-focus');
+      setCardFont('momentum');
+      setShowTimestamp(true);
+      setBackgroundPickerVisible(false);
       setBeautyStage(null);
       setBeautySource(null);
     });
@@ -394,11 +423,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     };
   }, [ownerMatches]);
 
-  // size the 4:5 card to fit BOTH the width and the space left after the
-  // header/mode-picker/buttons, so it never clips on short screens
+  // Keep the reviewed card large enough to judge; the editor scrolls on short
+  // screens instead of shrinking the privacy and typography details away.
   const cardRatio = runShareRatio(format, originalRatio);
-  const maxPreviewHeight = Math.max(170, height - 520);
-  const cardWidth = Math.max(170, Math.min(width - 40, 340, Math.floor(maxPreviewHeight * cardRatio)));
+  const cardWidth = Math.max(240, Math.min(width - 40, 380));
   const exportSize = runShareExportSize(format, originalRatio);
   const renderSizeKey = runMediaRenderSizeKey({
     viewportWidth: width,
@@ -411,8 +439,18 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   // the shared route hides its true start/end by default (privacy zone); the
   // user can opt to reveal them, and the full route always stays in the saved activity
   const cardPoints = useMemo(
-    () => (showEnds ? run.points : trimRouteEnds(run.points)),
+    () => (showEnds ? run.points : privacySafeRoute(run.points)),
     [run.points, showEnds],
+  );
+  const cardAppearance = useMemo(
+    () => ({
+      layout,
+      font: cardFont,
+      showTimestamp,
+      theme: run.cardTheme,
+      completedAt: run.completedAt,
+    }),
+    [cardFont, layout, run.cardTheme, run.completedAt, showTimestamp],
   );
 
   // Android hardware back closes the sheet instead of popping the run screen
@@ -431,7 +469,19 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     const stale = stagedMedia.current;
     stagedMedia.current = null;
     if (stale) void runMediaCache.release(stale.id, 'editor').catch(() => {});
-  }, [format, mediaFit, showEnds, mode, photoUri, originalRatio, run, renderSizeKey]);
+  }, [
+    cardFont,
+    format,
+    layout,
+    mediaFit,
+    showEnds,
+    showTimestamp,
+    mode,
+    photoUri,
+    originalRatio,
+    run,
+    renderSizeKey,
+  ]);
 
   const caption =
     `🏃 ${run.title} · ${formatKm(run.distance)} km in ${formatDurationLong(run.elapsed)} ` +
@@ -654,6 +704,11 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
                       format: shareStudioRunInputs.current?.format ?? format,
                       media_fit: shareStudioRunInputs.current?.mediaFit ?? mediaFit,
                       route_ends_visible: shareStudioRunInputs.current?.showEnds ?? showEnds,
+                      layout: shareStudioRunInputs.current?.appearance.layout ?? layout,
+                      font: shareStudioRunInputs.current?.appearance.font ?? cardFont,
+                      recorded_time_visible:
+                        shareStudioRunInputs.current?.appearance.showTimestamp ?? showTimestamp,
+                      card_theme: run.cardTheme,
                     },
                     selfie: draft!.media.kind === 'photo'
                       ? draft!.media.source === 'selfie'
@@ -713,10 +768,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             ),
           requestPhonePermission: () =>
             boundary.runSideEffect(() =>
-              MediaLibrary.requestPermissionsAsync(true, ['photo']),
+              requestPhonePhotoPermission(),
             ),
           saveToPhone: (uri) =>
-            boundary.runSideEffect(() => MediaLibrary.Asset.create(uri)),
+            boundary.runSideEffect(() => createPhonePhoto(uri)),
           share: async (uri) => {
             boundary.assertOwned();
             if (Platform.OS !== 'web' && (await Sharing.isAvailableAsync())) {
@@ -841,6 +896,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     setFormat(reviewed.format);
     setMediaFit(reviewed.mediaFit);
     setShowEnds(reviewed.showEnds);
+    setLayout(reviewed.appearance.layout);
+    setCardFont(reviewed.appearance.font);
+    setShowTimestamp(reviewed.appearance.showTimestamp);
     if (draft.media.kind === 'photo') {
       applyRunSharePresentation(shareMediaOverride.current!.stage(
         frozen.presentation,
@@ -887,11 +945,42 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     setShareStudioVisible(false);
   }
 
+  function openFeedStudio(): void {
+    feedOperation.current = null;
+    shareStudioRunInputs.current = freezeRunShareRenderInputs({
+      presentation: { mode, photoUri, photoKind, originalRatio },
+      format,
+      mediaFit,
+      showEnds,
+      appearance: cardAppearance,
+      points: cardPoints,
+      distanceM: run.distance,
+      durationS: run.elapsed,
+    });
+    setShareStudioVisible(true);
+  }
+
   function applyRunSharePresentation(presentation: RunSharePresentation): void {
     setMode(presentation.mode);
     setPhotoUri(presentation.photoUri);
     setPhotoKind(presentation.photoKind);
     setOriginalRatio(presentation.originalRatio);
+  }
+
+  function toggleRouteEndpointPrivacy(): void {
+    const intent = routeEndpointVisibilityIntent(showEnds);
+    if (!intent.requiresConfirmation) {
+      setShowEnds(intent.next);
+      return;
+    }
+    Alert.alert(
+      'Show start and finish points?',
+      'These points can reveal where you live, work, or regularly exercise. Only continue if you are comfortable sharing them.',
+      [
+        { text: 'Keep hidden', style: 'cancel' },
+        { text: 'Show points', style: 'destructive', onPress: () => setShowEnds(intent.next) },
+      ],
+    );
   }
 
   if (!ownerMatches) {
@@ -975,7 +1064,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   }
 
   return (
-    <View style={styles.overlay}>
+    <ScrollView
+      style={styles.overlay}
+      contentContainerStyle={styles.overlayContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Share your run</Text>
         <Pressable
@@ -1010,6 +1104,41 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           width={cardWidth}
           aspectRatio={cardRatio}
           mediaFit={mediaFit}
+          layout={layout}
+          font={cardFont}
+          theme={run.cardTheme}
+          title={run.title}
+          completedAt={run.completedAt}
+          showTimestamp={showTimestamp}
+          showEndpoints={showEnds}
+        />
+        <Pressable
+          style={styles.changeBackgroundButton}
+          onPress={() => setBackgroundPickerVisible(true)}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Change Run card background"
+          accessibilityHint="Choose the route map, take a photo, take a selfie, or choose from your gallery"
+          accessibilityState={{ disabled: busy }}
+        >
+          <Ionicons name="camera-outline" size={22} color="#FFFFFF" />
+        </Pressable>
+      </View>
+
+      <View style={styles.appearanceRow}>
+        <RunShareOptionSelect
+          label="Layout"
+          value={layout}
+          options={RUN_SHARE_LAYOUTS}
+          onChange={setLayout}
+          disabled={busy}
+        />
+        <RunShareOptionSelect
+          label="Font"
+          value={cardFont}
+          options={RUN_SHARE_FONTS}
+          onChange={setCardFont}
+          disabled={busy}
         />
       </View>
 
@@ -1053,99 +1182,139 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         </Pressable>
       ) : null}
 
-      {/* privacy: start & end hidden by default; user can opt to show them */}
       <Pressable
-        style={styles.privacyRow}
-        onPress={() => setShowEnds((v) => !v)}
+        style={styles.preferenceRow}
+        onPress={() => setShowTimestamp((visible) => !visible)}
         disabled={busy}
         accessibilityRole="switch"
-        accessibilityState={{ checked: showEnds, disabled: busy }}
-        accessibilityLabel="Show start and end points"
+        accessibilityState={{ checked: showTimestamp, disabled: busy }}
+        accessibilityLabel="Show recorded date and time"
+      >
+        <Ionicons name="time-outline" size={17} color={showTimestamp ? LIME : '#94a3b8'} />
+        <View style={styles.preferenceCopy}>
+          <Text style={styles.preferenceTitle}>Show recorded date & time</Text>
+          <Text style={styles.preferenceDetail}>Run duration always stays visible</Text>
+        </View>
+        <View style={[styles.checkbox, showTimestamp && styles.checkboxActive]}>
+          {showTimestamp ? <Ionicons name="checkmark" size={15} color="#101319" /> : null}
+        </View>
+      </Pressable>
+
+      {/* privacy: start & end hidden by default; user can opt to show them */}
+      <Pressable
+        style={styles.preferenceRow}
+        onPress={toggleRouteEndpointPrivacy}
+        disabled={busy}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: !showEnds, disabled: busy }}
+        accessibilityLabel="Hide start and finish points"
       >
         <Ionicons
           name={showEnds ? 'eye-outline' : 'shield-checkmark'}
-          size={13}
-          color={showEnds ? '#c6f24e' : '#94a3b8'}
+          size={17}
+          color={showEnds ? '#FF966F' : LIME}
         />
-        <Text style={styles.privacyText}>
-          {showEnds ? 'Showing start & end points' : 'Start & end hidden for privacy'}
-        </Text>
-        <Text style={styles.privacyAction}>{showEnds ? 'Hide' : 'Show'}</Text>
+        <View style={styles.preferenceCopy}>
+          <Text style={styles.preferenceTitle}>Hide start & finish points</Text>
+          <Text style={styles.preferenceDetail}>
+            {showEnds ? 'Visible — your location privacy may be exposed' : 'Recommended for privacy'}
+          </Text>
+        </View>
+        <View style={[styles.checkbox, !showEnds && styles.checkboxActive]}>
+          {!showEnds ? <Ionicons name="checkmark" size={15} color="#101319" /> : null}
+        </View>
       </Pressable>
 
-      {/* mode picker */}
-      <View style={styles.modeRow}>
-        <ModeBtn
-          icon="happy-outline"
-          label="Take selfie"
-          active={mode === 'photo' && photoKind === 'selfie'}
-          onPress={() => addPhoto('selfie')}
-          disabled={busy}
-        />
-        <ModeBtn
-          icon="camera-outline"
-          label="Take photo"
-          active={mode === 'photo' && photoKind === 'place'}
-          onPress={() => addPhoto('place')}
-          disabled={busy}
-        />
-        <ModeBtn
-          icon="images-outline"
-          label="Choose photo"
-          active={mode === 'photo' && photoKind === 'gallery'}
-          onPress={() => addPhoto('gallery')}
-          disabled={busy}
-        />
-        <ModeBtn
-          icon="map-outline"
-          label="Map only"
-          active={mode === 'map'}
-          onPress={() => {
-            setPhotoUri(null);
-            setPhotoKind(null);
-            setMode('map');
-            releaseProcessedPhotoAfterReplacement();
-          }}
-          disabled={busy}
-        />
-      </View>
+      <Modal
+        visible={backgroundPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBackgroundPickerVisible(false)}
+      >
+        <Pressable
+          style={styles.backgroundBackdrop}
+          onPress={() => setBackgroundPickerVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close background choices"
+        >
+          <View style={styles.backgroundSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.backgroundSheetHeader}>
+              <View>
+                <Text accessibilityRole="header" style={styles.backgroundTitle}>Change background</Text>
+                <Text style={styles.backgroundHint}>Your route and run stats stay visible</Text>
+              </View>
+              <Pressable
+                style={styles.backgroundClose}
+                onPress={() => setBackgroundPickerVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close background choices"
+              >
+                <Ionicons name="close" size={21} color="#D8E2EA" />
+              </Pressable>
+            </View>
+            <View style={styles.modeRow}>
+              <ModeBtn
+                icon="map-outline"
+                label="Route map"
+                active={mode === 'map'}
+                onPress={() => {
+                  setPhotoUri(null);
+                  setPhotoKind(null);
+                  setMode('map');
+                  releaseProcessedPhotoAfterReplacement();
+                  setBackgroundPickerVisible(false);
+                }}
+                disabled={busy}
+              />
+              <ModeBtn
+                icon="happy-outline"
+                label="Selfie"
+                active={mode === 'photo' && photoKind === 'selfie'}
+                onPress={() => {
+                  setBackgroundPickerVisible(false);
+                  void addPhoto('selfie');
+                }}
+                disabled={busy}
+              />
+              <ModeBtn
+                icon="camera-outline"
+                label="Camera"
+                active={mode === 'photo' && photoKind === 'place'}
+                onPress={() => {
+                  setBackgroundPickerVisible(false);
+                  void addPhoto('place');
+                }}
+                disabled={busy}
+              />
+              <ModeBtn
+                icon="images-outline"
+                label="Gallery"
+                active={mode === 'photo' && photoKind === 'gallery'}
+                onPress={() => {
+                  setBackgroundPickerVisible(false);
+                  void addPhoto('gallery');
+                }}
+                disabled={busy}
+              />
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
 
       <RunMediaActions
         onDestination={onDestination}
-        onShareAchievement={() => setSharePromptVisible(true)}
+        onContinueToFeed={openFeedStudio}
+        onMyDay={onStoryDestination}
         disabled={busy}
         activityQueued={activityQueued}
         feedDisabledReason={feedDisabledReason}
-      />
-      <AchievementSharePrompt
-        visible={sharePromptVisible}
-        payloadKey={`${completionPayload.kind}:${completionPayload.sourceId}`}
-        feedDisabledReason={feedDisabledReason}
-        onFeed={() => {
-          feedOperation.current = null;
-          shareStudioRunInputs.current = freezeRunShareRenderInputs({
-            presentation: { mode, photoUri, photoKind, originalRatio },
-            format,
-            mediaFit,
-            showEnds,
-            points: cardPoints,
-            distanceM: run.distance,
-            durationS: run.elapsed,
-          });
-          setSharePromptVisible(false);
-          setShareStudioVisible(true);
-          return Promise.resolve();
-        }}
-        onStory={onStoryDestination}
-        onPrivate={() => closeEditor()}
-        onClose={() => setSharePromptVisible(false)}
       />
       <ShareStudio
         visible={shareStudioVisible}
         expectedOwnerId={run.ownerId!}
         context={{
           title: run.title,
-          date: new Date().toLocaleDateString(),
+          date: new Date(run.completedAt).toLocaleDateString(),
           metrics: [
             { label: 'Distance', value: `${formatKm(run.distance)} km`, sensitivity: 'standard' },
             { label: 'Time', value: formatDurationLong(run.elapsed), sensitivity: 'standard' },
@@ -1166,6 +1335,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
             format,
             mediaFit,
             showEnds,
+            appearance: cardAppearance,
             points: cardPoints,
             distanceM: run.distance,
             durationS: run.elapsed,
@@ -1181,13 +1351,20 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               width={cardWidth}
               aspectRatio={runShareRatio(preview.format, preview.presentation.originalRatio)}
               mediaFit={preview.mediaFit}
+              layout={preview.appearance.layout}
+              font={preview.appearance.font}
+              theme={preview.appearance.theme}
+              title={run.title}
+              completedAt={preview.appearance.completedAt}
+              showTimestamp={preview.appearance.showTimestamp}
+              showEndpoints={preview.showEnds}
             />
           );
         }}
         onContinue={publishRunDraft}
         onCancel={cancelRunShareStudio}
       />
-    </View>
+    </ScrollView>
   );
 }
 
@@ -1271,11 +1448,14 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#0b0e14',
+  },
+  overlayContent: {
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 48,
     paddingBottom: 24,
     alignItems: 'center',
-    justifyContent: 'center', // center the compact stack — no stretched gaps
+    justifyContent: 'flex-start',
     gap: 12,
   },
   ownerBoundary: {
@@ -1331,7 +1511,28 @@ const styles = StyleSheet.create({
   savedDetail: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11 },
   skip: { color: '#94a3b8', fontFamily: font.bold, fontSize: 15 },
   skipBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  preview: { justifyContent: 'center' },
+  preview: { position: 'relative', justifyContent: 'center' },
+  changeBackgroundButton: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(8,20,28,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.58)',
+  },
+  appearanceRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: 560,
+    gap: 8,
+  },
   formatRow: { gap: 7, paddingHorizontal: 2 },
   formatChip: {
     minWidth: 68,
@@ -1351,18 +1552,32 @@ const styles = StyleSheet.create({
   formatLabelActive: { color: LIME },
   fitControl: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
   fitText: { color: '#cbd5e1', fontFamily: font.semibold, fontSize: 12 },
-  privacyRow: {
+  preferenceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
-    minHeight: 44,
+    gap: 10,
+    paddingHorizontal: 12,
+    minHeight: 48,
     width: '100%',
     maxWidth: 560,
+    borderRadius: 13,
+    backgroundColor: '#13212B',
+    borderWidth: 1,
+    borderColor: '#2E414F',
+  },
+  preferenceCopy: { flex: 1, minWidth: 0, paddingVertical: 8 },
+  preferenceTitle: { color: '#F7FAFC', fontFamily: font.bold, fontSize: 12 },
+  preferenceDetail: { marginTop: 2, color: '#92A5B2', fontFamily: font.medium, fontSize: 10 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#5C6D78',
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  privacyText: { color: '#94a3b8', fontFamily: font.medium, fontSize: 12 },
-  privacyAction: { color: '#c6f24e', fontFamily: font.bold, fontSize: 12 },
+  checkboxActive: { backgroundColor: LIME, borderColor: LIME },
   modeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1372,6 +1587,30 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
   },
+  backgroundBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.68)',
+    padding: 16,
+  },
+  backgroundSheet: {
+    borderRadius: 23,
+    backgroundColor: '#101D27',
+    borderWidth: 1,
+    borderColor: '#304553',
+    padding: 16,
+    gap: 16,
+  },
+  backgroundSheetHeader: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  backgroundTitle: { color: '#FFFFFF', fontFamily: font.extrabold, fontSize: 18 },
+  backgroundHint: { marginTop: 3, color: '#91A4B0', fontFamily: font.medium, fontSize: 11 },
+  backgroundClose: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: '#1B2A35' },
   modeBtn: {
     flexDirection: 'row',
     alignItems: 'center',

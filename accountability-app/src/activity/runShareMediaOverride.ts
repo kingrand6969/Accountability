@@ -1,6 +1,7 @@
 import type { RunMediaCacheItem } from './runMediaCache';
 import type { Pt } from './geo';
 import type { RunMediaFit, RunShareFormat } from './runShareFormats';
+import type { RunCardTheme, RunShareFont, RunShareLayout } from './runShareAppearance';
 
 export type RunSharePresentation = Readonly<{
   mode: 'map' | 'photo';
@@ -22,6 +23,13 @@ export type FrozenRunShareRenderInputs = Readonly<{
   format: RunShareFormat;
   mediaFit: RunMediaFit;
   showEnds: boolean;
+  appearance: Readonly<{
+    layout: RunShareLayout;
+    font: RunShareFont;
+    showTimestamp: boolean;
+    theme: RunCardTheme;
+    completedAt: string;
+  }>;
   points: readonly Pt[];
   distanceM: number;
   durationS: number;
@@ -38,6 +46,7 @@ export function freezeRunShareRenderInputs(
   return Object.freeze({
     ...input,
     presentation: Object.freeze({ ...input.presentation }),
+    appearance: Object.freeze({ ...input.appearance }),
     points: Object.freeze(input.points.map((point) => Object.freeze({ ...point }))),
   });
 }

@@ -13,7 +13,6 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import * as MediaLibrary from 'expo-media-library';
 import * as Crypto from 'expo-crypto';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { addStoryIdempotent } from '../stories/api';
@@ -78,6 +77,10 @@ import {
   feedShareAvailability,
   MOBILE_FEED_SHARING_NOTICE,
 } from '../share/feedShareAvailability';
+import {
+  createPhonePhoto,
+  requestPhonePhotoPermission,
+} from '../media/phoneMediaLibrary';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
@@ -495,7 +498,7 @@ export default function WinCard() {
       );
       if (!uri) throw new Error('Could not prepare the proof image.');
       if (!await requireCurrentActionOwner(token)) return;
-      const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+      const permission = await requestPhonePhotoPermission();
       if (!await requireCurrentActionOwner(token)) return;
       if (!permission.granted) {
         mutateForToken(token, () => {
@@ -505,7 +508,7 @@ export default function WinCard() {
         return;
       }
       if (!await requireCurrentActionOwner(token)) return;
-      await MediaLibrary.createAssetAsync(uri);
+      await createPhonePhoto(uri);
       if (!await requireCurrentActionOwner(token)) return;
       mutateForToken(token, () => {
         dispatchAction({ type: 'success', action: 'save-phone' });
