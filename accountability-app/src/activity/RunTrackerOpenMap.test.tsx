@@ -205,6 +205,33 @@ describe('RunTrackerOpenMap', () => {
     },
   );
 
+  test('fits compact Walk and Ride labels at 130% without shrinking their 48-point targets', () => {
+    const fontScale = 1.3;
+    const { renderer } = render({
+      viewportWidth: 320,
+      viewportHeight: 568,
+      fontScale,
+      sideInset: 16,
+    });
+
+    for (const label of ['Walk', 'Ride']) {
+      const tabStyle = flattenedControlStyle(byLabel(renderer, label));
+      const labelStyle = StyleSheet.flatten(
+        renderer.root.findByProps({
+          testID: `run-activity-label-${label.toLowerCase()}`,
+        }).props.style,
+      );
+      const horizontalPadding = tabStyle.paddingHorizontal ?? 0;
+      const usableWidth = tabStyle.width - horizontalPadding * 2;
+      const estimatedGlyphWidth = label.length * labelStyle.fontSize * fontScale * 0.6;
+
+      expect(tabStyle.width).toBeGreaterThanOrEqual(48);
+      expect(horizontalPadding).toBe(0);
+      expect(labelStyle).toMatchObject({ fontSize: 14, lineHeight: 19 });
+      expect(estimatedGlyphWidth).toBeLessThanOrEqual(usableWidth);
+    }
+  });
+
   test('keeps both map controls in normal flex flow instead of stacking absolutely', () => {
     const { renderer } = render();
     const tools = renderer.root.findByProps({ testID: 'run-open-map-map-tools' });

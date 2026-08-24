@@ -94,6 +94,8 @@ export function RunTrackerOpenMap({
   );
   const topControlTop = safeTop + 8;
   const extraLargeText = vertical.extraLargeText;
+  const compactLargeTextTabs = viewportWidth < 360 && fontScale >= 1.3;
+  const activityTabsNeedFullWidth = extraLargeText || compactLargeTextTabs;
   const safeTabsLeft = contentLeft + layout.controlSize;
   const safeTabsWidth = viewportWidth - safeTabsLeft * 2;
   const tabWidth = extraLargeText
@@ -168,7 +170,7 @@ export function RunTrackerOpenMap({
                 width: tabWidth,
                 height: layout.controlSize,
               },
-              extraLargeText && styles.activityTabExtraLargeText,
+              activityTabsNeedFullWidth && styles.activityTabNoHorizontalPadding,
               pressed && !activitySelectorDisabled && styles.tabPressed,
               activitySelectorDisabled && styles.disabled,
             ]}
@@ -621,7 +623,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  activityTabExtraLargeText: { paddingHorizontal: 0 },
+  activityTabNoHorizontalPadding: { paddingHorizontal: 0 },
   activityLabel: {
     color: palette.ink.muted,
     fontFamily: font.medium,
