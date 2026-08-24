@@ -25,6 +25,16 @@ function serializeRecordingMutation<T>(
 
 type LegacyPointsBlob = { session: string; points: Pt[] };
 
+type LocationTaskLease = {
+  schema: 1;
+  id: string;
+  session: string;
+  activityId: string;
+  ownerId: string;
+  startedAt: string;
+  appendEnabled: boolean;
+};
+
 type RecordingBlob = {
   schema: 2;
   session: string;
@@ -34,6 +44,7 @@ type RecordingBlob = {
   type: NewActivity['type'];
   points: Pt[];
   completed: NewActivity | null;
+  locationLease: LocationTaskLease | null;
 };
 
 export type TrackRecordingIdentity = Pick<
@@ -118,6 +129,7 @@ export function createLocationRecordingStore(
         type,
         points: [],
         completed: null,
+        locationLease: null,
       };
 
       await options.storage.setItem(POINTS_KEY, JSON.stringify(blob));
@@ -233,6 +245,7 @@ export function createLocationRecordingStore(
         type,
         points: parsed.points,
         completed: null,
+        locationLease: null,
       };
       await options.storage.setItem(POINTS_KEY, JSON.stringify(claimed));
       if (storedSession !== session) {
@@ -328,6 +341,179 @@ export function createLocationRecordingStore(
     });
   }
 
+  function acquireTaskLease(
+    identity: TrackRecordingIdentity,
+    leaseId: string,
+  ): Promise<LocationTaskLease | null> {
+    return serializeRecordingMutation(async () => {
+      const [storedSession, raw] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      const parsed = parseStoredBlob(raw);
+      if (
+        !parsed ||
+        parsed.kind !== 'current' ||
+        parsed.blob.completed ||
+        storedSession !== parsed.blob.session ||
+        !recordingMatchesIdentity(parsed.blob, identity)
+      ) {
+        return null;
+      }
+
+      const current = parsed.blob.locationLease;
+      if (
+        current?.appendEnabled &&
+        leaseMatchesRecording(current, parsed.blob)
+      ) {
+        return current;
+      }
+
+      const lease: LocationTaskLease = {
+        schema: 1,
+        id: leaseId,
+        session: parsed.blob.session,
+        activityId: parsed.blob.activityId,
+        ownerId: parsed.blob.ownerId,
+        startedAt: parsed.blob.startedAt,
+        appendEnabled: true,
+      };
+      await options.storage.setItem(
+        POINTS_KEY,
+        JSON.stringify({ ...parsed.blob, locationLease: lease }),
+      );
+      return lease;
+    });
+  }
+
+  function recordingIdentityIsCurrent(
+    identity: TrackRecordingIdentity,
+  ): Promise<boolean> {
+    return serializeRecordingMutation(async () => {
+      const [storedSession, raw] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      const parsed = parseStoredBlob(raw);
+      return Boolean(
+        parsed?.kind === 'current' &&
+          !parsed.blob.completed &&
+          storedSession === parsed.blob.session &&
+          recordingMatchesIdentity(parsed.blob, identity),
+      );
+    });
+  }
+
+  function suspendTaskLeaseFor(
+    identity: TrackRecordingIdentity,
+  ): Promise<
+    | { kind: 'stale' }
+    | { kind: 'already_paused'; lease: LocationTaskLease | null }
+    | { kind: 'suspended'; lease: LocationTaskLease }
+  > {
+    return serializeRecordingMutation(async () => {
+      const [storedSession, raw] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      const parsed = parseStoredBlob(raw);
+      if (
+        !parsed ||
+        parsed.kind !== 'current' ||
+        parsed.blob.completed ||
+        storedSession !== parsed.blob.session ||
+        !recordingMatchesIdentity(parsed.blob, identity)
+      ) {
+        return { kind: 'stale' };
+      }
+
+      const current = parsed.blob.locationLease;
+      if (!current?.appendEnabled) {
+        return { kind: 'already_paused', lease: current ?? null };
+      }
+      if (!leaseMatchesRecording(current, parsed.blob)) {
+        return { kind: 'stale' };
+      }
+
+      const lease = { ...current, appendEnabled: false };
+      await options.storage.setItem(
+        POINTS_KEY,
+        JSON.stringify({ ...parsed.blob, locationLease: lease }),
+      );
+      return { kind: 'suspended', lease };
+    });
+  }
+
+  function taskLeaseIsCurrent(
+    lease: LocationTaskLease,
+    appendEnabled: boolean,
+  ): Promise<boolean> {
+    return serializeRecordingMutation(async () => {
+      const [storedSession, raw] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      const parsed = parseStoredBlob(raw);
+      return Boolean(
+        parsed?.kind === 'current' &&
+          !parsed.blob.completed &&
+          storedSession === parsed.blob.session &&
+          parsed.blob.locationLease?.id === lease.id &&
+          parsed.blob.locationLease.appendEnabled === appendEnabled &&
+          leaseMatchesRecording(parsed.blob.locationLease, parsed.blob),
+      );
+    });
+  }
+
+  function readActiveTaskLease(): Promise<LocationTaskLease | null> {
+    return serializeRecordingMutation(async () => {
+      const [storedSession, raw] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      const parsed = parseStoredBlob(raw);
+      if (
+        !parsed ||
+        parsed.kind !== 'current' ||
+        parsed.blob.completed ||
+        storedSession !== parsed.blob.session ||
+        !parsed.blob.locationLease?.appendEnabled ||
+        !leaseMatchesRecording(parsed.blob.locationLease, parsed.blob)
+      ) {
+        return null;
+      }
+      return parsed.blob.locationLease;
+    });
+  }
+
+  function appendTaskPoints(nextPoints: Pt[]): Promise<boolean> {
+    return serializeRecordingMutation(async () => {
+      const [storedSession, raw] = await Promise.all([
+        options.storage.getItem(SESSION_KEY),
+        options.storage.getItem(POINTS_KEY),
+      ]);
+      const parsed = parseStoredBlob(raw);
+      if (
+        !parsed ||
+        parsed.kind !== 'current' ||
+        parsed.blob.completed ||
+        storedSession !== parsed.blob.session ||
+        !parsed.blob.locationLease?.appendEnabled ||
+        !leaseMatchesRecording(parsed.blob.locationLease, parsed.blob)
+      ) {
+        return false;
+      }
+      await options.storage.setItem(
+        POINTS_KEY,
+        JSON.stringify({
+          ...parsed.blob,
+          points: [...parsed.blob.points, ...nextPoints],
+        }),
+      );
+      return true;
+    });
+  }
+
   function clear(activityId?: string): Promise<void> {
     return serializeRecordingMutation(async () => {
       if (activityId) {
@@ -351,6 +537,12 @@ export function createLocationRecordingStore(
     claimLegacy,
     recover,
     appendPoints,
+    appendTaskPoints,
+    acquireTaskLease,
+    recordingIdentityIsCurrent,
+    suspendTaskLeaseFor,
+    taskLeaseIsCurrent,
+    readActiveTaskLease,
     readRecording,
     readPoints,
     persistCompleted,
@@ -371,12 +563,7 @@ if (Platform.OS !== 'web') {
     const locations = data?.locations ?? [];
     if (locations.length === 0) return;
     try {
-      const session = await AsyncStorage.getItem(SESSION_KEY);
-      if (!session) return;
-      await defaultRecordingStore.appendPoints(
-        session,
-        locations.map(locationPoint),
-      );
+      await defaultRecordingStore.appendTaskPoints(locations.map(locationPoint));
     } catch {
       // Best effort: a dropped sample is preferable to corrupting identity.
     }
@@ -401,6 +588,260 @@ export type LocationTaskRuntime = {
   getBackgroundPermission(): Promise<{ granted: boolean }>;
   start(): Promise<void>;
 };
+
+export type LocationTaskLeaseRuntime = LocationTaskRuntime & {
+  stop(): Promise<void>;
+};
+
+type LocationTaskLifecycleOptions = {
+  storage: LocationRecordingStorage;
+  runtime: LocationTaskLeaseRuntime;
+  createLeaseId: () => string;
+};
+
+export type TrackLocationTaskStatus =
+  | 'running'
+  | 'restarted'
+  | 'paused'
+  | 'stale';
+
+export type PauseTrackLocationTaskStatus =
+  | 'paused'
+  | 'already_paused'
+  | 'stale';
+
+export function createLocationTaskLifecycle(
+  options: LocationTaskLifecycleOptions,
+) {
+  const store = createLocationRecordingStore({ storage: options.storage });
+  let taskMutationTail: Promise<void> = Promise.resolve();
+  const identityIntents = new Map<string, number>();
+
+  function issueIdentityIntent(identity: TrackRecordingIdentity): number {
+    const key = recordingIdentityKey(identity);
+    const intent = (identityIntents.get(key) ?? 0) + 1;
+    identityIntents.set(key, intent);
+    return intent;
+  }
+
+  function identityIntentIsCurrent(
+    identity: TrackRecordingIdentity,
+    intent: number,
+  ): boolean {
+    return identityIntents.get(recordingIdentityKey(identity)) === intent;
+  }
+
+  function serializeTaskMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = taskMutationTail.then(operation, operation);
+    taskMutationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  async function stopIfLeaseStillPaused(
+    lease: LocationTaskLease | null,
+  ): Promise<void> {
+    if (!lease || !(await store.taskLeaseIsCurrent(lease, false))) return;
+    let started = false;
+    try {
+      started = await options.runtime.hasStarted();
+    } catch {
+      return;
+    }
+    if (!started) return;
+    if (!(await store.taskLeaseIsCurrent(lease, false))) return;
+    try {
+      await options.runtime.stop();
+    } catch {
+      // Appends are already suspended in durable storage.
+      return;
+    }
+    if (!(await store.taskLeaseIsCurrent(lease, false))) {
+      await restartCurrentLeaseIfNeeded();
+    }
+  }
+
+  async function restartCurrentLeaseIfNeeded(): Promise<void> {
+    const activeLease = await store.readActiveTaskLease();
+    if (!activeLease) return;
+    if (!(await store.taskLeaseIsCurrent(activeLease, true))) return;
+
+    let started: boolean;
+    try {
+      started = await options.runtime.hasStarted();
+    } catch {
+      return;
+    }
+    if (!(await store.taskLeaseIsCurrent(activeLease, true)) || started) return;
+    if (!(await store.taskLeaseIsCurrent(activeLease, true))) return;
+    try {
+      await options.runtime.start();
+    } catch {
+      return;
+    }
+    await store.taskLeaseIsCurrent(activeLease, true);
+  }
+
+  async function pauseAfterReconciliationFailure(
+    identity: TrackRecordingIdentity,
+  ): Promise<'paused'> {
+    const suspended = await store.suspendTaskLeaseFor(identity);
+    if (suspended.kind !== 'stale') {
+      await stopIfLeaseStillPaused(suspended.lease);
+    }
+    return 'paused';
+  }
+
+  async function startForUnlocked(
+    identity: TrackRecordingIdentity,
+    intent: number,
+  ): Promise<TrackLocationTaskStatus> {
+    if (!identityIntentIsCurrent(identity, intent)) return 'stale';
+    const lease = await store.acquireTaskLease(
+      identity,
+      options.createLeaseId(),
+    );
+    if (!lease) return 'stale';
+    if (!identityIntentIsCurrent(identity, intent)) {
+      await store.suspendTaskLeaseFor(identity);
+      return 'stale';
+    }
+    if (!(await store.taskLeaseIsCurrent(lease, true))) return 'stale';
+
+    let started: boolean;
+    try {
+      started = await options.runtime.hasStarted();
+    } catch {
+      await store.suspendTaskLeaseFor(identity);
+      return 'paused';
+    }
+    if (!identityIntentIsCurrent(identity, intent)) return 'stale';
+    if (!(await store.taskLeaseIsCurrent(lease, true))) {
+      return 'stale';
+    }
+    if (started) return 'running';
+
+    if (!(await store.taskLeaseIsCurrent(lease, true))) return 'stale';
+    try {
+      await options.runtime.start();
+    } catch {
+      const suspended = await store.suspendTaskLeaseFor(identity);
+      await stopIfLeaseStillPaused(
+        suspended.kind === 'stale' ? null : suspended.lease,
+      );
+      return 'paused';
+    }
+    if (!identityIntentIsCurrent(identity, intent)) return 'stale';
+    if (!(await store.taskLeaseIsCurrent(lease, true))) {
+      return 'stale';
+    }
+    return 'restarted';
+  }
+
+  function startFor(
+    identity: TrackRecordingIdentity,
+  ): Promise<TrackLocationTaskStatus> {
+    const intent = issueIdentityIntent(identity);
+    return serializeTaskMutation(() => startForUnlocked(identity, intent));
+  }
+
+  function ensureFor(
+    identity: TrackRecordingIdentity,
+  ): Promise<TrackLocationTaskStatus> {
+    const intent = issueIdentityIntent(identity);
+    return serializeTaskMutation(async () => {
+      if (!identityIntentIsCurrent(identity, intent)) return 'stale';
+      if (!(await store.recordingIdentityIsCurrent(identity))) return 'stale';
+      let foreground: { granted: boolean };
+      try {
+        foreground = await options.runtime.getForegroundPermission();
+      } catch {
+        return pauseAfterReconciliationFailure(identity);
+      }
+      if (!identityIntentIsCurrent(identity, intent)) return 'stale';
+      if (!(await store.recordingIdentityIsCurrent(identity))) return 'stale';
+
+      let background: { granted: boolean };
+      try {
+        background = await options.runtime.getBackgroundPermission();
+      } catch {
+        return pauseAfterReconciliationFailure(identity);
+      }
+      if (!identityIntentIsCurrent(identity, intent)) return 'stale';
+      if (!(await store.recordingIdentityIsCurrent(identity))) return 'stale';
+      if (!foreground.granted || !background.granted) {
+        const suspended = await store.suspendTaskLeaseFor(identity);
+        if (suspended.kind !== 'stale') {
+          await stopIfLeaseStillPaused(suspended.lease);
+        }
+        return 'paused';
+      }
+      return startForUnlocked(identity, intent);
+    });
+  }
+
+  function pauseFor(
+    identity: TrackRecordingIdentity,
+  ): Promise<PauseTrackLocationTaskStatus> {
+    issueIdentityIntent(identity);
+    const suspension = store.suspendTaskLeaseFor(identity);
+    return suspension.then((suspended) =>
+      serializeTaskMutation(async () => {
+        if (suspended.kind === 'stale') return 'stale';
+        await stopIfLeaseStillPaused(suspended.lease);
+        return suspended.kind === 'already_paused'
+          ? 'already_paused'
+          : 'paused';
+      }),
+    );
+  }
+
+  return {
+    startFor,
+    ensureFor,
+    pauseFor,
+  };
+}
+
+const defaultLocationTaskLifecycle = createLocationTaskLifecycle({
+  storage: AsyncStorage,
+  createLeaseId: secureCreateActivityId,
+  runtime: {
+    hasStarted: () =>
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME),
+    getForegroundPermission: () => Location.getForegroundPermissionsAsync(),
+    getBackgroundPermission: () => Location.getBackgroundPermissionsAsync(),
+    start: () =>
+      Location.startLocationUpdatesAsync(
+        LOCATION_TASK_NAME,
+        LOCATION_UPDATE_OPTIONS,
+      ),
+    stop: () => Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME),
+  },
+});
+
+export async function startTrackLocationTaskFor(
+  identity: TrackRecordingIdentity,
+): Promise<TrackLocationTaskStatus> {
+  if (Platform.OS === 'web') return 'paused';
+  return defaultLocationTaskLifecycle.startFor(identity);
+}
+
+export async function ensureTrackLocationTaskFor(
+  identity: TrackRecordingIdentity,
+): Promise<TrackLocationTaskStatus> {
+  if (Platform.OS === 'web') return 'paused';
+  return defaultLocationTaskLifecycle.ensureFor(identity);
+}
+
+export async function pauseTrackLocationTaskFor(
+  identity: TrackRecordingIdentity,
+): Promise<PauseTrackLocationTaskStatus> {
+  if (Platform.OS === 'web') return 'already_paused';
+  return defaultLocationTaskLifecycle.pauseFor(identity);
+}
 
 export async function reconcileLocationTask(
   runtime: LocationTaskRuntime,
@@ -549,6 +990,7 @@ function parseStoredBlob(
                 : 'run',
           points,
           completed: value.completed,
+          locationLease: parseLocationTaskLease(value.locationLease),
         },
       };
     }
@@ -588,6 +1030,57 @@ function isPoint(value: unknown): value is Pt {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function recordingMatchesIdentity(
+  blob: RecordingBlob,
+  identity: TrackRecordingIdentity,
+): boolean {
+  return (
+    blob.activityId === identity.activityId &&
+    blob.ownerId === identity.ownerId &&
+    blob.startedAt === identity.startedAt
+  );
+}
+
+function recordingIdentityKey(identity: TrackRecordingIdentity): string {
+  return `${identity.ownerId}\u0000${identity.activityId}\u0000${identity.startedAt}`;
+}
+
+function leaseMatchesRecording(
+  lease: LocationTaskLease,
+  blob: RecordingBlob,
+): boolean {
+  return (
+    lease.session === blob.session &&
+    lease.activityId === blob.activityId &&
+    lease.ownerId === blob.ownerId &&
+    lease.startedAt === blob.startedAt
+  );
+}
+
+function parseLocationTaskLease(value: unknown): LocationTaskLease | null {
+  if (!isRecord(value)) return null;
+  if (
+    value.schema !== 1 ||
+    typeof value.id !== 'string' ||
+    typeof value.session !== 'string' ||
+    typeof value.activityId !== 'string' ||
+    typeof value.ownerId !== 'string' ||
+    typeof value.startedAt !== 'string' ||
+    typeof value.appendEnabled !== 'boolean'
+  ) {
+    return null;
+  }
+  return {
+    schema: 1,
+    id: value.id,
+    session: value.session,
+    activityId: value.activityId,
+    ownerId: value.ownerId,
+    startedAt: value.startedAt,
+    appendEnabled: value.appendEnabled,
+  };
 }
 
 function locationPoint(location: any): Pt {
