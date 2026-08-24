@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { describe, expect, jest, test } from '@jest/globals';
 
@@ -23,6 +24,21 @@ describe('completed Run sharing actions', () => {
 
     const feed = renderer.root.findByProps({ accessibilityLabel: 'Continue to Feed' });
     expect(feed.props.accessibilityState).toEqual({ disabled: false });
+    expect(StyleSheet.flatten(feed.props.style({ pressed: false }))).toMatchObject({
+      minHeight: 56,
+      borderRadius: 999,
+      backgroundColor: '#111411',
+      borderWidth: 1,
+      borderColor: '#30372F',
+    });
+    expect(StyleSheet.flatten(feed.props.style({ pressed: true }))).toMatchObject({
+      opacity: 0.75,
+    });
+    expect(StyleSheet.flatten(renderer.root.findByProps({ children: 'Continue to Feed' }).props.style)).toMatchObject({
+      color: '#B9FF3D',
+      textTransform: 'uppercase',
+    });
+    expect(renderer.root.findByProps({ name: 'arrow-forward' }).props.color).toBe('#B9FF3D');
     act(() => feed.props.onPress());
     expect(onContinueToFeed).toHaveBeenCalledTimes(1);
 

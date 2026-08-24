@@ -138,7 +138,7 @@ export function RunMediaActions({
         accessibilityState={{ disabled: disabled || working || !!feedReason }}
       >
         <Text style={styles.feedActionText}>Continue to Feed</Text>
-        <Ionicons name="arrow-forward" size={19} color="#111411" />
+        <Ionicons name="arrow-forward" size={19} color="#B9FF3D" />
       </Pressable>
       {feedReason ? <Text style={styles.disabledReason}>{feedReason}</Text> : null}
       <View style={styles.grid}>
@@ -231,18 +231,20 @@ const styles = StyleSheet.create({
   },
   feedAction: {
     minHeight: 56,
-    borderRadius: 18,
-    backgroundColor: '#B9FF3D',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#30372F',
+    backgroundColor: '#111411',
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
-    shadowColor: '#B9FF3D',
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 5,
+    shadowColor: '#111411',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
   },
   successAction: {
     borderColor: 'rgba(198,242,78,0.55)',
@@ -254,7 +256,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   feedActionText: {
-    color: '#111411',
+    color: '#B9FF3D',
     fontFamily: font.extrabold,
     fontSize: 14,
     textTransform: 'uppercase',
