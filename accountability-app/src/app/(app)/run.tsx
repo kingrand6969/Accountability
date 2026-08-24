@@ -15,7 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { Tabs, useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -106,13 +106,19 @@ const SAMPLE_ROUTE: Pt[] = [
 
 type PendingSave = PendingRecordedActivity;
 
-async function stopUpdatesIfRunning() {
+type OwnerCommandScope = {
+  ownerId: string | null;
+  generation: number;
+};
+
+async function stopUpdatesIfRunning(strict = false) {
   if (Platform.OS === 'web') return;
   try {
     if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)) {
       await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
     }
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     // not running
   }
 }
@@ -140,6 +146,7 @@ export default function ActivityTrack() {
   >(null);
   const [recoveryReadState, setRecoveryReadState] =
     useState<RecordingRecoveryReadState>('checking');
+  const [recoveryRefreshRevision, setRecoveryRefreshRevision] = useState(0);
   const [detailOwnerId, setDetailOwnerId] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<{
     ownerId: string;
@@ -147,43 +154,102 @@ export default function ActivityTrack() {
   } | null>(null);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
+  // where to centre the idle map — the user's last-known spot (no prompt)
+  const [idlePos, setIdlePos] =
+    useState<{ lat: number; lng: number } | null>(null);
   // shareable run card, shown after a successful save
   const [shareRun, setShareRun] = useState<FinishedRun | null>(null);
+  const [shareAuthority, setShareAuthority] =
+    useState<OwnerCommandScope | null>(null);
   const [durableQueueConfirmation, setDurableQueueConfirmation] =
     useState<DurableQueueConfirmation | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerGenerationRef = useRef(0);
+  const timerReadTokenRef = useRef<number | null>(null);
+  const nextTimerReadTokenRef = useRef(0);
+  const mountedRef = useRef(true);
+  const ownerGenerationRef = useRef(0);
+  const [ownerRenderGeneration, setOwnerRenderGeneration] = useState(0);
+  const [authoritativeOwnerId, setAuthoritativeOwnerId] =
+    useState<string | null>(session?.user.id ?? null);
+  const authOwnerRef = useRef<string | null>(session?.user.id ?? null);
+  const completionGuardRef = useRef<OwnerCommandScope | null>(null);
+  const mapRef = useRef<OsmMapHandle>(null);
+  const liveViewportAuthorityRef = useRef<string | null>(null);
   const completionControllerRef =
     useRef<DurableCompletionController | null>(null);
+
+  const isCommandCurrent = useCallback((scope: OwnerCommandScope) => (
+    mountedRef.current &&
+    authOwnerRef.current === scope.ownerId &&
+    ownerGenerationRef.current === scope.generation
+  ), []);
+
+  const captureCommand = useCallback(
+    (ownerId: string | null = authOwnerRef.current): OwnerCommandScope => ({
+      ownerId,
+      generation: ownerGenerationRef.current,
+    }),
+    [],
+  );
+
+  const invalidateTimer = useCallback(() => {
+    timerGenerationRef.current += 1;
+    timerReadTokenRef.current = null;
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
   const getCompletionController = useCallback(() => {
     if (!completionControllerRef.current) {
       completionControllerRef.current =
         createDurableCompletionController({
           enqueueActivity,
           clearRecording: clearTrackRecording,
-          onConfirm: setDurableQueueConfirmation,
-          onReset: () => setDurableQueueConfirmation(null),
+          onConfirm: (confirmation) => {
+            const guard = completionGuardRef.current;
+            if (guard && isCommandCurrent(guard)) {
+              setDurableQueueConfirmation(confirmation);
+            }
+          },
+          onReset: () => {
+            completionGuardRef.current = null;
+            if (mountedRef.current) setDurableQueueConfirmation(null);
+          },
         });
     }
     return completionControllerRef.current;
-  }, []);
+  }, [isCommandCurrent]);
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
   const recordingRef = useRef<TrackRecordingIdentity | null>(null);
   const startingRef = useRef(false);
   const stoppingRef = useRef(false);
   const avatarRevisionRef = useRef(0);
-  const authOwnerRef = useRef<string | null>(session?.user.id ?? null);
   const completionOwnerRef = useRef<string | null>(
     session?.user.id ?? null,
   );
   useLayoutEffect(() => {
-    authOwnerRef.current = session?.user.id ?? null;
-  }, [session?.user.id]);
-  const mapRef = useRef<OsmMapHandle>(null);
-  // where to centre the idle map — the user's last-known spot (no prompt)
-  const [idlePos, setIdlePos] = useState<{ lat: number; lng: number } | null>(null);
-
+    const nextOwnerId = session?.user.id ?? null;
+    if (authOwnerRef.current === nextOwnerId) return;
+    authOwnerRef.current = nextOwnerId;
+    ownerGenerationRef.current += 1;
+    setAuthoritativeOwnerId(nextOwnerId);
+    setOwnerRenderGeneration(ownerGenerationRef.current);
+    invalidateTimer();
+    liveViewportAuthorityRef.current = null;
+    mapRef.current?.clearRoute();
+    completionControllerRef.current?.reset('auth_owner_change');
+    startingRef.current = false;
+    stoppingRef.current = false;
+    setStarting(false);
+    setStopping(false);
+    setSaving(false);
+    setIdlePos(null);
+    setRecoveryReadState('checking');
+    setRecoveryNotice(null);
+  }, [invalidateTimer, session?.user.id]);
   useFocusEffect(
     useCallback(() => {
       const requestedOwnerId = session?.user.id ?? null;
@@ -209,20 +275,34 @@ export default function ActivityTrack() {
           .catch(() => {});
       }
       if (Platform.OS === 'web') return;
+      const requestedOwnerGeneration = ownerGenerationRef.current;
       Location.getForegroundPermissionsAsync()
         .then((perm) => (perm.granted ? Location.getLastKnownPositionAsync() : null))
-        .then((pos) => pos && setIdlePos({ lat: pos.coords.latitude, lng: pos.coords.longitude }))
+        .then((pos) => {
+          if (
+            pos &&
+            mountedRef.current &&
+            authOwnerRef.current === requestedOwnerId &&
+            ownerGenerationRef.current === requestedOwnerGeneration
+          ) {
+            setIdlePos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          }
+        })
         .catch(() => {});
-    }, [session?.user.id]),
+    }, [session?.user.id, setIdlePos]),
   );
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      mountedRef.current = false;
+      ownerGenerationRef.current += 1;
+      invalidateTimer();
+      mapRef.current?.clearRoute();
       completionControllerRef.current?.dispose();
       completionControllerRef.current = null;
     };
-  }, []);
+  }, [invalidateTimer]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -234,33 +314,56 @@ export default function ActivityTrack() {
   }, [authLoading, getCompletionController, session?.user.id]);
 
   // The Run tracker is an immersive, map-first destination in every state.
-  useEffect(() => {
+  useLayoutEffect(() => {
     navigation.setOptions({
       tabBarStyle: { display: 'none' },
     });
   }, [navigation]);
 
-  const startTrackingTimer = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(async () => {
+  const startTrackingTimer = useCallback((ownerId: string) => {
+    invalidateTimer();
+    const timerGeneration = timerGenerationRef.current;
+    const command = captureCommand(ownerId);
+    timerRef.current = setInterval(() => {
+      if (
+        timerGenerationRef.current !== timerGeneration ||
+        !isCommandCurrent(command)
+      ) {
+        return;
+      }
       setElapsed(
         Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
       );
-      try {
-        const pts = await readTrackPoints();
-        setLivePoints(pts);
-        setDistance(totalDistanceMeters(pts));
-      } catch {
-        // Keep the last safe in-memory view while local storage recovers.
-      }
+      if (timerReadTokenRef.current !== null) return;
+      const readToken = ++nextTimerReadTokenRef.current;
+      timerReadTokenRef.current = readToken;
+      void readTrackPoints()
+        .then((pts) => {
+          if (
+            timerReadTokenRef.current === readToken &&
+            timerGenerationRef.current === timerGeneration &&
+            isCommandCurrent(command) &&
+            recordingRef.current?.ownerId === ownerId
+          ) {
+            setLivePoints(pts);
+            setDistance(totalDistanceMeters(pts));
+          }
+        })
+        .catch(() => {
+          // Keep the last owner-safe in-memory view while local storage recovers.
+        })
+        .finally(() => {
+          if (timerReadTokenRef.current === readToken) {
+            timerReadTokenRef.current = null;
+          }
+        });
     }, 1000);
-  }, []);
+  }, [captureCommand, invalidateTimer, isCommandCurrent]);
 
   const restorePausedRecovery = useCallback(
     (recovery: Extract<TrackRecordingRecovery, { kind: 'active' }>) => {
       getCompletionController().reset('recovery');
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = null;
+      invalidateTimer();
       recordingRef.current = {
         activityId: recovery.activityId,
         ownerId: recovery.ownerId,
@@ -275,7 +378,7 @@ export default function ActivityTrack() {
       setElapsed(0);
       setLivePoints([]);
     },
-    [getCompletionController],
+    [getCompletionController, invalidateTimer],
   );
 
   const restoreRecovery = useCallback(
@@ -283,8 +386,7 @@ export default function ActivityTrack() {
       getCompletionController().reset('recovery');
       setRecoveryReadState('ready');
       if (recovery.kind === 'legacy_unclaimed') {
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = null;
+        invalidateTimer();
         recordingRef.current = null;
         setDetailOwnerId(null);
         setTracking(false);
@@ -299,8 +401,7 @@ export default function ActivityTrack() {
         recovery.kind === 'needs_owner' ||
         recovery.kind === 'owner_mismatch'
       ) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = null;
+        invalidateTimer();
         recordingRef.current = null;
         setDetailOwnerId(
           recovery.kind === 'owner_mismatch' ? recovery.ownerId : null,
@@ -314,8 +415,7 @@ export default function ActivityTrack() {
         return;
       }
       if (recovery.kind === 'none') {
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = null;
+        invalidateTimer();
         recordingRef.current = null;
         startedAtRef.current = '';
         startMsRef.current = 0;
@@ -331,8 +431,7 @@ export default function ActivityTrack() {
       }
       if (recovery.kind === 'completed') {
         const recording = recovery.recording;
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = null;
+        invalidateTimer();
         recordingRef.current = {
           activityId: recording.activityId,
           ownerId: recording.ownerId,
@@ -367,24 +466,28 @@ export default function ActivityTrack() {
         Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
       );
       setTracking(true);
-      startTrackingTimer();
+      startTrackingTimer(recovery.ownerId);
     },
-    [getCompletionController, startTrackingTimer],
+    [getCompletionController, invalidateTimer, startTrackingTimer],
   );
 
   useEffect(() => {
     if (authLoading) return;
     let active = true;
+    const ownerId = session?.user.id ?? null;
+    const command = captureCommand(ownerId);
     getCompletionController().reset('recovery');
     queueMicrotask(() => {
-      if (active) setRecoveryReadState('checking');
+      if (active && isCommandCurrent(command)) {
+        setRecoveryReadState('checking');
+      }
     });
-    void recoverTrackRecording(session?.user.id ?? null, 'run')
+    void recoverTrackRecording(ownerId, 'run')
       .then(async (recovery) => {
-        if (!active) return;
+        if (!active || !isCommandCurrent(command)) return;
         if (recovery.kind === 'active') {
           const taskStatus = await ensureTrackLocationTask();
-          if (!active) return;
+          if (!active || !isCommandCurrent(command)) return;
           if (taskStatus === 'paused') {
             restorePausedRecovery(recovery);
             return;
@@ -393,7 +496,7 @@ export default function ActivityTrack() {
         restoreRecovery(recovery);
       })
       .catch(() => {
-        if (!active) return;
+        if (!active || !isCommandCurrent(command)) return;
         setRecoveryReadState('error');
         setRecoveryNotice('storage_error');
       });
@@ -402,7 +505,10 @@ export default function ActivityTrack() {
     };
   }, [
     authLoading,
+    captureCommand,
     getCompletionController,
+    isCommandCurrent,
+    recoveryRefreshRevision,
     restorePausedRecovery,
     restoreRecovery,
     session?.user.id,
@@ -417,12 +523,15 @@ export default function ActivityTrack() {
       );
       return;
     }
+    const command = captureCommand(ownerId);
     setSaving(true);
     setRecoveryReadState('checking');
     try {
       const claimed = await claimLegacyTrackRecording(ownerId, type);
+      if (!isCommandCurrent(command)) return;
       restoreRecovery(claimed);
     } catch {
+      if (!isCommandCurrent(command)) return;
       setRecoveryReadState('error');
       setRecoveryNotice('storage_error');
       Alert.alert(
@@ -430,142 +539,168 @@ export default function ActivityTrack() {
         'The activity remains safely stored on this phone. Try again.',
       );
     } finally {
-      setSaving(false);
+      if (isCommandCurrent(command)) setSaving(false);
     }
   }
 
   async function onRetryResume() {
     const ownerId = session?.user.id;
     if (!ownerId) return;
+    const command = captureCommand(ownerId);
     setSaving(true);
     setRecoveryReadState('checking');
     try {
       const recovery = await recoverTrackRecording(ownerId, type);
+      if (!isCommandCurrent(command)) return;
       if (recovery.kind !== 'active') {
         restoreRecovery(recovery);
         return;
       }
       const taskStatus = await ensureTrackLocationTask();
+      if (!isCommandCurrent(command)) return;
       if (taskStatus === 'paused') {
         restorePausedRecovery(recovery);
         return;
       }
       restoreRecovery(recovery);
     } catch {
+      if (!isCommandCurrent(command)) return;
       setRecoveryReadState('error');
       setRecoveryNotice('tracking_paused');
     } finally {
-      setSaving(false);
+      if (isCommandCurrent(command)) setSaving(false);
     }
   }
 
   async function onStart() {
     if (!acquireSynchronousLock(startingRef)) return;
+    const ownerId = session?.user.id ?? null;
+    const command = captureCommand(ownerId);
+    const selectedTypeAtStart = type;
     getCompletionController().reset('new_recording');
     setStarting(true);
     try {
-    hapticImpact();
-    if (Platform.OS === 'web') {
-      // no GPS in a browser — let the user preview the shareable run card
-      const completedAt = new Date().toISOString();
-      setShareRun({
-        activityId: null,
-        ownerId: session?.user.id ?? null,
-        syncStatus: null,
-        type,
-        distance: totalDistanceMeters(SAMPLE_ROUTE),
-        elapsed: 31 * 60 + 12,
-        points: SAMPLE_ROUTE,
-        title: runCardTitle(type, completedAt),
-        completedAt,
-        cardTheme: createDefaultRunShareAppearance(completedAt).theme,
-      });
-      return;
-    }
-    const ownerId = session?.user.id;
-    if (!ownerId) {
-      Alert.alert(
-        'Sign in required',
-        'Sign in before starting so this activity stays with the right account.',
-      );
-      return;
-    }
-    try {
-      const existing = await recoverTrackRecording(ownerId, type);
-      if (existing.kind !== 'none') {
-        restoreRecovery(existing);
+      hapticImpact();
+      if (Platform.OS === 'web') {
+        // no GPS in a browser — let the user preview the shareable run card
+        const completedAt = new Date().toISOString();
+        if (!isCommandCurrent(command)) return;
+        setShareRun({
+          activityId: null,
+          ownerId,
+          syncStatus: null,
+          type: selectedTypeAtStart,
+          distance: totalDistanceMeters(SAMPLE_ROUTE),
+          elapsed: 31 * 60 + 12,
+          points: SAMPLE_ROUTE,
+          title: runCardTitle(selectedTypeAtStart, completedAt),
+          completedAt,
+          cardTheme: createDefaultRunShareAppearance(completedAt).theme,
+        });
+        setShareAuthority(command);
+        return;
+      }
+      if (!ownerId) {
         Alert.alert(
-          'Recording already saved',
-          existing.kind === 'owner_mismatch'
-            ? 'Sign in as the recording owner to recover it.'
-            : existing.kind === 'legacy_unclaimed'
-              ? 'Use Restore to this account before starting.'
-            : 'Your saved recording has been restored.',
+          'Sign in required',
+          'Sign in before starting so this activity stays with the right account.',
         );
         return;
       }
-    } catch {
-      Alert.alert(
-        'Could not check saved recording',
-        'Try again before starting a new activity.',
-      );
-      return;
-    }
-    const fg = await Location.requestForegroundPermissionsAsync();
-    if (fg.status !== 'granted') {
-      Alert.alert('Location needed', 'Allow location access to track your activity.');
-      return;
-    }
-    await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
-    let recording: TrackRecordingIdentity;
-    try {
-      recording = await beginTrackRecording(ownerId, type);
-    } catch {
-      Alert.alert(
-        'Could not save on this phone',
-        'Free some storage and try starting again.',
-      );
-      return;
-    }
-    setDistance(0);
-    setElapsed(0);
-    setLivePoints([]);
-    recordingRef.current = recording;
-    setDetailOwnerId(recording.ownerId);
-    setRecoveryReadState('ready');
-    startedAtRef.current = recording.startedAt;
-    startMsRef.current = Date.now();
-    try {
-      await startTrackLocationTask();
-    } catch (e) {
-      const recovery = await recoverTrackRecording(ownerId, type).catch(
-        () => null,
-      );
-      if (recovery?.kind === 'active') {
-        restorePausedRecovery(recovery);
+      try {
+        const existing = await recoverTrackRecording(ownerId, selectedTypeAtStart);
+        if (!isCommandCurrent(command)) return;
+        if (existing.kind !== 'none') {
+          restoreRecovery(existing);
+          Alert.alert(
+            'Recording already saved',
+            existing.kind === 'owner_mismatch'
+              ? 'Sign in as the recording owner to recover it.'
+              : existing.kind === 'legacy_unclaimed'
+                ? 'Use Restore to this account before starting.'
+              : 'Your saved recording has been restored.',
+          );
+          return;
+        }
+      } catch {
+        if (!isCommandCurrent(command)) return;
+        Alert.alert(
+          'Could not check saved recording',
+          'Try again before starting a new activity.',
+        );
+        return;
       }
-      Alert.alert(
-        'Tracking paused',
-        `${String((e as Error).message ?? e)}\n\nYour recording is safe. Tap Retry resume.`,
-      );
-      return;
-    }
-    setTracking(true);
-    startTrackingTimer();
+      const fg = await Location.requestForegroundPermissionsAsync();
+      if (!isCommandCurrent(command)) return;
+      if (fg.status !== 'granted') {
+        Alert.alert('Location needed', 'Allow location access to track your activity.');
+        return;
+      }
+      await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
+      if (!isCommandCurrent(command)) return;
+      let recording: TrackRecordingIdentity;
+      try {
+        recording = await beginTrackRecording(ownerId, selectedTypeAtStart);
+        if (!isCommandCurrent(command)) return;
+      } catch {
+        if (!isCommandCurrent(command)) return;
+        Alert.alert(
+          'Could not save on this phone',
+          'Free some storage and try starting again.',
+        );
+        return;
+      }
+      setDistance(0);
+      setElapsed(0);
+      setLivePoints([]);
+      recordingRef.current = recording;
+      setDetailOwnerId(recording.ownerId);
+      setRecoveryReadState('ready');
+      startedAtRef.current = recording.startedAt;
+      startMsRef.current = Date.now();
+      try {
+        await startTrackLocationTask();
+        if (!isCommandCurrent(command)) return;
+      } catch (e) {
+        const recovery = await recoverTrackRecording(
+          ownerId,
+          selectedTypeAtStart,
+        ).catch(() => null);
+        if (!isCommandCurrent(command)) return;
+        if (recovery?.kind === 'active') {
+          restorePausedRecovery(recovery);
+        }
+        Alert.alert(
+          'Tracking paused',
+          `${String((e as Error).message ?? e)}\n\nYour recording is safe. Tap Retry resume.`,
+        );
+        return;
+      }
+      setTracking(true);
+      startTrackingTimer(ownerId);
     } finally {
       releaseSynchronousLock(startingRef);
-      setStarting(false);
+      if (isCommandCurrent(command)) setStarting(false);
     }
   }
 
-  async function persist(p: PendingSave) {
-    setSaving(true);
+  async function persist(
+    p: PendingSave,
+    command: OwnerCommandScope = captureCommand(p.ownerId),
+  ) {
+    if (isCommandCurrent(command)) setSaving(true);
     try {
       await persistCompletedTrackRecording(p);
+      completionGuardRef.current = command;
       const queued = await getCompletionController().complete(p);
+      if (!isCommandCurrent(command)) {
+        if (mountedRef.current) {
+          setRecoveryRefreshRevision((revision) => revision + 1);
+        }
+        return;
+      }
       setPending(null);
       recordingRef.current = null;
-      setDetailOwnerId(null);
       // saved to the log — now offer the shareable run card
       const completedAt = completedRunTimestamp(
         p.activity.started_at,
@@ -583,85 +718,160 @@ export default function ActivityTrack() {
         completedAt,
         cardTheme: createDefaultRunShareAppearance(completedAt).theme,
       });
+      setShareAuthority(command);
     } catch (e) {
+      if (!isCommandCurrent(command)) return;
       setPending(p);
       Alert.alert(
         'Could not save on this phone',
         `${String((e as Error).message ?? e)}\n\nYour recording is safe — tap Retry.`,
       );
     } finally {
-      setSaving(false);
+      if (isCommandCurrent(command)) setSaving(false);
     }
   }
 
   async function onStop() {
     if (!acquireSynchronousLock(stoppingRef)) return;
-    setStopping(true);
+    const capturedIdentity = recordingRef.current;
+    const ownerId = capturedIdentity?.ownerId ?? detailOwnerId;
+    const command = captureCommand(ownerId);
+    const selectedTypeAtStop = type;
+    const startedAtMs = startMsRef.current;
+    if (isCommandCurrent(command)) setStopping(true);
     try {
       getCompletionController().reset('stop');
       hapticImpact();
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = null;
-      await stopUpdatesIfRunning();
-      setTracking(false);
+      invalidateTimer();
+      await stopUpdatesIfRunning(true);
+      if (isCommandCurrent(command)) setTracking(false);
       const finalElapsed = Math.round(
-        (Date.now() - startMsRef.current) / 1000,
+        (Date.now() - startedAtMs) / 1000,
       );
       const points = await readTrackPoints();
       const finalDistance = totalDistanceMeters(points);
-      setElapsed(finalElapsed);
-      setDistance(finalDistance);
-      setLivePoints(points);
+      if (isCommandCurrent(command)) {
+        setElapsed(finalElapsed);
+        setDistance(finalDistance);
+        setLivePoints(points);
+      }
       if (finalElapsed < 3 && finalDistance < 5) {
-        Alert.alert('Too short', 'That activity was too short to save.');
-        await resetTrackPoints();
-        recordingRef.current = null;
-        setDetailOwnerId(null);
-        setDistance(0);
-        setElapsed(0);
-        setLivePoints([]);
+        if (isCommandCurrent(command)) {
+          Alert.alert('Too short', 'That activity was too short to save.');
+        }
+        const cleanupIdentity =
+          capturedIdentity ??
+          (await readTrackRecording(ownerId ?? undefined).catch(() => null));
+        if (cleanupIdentity) {
+          await clearTrackRecording(cleanupIdentity.activityId);
+        } else if (isCommandCurrent(command)) {
+          await resetTrackPoints();
+        }
+        if (isCommandCurrent(command)) {
+          recordingRef.current = null;
+          setDistance(0);
+          setElapsed(0);
+          setLivePoints([]);
+          setPending(null);
+          setDetailOwnerId(null);
+        }
         return;
       }
       const identity =
-        recordingRef.current ??
-        (await readTrackRecording(session?.user.id).catch(() => null));
+        capturedIdentity ??
+        (await readTrackRecording(ownerId ?? undefined).catch(() => null));
       if (!identity) {
-        Alert.alert(
-          'Could not save on this phone',
-          'Your route is still on this phone. Reopen this screen and tap Retry.',
-        );
+        if (isCommandCurrent(command)) {
+          Alert.alert(
+            'Could not save on this phone',
+            'Your route is still on this phone. Reopen this screen and tap Retry.',
+          );
+        }
         return;
       }
       const nextPending: PendingSave = {
         activityId: identity.activityId,
         ownerId: identity.ownerId,
         activity: {
-          type,
+          type: selectedTypeAtStop,
           distance_m: finalDistance,
           duration_s: finalElapsed,
           route: points,
           started_at: identity.startedAt,
         },
       };
-      setPending(nextPending);
-      await persist(nextPending);
+      if (isCommandCurrent(command)) setPending(nextPending);
+      await persist(nextPending, command);
     } catch {
-      setTracking(false);
-      setRecoveryReadState('error');
-      setRecoveryNotice('tracking_paused');
-      Alert.alert(
-        'Could not finish activity',
-        'Your route is still safe on this phone. Tap Retry resume.',
-      );
+      if (isCommandCurrent(command)) {
+        setTracking(false);
+        setRecoveryReadState('error');
+        setRecoveryNotice('tracking_paused');
+        Alert.alert(
+          'Could not finish activity',
+          'Your route is still safe on this phone. Tap Retry resume.',
+        );
+      }
     } finally {
       releaseSynchronousLock(stoppingRef);
-      setStopping(false);
+      if (isCommandCurrent(command)) setStopping(false);
+    }
+  }
+
+  function clearOwnerDetailState() {
+    invalidateTimer();
+    mapRef.current?.clearRoute();
+    liveViewportAuthorityRef.current = null;
+    recordingRef.current = null;
+    startedAtRef.current = '';
+    startMsRef.current = 0;
+    setTracking(false);
+    setPending(null);
+    setDistance(0);
+    setElapsed(0);
+    setLivePoints([]);
+    setDetailOwnerId(null);
+    setType('run');
+    setRecoveryReadState('ready');
+    setRecoveryNotice(null);
+  }
+
+  async function discardActivity(
+    identity: TrackRecordingIdentity,
+    command: OwnerCommandScope,
+  ) {
+    if (!isCommandCurrent(command) || identity.ownerId !== command.ownerId) return;
+    const wasActiveRecording = pending === null;
+    setSaving(true);
+    getCompletionController().reset('discard');
+    invalidateTimer();
+    try {
+      await stopUpdatesIfRunning(true);
+      await clearTrackRecording(identity.activityId);
+      if (!isCommandCurrent(command)) return;
+      clearOwnerDetailState();
+    } catch {
+      if (!isCommandCurrent(command)) return;
+      if (wasActiveRecording) {
+        setTracking(false);
+        setRecoveryReadState('error');
+        setRecoveryNotice('tracking_paused');
+      }
+      Alert.alert(
+        'Could not discard activity',
+        'The activity is still safe on this phone. Try again.',
+      );
+    } finally {
+      if (isCommandCurrent(command)) setSaving(false);
     }
   }
 
   const rawDistance = pending ? pending.activity.distance_m : distance;
   const rawElapsed = pending ? pending.activity.duration_s : elapsed;
   const rawPoints = pending ? pending.activity.route : livePoints;
+  const ownerlessPrivateDetail =
+    detailOwnerId === null &&
+    (pending !== null || tracking || rawDistance > 0 || rawElapsed > 0 || rawPoints.length > 0);
   const detailView = detailOwnerId
     ? recordingDetailView(
         {
@@ -674,21 +884,37 @@ export default function ActivityTrack() {
         recoveryReadState,
       )
     : {
-        visible: recoveryNotice === null && recoveryReadState !== 'error',
-        distance: rawDistance,
-        elapsed: rawElapsed,
-        points: rawPoints,
+        visible:
+          !ownerlessPrivateDetail &&
+          recoveryNotice === null &&
+          recoveryReadState === 'ready',
+        distance: 0,
+        elapsed: 0,
+        points: [] as Pt[],
       };
   const shownDist = detailView.distance;
   const shownElapsed = detailView.elapsed;
   const shownPoints = detailView.points;
   const visiblePending = detailView.visible ? pending : null;
   const visibleTracking = detailView.visible && tracking;
+  const currentOwnerId = session?.user.id ?? null;
+  const ownerTransitionPending = authoritativeOwnerId !== currentOwnerId;
+  const visibleShareRun =
+    !authLoading &&
+    !ownerTransitionPending &&
+    shareRun &&
+    shareAuthority &&
+    shareRun.ownerId === currentOwnerId &&
+    shareAuthority.ownerId === authoritativeOwnerId &&
+    shareAuthority.generation === ownerRenderGeneration
+      ? shareRun
+      : null;
   const confirmedBadgeStatus = activityUploadBadgeStatus(
-    shareRun?.activityId ?? visiblePending?.activityId ?? null,
+    visibleShareRun?.activityId ?? visiblePending?.activityId ?? null,
     durableQueueConfirmation,
   );
   const recoveryBlocked =
+    ownerTransitionPending ||
     recoveryReadState !== 'ready' ||
     recoveryNotice !== null ||
     (detailOwnerId !== null && !detailView.visible);
@@ -696,7 +922,7 @@ export default function ActivityTrack() {
   const privateTypeView = recordingTypeView(
     type,
     detailOwnerId,
-    session?.user.id ?? null,
+    currentOwnerId,
     recoveryReadState,
   );
   const selectedType = typeIsProtected
@@ -709,6 +935,14 @@ export default function ActivityTrack() {
   // A live route is pushed through the ref to avoid rebuilding the WebView.
   // Finished or pending owner-safe geometry can be supplied declaratively.
   const mapRoute = visibleTracking ? [] : safeRoute;
+  const mapAuthorityResolved =
+    !authLoading &&
+    !ownerTransitionPending &&
+    !recoveryBlocked &&
+    detailView.visible &&
+    selectedType !== null &&
+    !ownerlessPrivateDetail;
+  const mapAuthorityKey = `${currentOwnerId ?? 'signed-out'}:${ownerRenderGeneration}`;
   const idleMarkers =
     !recoveryBlocked && !visibleTracking && safeRoute.length === 0 && idlePos
       ? [{ lat: idlePos.lat, lng: idlePos.lng, label: 'You', color: LIME }]
@@ -718,17 +952,31 @@ export default function ActivityTrack() {
     avatar && avatar.ownerId === session?.user.id ? avatar.uri : null;
   const resolvedVisibleAvatar = useResolvedImageUrl(visibleAvatar);
 
+  const bindMapHandle = useCallback((handle: OsmMapHandle | null) => {
+    if (!handle && mapRef.current) {
+      mapRef.current.clearRoute();
+    }
+    mapRef.current = handle;
+  }, []);
+
   // Clear imperative geometry as soon as its owner is no longer authoritative.
   // While recording, update only from the already-redacted detail view.
   useEffect(() => {
-    if (!detailView.visible || recoveryBlocked) {
-      mapRef.current?.setRoute([]);
+    if (!mapAuthorityResolved) {
+      liveViewportAuthorityRef.current = null;
+      mapRef.current?.clearRoute();
       return;
     }
     if (!visibleTracking) return;
     const route = toLatLng(shownPoints);
-    mapRef.current?.setRoute(route, route[route.length - 1]);
-  }, [detailView.visible, recoveryBlocked, shownPoints, visibleTracking]);
+    const latest = route[route.length - 1];
+    if (liveViewportAuthorityRef.current !== mapAuthorityKey && latest) {
+      liveViewportAuthorityRef.current = mapAuthorityKey;
+      mapRef.current?.setRoute(route, { viewport: 'center', center: latest });
+      return;
+    }
+    mapRef.current?.setRoute(route, { viewport: 'preserve' });
+  }, [mapAuthorityKey, mapAuthorityResolved, shownPoints, visibleTracking]);
 
   const selectorDisabled =
     visibleTracking || !!visiblePending || recoveryBlocked || starting || stopping;
@@ -808,12 +1056,12 @@ export default function ActivityTrack() {
       );
       return;
     }
-    mapRef.current?.setRoute(safeRoute, center);
+    mapRef.current?.centerOn(center);
   }
 
   function onShowRoute() {
     if (!routeOverviewAvailable) return;
-    mapRef.current?.setRoute(safeRoute);
+    mapRef.current?.fitRoute();
   }
 
   function onMoreOptions() {
@@ -824,9 +1072,45 @@ export default function ActivityTrack() {
         : visiblePending
           ? 'Your saved route is safe on this phone. Use Retry save when ready.'
           : 'Choose Run, Walk, or Ride above. GPS and saving are handled when you start.';
+    const identity = visiblePending
+      ? {
+          activityId: visiblePending.activityId,
+          ownerId: visiblePending.ownerId,
+          startedAt: visiblePending.activity.started_at,
+        }
+      : visibleTracking
+        ? recordingRef.current
+        : null;
+    if (!identity || stopping || saving) {
+      Alert.alert('Run options', detail, [{ text: 'Close', style: 'cancel' }]);
+      return;
+    }
+    const command = captureCommand(identity.ownerId);
     Alert.alert(
       'Run options',
       detail,
+      [
+        { text: 'Keep activity', style: 'cancel' },
+        {
+          text: 'Discard activity',
+          style: 'destructive',
+          onPress: () => {
+            if (!isCommandCurrent(command)) return;
+            Alert.alert(
+              'Discard activity?',
+              'This permanently removes the saved route from this phone and cannot be undone.',
+              [
+                { text: 'Keep activity', style: 'cancel' },
+                {
+                  text: 'Discard permanently',
+                  style: 'destructive',
+                  onPress: () => void discardActivity(identity, command),
+                },
+              ],
+            );
+          },
+        },
+      ],
     );
   }
 
@@ -855,27 +1139,38 @@ export default function ActivityTrack() {
 
   return (
     <View style={styles.screen}>
+      <Tabs.Screen
+        options={{
+          headerShown: false,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
       <View
-        accessibilityElementsHidden={!!shareRun}
+        accessibilityElementsHidden={!!visibleShareRun}
         importantForAccessibility={
-          shareRun ? 'no-hide-descendants' : 'auto'
+          visibleShareRun ? 'no-hide-descendants' : 'auto'
         }
         style={StyleSheet.absoluteFill}
       >
-        <OsmMap
-          ref={mapRef}
-          route={mapRoute}
-          markers={idleMarkers}
-          interactive
-          tiles="dark"
-          fitPadding={{
-            top: insets.top + 88,
-            right: sideInset + 64,
-            bottom: Math.min(360, Math.max(220, Math.round(H * 0.4))),
-            left: sideInset + 24,
-          }}
-          style={[StyleSheet.absoluteFill, styles.mapBg]}
-        />
+        {mapAuthorityResolved ? (
+          <OsmMap
+            key={mapAuthorityKey}
+            ref={bindMapHandle}
+            route={mapRoute}
+            markers={idleMarkers}
+            interactive
+            tiles="dark"
+            fitPadding={{
+              top: insets.top + 88,
+              right: sideInset + 64,
+              bottom: Math.min(360, Math.max(220, Math.round(H * 0.4))),
+              left: sideInset + 24,
+            }}
+            style={[StyleSheet.absoluteFill, styles.mapBg]}
+          />
+        ) : (
+          <View testID="run-private-map-placeholder" style={StyleSheet.absoluteFill} />
+        )}
         <LinearGradient
           pointerEvents="none"
           colors={[
@@ -1029,11 +1324,14 @@ export default function ActivityTrack() {
       </View>
 
       {/* post-run: turn it into a shareable card */}
-      {shareRun ? (
+      {visibleShareRun ? (
         <RunShareSheet
-          run={shareRun}
+          run={visibleShareRun}
           onClose={() => {
+            if (!shareAuthority || !isCommandCurrent(shareAuthority)) return;
             getCompletionController().reset('current_run_cleared');
+            clearOwnerDetailState();
+            setShareAuthority(null);
             setShareRun(null);
             router.navigate('/today' as never);
           }}
