@@ -23,6 +23,7 @@ export type OpenMapRunLayout = {
   largeText: boolean;
 };
 
+/** Expects finite positive portrait dimensions and realistic nonnegative safe-area/font-scale values. */
 export function openMapRunLayout({
   width,
   height,

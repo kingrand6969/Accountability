@@ -65,7 +65,11 @@ describe('openMapRunLayout', () => {
     expect(layout.controlSize).toBe(48);
     expect(layout.metricFontSize).toBe(54);
     expect(layout.metricLineHeight).toBe(60);
+    expect(layout.statusTop).toBe(532);
     expect(layout.statusHeight).toBe(48);
+    expect(layout.metricBandTop).toBe(592);
+    expect(layout.secondaryRailBottom).toBe(736);
+    expect(layout.ctaTop).toBe(750);
     expect(layout.ctaHeight).toBe(58);
     expect(layout.bottomDockBottom).toBe(36);
   });
