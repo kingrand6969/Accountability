@@ -81,7 +81,45 @@ function flattenedControlStyle(node: TestRenderer.ReactTestInstance) {
   return StyleSheet.flatten(rawStyle);
 }
 
+const SUPPORTED_VIEWPORTS = [
+  { viewportWidth: 320, viewportHeight: 568, sideInset: 16 },
+  { viewportWidth: 390, viewportHeight: 844, sideInset: 0 },
+  { viewportWidth: 430, viewportHeight: 932, sideInset: 0 },
+] as const;
+
+const SUPPORTED_GEOMETRY_CASES = [
+  ...SUPPORTED_VIEWPORTS.flatMap((viewport) =>
+    [1, 1.3, 2].map((fontScale) => ({ ...viewport, fontScale })),
+  ),
+  ...SUPPORTED_VIEWPORTS.map((viewport) => ({
+    ...viewport,
+    fontScale: 2,
+    safeTop: 44,
+    safeBottom: 34,
+  })),
+];
+
 describe('RunTrackerOpenMap', () => {
+  test.each(SUPPORTED_GEOMETRY_CASES)(
+    'keeps supported $viewportWidth×$viewportHeight at $fontScale× vertically separated',
+    (viewport) => {
+      const { renderer } = render(viewport);
+      const toolsStyle = StyleSheet.flatten(
+        renderer.root.findByProps({ testID: 'run-open-map-map-tools' }).props.style,
+      );
+      const statusStyle = StyleSheet.flatten(
+        renderer.root.findByProps({ testID: 'run-open-map-status' }).props.style,
+      );
+      const metricsStyle = StyleSheet.flatten(
+        renderer.root.findByProps({ testID: 'run-open-map-primary-metrics' }).props.style,
+      );
+
+      expect(toolsStyle.top + toolsStyle.height).toBeLessThanOrEqual(statusStyle.top - 18);
+      expect(statusStyle.top + statusStyle.minHeight)
+        .toBeLessThanOrEqual(metricsStyle.top - 12);
+    },
+  );
+
   test.each([
     {
       name: 'reference phone',
@@ -202,9 +240,9 @@ describe('RunTrackerOpenMap', () => {
     expect(byLabel(renderer, 'Start Run').props.onPress).toEqual(expect.any(Function));
   });
 
-  test('never moves the status overlay above the top-control safe floor', () => {
+  test('uses a non-overlapping constrained fallback for unsupported safe-area geometry', () => {
     const safeTop = 120;
-    const { renderer } = render({
+    const { renderer, componentProps } = render({
       viewportWidth: 320,
       viewportHeight: 568,
       fontScale: 2,
@@ -214,8 +252,32 @@ describe('RunTrackerOpenMap', () => {
     const statusStyle = StyleSheet.flatten(
       renderer.root.findByProps({ testID: 'run-open-map-status' }).props.style,
     );
+    const metricsStyle = StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'run-open-map-primary-metrics' }).props.style,
+    );
+    const secondaryStyle = StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'run-open-map-secondary-metrics' }).props.style,
+    );
 
     expect(statusStyle.top).toBeGreaterThanOrEqual(safeTop + 8 + 48 + 16);
+    expect(statusStyle.top + statusStyle.minHeight).toBeLessThanOrEqual(metricsStyle.top - 12);
+    expect(metricsStyle.top + metricsStyle.minHeight).toBeLessThanOrEqual(
+      secondaryStyle.top - 8,
+    );
+    expect(renderer.root.findAllByProps({ testID: 'run-open-map-map-tools' })).toHaveLength(0);
+    expect(byLabel(renderer, 'Back')).toBeTruthy();
+    expect(byLabel(renderer, 'Ready to run. GPS checks when you start')).toBeTruthy();
+    expect(byLabel(renderer, 'Distance 0.00 kilometres')).toBeTruthy();
+    expect(byLabel(renderer, 'Elapsed time 00:00')).toBeTruthy();
+    expect(byLabel(renderer, 'Pace unavailable')).toBeTruthy();
+    expect(byLabel(renderer, 'Estimated calories 0')).toBeTruthy();
+    expect(byLabel(renderer, 'Start Run')).toBeTruthy();
+
+    press(renderer, 'Map controls');
+    press(renderer, 'Center map on my location');
+    press(renderer, 'Show complete route');
+    expect(componentProps.onCenterMap).toHaveBeenCalledTimes(1);
+    expect(componentProps.onShowRoute).toHaveBeenCalledTimes(1);
   });
 
   test.each([
@@ -244,12 +306,15 @@ describe('RunTrackerOpenMap', () => {
     const statusStyle = StyleSheet.flatten(status.props.style);
     const metricsStyle = StyleSheet.flatten(metrics.props.style);
 
-    expect(statusStyle.minHeight).toBeGreaterThanOrEqual(108);
+    expect(statusStyle.minHeight).toBeGreaterThanOrEqual(92);
     expect(statusStyle.top + statusStyle.minHeight).toBeLessThanOrEqual(metricsStyle.top - 12);
     expect(detail.props.children).toBe(state.statusDetail);
     expect(detail.props.numberOfLines).toBeUndefined();
     expect(detail.props.maxFontSizeMultiplier ?? Number.POSITIVE_INFINITY)
       .toBeGreaterThanOrEqual(2);
+    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'run-status-title' }).props.style))
+      .toMatchObject({ fontSize: 12, lineHeight: 15 });
+    expect(StyleSheet.flatten(detail.props.style)).toMatchObject({ fontSize: 10, lineHeight: 13 });
   });
 
   test('renders the approved idle hierarchy and isolates every matching callback', () => {
@@ -415,7 +480,7 @@ describe('RunTrackerOpenMap', () => {
     const secondaryStyle = StyleSheet.flatten(secondary.props.style);
     const actionStyle = flattenedControlStyle(action);
 
-    expect(statusStyle.minHeight).toBeGreaterThanOrEqual(108);
+    expect(statusStyle.minHeight).toBeGreaterThanOrEqual(92);
     expect(mapToolsStyle.flexDirection).toBe('row');
     expect(mapToolsStyle.height).toBe(48);
     expect(mapToolsStyle.top + mapToolsStyle.height).toBeLessThanOrEqual(
@@ -424,7 +489,7 @@ describe('RunTrackerOpenMap', () => {
     expect(metricsStyle.top).toBeGreaterThanOrEqual(
       statusStyle.top + statusStyle.minHeight + 12,
     );
-    expect(secondaryStyle.minHeight).toBeGreaterThanOrEqual(64);
+    expect(secondaryStyle.minHeight).toBeGreaterThanOrEqual(58);
     expect(secondaryStyle.top).toBeGreaterThanOrEqual(metricsStyle.top + 80);
     expect(actionStyle.top).toBeGreaterThanOrEqual(
       secondaryStyle.top + secondaryStyle.minHeight + 14,
@@ -441,7 +506,14 @@ describe('RunTrackerOpenMap', () => {
     for (const value of primaryValues) {
       expect(value.props.numberOfLines).toBe(1);
       expect(value.props.adjustsFontSizeToFit).toBe(true);
+      expect(value.props.maxFontSizeMultiplier).toBe(1);
     }
+    expect(StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'run-secondary-value-pace' }).props.style,
+    )).toMatchObject({ fontSize: 14, lineHeight: 18 });
+    expect(StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'run-secondary-label-pace' }).props.style,
+    )).toMatchObject({ fontSize: 8, lineHeight: 11 });
 
     const essentialTextIds = [
       'run-activity-label-run',

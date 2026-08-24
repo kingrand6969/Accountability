@@ -1,6 +1,9 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { openMapRunLayout } from './runTrackerLayout';
+import {
+  isOpenMapRunLayoutSupported,
+  openMapRunLayout,
+} from './runTrackerLayout';
 
 const VIEWPORTS = [
   { width: 320, height: 568, expectedGutter: 16 },
@@ -20,6 +23,37 @@ const CASES = VIEWPORTS.flatMap((viewport) =>
 );
 
 describe('openMapRunLayout', () => {
+  test.each(CASES)(
+    'supports the required $width×$height at $fontScale× viewport matrix',
+    ({ width, height, fontScale, safeTop, safeBottom }) => {
+      expect(isOpenMapRunLayoutSupported({ width, height, fontScale, safeTop, safeBottom }))
+        .toBe(true);
+    },
+  );
+
+  test.each(VIEWPORTS)(
+    'supports realistic notched insets on the required $width×$height viewport',
+    ({ width, height }) => {
+      expect(isOpenMapRunLayoutSupported({
+        width,
+        height,
+        fontScale: 2,
+        safeTop: 44,
+        safeBottom: 34,
+      })).toBe(true);
+    },
+  );
+
+  test('rejects a short 200%-text viewport with an extreme 120-point top inset', () => {
+    expect(isOpenMapRunLayoutSupported({
+      width: 320,
+      height: 568,
+      fontScale: 2,
+      safeTop: 120,
+      safeBottom: 20,
+    })).toBe(false);
+  });
+
   test.each(CASES)(
     'keeps $width×$height at $fontScale× text ordered and inside the safe viewport',
     ({ width, height, fontScale, safeTop, safeBottom, expectedGutter }) => {

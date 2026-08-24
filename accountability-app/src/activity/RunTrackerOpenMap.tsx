@@ -1,9 +1,12 @@
-import type { ComponentProps } from 'react';
+import { useState, type ComponentProps } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ActivityType } from './api';
-import { openMapRunLayout } from './runTrackerLayout';
+import {
+  openMapRunLayout,
+  openMapRunVerticalLayout,
+} from './runTrackerLayout';
 import { colors, font, radius, themeColors } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -71,13 +74,17 @@ export function RunTrackerOpenMap({
   safeBottom,
   sideInset,
 }: RunTrackerOpenMapProps) {
-  const layout = openMapRunLayout({
+  const [constrainedMapControlsOpen, setConstrainedMapControlsOpen] = useState(false);
+  const layoutInput = {
     width: viewportWidth,
     height: viewportHeight,
     fontScale,
     safeTop,
     safeBottom,
-  });
+  };
+  const layout = openMapRunLayout(layoutInput);
+  const vertical = openMapRunVerticalLayout(layoutInput);
+  const constrained = !vertical.supported;
   const naturalLeft = (viewportWidth - layout.contentWidth) / 2;
   const contentLeft = Math.max(sideInset, naturalLeft);
   const contentWidth = Math.max(
@@ -85,7 +92,7 @@ export function RunTrackerOpenMap({
     Math.min(layout.contentWidth, viewportWidth - contentLeft * 2),
   );
   const topControlTop = safeTop + 8;
-  const extraLargeText = fontScale >= 1.75;
+  const extraLargeText = vertical.extraLargeText;
   const safeTabsLeft = contentLeft + layout.controlSize;
   const safeTabsWidth = viewportWidth - safeTabsLeft * 2;
   const tabWidth = extraLargeText
@@ -100,35 +107,23 @@ export function RunTrackerOpenMap({
     0,
     (contentWidth - layout.metricGap) / 2,
   );
-  const compactExtraLargeText = viewportWidth < 360 && extraLargeText;
-  const statusDetailLines = extraLargeText ? 2 : 1;
-  const statusHeight = Math.max(
-    layout.statusHeight,
-    Math.ceil(14 + (17 + 15 * statusDetailLines) * fontScale),
-  );
-  const secondaryHeight = Math.max(44, Math.ceil((20 + 12) * fontScale));
-  const secondaryTop = layout.secondaryRailBottom - secondaryHeight;
-  const fittedHeroScale = Math.min(fontScale, 1.2);
-  const primaryMetricsHeight = Math.ceil(
-    layout.metricLineHeight * fittedHeroScale + 2 + 14 * fontScale,
-  );
-  const metricBandTop = Math.min(
-    layout.metricBandTop,
-    secondaryTop - primaryMetricsHeight - 8,
-  );
-  const topControlSafeFloor = topControlTop + layout.controlSize + 16;
-  const statusTop = Math.max(
-    topControlSafeFloor,
-    Math.min(layout.statusTop, metricBandTop - statusHeight - 12),
-  );
+  const statusHeight = vertical.statusHeight;
+  const secondaryHeight = vertical.secondaryHeight;
+  const secondaryTop = vertical.secondaryTop;
+  const primaryMetricsHeight = vertical.primaryMetricsHeight;
+  const statusTop = constrained
+    ? vertical.topControlSafeFloor
+    : vertical.statusTop;
+  const metricBandTop = constrained
+    ? statusTop + statusHeight + 12
+    : vertical.metricBandTop;
   const mapToolGap = 10;
-  const mapToolsHeight = compactExtraLargeText
-    ? layout.controlSize
-    : layout.controlSize * 2 + mapToolGap;
-  const mapToolsTop = Math.max(
-    topControlSafeFloor,
-    statusTop - mapToolsHeight - 18,
-  );
+  const mapToolsHeight = vertical.mapToolsHeight;
+  const mapToolsTop = vertical.mapToolsTop;
+  const constrainedActionGap = 8;
+  const actionWidth = constrained
+    ? contentWidth - layout.controlSize - constrainedActionGap
+    : contentWidth;
   const paceSpoken = isUnavailablePace(pace)
     ? 'Pace unavailable'
     : `Pace ${pace} per kilometre`;
@@ -212,20 +207,21 @@ export function RunTrackerOpenMap({
         <Ionicons name="ellipsis-horizontal" size={22} color={palette.ink.primary} />
       </Pressable>
 
-      <View
-        pointerEvents="box-none"
-        testID="run-open-map-map-tools"
-        style={[
-          styles.mapTools,
-          {
-            right: contentLeft,
-            top: mapToolsTop,
-            height: mapToolsHeight,
-            flexDirection: compactExtraLargeText ? 'row' : 'column',
-            gap: mapToolGap,
-          },
-        ]}
-      >
+      {!constrained ? (
+        <View
+          pointerEvents="box-none"
+          testID="run-open-map-map-tools"
+          style={[
+            styles.mapTools,
+            {
+              right: contentLeft,
+              top: mapToolsTop,
+              height: mapToolsHeight,
+              flexDirection: vertical.mapToolsDirection,
+              gap: mapToolGap,
+            },
+          ]}
+        >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Center map on my location"
@@ -261,7 +257,8 @@ export function RunTrackerOpenMap({
         >
           <Ionicons name="scan-outline" size={20} color={palette.ink.primary} />
         </Pressable>
-      </View>
+        </View>
+      ) : null}
 
       <View
         pointerEvents="none"
@@ -281,14 +278,32 @@ export function RunTrackerOpenMap({
           accessibilityRole="text"
           accessibilityLabel={`${statusTitle}. ${statusDetail}`}
           testID="run-open-map-status-chip"
-          style={[styles.status, { maxWidth: contentWidth }]}
+          style={[
+            styles.status,
+            extraLargeText && styles.statusExtraLargeText,
+            { maxWidth: contentWidth },
+          ]}
         >
           <View accessibilityElementsHidden style={styles.statusDot} />
           <View accessible={false} style={styles.statusCopy}>
-            <Text accessible={false} testID="run-status-title" style={styles.statusTitle}>
+            <Text
+              accessible={false}
+              testID="run-status-title"
+              style={[
+                styles.statusTitle,
+                extraLargeText && styles.statusTitleExtraLargeText,
+              ]}
+            >
               {statusTitle}
             </Text>
-            <Text accessible={false} testID="run-status-detail" style={styles.statusDetail}>
+            <Text
+              accessible={false}
+              testID="run-status-detail"
+              style={[
+                styles.statusDetail,
+                extraLargeText && styles.statusDetailExtraLargeText,
+              ]}
+            >
               {statusDetail}
             </Text>
           </View>
@@ -304,6 +319,7 @@ export function RunTrackerOpenMap({
             left: contentLeft,
             top: metricBandTop,
             width: contentWidth,
+            minHeight: primaryMetricsHeight,
             gap: layout.metricGap,
           },
         ]}
@@ -318,7 +334,7 @@ export function RunTrackerOpenMap({
             accessible={false}
             adjustsFontSizeToFit
             minimumFontScale={0.7}
-            maxFontSizeMultiplier={1.3}
+            maxFontSizeMultiplier={vertical.heroMaxFontSizeMultiplier}
             numberOfLines={1}
             testID="run-metric-value-distance"
             style={[
@@ -348,7 +364,7 @@ export function RunTrackerOpenMap({
             accessible={false}
             adjustsFontSizeToFit
             minimumFontScale={0.7}
-            maxFontSizeMultiplier={1.3}
+            maxFontSizeMultiplier={vertical.heroMaxFontSizeMultiplier}
             numberOfLines={1}
             testID="run-metric-value-time"
             style={[
@@ -402,10 +418,24 @@ export function RunTrackerOpenMap({
         >
           <Ionicons name="speedometer-outline" size={18} color={colors.primary} />
           <View accessible={false} style={styles.secondaryCopy}>
-            <Text accessible={false} testID="run-secondary-value-pace" style={styles.secondaryValue}>
+            <Text
+              accessible={false}
+              testID="run-secondary-value-pace"
+              style={[
+                styles.secondaryValue,
+                extraLargeText && styles.secondaryValueExtraLargeText,
+              ]}
+            >
               {pace}
             </Text>
-            <Text accessible={false} testID="run-secondary-label-pace" style={styles.secondaryLabel}>
+            <Text
+              accessible={false}
+              testID="run-secondary-label-pace"
+              style={[
+                styles.secondaryLabel,
+                extraLargeText && styles.secondaryLabelExtraLargeText,
+              ]}
+            >
               PACE /KM
             </Text>
           </View>
@@ -422,20 +452,100 @@ export function RunTrackerOpenMap({
             <Text
               accessible={false}
               testID="run-secondary-value-calories"
-              style={styles.secondaryValue}
+              style={[
+                styles.secondaryValue,
+                extraLargeText && styles.secondaryValueExtraLargeText,
+              ]}
             >
               {estimatedCalories}
             </Text>
             <Text
               accessible={false}
               testID="run-secondary-label-calories"
-              style={styles.secondaryLabel}
+              style={[
+                styles.secondaryLabel,
+                extraLargeText && styles.secondaryLabelExtraLargeText,
+              ]}
             >
               EST. CAL
             </Text>
           </View>
         </View>
       </View>
+
+      {constrained && constrainedMapControlsOpen ? (
+        <View
+          pointerEvents="box-none"
+          testID="run-open-map-constrained-map-tools"
+          style={[
+            styles.constrainedMapTools,
+            {
+              right: contentLeft,
+              top: layout.ctaTop - layout.controlSize - 10,
+              height: layout.controlSize,
+              gap: mapToolGap,
+            },
+          ]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Center map on my location"
+            accessibilityHint="Move the map to your latest location"
+            onPress={onCenterMap}
+            style={({ pressed }) => [
+              styles.roundControl,
+              styles.mapControl,
+              { width: layout.controlSize, height: layout.controlSize },
+              pressed && styles.controlPressed,
+            ]}
+          >
+            <Ionicons name="locate" size={21} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Show complete route"
+            accessibilityHint={
+              routeOverviewAvailable
+                ? 'Fit the complete recorded route on the map'
+                : 'Route overview is unavailable until enough points are recorded'
+            }
+            accessibilityState={{ disabled: !routeOverviewAvailable }}
+            disabled={!routeOverviewAvailable}
+            onPress={onShowRoute}
+            style={({ pressed }) => [
+              styles.roundControl,
+              styles.mapControl,
+              { width: layout.controlSize, height: layout.controlSize },
+              !routeOverviewAvailable && styles.disabled,
+              pressed && routeOverviewAvailable && styles.controlPressed,
+            ]}
+          >
+            <Ionicons name="scan-outline" size={20} color={palette.ink.primary} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {constrained ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Map controls"
+          accessibilityHint="Show location and route map controls"
+          accessibilityState={{ expanded: constrainedMapControlsOpen }}
+          onPress={() => setConstrainedMapControlsOpen((open) => !open)}
+          style={({ pressed }) => [
+            styles.roundControl,
+            {
+              right: contentLeft,
+              top: layout.ctaTop + (layout.ctaHeight - layout.controlSize) / 2,
+              width: layout.controlSize,
+              height: layout.controlSize,
+            },
+            pressed && styles.controlPressed,
+          ]}
+        >
+          <Ionicons name="map-outline" size={21} color={colors.primary} />
+        </Pressable>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -450,7 +560,7 @@ export function RunTrackerOpenMap({
           {
             left: contentLeft,
             top: layout.ctaTop,
-            width: contentWidth,
+            width: actionWidth,
             minHeight: layout.ctaHeight,
           },
           fontScale >= 1.75 && styles.primaryActionExtraLargeText,
@@ -467,6 +577,7 @@ export function RunTrackerOpenMap({
           testID="run-primary-action-label"
           style={[
             styles.actionLabel,
+            constrained && styles.actionLabelConstrained,
             primaryAction.tone === 'danger' && styles.actionLabelDanger,
           ]}
         >
@@ -525,6 +636,10 @@ const styles = StyleSheet.create({
   disabled: { opacity: palette.interaction.disabledOpacity },
   mapTools: { position: 'absolute' },
   mapControl: { position: 'relative' },
+  constrainedMapTools: {
+    position: 'absolute',
+    flexDirection: 'row',
+  },
   statusRegion: {
     position: 'absolute',
     alignItems: 'center',
@@ -542,6 +657,7 @@ const styles = StyleSheet.create({
     borderColor: palette.border.strong,
     backgroundColor: 'rgba(11,13,11,0.78)',
   },
+  statusExtraLargeText: { paddingVertical: 5 },
   statusDot: {
     width: 8,
     height: 8,
@@ -556,12 +672,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 17,
   },
+  statusTitleExtraLargeText: { fontSize: 12, lineHeight: 15 },
   statusDetail: {
     color: palette.ink.muted,
     fontFamily: font.regular,
     fontSize: 11,
     lineHeight: 15,
   },
+  statusDetailExtraLargeText: { fontSize: 10, lineHeight: 13 },
   primaryMetrics: {
     position: 'absolute',
     flexDirection: 'row',
@@ -614,6 +732,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
   },
+  secondaryValueExtraLargeText: { fontSize: 14, lineHeight: 18 },
   secondaryLabel: {
     color: palette.ink.muted,
     fontFamily: font.medium,
@@ -621,6 +740,7 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.8,
   },
+  secondaryLabelExtraLargeText: { fontSize: 8, lineHeight: 11 },
   railDivider: {
     width: StyleSheet.hairlineWidth,
     height: 30,
@@ -651,5 +771,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: 'center',
   },
+  actionLabelConstrained: { fontSize: 14, lineHeight: 19 },
   actionLabelDanger: { color: '#FFFFFF' },
 });
