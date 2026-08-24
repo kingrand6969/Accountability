@@ -84,14 +84,23 @@ export function RunTrackerOpenMap({
     Math.min(layout.contentWidth, viewportWidth - contentLeft * 2),
   );
   const topControlTop = safeTop + 8;
-  const tabWidth = viewportWidth < 360 ? 48 : 56;
-  const tabsLeft = (viewportWidth - tabWidth * ACTIVITIES.length) / 2;
+  const extraLargeText = fontScale >= 1.75;
+  const safeTabsLeft = contentLeft + layout.controlSize;
+  const safeTabsWidth = viewportWidth - safeTabsLeft * 2;
+  const tabWidth = extraLargeText
+    ? safeTabsWidth / ACTIVITIES.length
+    : viewportWidth < 360
+      ? 48
+      : 56;
+  const tabsLeft = extraLargeText
+    ? safeTabsLeft
+    : (viewportWidth - tabWidth * ACTIVITIES.length) / 2;
   const primaryColumnWidth = Math.max(
     0,
     (contentWidth - layout.metricGap) / 2,
   );
-  const compactExtraLargeText = viewportWidth < 360 && fontScale >= 1.75;
-  const statusDetailLines = compactExtraLargeText ? 2 : 1;
+  const compactExtraLargeText = viewportWidth < 360 && extraLargeText;
+  const statusDetailLines = extraLargeText ? 2 : 1;
   const statusHeight = Math.max(
     layout.statusHeight,
     Math.ceil(14 + (17 + 15 * statusDetailLines) * fontScale),
@@ -262,6 +271,7 @@ export function RunTrackerOpenMap({
           accessible
           accessibilityRole="text"
           accessibilityLabel={`${statusTitle}. ${statusDetail}`}
+          testID="run-open-map-status-chip"
           style={[styles.status, { maxWidth: contentWidth }]}
         >
           <View accessibilityElementsHidden style={styles.statusDot} />
@@ -511,7 +521,7 @@ const styles = StyleSheet.create({
   status: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 7,

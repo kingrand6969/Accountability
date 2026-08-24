@@ -104,14 +104,83 @@ describe('RunTrackerOpenMap', () => {
     const { renderer } = render(landmark);
     const tools = renderer.root.findByProps({ testID: 'run-open-map-map-tools' });
     const status = renderer.root.findByProps({ testID: 'run-open-map-status' });
+    const statusChip = renderer.root.findByProps({ testID: 'run-open-map-status-chip' });
     const toolsStyle = StyleSheet.flatten(tools.props.style);
     const statusStyle = StyleSheet.flatten(status.props.style);
+    const statusChipStyle = StyleSheet.flatten(statusChip.props.style);
 
     expect(toolsStyle.top).toBe(landmark.expectedMapToolsTop);
     expect(statusStyle.top).toBe(landmark.expectedStatusTop);
     expect(toolsStyle.top + 48 * 2 + 10).toBeLessThanOrEqual(statusStyle.top - 18);
     expect(statusStyle.left + statusStyle.width / 2).toBe(landmark.viewportWidth / 2);
     expect(statusStyle.alignItems).toBe('center');
+    expect(statusChipStyle.alignSelf).toBe('center');
+  });
+
+  test.each([
+    { viewportWidth: 320, sideInset: 16, expectedTabWidth: 64 },
+    { viewportWidth: 390, sideInset: 0, expectedTabWidth: 82 },
+  ])(
+    'uses the full safe navigation interval for 200% tabs at $viewportWidth points',
+    ({ viewportWidth, sideInset, expectedTabWidth }) => {
+      const { renderer } = render({
+        viewportWidth,
+        viewportHeight: 844,
+        fontScale: 2,
+        sideInset,
+      });
+      const backStyle = flattenedControlStyle(byLabel(renderer, 'Back'));
+      const moreStyle = flattenedControlStyle(byLabel(renderer, 'More options'));
+      const tabStyles = ['Run', 'Walk', 'Ride'].map((label) =>
+        flattenedControlStyle(byLabel(renderer, label)),
+      );
+
+      expect(tabStyles.map((style) => style.width)).toEqual([
+        expectedTabWidth,
+        expectedTabWidth,
+        expectedTabWidth,
+      ]);
+      expect(tabStyles[0].left).toBe(backStyle.left + backStyle.width);
+      expect(tabStyles[1].left).toBe(tabStyles[0].left + tabStyles[0].width);
+      expect(tabStyles[2].left).toBe(tabStyles[1].left + tabStyles[1].width);
+      expect(tabStyles[2].left + tabStyles[2].width).toBe(moreStyle.right === undefined
+        ? moreStyle.left
+        : viewportWidth - moreStyle.right - moreStyle.width);
+    },
+  );
+
+  test.each([
+    {
+      name: 'Starting',
+      statusTitle: 'Getting GPS ready',
+      statusDetail: 'Checking location permission',
+      primaryAction: idleAction({ label: 'Starting…', disabled: true }),
+    },
+    {
+      name: 'Pending',
+      statusTitle: 'Save needs attention',
+      statusDetail: 'Your route is safe on this phone',
+      primaryAction: idleAction({ label: 'Retry save', icon: 'refresh' }),
+    },
+  ])('reserves two 200% detail lines for the $name status on a reference phone', (state) => {
+    const { renderer } = render({
+      ...state,
+      viewportWidth: 390,
+      viewportHeight: 844,
+      fontScale: 2,
+    });
+    const status = renderer.root.findByProps({ testID: 'run-open-map-status' });
+    const metrics = renderer.root.findByProps({ testID: 'run-open-map-primary-metrics' });
+    const detail = renderer.root.findByProps({ testID: 'run-status-detail' });
+    const statusStyle = StyleSheet.flatten(status.props.style);
+    const metricsStyle = StyleSheet.flatten(metrics.props.style);
+
+    expect(statusStyle.minHeight).toBeGreaterThanOrEqual(108);
+    expect(statusStyle.top + statusStyle.minHeight).toBeLessThanOrEqual(metricsStyle.top - 12);
+    expect(detail.props.children).toBe(state.statusDetail);
+    expect(detail.props.numberOfLines).toBeUndefined();
+    expect(detail.props.maxFontSizeMultiplier ?? Number.POSITIVE_INFINITY)
+      .toBeGreaterThanOrEqual(2);
   });
 
   test('renders the approved idle hierarchy and isolates every matching callback', () => {
