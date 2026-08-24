@@ -7,8 +7,6 @@ import {
 } from 'react';
 import {
   Alert,
-  Animated,
-  Easing,
   Image,
   Platform,
   Pressable,
@@ -33,6 +31,10 @@ import {
 } from '../../activity/geo';
 import { OsmMap, type OsmMapHandle } from '../../ui/OsmMap';
 import { RunShareSheet, type FinishedRun } from '../../activity/RunShareSheet';
+import {
+  RunTrackerOpenMap,
+  type RunTrackerPrimaryAction,
+} from '../../activity/RunTrackerOpenMap';
 import {
   ActivityUploadBadge,
   activityUploadBadgeStatus,
@@ -67,12 +69,10 @@ import {
   type PendingRecordedActivity,
 } from '../../activity/runCompletion';
 import { getMyProfile } from '../../profiles/api';
-import { floatingTabBarStyle, FLOATING_BAR_CLEARANCE } from '../../ui/floatingTabBar';
 import { font } from '../../ui/theme';
 import { hapticImpact } from '../../ui/haptics';
 import { contentMaxWidth } from '../../ui/responsive';
 import { useAuth } from '../../auth/AuthProvider';
-import { useAppTheme } from '../../ui/AppThemeProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
 import {
   completedRunTimestamp,
@@ -83,11 +83,11 @@ import {
 const LIME = '#c6f24e';
 const BG = '#101319';
 
-const TYPES: { value: ActivityType; label: string; icon: 'walk-outline' | 'footsteps-outline' | 'bicycle-outline' }[] = [
-  { value: 'run', label: 'run', icon: 'walk-outline' },
-  { value: 'walk', label: 'walk', icon: 'footsteps-outline' },
-  { value: 'ride', label: 'ride', icon: 'bicycle-outline' },
-];
+const TYPE_LABEL: Record<ActivityType, string> = {
+  run: 'Run',
+  walk: 'Walk',
+  ride: 'Ride',
+};
 
 // the run tracker stores points as {lat, lon}; the map wants {lat, lng}
 const toLatLng = (pts: Pt[]) => pts.map((p) => ({ lat: p.lat, lng: p.lon }));
@@ -106,11 +106,6 @@ const SAMPLE_ROUTE: Pt[] = [
 
 type PendingSave = PendingRecordedActivity;
 
-function timeOfDay(): string {
-  const h = new Date().getHours();
-  return h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening';
-}
-
 async function stopUpdatesIfRunning() {
   if (Platform.OS === 'web') return;
   try {
@@ -125,10 +120,9 @@ async function stopUpdatesIfRunning() {
 export default function ActivityTrack() {
   const router = useRouter();
   const { session, loading: authLoading } = useAuth();
-  const { colors: theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { width: W, fontScale } = useWindowDimensions();
+  const { width: W, height: H, fontScale } = useWindowDimensions();
   const [type, setType] = useState<ActivityType>('run');
   const [tracking, setTracking] = useState(false);
   const [distance, setDistance] = useState(0);
@@ -184,7 +178,6 @@ export default function ActivityTrack() {
   useLayoutEffect(() => {
     authOwnerRef.current = session?.user.id ?? null;
   }, [session?.user.id]);
-  const [pulse] = useState(() => new Animated.Value(0));
   const mapRef = useRef<OsmMapHandle>(null);
   // where to centre the idle map — the user's last-known spot (no prompt)
   const [idlePos, setIdlePos] = useState<{ lat: number; lng: number } | null>(null);
@@ -221,26 +214,6 @@ export default function ActivityTrack() {
     }, [session?.user.id]),
   );
 
-  // stream live GPS points into the map without reloading it
-  useEffect(() => {
-    const ownerCanView =
-      recoveryReadState === 'ready' &&
-      !!detailOwnerId &&
-      detailOwnerId === session?.user.id;
-    if (!tracking || !ownerCanView) {
-      mapRef.current?.setRoute([]);
-      return;
-    }
-    const pts = toLatLng(livePoints);
-    mapRef.current?.setRoute(pts, pts[pts.length - 1]);
-  }, [
-    detailOwnerId,
-    livePoints,
-    recoveryReadState,
-    session?.user.id,
-    tracking,
-  ]);
-
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -258,32 +231,12 @@ export default function ActivityTrack() {
     }
   }, [authLoading, getCompletionController, session?.user.id]);
 
-  // hide the floating tab bar while actually recording or sharing, so the run
-  // stays immersive; show it (highlighted) in the idle pre-start state
-  const immersive = tracking || !!shareRun;
+  // The Run tracker is an immersive, map-first destination in every state.
   useEffect(() => {
     navigation.setOptions({
-      tabBarStyle: immersive
-        ? { display: 'none' }
-        : floatingTabBarStyle(W, insets.bottom, fontScale, {
-            backgroundColor: theme.surface.card,
-            borderTopColor: theme.border.subtle,
-          }),
+      tabBarStyle: { display: 'none' },
     });
-  }, [fontScale, immersive, navigation, theme, W, insets.bottom]);
-
-  useEffect(() => {
-    if (!tracking) {
-      pulse.stopAnimation();
-      pulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.timing(pulse, { toValue: 1, duration: 1500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [tracking, pulse]);
+  }, [navigation]);
 
   const startTrackingTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -359,7 +312,18 @@ export default function ActivityTrack() {
         return;
       }
       if (recovery.kind === 'none') {
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = null;
+        recordingRef.current = null;
+        startedAtRef.current = '';
+        startMsRef.current = 0;
         setDetailOwnerId(null);
+        setTracking(false);
+        setPending(null);
+        setType('run');
+        setDistance(0);
+        setElapsed(0);
+        setLivePoints([]);
         setRecoveryNotice(null);
         return;
       }
@@ -736,262 +700,301 @@ export default function ActivityTrack() {
   const selectedType = typeIsProtected
     ? privateTypeView.selectedType
     : type;
-  const typeAccessibilityHidden =
-    typeIsProtected && privateTypeView.selectorAccessibilityHidden;
-  const kcal = estimateCalories(type, shownDist);
-
-  // live route is pushed via the map ref while tracking (no reload); a finished
-  // run passes its full route as a prop
-  const mapRoute = visibleTracking ? [] : toLatLng(shownPoints);
+  const kcal = selectedType ? estimateCalories(selectedType, shownDist) : 0;
+  const safeRoute = detailView.visible ? toLatLng(shownPoints) : [];
+  const latestSafePoint = safeRoute[safeRoute.length - 1] ?? null;
+  const routeOverviewAvailable = detailView.visible && safeRoute.length >= 2;
+  // A live route is pushed through the ref to avoid rebuilding the WebView.
+  // Finished or pending owner-safe geometry can be supplied declaratively.
+  const mapRoute = visibleTracking ? [] : safeRoute;
   const idleMarkers =
-    !tracking && shownPoints.length === 0 && idlePos
+    !recoveryBlocked && !visibleTracking && safeRoute.length === 0 && idlePos
       ? [{ lat: idlePos.lat, lng: idlePos.lng, label: 'You', color: LIME }]
       : [];
-  // keep the floating UI in a centered column on wide screens (map stays full-bleed)
   const sideInset = Math.max(16, (W - contentMaxWidth(W)) / 2);
-  const title =
-    typeIsProtected && privateTypeView.title === 'Activity'
-      ? 'Activity'
-      : `${timeOfDay()} ${
-          TYPES.find((t) => t.value === selectedType)?.label ?? 'run'
-        }`;
-  const when = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const timeLabel = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const visibleAvatar =
     avatar && avatar.ownerId === session?.user.id ? avatar.uri : null;
   const resolvedVisibleAvatar = useResolvedImageUrl(visibleAvatar);
 
+  // Clear imperative geometry as soon as its owner is no longer authoritative.
+  // While recording, update only from the already-redacted detail view.
+  useEffect(() => {
+    if (!detailView.visible || recoveryBlocked) {
+      mapRef.current?.setRoute([]);
+      return;
+    }
+    if (!visibleTracking) return;
+    const route = toLatLng(shownPoints);
+    mapRef.current?.setRoute(route, route[route.length - 1]);
+  }, [detailView.visible, recoveryBlocked, shownPoints, visibleTracking]);
+
+  const selectorDisabled =
+    visibleTracking || !!visiblePending || recoveryBlocked || starting;
+  const selectedActivityLabel = selectedType ? TYPE_LABEL[selectedType] : 'Run';
+  const status = visiblePending
+    ? {
+        title: 'Save needs attention',
+        detail: 'Your route is safe on this phone',
+      }
+    : visibleTracking
+      ? { title: 'Recording', detail: 'GPS active' }
+      : starting
+        ? {
+            title: 'Getting GPS ready',
+            detail: 'Checking location permission',
+          }
+        : {
+            title: `Ready to ${selectedType ?? 'run'}`,
+            detail: idlePos ? 'GPS available' : 'GPS checks when you start',
+          };
+  const primaryAction: RunTrackerPrimaryAction = visiblePending
+    ? {
+        label: 'Retry save',
+        icon: 'refresh',
+        tone: 'primary',
+        disabled: saving,
+        busy: saving,
+        onPress: () => void persist(visiblePending),
+      }
+    : visibleTracking
+      ? {
+          label: 'Stop & Save',
+          icon: 'stop',
+          tone: 'danger',
+          disabled: saving,
+          busy: saving,
+          onPress: () => void onStop(),
+        }
+      : starting
+        ? {
+            label: 'Starting…',
+            icon: 'hourglass-outline',
+            tone: 'primary',
+            disabled: true,
+            busy: true,
+            onPress: () => undefined,
+          }
+        : {
+            label: `Start ${selectedActivityLabel}`,
+            icon: 'play',
+            tone: 'primary',
+            disabled: false,
+            busy: false,
+            onPress: () => void onStart(),
+          };
+
+  function onCenterMap() {
+    const center = latestSafePoint ?? (!recoveryBlocked ? idlePos : null);
+    if (!center) {
+      Alert.alert(
+        'Location unavailable',
+        'Your location will appear after GPS is available or you start tracking.',
+      );
+      return;
+    }
+    mapRef.current?.setRoute(safeRoute, center);
+  }
+
+  function onShowRoute() {
+    if (!routeOverviewAvailable) return;
+    mapRef.current?.setRoute(safeRoute);
+  }
+
+  function onMoreOptions() {
+    if (visibleTracking || visiblePending) {
+      onDiscard();
+      return;
+    }
+    Alert.alert(
+      'Run options',
+      'Choose Run, Walk, or Ride above. GPS and saving are handled when you start.',
+    );
+  }
+
+  const recoveryTitle =
+    recoveryNotice === 'legacy_unclaimed'
+      ? 'Unsaved activity from an older version found'
+      : recoveryNotice === 'storage_error'
+        ? 'Saved activity could not be checked'
+        : recoveryNotice === 'tracking_paused'
+          ? 'Tracking paused'
+          : recoveryNotice
+            ? 'Recording saved safely'
+            : 'Checking saved activity';
+  const recoveryDetail =
+    recoveryNotice === 'owner_mismatch'
+      ? 'Sign in as the recording owner to recover it.'
+      : recoveryNotice === 'legacy_unclaimed'
+        ? 'Restore it explicitly before viewing its details.'
+        : recoveryNotice === 'storage_error'
+          ? 'Details stay hidden until storage is available.'
+          : recoveryNotice === 'tracking_paused'
+            ? 'Your route is safe. Resume tracking to continue.'
+            : recoveryNotice === 'needs_owner'
+              ? 'Sign in to recover this recording.'
+              : 'Activity details stay hidden while this phone is checked.';
+
   return (
     <View style={styles.screen}>
-      {/* full-screen real map (dark tiles to match the immersive UI) */}
-      <OsmMap
-        ref={mapRef}
-        route={mapRoute}
-        markers={idleMarkers}
-        interactive={false}
-        tiles="dark"
-        style={[StyleSheet.absoluteFill, styles.mapBg]}
-      />
-      {/* top/bottom scrim keeps the white overlay text legible over the map */}
-      <LinearGradient
-        pointerEvents="none"
-        colors={['rgba(16,19,25,0.62)', 'rgba(16,19,25,0.05)', 'rgba(16,19,25,0.12)', 'rgba(16,19,25,0.86)']}
-        locations={[0, 0.28, 0.62, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* top bar */}
-      <View style={[styles.topBar, { top: insets.top + 6, left: sideInset, right: sideInset }]}>
-        <Pressable style={styles.circleBtn} onPress={() => navigateBackSafely(router)} accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={20} color="#fff" />
-        </Pressable>
-        <View
-          style={styles.typeSwitch}
-          accessibilityElementsHidden={typeAccessibilityHidden}
-          importantForAccessibility={
-            typeAccessibilityHidden ? 'no-hide-descendants' : 'auto'
-          }
-        >
-          {TYPES.map((t) => (
-            <Pressable
-              key={t.value}
-              onPress={() =>
-                !tracking &&
-                !pending &&
-                !recoveryBlocked &&
-                !starting &&
-                setType(t.value)
-              }
-              disabled={tracking || !!pending || recoveryBlocked || starting}
-              style={[
-                styles.typePill,
-                selectedType === t.value && styles.typePillActive,
-              ]}
-              accessibilityLabel={t.label}
-              accessibilityState={{
-                selected: selectedType === t.value,
-                disabled:
-                  tracking || !!pending || recoveryBlocked || starting,
-              }}
-            >
-              <Ionicons
-                name={t.icon}
-                size={15}
-                color={selectedType === t.value ? '#101319' : '#cbd5e1'}
-              />
-            </Pressable>
-          ))}
-        </View>
-        <Pressable
-          style={[styles.circleBtn, recoveryBlocked && styles.actionDisabled]}
-          onPress={onDiscard}
-          accessibilityLabel="Discard"
-          disabled={recoveryBlocked}
-          accessibilityState={{ disabled: recoveryBlocked }}
-        >
-          <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
-        </Pressable>
-      </View>
-
-      {/* floating stat pills */}
-      <View style={[styles.pills, { top: insets.top + 90, right: sideInset }]}>
-        <StatPill value={String(kcal)} label="Calories" />
-        <StatPill value={formatPace(shownDist, shownElapsed)} label="per km" />
-      </View>
-
-      {/* floating bottom card */}
       <View
         accessibilityElementsHidden={!!shareRun}
         importantForAccessibility={
           shareRun ? 'no-hide-descendants' : 'auto'
         }
-        style={[
-          styles.bottom,
-          // lift the controls clear of the floating bar when it's showing
-          {
-            left: sideInset,
-            right: sideInset,
-            paddingBottom: insets.bottom + (immersive ? 16 : FLOATING_BAR_CLEARANCE + 12),
-          },
-        ]}
+        style={StyleSheet.absoluteFill}
       >
-        <View style={styles.titleRow}>
-          {resolvedVisibleAvatar ? (
-            <Image source={{ uri: resolvedVisibleAvatar }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Ionicons name="person" size={14} color="#cbd5e1" />
-            </View>
-          )}
-          <View>
-            <Text style={styles.runTitle}>{title}</Text>
-            <Text style={styles.runWhen}>
-              {when} · {timeLabel}
-            </Text>
-          </View>
-        </View>
+        <OsmMap
+          ref={mapRef}
+          route={mapRoute}
+          markers={idleMarkers}
+          interactive
+          tiles="dark"
+          fitPadding={{
+            top: insets.top + 88,
+            right: sideInset + 64,
+            bottom: Math.min(360, Math.max(220, Math.round(H * 0.4))),
+            left: sideInset + 24,
+          }}
+          style={[StyleSheet.absoluteFill, styles.mapBg]}
+        />
+        <LinearGradient
+          pointerEvents="none"
+          colors={[
+            'rgba(11,13,11,0.70)',
+            'rgba(11,13,11,0.03)',
+            'rgba(11,13,11,0.10)',
+            'rgba(11,13,11,0.92)',
+          ]}
+          locations={[0, 0.3, 0.58, 1]}
+          style={StyleSheet.absoluteFill}
+        />
 
-        <View style={styles.cardsRow}>
-          <View style={styles.distanceCard}>
-            <View style={styles.distanceTop}>
-              <Ionicons name="location" size={14} color="#101319" />
-              <Text style={styles.distanceLabel}>Distance</Text>
-            </View>
-            <View style={styles.distanceValRow}>
-              <Text style={styles.distanceVal}>{formatKm(shownDist)}</Text>
-              <Text style={styles.distanceUnit}>Km</Text>
-            </View>
-          </View>
-
-          <View style={styles.timeCard}>
-            <Text style={styles.timeLabel}>Time</Text>
-            <Text style={styles.timeVal}>{formatDuration(shownElapsed)}</Text>
-          </View>
-        </View>
-
-        {recoveryNotice ? (
-          <View style={styles.recoveryNotice} accessibilityLiveRegion="polite">
-            <Ionicons name="shield-checkmark" size={18} color={LIME} />
-            <View style={styles.recoveryNoticeCopy}>
-              <Text style={styles.recoveryNoticeTitle}>
-                {recoveryNotice === 'legacy_unclaimed'
-                  ? 'Unsaved activity from an older version found'
-                  : recoveryNotice === 'storage_error'
-                    ? 'Saved activity could not be checked'
-                    : recoveryNotice === 'tracking_paused'
-                      ? 'Tracking paused'
-                    : 'Recording saved safely'}
-              </Text>
-              <Text style={styles.recoveryNoticeDetail}>
-                {recoveryNotice === 'owner_mismatch'
-                  ? 'Sign in as the recording owner to recover it.'
-                  : recoveryNotice === 'legacy_unclaimed'
-                    ? 'Restore it explicitly before viewing its details.'
-                    : recoveryNotice === 'storage_error'
-                      ? 'Details stay hidden until storage is available.'
-                      : recoveryNotice === 'tracking_paused'
-                        ? 'Your route is safe. Resume tracking to continue.'
-                  : 'Sign in to recover this recording.'}
-              </Text>
-            </View>
-            {recoveryNotice === 'legacy_unclaimed' ? (
-              <Pressable
-                style={[
-                  styles.restoreLegacyBtn,
-                  (!session?.user.id || saving) && styles.actionDisabled,
-                ]}
-                onPress={onClaimLegacy}
-                disabled={!session?.user.id || saving}
-                accessibilityRole="button"
-                accessibilityLabel="Restore to this account"
-                accessibilityState={{
-                  disabled: !session?.user.id || saving,
-                }}
+        {!recoveryBlocked && selectedType ? (
+          <RunTrackerOpenMap
+            selectedActivity={selectedType}
+            activitySelectorDisabled={selectorDisabled}
+            onSelectActivity={(activity) => {
+              if (!selectorDisabled) setType(activity);
+            }}
+            onBack={() => navigateBackSafely(router)}
+            onMore={onMoreOptions}
+            onCenterMap={onCenterMap}
+            onShowRoute={onShowRoute}
+            routeOverviewAvailable={routeOverviewAvailable}
+            statusTitle={status.title}
+            statusDetail={status.detail}
+            distance={formatKm(shownDist)}
+            elapsed={formatDuration(shownElapsed)}
+            pace={formatPace(shownDist, shownElapsed)}
+            estimatedCalories={kcal}
+            primaryAction={primaryAction}
+            viewportWidth={W}
+            viewportHeight={H}
+            fontScale={fontScale}
+            safeTop={insets.top}
+            safeBottom={insets.bottom}
+            sideInset={sideInset}
+          />
+        ) : (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              onPress={() => navigateBackSafely(router)}
+              style={[
+                styles.recoveryBack,
+                { left: sideInset, top: insets.top + 8 },
+              ]}
+            >
+              <Ionicons name="chevron-back" size={23} color="#f7f8f4" />
+            </Pressable>
+            <View
+              style={[
+                styles.recoveryBottom,
+                {
+                  left: sideInset,
+                  right: sideInset,
+                  bottom: insets.bottom + 16,
+                },
+              ]}
+            >
+              <View style={styles.titleRow}>
+                {resolvedVisibleAvatar ? (
+                  <Image
+                    source={{ uri: resolvedVisibleAvatar }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <View style={[styles.avatar, styles.avatarFallback]}>
+                    <Ionicons name="person" size={14} color="#cbd5e1" />
+                  </View>
+                )}
+                <View style={styles.recoveryHeadingCopy}>
+                  <Text style={styles.runTitle}>Activity recovery</Text>
+                  <Text style={styles.runWhen}>
+                    Details stay private until recovery finishes
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={styles.recoveryNotice}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
               >
-                <Text style={styles.restoreLegacyText}>
-                  Restore to this account
-                </Text>
-              </Pressable>
-            ) : null}
-            {recoveryNotice === 'tracking_paused' ? (
-              <Pressable
-                style={[
-                  styles.restoreLegacyBtn,
-                  saving && styles.actionDisabled,
-                ]}
-                onPress={onRetryResume}
-                disabled={saving}
-                accessibilityRole="button"
-                accessibilityLabel="Retry resume"
-                accessibilityState={{ disabled: saving }}
-              >
-                <Text style={styles.restoreLegacyText}>Retry resume</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+                <Ionicons name="shield-checkmark" size={18} color={LIME} />
+                <View style={styles.recoveryNoticeCopy}>
+                  <Text style={styles.recoveryNoticeTitle}>{recoveryTitle}</Text>
+                  <Text style={styles.recoveryNoticeDetail}>{recoveryDetail}</Text>
+                </View>
+                {recoveryNotice === 'legacy_unclaimed' ? (
+                  <Pressable
+                    style={[
+                      styles.restoreLegacyBtn,
+                      (!session?.user.id || saving) && styles.actionDisabled,
+                    ]}
+                    onPress={onClaimLegacy}
+                    disabled={!session?.user.id || saving}
+                    accessibilityRole="button"
+                    accessibilityLabel="Restore to this account"
+                    accessibilityState={{
+                      disabled: !session?.user.id || saving,
+                    }}
+                  >
+                    <Text style={styles.restoreLegacyText}>
+                      Restore to this account
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {recoveryNotice === 'tracking_paused' ? (
+                  <Pressable
+                    style={[
+                      styles.restoreLegacyBtn,
+                      saving && styles.actionDisabled,
+                    ]}
+                    onPress={onRetryResume}
+                    disabled={saving}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry resume"
+                    accessibilityState={{ disabled: saving }}
+                  >
+                    <Text style={styles.restoreLegacyText}>Retry resume</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          </>
+        )}
 
         {confirmedBadgeStatus ? (
           <ActivityUploadBadge
             status={confirmedBadgeStatus}
             dark
-            style={styles.uploadBadge}
+            style={[
+              styles.uploadBadge,
+              { left: sideInset, top: insets.top + 68 },
+            ]}
           />
         ) : null}
-
-        {/* floating primary action */}
-        {visiblePending ? (
-          <View style={styles.pendingRow}>
-            <Pressable style={[styles.actionBtn, styles.retryBtn]} onPress={() => persist(visiblePending)} disabled={saving}>
-              <Text style={styles.retryText}>{saving ? 'Saving…' : 'Retry'}</Text>
-            </Pressable>
-          </View>
-        ) : visibleTracking ? (
-          <Pressable style={[styles.actionBtn, styles.stopBtn]} onPress={onStop} disabled={saving}>
-            <Ionicons name="stop" size={20} color="#fff" />
-            <Text style={styles.stopText}>{saving ? 'Saving…' : 'Stop & Save'}</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={[
-              styles.actionBtn,
-              styles.startBtn,
-              (recoveryBlocked || starting) && styles.actionDisabled,
-            ]}
-            onPress={onStart}
-            disabled={recoveryBlocked || starting}
-            accessibilityState={{ disabled: recoveryBlocked || starting }}
-          >
-            <Ionicons name="play" size={20} color="#101319" />
-            <Text style={styles.startText}>
-              {starting
-                ? 'Starting…'
-                : recoveryBlocked
-                ? 'Recovery required'
-                : `Start ${TYPES.find((t) => t.value === type)?.label}`}
-            </Text>
-          </Pressable>
-        )}
       </View>
 
       {/* post-run: turn it into a shareable card */}
@@ -1009,112 +1012,55 @@ export default function ActivityTrack() {
   );
 }
 
-function StatPill({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={styles.pill}>
-      <Text style={styles.pillValue}>{value}</Text>
-      <Text style={styles.pillLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG },
   mapBg: { backgroundColor: BG },
-  runner: { position: 'absolute', width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  runnerPulse: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: LIME },
-  runnerDot: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: LIME,
-  },
-  topBar: {
+  recoveryBack: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  circleBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(30,36,48,0.85)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  typeSwitch: {
-    flexDirection: 'row',
-    gap: 4,
-    backgroundColor: 'rgba(30,36,48,0.85)',
-    borderRadius: 999,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  typePill: { width: 38, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  typePillActive: { backgroundColor: LIME },
-  pills: { position: 'absolute', right: 16, gap: 10 },
-  pill: {
-    minWidth: 62,
-    alignItems: 'center',
-    backgroundColor: 'rgba(20,24,32,0.82)',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  pillValue: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
-  pillLabel: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11, marginTop: 1 },
-  bottom: { position: 'absolute', left: 16, right: 16, bottom: 0, gap: 12 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)' },
-  avatarFallback: { backgroundColor: 'rgba(30,36,48,0.9)', alignItems: 'center', justifyContent: 'center' },
-  runTitle: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
-  runWhen: { color: '#94a3b8', fontFamily: font.medium, fontSize: 12, marginTop: 1 },
-  cardsRow: { flexDirection: 'row', gap: 12 },
-  distanceCard: { flex: 1.5, backgroundColor: LIME, borderRadius: 24, padding: 18, justifyContent: 'space-between', minHeight: 108 },
-  distanceTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  distanceLabel: { color: '#101319', fontFamily: font.semibold, fontSize: 13 },
-  distanceValRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
-  distanceVal: { color: '#101319', fontFamily: font.display, fontSize: 46, lineHeight: 48, includeFontPadding: false },
-  distanceUnit: { color: '#101319', fontFamily: font.bold, fontSize: 16, marginBottom: 6 },
-  timeCard: {
-    flex: 1,
-    backgroundColor: 'rgba(24,29,39,0.92)',
+    width: 48,
+    height: 48,
     borderRadius: 24,
-    padding: 18,
-    justifyContent: 'space-between',
-    minHeight: 108,
+    backgroundColor: 'rgba(18,21,18,0.82)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  timeLabel: { color: '#94a3b8', fontFamily: font.semibold, fontSize: 13 },
-  timeVal: { color: '#fff', fontFamily: font.display, fontSize: 34, includeFontPadding: false },
-  actionBtn: {
-    flexDirection: 'row',
+    borderColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    borderRadius: 999,
-    paddingVertical: 18,
-    marginTop: 4,
   },
-  startBtn: { backgroundColor: LIME },
-  startText: { color: '#101319', fontFamily: font.extrabold, fontSize: 17, textTransform: 'capitalize' },
-  stopBtn: { backgroundColor: '#ef4444' },
-  stopText: { color: '#fff', fontFamily: font.extrabold, fontSize: 17 },
-  pendingRow: { gap: 8 },
-  uploadBadge: { alignSelf: 'flex-start' },
+  recoveryBottom: {
+    position: 'absolute',
+    gap: 12,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: 'rgba(11,13,11,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  recoveryHeadingCopy: { flex: 1 },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  avatarFallback: {
+    backgroundColor: 'rgba(30,36,48,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  runTitle: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
+  runWhen: {
+    color: '#9da59d',
+    fontFamily: font.regular,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  uploadBadge: { position: 'absolute' },
   recoveryNotice: {
     minHeight: 52,
     flexDirection: 'row',
@@ -1140,7 +1086,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   restoreLegacyBtn: {
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 999,
@@ -1154,6 +1100,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actionDisabled: { opacity: 0.55 },
-  retryBtn: { backgroundColor: LIME },
-  retryText: { color: '#101319', fontFamily: font.extrabold, fontSize: 16 },
 });
