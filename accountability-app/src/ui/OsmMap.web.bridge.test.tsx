@@ -138,11 +138,27 @@ describe('web OsmMap imperative bridge', () => {
     expect(renderer.root.findByType('iframe').props.srcDoc).toContain(
       `var parentOrigin = "${APP_ORIGIN}";`,
     );
-    expect(renderer.root.findByType('iframe').props).toEqual(expect.objectContaining({
-      allow: '',
+    const iframeProps = renderer.root.findByType('iframe').props;
+    expect(iframeProps).toEqual(expect.objectContaining({
       referrerPolicy: 'no-referrer',
       sandbox: 'allow-scripts allow-same-origin',
     }));
+    const permissionDirectives = String(iframeProps.allow)
+      .split(';')
+      .map((directive) => directive.trim())
+      .filter(Boolean);
+    expect(permissionDirectives).toEqual(expect.arrayContaining([
+      "accelerometer 'none'",
+      "ambient-light-sensor 'none'",
+      "camera 'none'",
+      "geolocation 'none'",
+      "gyroscope 'none'",
+      "magnetometer 'none'",
+      "microphone 'none'",
+    ]));
+    expect(permissionDirectives.every(
+      (directive) => /^[a-z][a-z-]* 'none'$/.test(directive),
+    )).toBe(true);
   });
 
   test('uses the same preserve, center, overview, and clear messages as native', () => {

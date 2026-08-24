@@ -202,6 +202,12 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
         scrollEnabled={false}
         javaScriptEnabled
         domStorageEnabled
+        mediaCapturePermissionGrantType="deny"
+        geolocationEnabled={false}
+        allowFileAccess={false}
+        allowFileAccessFromFileURLs={false}
+        allowUniversalAccessFromFileURLs={false}
+        javaScriptCanOpenWindowsAutomatically={false}
         androidLayerType="hardware"
         setSupportMultipleWindows={false}
         onMessage={onMessage}

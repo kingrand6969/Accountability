@@ -78,6 +78,26 @@ function nativeCommands() {
 }
 
 describe('native OsmMap imperative bridge', () => {
+  test('denies sensor, media-capture, and file permissions without blocking map tiles', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<OsmMap />);
+      mounted.push(renderer);
+    });
+
+    expect(nativeWebView(renderer).props).toEqual(expect.objectContaining({
+      allowFileAccess: false,
+      allowFileAccessFromFileURLs: false,
+      allowUniversalAccessFromFileURLs: false,
+      geolocationEnabled: false,
+      javaScriptCanOpenWindowsAutomatically: false,
+      mediaCapturePermissionGrantType: 'deny',
+    }));
+    expect(nativeWebView(renderer).props.source.html).toContain(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    );
+  });
+
   test('does not clear an initially marker-only map or clear it again when marker layout changes', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {

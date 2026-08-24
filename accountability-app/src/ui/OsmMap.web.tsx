@@ -35,6 +35,32 @@ function resolveParentOrigin() {
   }
 }
 
+const OSM_IFRAME_PERMISSIONS_POLICY = [
+  'accelerometer',
+  'ambient-light-sensor',
+  'autoplay',
+  'camera',
+  'clipboard-read',
+  'clipboard-write',
+  'display-capture',
+  'encrypted-media',
+  'fullscreen',
+  'gamepad',
+  'geolocation',
+  'gyroscope',
+  'hid',
+  'magnetometer',
+  'microphone',
+  'midi',
+  'payment',
+  'picture-in-picture',
+  'screen-wake-lock',
+  'serial',
+  'usb',
+  'web-share',
+  'xr-spatial-tracking',
+].map((feature) => `${feature} 'none'`).join('; ');
+
 /**
  * Web build of OsmMap — the same Leaflet page, hosted in an <iframe srcDoc>.
  * Live updates go through postMessage to the iframe (mirrors the native ref API).
@@ -173,7 +199,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
     srcDoc: html,
     style: { border: 'none', width: '100%', height: '100%', display: 'block' },
     sandbox: 'allow-scripts allow-same-origin',
-    allow: '',
+    allow: OSM_IFRAME_PERMISSIONS_POLICY,
     referrerPolicy: 'no-referrer',
     onLoad,
     title: 'Map',
