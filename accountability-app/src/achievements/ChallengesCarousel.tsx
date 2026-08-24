@@ -121,10 +121,10 @@ function challengePalette(theme: AppThemeColors, mode: AppThemeMode) {
     ink: mode === 'dark' ? theme.ink.primary : INK,
     muted: mode === 'dark' ? theme.ink.muted : INK_SOFT,
     action: mode === 'dark' ? theme.ink.action : ACCENT,
-    actionInk: mode === 'dark' ? theme.ink.inverse : '#fff',
+    actionInk: mode === 'dark' ? theme.ink.inverse : '#FFFFFF',
     success: mode === 'dark' ? theme.status.success : '#166534',
-    icon: mode === 'dark' ? theme.surface.muted : 'rgba(37,99,235,0.12)',
-    pill: mode === 'dark' ? theme.surface.muted : 'rgba(37,99,235,0.12)',
+    icon: mode === 'dark' ? theme.surface.muted : 'rgba(185,255,61,0.18)',
+    pill: mode === 'dark' ? theme.surface.muted : 'rgba(185,255,61,0.18)',
     pillJoined: mode === 'dark' ? theme.status.successSoft : 'rgba(22,163,74,0.14)',
   };
 }

@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   segmentLabelSelected: {
-    color: semanticColors.ink.inverse,
+    color: colors.onPrimary,
   },
   quietTabs: {
     flexDirection: 'row',

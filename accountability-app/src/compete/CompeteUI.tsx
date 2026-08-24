@@ -6,9 +6,9 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 import { font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
 import { formatScore, type Metric } from './api';
 
-export const INK = '#1e1b4b';
-export const INK_SOFT = 'rgba(30,27,75,0.72)';
-export const ACCENT = '#2563eb';
+export const INK = '#111411';
+export const INK_SOFT = 'rgba(17,20,17,0.72)';
+export const ACCENT = '#446B00';
 const GOLD = '#f59e0b';
 const SILVER = '#94a3b8';
 const BRONZE = '#b45309';
@@ -47,16 +47,16 @@ function competitionPalette(
     segmentBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
     chipSurface: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.raised,
     chipBorder: mode === 'light' ? 'rgba(255,255,255,0.75)' : theme.border.strong,
-    selectedRow: mode === 'light' ? 'rgba(37,99,235,0.10)' : theme.surface.muted,
-    neutralRank: mode === 'light' ? 'rgba(30,27,75,0.08)' : theme.surface.raised,
-    subtleAccent: mode === 'light' ? 'rgba(37,99,235,0.12)' : theme.surface.muted,
-    faintAccent: mode === 'light' ? 'rgba(37,99,235,0.08)' : theme.surface.raised,
-    accentBorder: mode === 'light' ? 'rgba(37,99,235,0.3)' : theme.border.action,
-    accentBorderStrong: mode === 'light' ? 'rgba(37,99,235,0.35)' : theme.border.action,
-    faintInk: mode === 'light' ? 'rgba(30,27,75,0.08)' : theme.surface.muted,
-    quietInk: mode === 'light' ? 'rgba(30,27,75,0.06)' : theme.surface.muted,
+    selectedRow: mode === 'light' ? 'rgba(185,255,61,0.16)' : theme.surface.muted,
+    neutralRank: mode === 'light' ? 'rgba(17,20,17,0.08)' : theme.surface.raised,
+    subtleAccent: mode === 'light' ? 'rgba(185,255,61,0.18)' : theme.surface.muted,
+    faintAccent: mode === 'light' ? 'rgba(185,255,61,0.12)' : theme.surface.raised,
+    accentBorder: mode === 'light' ? 'rgba(111,159,0,0.42)' : theme.border.action,
+    accentBorderStrong: mode === 'light' ? 'rgba(111,159,0,0.56)' : theme.border.action,
+    faintInk: mode === 'light' ? 'rgba(17,20,17,0.08)' : theme.surface.muted,
+    quietInk: mode === 'light' ? 'rgba(17,20,17,0.06)' : theme.surface.muted,
     inputSurface: mode === 'light' ? 'rgba(255,255,255,0.6)' : theme.surface.raised,
-    inputBorder: mode === 'light' ? 'rgba(30,27,75,0.15)' : theme.border.strong,
+    inputBorder: mode === 'light' ? 'rgba(17,20,17,0.15)' : theme.border.strong,
   };
 }
 

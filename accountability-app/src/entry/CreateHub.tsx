@@ -216,17 +216,17 @@ export function CreateHub({
 
 function createPalette(theme: AppThemeColors, mode: AppThemeMode) {
   return {
-    canvas: mode === 'light' ? '#F7F4EC' : theme.surface.canvas,
+    canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas,
     card: mode === 'light' ? legacyColors.card : theme.surface.card,
     divider: mode === 'light' ? '#E8E2D7' : theme.border.subtle,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
     ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
     inkMuted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     inkFaint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
     actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.raised,
-    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
-    flex: mode === 'light' ? '#7C3AED' : '#A78BFA',
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
+    flex: mode === 'light' ? '#53634E' : '#B9FF3D',
   };
 }
 

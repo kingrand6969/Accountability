@@ -215,7 +215,7 @@ function timePickerPalette(theme: AppThemeColors, mode: AppThemeMode) {
     placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
     field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.muted,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
     selectedSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
     scrim: mode === 'light' ? 'rgba(15,23,42,0.4)' : theme.interaction.scrim,
     menuBorder: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.border.strong,

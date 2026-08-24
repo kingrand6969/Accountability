@@ -22,7 +22,7 @@ type Props = {
   presentation?: 'default' | 'welcome';
 };
 
-const AUTH_CANVAS = '#06152E';
+const AUTH_CANVAS = '#0B0D0B';
 
 /** Branded backdrop for the auth screens: gradient, wordmark, elevated form card. */
 export function AuthShell({
@@ -43,13 +43,13 @@ export function AuthShell({
         accessibilityIgnoresInvertColors
       />
       <LinearGradient
-        colors={['rgba(3,17,38,0.42)', 'rgba(3,17,38,0.72)', '#031126']}
+        colors={['rgba(11,13,11,0.42)', 'rgba(11,13,11,0.72)', '#0B0D0B']}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.75, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <LinearGradient
-        colors={['transparent', 'rgba(2,10,25,0.84)']}
+        colors={['transparent', 'rgba(5,7,5,0.84)']}
         style={styles.horizonShade}
         pointerEvents="none"
       />
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: 'rgba(21,94,239,0.16)',
+    backgroundColor: 'rgba(185,255,61,0.16)',
     top: -100,
     right: -80,
   },
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: 'rgba(21,94,239,0.14)',
+    backgroundColor: 'rgba(185,255,61,0.14)',
     bottom: -150,
     left: -110,
   },
@@ -140,9 +140,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     letterSpacing: -1.1,
   },
-  ability: { color: '#2F7BFF' },
+  ability: { color: '#B9FF3D' },
   welcomeWordmark: { fontSize: 31 },
-  tagline: { fontFamily: font.medium, fontSize: 13.5, color: '#E7F0FF' },
+  tagline: { fontFamily: font.medium, fontSize: 13.5, color: '#EAF2E5' },
   card: {
     backgroundColor: '#fff',
     borderRadius: 28,
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   welcomeCard: {
-    backgroundColor: '#F7F4EC',
+    backgroundColor: '#F4F5F1',
     borderRadius: 22,
     padding: spacing.lg,
     gap: spacing.sm,

@@ -541,7 +541,7 @@ describe('ShareStudio', () => {
 
   test('uses a fixed high-contrast share-card palette in every app theme', () => {
     const { renderer } = renderStudio();
-    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-preview' }).props.style).backgroundColor).toBe('#081A3A');
+    expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-preview' }).props.style).backgroundColor).toBe('#111411');
     expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'share-card-shade' }).props.style).backgroundColor).toBe('rgba(0,0,0,0)');
     for (const id of ['share-card-date', 'share-card-title', 'share-card-metric-value', 'share-card-metric-label']) {
       expect(StyleSheet.flatten(renderer.root.findAllByProps({ testID: id })[0].props.style).color).toBe('#FFFFFF');

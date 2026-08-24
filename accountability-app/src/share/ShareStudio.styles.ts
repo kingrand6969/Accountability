@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 
 import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
-const SHARE_CARD_BACKGROUND = '#081A3A';
+const SHARE_CARD_BACKGROUND = '#111411';
 const SHARE_CARD_TEXT = '#FFFFFF';
 
 export function createShareStudioStyles(theme: AppThemeColors) {

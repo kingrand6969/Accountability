@@ -123,13 +123,13 @@ export default function BodyScreen() {
               accessibilityLabel={`Start today's workout, ${workoutTitle}`}
             >
               <LinearGradient
-                colors={['#071B37', '#092B4E']}
+                    colors={['#111411', '#263223']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
               <WorkoutPhotoHero exercise={exercise} workoutTitle={workoutTitle} />
-              <LinearGradient colors={['rgba(3,13,28,0.06)', 'rgba(3,13,28,0.93)']} style={StyleSheet.absoluteFill} />
+                  <LinearGradient colors={['rgba(17,20,17,0.06)', 'rgba(17,20,17,0.93)']} style={StyleSheet.absoluteFill} />
               <View style={styles.heroCopy}>
                 <Text style={styles.heroKicker}>TODAY’S WORKOUT</Text>
                 <Text style={styles.heroTitle}>{workoutTitle}</Text>
@@ -214,8 +214,8 @@ function bodyPalette(theme: AppThemeColors, mode: AppThemeMode) {
     ink: mode === 'light' ? legacyColors.navy : theme.ink.primary,
     softInk: mode === 'light' ? legacyColors.inkSoft : theme.ink.secondary,
     muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    border: mode === 'light' ? 'rgba(8,26,58,0.10)' : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    border: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
     actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
     danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
     dangerBorder: mode === 'light' ? '#F3B4B4' : theme.border.danger,
@@ -240,9 +240,9 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   hero: { height: 226, borderRadius: 16, overflow: 'hidden', justifyContent: 'flex-end' },
   pressed: { opacity: 0.7 },
   heroCopy: { padding: 16, width: '78%' },
-  heroKicker: { color: '#BED3EB', fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1.1 },
+  heroKicker: { color: '#DDE8D7', fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1.1 },
   heroTitle: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 26, lineHeight: 30, marginTop: 3 },
-  heroMeta: { color: '#D7E3F1', fontFamily: font.medium, fontSize: 11.5, marginTop: 2 },
+  heroMeta: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 11.5, marginTop: 2 },
   startButton: { alignSelf: 'flex-start', minHeight: spacing.touch, marginTop: 12, borderRadius: 9, backgroundColor: palette.action, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   startText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 12.5 },
   actions: { gap: 8, marginTop: 12 },
@@ -256,7 +256,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   sectionAction: { minHeight: spacing.touch, justifyContent: 'center', paddingHorizontal: 4 },
   sectionActionText: { color: palette.action, fontFamily: font.bold, fontSize: 11 },
   recentCard: { minHeight: 72, borderRadius: 14, backgroundColor: palette.quietCard, borderWidth: 1, borderColor: palette.border, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  recentThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#0C294A', alignItems: 'center', justifyContent: 'center' },
+  recentThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#263223', alignItems: 'center', justifyContent: 'center' },
   recentTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 12.5 },
   recentMeta: { color: palette.muted, fontFamily: font.regular, fontSize: 10.5, marginTop: 3 },
   shareCard: { minHeight: 62, marginTop: 10, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1.5, borderColor: palette.action, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },

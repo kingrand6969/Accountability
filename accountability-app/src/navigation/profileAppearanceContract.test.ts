@@ -44,7 +44,7 @@ describe('Profile overview appearance and navigation contract', () => {
   });
 
   test('keeps the media hero deliberately dark and readable in either appearance', () => {
-    expect(source).toContain("colors={['rgba(8,26,58,0.08)', 'rgba(8,26,58,0.52)']}");
+    expect(source).toContain("colors={['rgba(17,20,17,0.08)', 'rgba(17,20,17,0.52)']}");
     expect(source).toContain("heroBrandText: { color: '#fff'");
     expect(source).toContain('color="#fff"');
   });

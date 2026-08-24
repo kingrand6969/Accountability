@@ -90,7 +90,7 @@ function rankPalette(theme: AppThemeColors, mode: AppThemeMode) {
     success: mode === 'dark' ? theme.status.success : '#16a34a',
     points: mode === 'dark' ? theme.ink.primary : INK_SOFT,
     muted: mode === 'dark' ? theme.ink.muted : INK_SOFT,
-    track: mode === 'dark' ? theme.interaction.skeleton : 'rgba(30,27,75,0.1)',
+    track: mode === 'dark' ? theme.interaction.skeleton : 'rgba(17,20,17,0.1)',
   };
 }
 

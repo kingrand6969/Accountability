@@ -26,6 +26,6 @@ export function Avatar({ url, name, size = 40 }: Props) {
 }
 
 const styles = StyleSheet.create({
-  placeholder: { backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center' },
+  placeholder: { backgroundColor: '#6F9F00', alignItems: 'center', justifyContent: 'center' },
   initial: { color: '#fff', fontWeight: '700' },
 });

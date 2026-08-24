@@ -501,7 +501,7 @@ function PersonCard({
           </ImageBackground>
         ) : (
           <View style={[styles.personImage, styles.personFallback, largeText && styles.personImageLargeText]}>
-            <Ionicons name="person" size={76} color="#bfdbfe" />
+            <Ionicons name="person" size={76} color="#E8F4D7" />
           </View>
         )}
         <View style={[styles.personCopy, largeText && styles.personCopyLargeText]}>
@@ -747,8 +747,8 @@ function discoverPalette(theme: AppThemeColors, mode: AppThemeMode) {
     textSecondary: mode === 'light' ? colors.textSecondary : theme.ink.secondary,
     textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
     textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primary : theme.ink.action,
-    onAction: mode === 'light' ? colors.onPrimary : theme.ink.inverse,
+    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     warningSurface: mode === 'light' ? '#fff7ed' : theme.status.dangerSoft,
     warningText: mode === 'light' ? '#9a3412' : theme.status.attention,
     disabledOpacity: mode === 'light' ? 0.55 : theme.interaction.disabledOpacity,

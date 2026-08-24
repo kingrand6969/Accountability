@@ -88,7 +88,7 @@ function timelinePalette(theme: AppThemeColors, mode: AppThemeMode) {
   return {
     surface: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.card,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
     ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
     mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     quietInk: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,

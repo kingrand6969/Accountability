@@ -2,7 +2,7 @@ export type LatLng = { lat: number; lng: number };
 export type MapMarker = LatLng & { label?: string; color?: string };
 export type MapFitPadding = { top: number; right: number; bottom: number; left: number };
 
-const ACCENT = '#2563eb';
+const ACCENT = '#6F9F00';
 
 /**
  * A self-contained Leaflet map page (OpenStreetMap raster tiles — no API key,
@@ -28,7 +28,7 @@ export function buildOsmHtml(opts: {
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const tileAttr = dark ? '&copy; OpenStreetMap &copy; CARTO' : '&copy; OpenStreetMap';
-  const bg = dark ? '#101319' : '#e8eef3';
+  const bg = dark ? '#101410' : '#E7EAE4';
   // Embed data inside an inline <script> safely: JSON.stringify does NOT escape
   // the sequence "</script>", so a user-controlled marker label could otherwise
   // break out of the script tag and inject markup. Escaping "<" closes that hole.

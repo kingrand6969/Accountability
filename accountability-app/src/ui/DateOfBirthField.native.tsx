@@ -140,5 +140,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneText: { color: colors.primary, fontFamily: font.bold, fontSize: 15 },
+  doneText: { color: colors.primaryDark, fontFamily: font.bold, fontSize: 15 },
 });

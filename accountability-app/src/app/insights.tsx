@@ -164,8 +164,8 @@ export default function InsightsScreen() {
                           strokeWidth={9}
                           progress={consistency}
                           trackColor={palette.ringTrack}
-                          startColor="#f59e0b"
-                          endColor="#fbbf24"
+                          startColor="#446B00"
+                          endColor="#B9FF3D"
                         />
                       </View>
                       <Text style={styles.ringDays}>{data.daysActive}</Text>
@@ -187,19 +187,19 @@ export default function InsightsScreen() {
             <View style={styles.grid}>
               <StatTile
                 icon="walk-outline"
-                tint="#ea580c"
+                tint="#5F8F00"
                 value={`${data.km.toFixed(1)} km`}
                 label={`Distance · ${data.activitiesCount} run${data.activitiesCount === 1 ? '' : 's'}`}
               />
               <StatTile
                 icon="time-outline"
-                tint="#2563eb"
+                tint="#6F9F00"
                 value={formatHours(data.activeSeconds)}
                 label="Active time"
               />
               <StatTile
                 icon="barbell-outline"
-                tint="#7c3aed"
+                tint="#53634E"
                 value={String(data.workouts)}
                 label="Workouts"
               />
@@ -280,21 +280,21 @@ function StatTile({
 
 function progressPalette(theme: AppThemeColors, mode: AppThemeMode) {
   return {
-    canvas: mode === 'light' ? '#E4DCF7' : theme.surface.canvas,
-    ink: mode === 'light' ? '#1e1b4b' : theme.ink.primary,
-    inkSoft: mode === 'light' ? 'rgba(30,27,75,0.72)' : theme.ink.muted,
+    canvas: mode === 'light' ? '#E8ECE4' : theme.surface.canvas,
+    ink: mode === 'light' ? '#111411' : theme.ink.primary,
+    inkSoft: mode === 'light' ? 'rgba(17,20,17,0.72)' : theme.ink.muted,
     toggle: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
     glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
     selected: mode === 'light' ? '#fff' : theme.surface.raised,
     tile: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
     tileBorder: mode === 'light' ? 'rgba(255,255,255,0.65)' : theme.border.subtle,
     chartTrack: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.muted,
-    chartBar: mode === 'light' ? '#2563eb' : theme.ink.action,
-    chartEmpty: mode === 'light' ? 'rgba(30,27,75,0.12)' : theme.border.subtle,
-    ringTrack: mode === 'light' ? 'rgba(30,27,75,0.12)' : theme.border.subtle,
+    chartBar: mode === 'light' ? '#6F9F00' : theme.ink.action,
+    chartEmpty: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
+    ringTrack: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
     proSoft: mode === 'light' ? colors.proSoft : theme.surface.muted,
     daySuccessSoft: mode === 'light' ? 'rgba(4,120,87,0.12)' : theme.status.successSoft,
-    dayIdleSoft: mode === 'light' ? 'rgba(30,27,75,0.08)' : theme.surface.muted,
+    dayIdleSoft: mode === 'light' ? 'rgba(17,20,17,0.08)' : theme.surface.muted,
     daySuccess: mode === 'light' ? '#047857' : theme.status.success,
   } as const;
 }

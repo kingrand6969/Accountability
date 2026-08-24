@@ -23,8 +23,8 @@ describe('sharing and upgrade appearance contract', () => {
     expect(inviteCardSource).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
     expect(inviteCardSource).toContain('const { colors: theme, mode } = useAppTheme();');
     expect(inviteCardSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(inviteCardSource).toContain("mode === 'light' ? '#f5f8ff' : theme.surface.canvas");
-    expect(inviteCardSource).toContain("colors={['#071a46', '#0b4fd8', '#0a84ff']}");
+    expect(inviteCardSource).toContain("mode === 'light' ? '#F4F5F1' : theme.surface.canvas");
+    expect(inviteCardSource).toContain("colors={['#111411', '#263223', '#446B00']}");
     expect(inviteCardSource).toContain("require('../../assets/images/logo.png')");
     expect(inviteCardSource).toContain("dialogTitle: 'Invite a buddy to AccountAbility'");
     expect(inviteCardSource).toContain('backgroundColor: palette.action');
@@ -46,7 +46,7 @@ describe('sharing and upgrade appearance contract', () => {
     expect(paywallSource).toContain('const { colors: theme, mode } = useAppTheme();');
     expect(paywallSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
     expect(paywallSource).toContain("mode === 'light' ? colors.background : theme.surface.canvas");
-    expect(paywallSource).toContain("colors={['#8b5cf6', '#7c3aed', '#5b21b6']}");
+    expect(paywallSource).toContain("colors={['#263223', '#53634E', '#111411']}");
     expect(paywallSource).toContain('await billingAdapter().purchase(plan)');
     expect(paywallSource).toContain('await billingAdapter().restore()');
     expect(paywallSource).toContain('<PaywallRestoreButton');

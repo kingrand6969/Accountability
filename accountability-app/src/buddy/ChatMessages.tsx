@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   bubbleText: { fontSize: 15, lineHeight: 21, fontFamily: font.regular, color: colors.text },
-  mineText: { color: '#fff' },
+  mineText: { color: colors.onPrimary },
 
   timeText: { fontFamily: font.regular, fontSize: 10.5, color: colors.textFaint, marginTop: 3 },
   timeMine: { alignSelf: 'flex-end', marginRight: 4 },

@@ -42,5 +42,5 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
 });
 
 const styles = StyleSheet.create({
-  wrap: { overflow: 'hidden', backgroundColor: '#e8eef3' },
+  wrap: { overflow: 'hidden', backgroundColor: '#E7EAE4' },
 });

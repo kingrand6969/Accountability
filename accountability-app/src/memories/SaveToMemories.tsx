@@ -47,14 +47,14 @@ export function SaveToMemories({
         <Ionicons
           name={saved ? 'albums' : 'albums-outline'}
           size={21}
-          color={inline ? (saved ? colors.primary : colors.textMuted) : '#fff'}
+          color={inline ? (saved ? colors.primaryDark : colors.textMuted) : '#fff'}
         />
       ) : (
         <>
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={17}
-            color={inline ? (saved ? colors.primary : colors.textMuted) : '#fff'}
+            color={inline ? (saved ? colors.primaryDark : colors.textMuted) : '#fff'}
           />
           {inline && !iconOnly ? (
             <Text style={[styles.inlineText, saved && styles.inlineSaved]}>{saved ? 'Saved' : 'Save'}</Text>
@@ -88,5 +88,5 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   inlineText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
-  inlineSaved: { color: colors.primary },
+  inlineSaved: { color: colors.primaryDark },
 });

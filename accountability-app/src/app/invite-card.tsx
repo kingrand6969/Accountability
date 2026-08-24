@@ -86,7 +86,7 @@ export default function InviteCard() {
 
       <View ref={cardRef} collapsable={false} style={styles.capture}>
         <LinearGradient
-          colors={['#071a46', '#0b4fd8', '#0a84ff']}
+          colors={['#111411', '#263223', '#446B00']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.card}
@@ -123,7 +123,7 @@ export default function InviteCard() {
               <Text style={styles.pillText}>Streaks</Text>
             </View>
             <View style={styles.pill}>
-              <Ionicons name="people" size={17} color="#93c5fd" />
+              <Ionicons name="people" size={17} color="#B9FF3D" />
               <Text style={styles.pillText}>Buddies</Text>
             </View>
             <View style={styles.pill}>
@@ -168,11 +168,11 @@ export default function InviteCard() {
 
 function invitePalette(theme: AppThemeColors, mode: AppThemeMode) {
   return {
-    canvas: mode === 'light' ? '#f5f8ff' : theme.surface.canvas,
+    canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas,
     title: mode === 'light' ? '#0f172a' : theme.ink.primary,
     muted: mode === 'light' ? '#64748b' : theme.ink.muted,
-    action: mode === 'light' ? colors.primary : theme.ink.action,
-    onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
+    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
   } as const;
 }
 
@@ -216,7 +216,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: 'rgba(96,165,250,0.25)',
+    backgroundColor: 'rgba(185,255,61,0.22)',
     right: -100,
     top: -75,
   },
@@ -246,9 +246,9 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     borderColor: 'rgba(255,255,255,0.2)',
   },
   avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#fff' },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563eb' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#6F9F00' },
   inviterCopy: { maxWidth: 180 },
-  invitedBy: { color: '#bfdbfe', fontFamily: font.bold, fontSize: 9, letterSpacing: 1.2 },
+  invitedBy: { color: '#E8F4D7', fontFamily: font.bold, fontSize: 9, letterSpacing: 1.2 },
   name: { color: '#fff', fontFamily: font.extrabold, fontSize: 17, marginTop: 1 },
   cardHeadline: {
     color: '#fff',
@@ -259,7 +259,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     letterSpacing: -0.7,
   },
   cardBody: {
-    color: '#dbeafe',
+    color: '#EEF7E4',
     fontFamily: font.medium,
     fontSize: 14,
     lineHeight: 21,
@@ -284,7 +284,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     borderTopColor: 'rgba(255,255,255,0.2)',
   },
   footerPrimary: { color: '#fff', fontFamily: font.extrabold, fontSize: 16 },
-  footerSecondary: { color: '#bfdbfe', fontFamily: font.medium, fontSize: 12, marginTop: 3 },
+  footerSecondary: { color: '#E8F4D7', fontFamily: font.medium, fontSize: 12, marginTop: 3 },
   shareButton: {
     width: '100%',
     maxWidth: 360,

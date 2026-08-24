@@ -213,7 +213,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
             />
           ) : (
             <LinearGradient
-              colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
+              colors={['#263223', '#6F9F00', '#83B91B']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.tileImage}

@@ -38,7 +38,7 @@ import {
   type AppThemeMode,
 } from '../../ui/theme';
 
-const COVER_GRADIENT = ['#1e3a8a', '#2563eb', '#0ea5e9'] as const;
+const COVER_GRADIENT = ['#263223', '#6F9F00', '#83B91B'] as const;
 
 function categoryLabel(value: string): string | null {
   return PAGE_CATEGORIES.find((c) => c.value === value)?.label ?? null;

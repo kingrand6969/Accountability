@@ -42,9 +42,9 @@ import { useLayout } from '../ui/responsive';
 
 const MUSCLE_TINT: Record<MuscleGroup, string> = {
   chest: '#ef4444',
-  back: '#2563eb',
+  back: '#6F9F00',
   shoulders: '#f59e0b',
-  arms: '#7c3aed',
+  arms: '#53634E',
   legs: '#0d9488',
   core: '#db2777',
 };
@@ -212,7 +212,7 @@ export default function Gym() {
           accessibilityLabel="Create a plan for me"
         >
           <LinearGradient
-            colors={['#3b82f6', '#2563eb']}
+            colors={['#9EDB2B', '#6F9F00']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.planCta}
@@ -224,7 +224,7 @@ export default function Gym() {
               <Text style={styles.planTitle}>Create a plan for me</Text>
               <Text style={styles.planSub}>Pick your focus — we build the workout</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#dbeafe" />
+            <Ionicons name="chevron-forward" size={18} color="#EEF7E4" />
           </LinearGradient>
         </Pressable>
 
@@ -514,8 +514,8 @@ function gymPalette(theme: AppThemeColors, mode: AppThemeMode) {
     muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
-    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     success: mode === 'light' ? legacyColors.success : theme.status.success,
     successSoft: mode === 'light' ? legacyColors.successSoft : theme.status.successSoft,
     accent: mode === 'light' ? legacyColors.accent : theme.status.attention,
@@ -573,7 +573,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     justifyContent: 'center',
   },
   planTitle: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
-  planSub: { fontFamily: font.regular, fontSize: 12.5, color: '#dbeafe', marginTop: 1 },
+  planSub: { fontFamily: font.regular, fontSize: 12.5, color: '#EEF7E4', marginTop: 1 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',

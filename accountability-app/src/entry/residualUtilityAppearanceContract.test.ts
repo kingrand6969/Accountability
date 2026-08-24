@@ -37,7 +37,7 @@ describe('residual utility manual appearance contract', () => {
 
   test('Create keeps its exact cream Light canvas and semantic Dark hierarchy', () => {
     expect(createHubSource).toContain(
-      "canvas: mode === 'light' ? '#F7F4EC' : theme.surface.canvas",
+      "canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas",
     );
     expect(createHubSource).toContain(
       "divider: mode === 'light' ? '#E8E2D7' : theme.border.subtle",

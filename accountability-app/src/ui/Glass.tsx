@@ -51,16 +51,16 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
   const { colors: theme, mode } = useAppTheme();
   const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
   const backdropColors = mode === 'light'
-    ? ['#EDF4FC', '#DEEAF8', '#C9DCF4'] as const
+    ? ['#F6F7F3', '#ECEFE8', '#DDE3DA'] as const
     : [theme.surface.canvas, theme.surface.card, theme.surface.raised] as const;
   const blobA = mode === 'light'
-    ? ['#DBEAFE', '#93C5FD'] as const
+    ? ['#EEF7E4', '#C9EAA0'] as const
     : [theme.ink.action, theme.surface.raised] as const;
   const blobB = mode === 'light'
-    ? ['#FFE4F0', '#F4BCD8'] as const
+    ? ['#F2F0E8', '#D6DDCF'] as const
     : [theme.status.attention, theme.surface.muted] as const;
   const blobC = mode === 'light'
-    ? ['#E1EEFF', '#B7D6F7'] as const
+    ? ['#EEF7E4', '#B9FF3D'] as const
     : [theme.ink.action, theme.surface.muted] as const;
 
   return (
@@ -120,7 +120,7 @@ export function GlassCard({
     : [theme.border.strong, theme.border.subtle, theme.ink.action] as const;
   const sheenColors = mode === 'light'
     ? ['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)'] as const
-    : ['rgba(96,165,250,0.14)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0)'] as const;
+    : ['rgba(185,255,61,0.14)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0)'] as const;
 
   return (
     <View style={[styles.shadowWrap, style]}>
@@ -183,7 +183,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
     ...(Platform.OS === 'android'
       ? {} // elevation bleeds grey through translucent children — skip on Android
       : {
-          shadowColor: mode === 'light' ? '#1E3A8A' : theme.surface.canvas,
+          shadowColor: mode === 'light' ? '#263223' : theme.surface.canvas,
           shadowOffset: { width: 0, height: 16 },
           shadowOpacity: 0.16,
           shadowRadius: 32,

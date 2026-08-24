@@ -111,7 +111,7 @@ export function BuddyCardFace({
           style={{ width: avatarSize - 6, height: avatarSize - 6, borderRadius: avatarSize / 2 }}
         />
       ) : (
-        <Ionicons name="person" size={avatarSize * 0.5} color="rgba(37,99,235,0.85)" />
+        <Ionicons name="person" size={avatarSize * 0.5} color="rgba(111,159,0,0.92)" />
       )}
     </View>
   );
@@ -282,7 +282,7 @@ const shadow = {
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
-  frame: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#1d4ed8' },
+  frame: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#446B00' },
 
   // wide layout
   contentWide: { flexDirection: 'row', padding: 20, gap: 20 },
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   avatarRing: {
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.95)',
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#F2F5EE',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

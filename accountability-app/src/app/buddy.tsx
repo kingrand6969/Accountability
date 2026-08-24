@@ -410,8 +410,8 @@ function buddyPalette(theme: AppThemeColors, mode: AppThemeMode) {
     textSecondary: mode === 'light' ? colors.textSecondary : theme.ink.secondary,
     textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
     textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primary : theme.ink.action,
-    onAction: mode === 'light' ? colors.onPrimary : theme.ink.inverse,
+    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     danger: mode === 'light' ? colors.danger : theme.status.danger,
   };
 }

@@ -262,8 +262,8 @@ function discoverHubPalette(theme: AppThemeColors, mode: AppThemeMode) {
     text: mode === 'light' ? colors.text : theme.ink.primary,
     textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
     textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primary : theme.ink.action,
-    onAction: mode === 'light' ? colors.onPrimary : theme.ink.inverse,
+    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     disabledOpacity: mode === 'light' ? 0.65 : theme.interaction.disabledOpacity,
   };
 }

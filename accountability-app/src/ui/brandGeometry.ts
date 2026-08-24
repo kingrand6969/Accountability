@@ -70,10 +70,10 @@ export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
   "viewBox": "0 0 96 96",
   "wordmark": "Accountability",
   "colors": {
-    "cobalt": "#155EEF",
-    "navy": "#081A3A",
-    "cyan": "#20C7D9",
-    "cream": "#F7F4EC"
+    "cobalt": "#B9FF3D",
+    "navy": "#111411",
+    "cyan": "#7FAF1C",
+    "cream": "#F4F5F1"
   },
   "mark": {
     "primaryPath": "M6 86 36 13Q39 5 47 5t11 8l32 73H68L61 68H31L24 86H6Zm32-35h16L46 30l-8 21Z",

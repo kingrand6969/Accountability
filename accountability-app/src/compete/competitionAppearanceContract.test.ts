@@ -44,7 +44,8 @@ describe('competition and challenge appearance contract', () => {
   test('themes the shared glass foundation while preserving the approved Light treatment', () => {
     expect(glass).toContain("import { useAppTheme } from './AppThemeProvider'");
     expect(glass).toContain("mode === 'light'");
-    expect(glass).toContain("['#EDF4FC', '#DEEAF8', '#C9DCF4']");
+    expect(glass).toContain("['#F6F7F3', '#ECEFE8', '#DDE3DA']");
+    expect(glass).toContain("['#EEF7E4', '#B9FF3D']");
     expect(glass).toContain("tint={mode === 'light' ? 'light' : 'dark'}");
     expect(glass).toContain('theme.surface.canvas');
     expect(glass).toContain('theme.surface.card');
@@ -52,9 +53,9 @@ describe('competition and challenge appearance contract', () => {
   });
 
   test('competition controls keep their exact Light palette and derive Dark from semantic roles', () => {
-    expect(controls).toContain("export const INK = '#1e1b4b'");
-    expect(controls).toContain("export const INK_SOFT = 'rgba(30,27,75,0.72)'");
-    expect(controls).toContain("export const ACCENT = '#2563eb'");
+    expect(controls).toContain("export const INK = '#111411'");
+    expect(controls).toContain("export const INK_SOFT = 'rgba(17,20,17,0.72)'");
+    expect(controls).toContain("export const ACCENT = '#446B00'");
     expect(controls).toContain('export function useCompetitionTheme()');
     expect(controls).toContain("mode === 'light' ? INK : theme.ink.primary");
     expect(controls).toContain("mode === 'light' ? INK_SOFT : theme.ink.secondary");
@@ -114,8 +115,8 @@ describe('competition and challenge appearance contract', () => {
   });
 
   test('Light challenge secondary and success text meet 4.5:1 on the darkest approved glass stop', () => {
-    const darkestGlass = '#C9DCF4';
-    const secondary = composite('#1E1B4B', darkestGlass, 0.72);
+    const darkestGlass = '#DDE3DA';
+    const secondary = composite('#111411', darkestGlass, 0.72);
     const joinedSurface = composite('#16A34A', darkestGlass, 0.14);
 
     expect(contrast(secondary, darkestGlass)).toBeGreaterThanOrEqual(4.5);

@@ -377,11 +377,11 @@ function planPalette(theme: AppThemeColors, mode: AppThemeMode) {
     muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
     actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
     success: mode === 'light' ? legacyColors.success : theme.status.success,
     successSoft: mode === 'light' ? legacyColors.successSoft : theme.status.successSoft,
-    pro: mode === 'light' ? legacyColors.pro : '#C4B5FD',
+    pro: mode === 'light' ? legacyColors.pro : '#B9FF3D',
     proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
   };
 }

@@ -400,7 +400,7 @@ export default function BuddyMedals() {
                     <Text
                       style={[
                         styles.medalTier,
-                        { color: state.unlocked ? colors.primary : tone.textMuted },
+                        { color: state.unlocked ? colors.primaryDark : tone.textMuted },
                       ]}
                       numberOfLines={1}
                     >
@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  primaryActionText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  primaryActionText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 14 },
   list: { padding: spacing.lg, paddingBottom: 56 },
   intro: { alignItems: 'center', paddingBottom: spacing.lg },
   title: { fontFamily: font.extrabold, fontSize: 22, textAlign: 'center', lineHeight: 28 },
@@ -548,7 +548,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  retryActionText: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
+  retryActionText: { color: colors.primaryDark, fontFamily: font.bold, fontSize: 14 },
   challengeRow: {
     minHeight: 64,
     borderWidth: 1,

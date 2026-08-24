@@ -392,7 +392,7 @@ function searchPalette(theme: AppThemeColors, mode: AppThemeMode) {
     text: mode === 'light' ? colors.text : theme.ink.primary,
     textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
     textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primary : theme.ink.action,
+    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
   };
 }
 

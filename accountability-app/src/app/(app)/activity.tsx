@@ -46,7 +46,7 @@ const PILLARS: {
   {
     key: 'body',
     icon: 'body-outline',
-    tint: '#155EEF',
+    tint: '#B9FF3D',
     title: 'Body',
     sub: 'Workout, movement and recovery',
     route: '/gym',
@@ -54,7 +54,7 @@ const PILLARS: {
   {
     key: 'focus',
     icon: 'locate-outline',
-    tint: '#7C3AED',
+    tint: '#53634E',
     title: 'Focus',
     sub: 'Deep work, learning and priorities',
     route: '/today',
@@ -234,8 +234,8 @@ function TrackLegacy() {
                   strokeWidth={9}
                   progress={(score ?? 0) / 100}
                   trackColor={palette.ringTrack}
-                  startColor="#f59e0b"
-                  endColor="#fbbf24"
+                  startColor="#446B00"
+                  endColor="#B9FF3D"
                 />
               </View>
               <Ionicons name="flame" size={20} color="#d97706" />
@@ -349,21 +349,21 @@ function TrackLegacy() {
 
 function activityPalette(theme: AppThemeColors, mode: AppThemeMode) {
   return {
-    canvas: mode === 'light' ? '#F7F4EC' : theme.surface.canvas,
-    ink: mode === 'light' ? '#081A3A' : theme.ink.primary,
-    inkSoft: mode === 'light' ? 'rgba(8,26,58,0.70)' : theme.ink.muted,
-    action: mode === 'light' ? '#155EEF' : theme.ink.action,
+    canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas,
+    ink: mode === 'light' ? '#111411' : theme.ink.primary,
+    inkSoft: mode === 'light' ? 'rgba(17,20,17,0.70)' : theme.ink.muted,
+    action: mode === 'light' ? '#B9FF3D' : theme.ink.action,
     avatar: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
     glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
-    navBorder: mode === 'light' ? 'rgba(8,26,58,0.12)' : theme.border.subtle,
-    ringTrack: mode === 'light' ? 'rgba(30,27,75,0.12)' : theme.border.subtle,
+    navBorder: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
+    ringTrack: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
     day: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.muted,
-    dayActive: mode === 'light' ? 'rgba(37,99,235,0.14)' : theme.surface.raised,
-    dayActiveBorder: mode === 'light' ? 'rgba(37,99,235,0.25)' : theme.border.action,
-    calendar: mode === 'light' ? 'rgba(37,99,235,0.10)' : theme.surface.muted,
+    dayActive: mode === 'light' ? 'rgba(185,255,61,0.20)' : theme.surface.raised,
+    dayActiveBorder: mode === 'light' ? 'rgba(111,159,0,0.46)' : theme.border.action,
+    calendar: mode === 'light' ? 'rgba(185,255,61,0.14)' : theme.surface.muted,
     row: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
     rowBorder: mode === 'light' ? 'rgba(255,255,255,0.65)' : theme.border.subtle,
-    onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
+    onAction: mode === 'light' ? '#111411' : theme.ink.inverse,
   } as const;
 }
 

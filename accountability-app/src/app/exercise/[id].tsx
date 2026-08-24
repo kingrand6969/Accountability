@@ -210,8 +210,8 @@ function detailPalette(theme: AppThemeColors, mode: AppThemeMode) {
     muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
-    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     accent: mode === 'light' ? legacyColors.accent : theme.status.attention,
   };
 }

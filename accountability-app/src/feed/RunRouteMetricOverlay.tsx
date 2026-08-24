@@ -34,7 +34,7 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
           width={traceWidth}
           height={76}
           stroke={3}
-          accent="#4f8cff"
+          accent="#B9FF3D"
           pad={8}
           style={styles.route}
         />

@@ -1,5 +1,5 @@
 import { type ComponentProps, useEffect, useState } from 'react';
-import { type ColorValue, Image, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { type ColorValue, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Redirect, Tabs, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -15,6 +15,7 @@ import { useAppTheme } from '../../ui/AppThemeProvider';
 import { statusBarStyleForPath } from '../../navigation/routeAccessContract';
 import { notificationHeaderOptions } from '../../navigation/SafeBackButton';
 import { AppLaunchState } from '../../ui/AppLaunchState';
+import { BrandWordmark } from '../../ui/BrandWordmark';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -166,14 +167,7 @@ export default function AppLayout() {
           // pin the wordmark to the left (iOS centres by default, which collides
           // with the right-hand icons on a phone) and keep it compact
           headerTitleAlign: 'left',
-          headerTitle: () => (
-            <Image
-              source={require('../../../assets/images/wordmark.png')}
-              style={{ width: 124, height: 30 }}
-              resizeMode="contain"
-              accessibilityLabel="AccountAbility"
-            />
-          ),
+          headerTitle: () => <BrandWordmark compact />,
           // headerLeft/right (menu, create, pages, groups) are set by the
           // Feed screen itself via navigation.setOptions — it needs screen state.
         }}

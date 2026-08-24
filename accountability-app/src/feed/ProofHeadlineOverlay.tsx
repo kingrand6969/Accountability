@@ -8,7 +8,7 @@ export function ProofHeadlineOverlay({ headline }: { headline: string }) {
       <Text style={styles.headline} numberOfLines={3}>{headline}</Text>
       <View style={styles.verified}>
         <Text style={styles.verifiedText}>Verified</Text>
-        <Ionicons name="checkmark-circle-outline" size={25} color="#4f8cff" />
+        <Ionicons name="checkmark-circle-outline" size={25} color="#B9FF3D" />
       </View>
     </View>
   );
@@ -35,5 +35,5 @@ const styles = StyleSheet.create({
     textShadowRadius: 8,
   },
   verified: { alignItems: 'center', transform: [{ rotate: '-6deg' }] },
-  verifiedText: { color: '#72a4ff', fontFamily: font.handwritten, fontSize: 19, lineHeight: 20 },
+  verifiedText: { color: '#B9FF3D', fontFamily: font.handwritten, fontSize: 19, lineHeight: 20 },
 });

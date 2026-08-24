@@ -14,7 +14,7 @@ describe('Discover and connection appearance contract', () => {
     expect(hub).toContain("mode === 'light' ? colors.background : theme.surface.canvas");
     expect(hub).toContain("mode === 'light' ? colors.card : theme.surface.card");
     expect(hub).toContain("mode === 'light' ? colors.text : theme.ink.primary");
-    expect(hub).toContain("mode === 'light' ? colors.primary : theme.ink.action");
+    expect(hub).toContain("mode === 'light' ? colors.primaryDark : theme.ink.action");
     expect(hub).toContain('backgroundColor: palette.canvas');
     expect(hub).toContain('backgroundColor: palette.card');
     expect(hub).toContain('borderColor: palette.border');

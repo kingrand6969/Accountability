@@ -397,9 +397,9 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     field: mode === 'light' ? legacyColors.surface : theme.surface.raised,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
     actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.raised,
-    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
     disabledOpacity: mode === 'light' ? 0.5 : theme.interaction.disabledOpacity,
   };

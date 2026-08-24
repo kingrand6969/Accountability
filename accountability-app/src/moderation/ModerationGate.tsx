@@ -200,7 +200,7 @@ function BanWall({
           accessibilityLabel="Sign out"
         >
           {busy ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={legacyColors.onPrimary} />
           ) : (
             <Text style={styles.wallBtnText}>Sign out</Text>
           )}
@@ -227,7 +227,7 @@ function NoticeModal({
 }) {
   const { colors: theme, mode } = useAppTheme();
   const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const accent = tone === 'warning' ? legacyColors.accent : '#f97316';
+  const accent = tone === 'warning' ? legacyColors.accent : '#B45309';
   const accentSoft = tone === 'warning' ? 'rgba(251,191,36,0.16)' : 'rgba(249,115,22,0.14)';
   return (
     <View style={styles.scrim}>
@@ -316,7 +316,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     textAlign: 'center',
     marginBottom: 28,
   },
-  wallEmail: { fontFamily: font.semibold, color: '#93c5fd' },
+  wallEmail: { fontFamily: font.semibold, color: '#B9FF3D' },
   wallBtn: {
     minHeight: spacing.touch,
     minWidth: 200,
@@ -327,7 +327,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     alignItems: 'center',
   },
   wallBtnPressed: { opacity: 0.85 },
-  wallBtnText: { fontFamily: font.bold, fontSize: 16, color: '#fff' },
+  wallBtnText: { fontFamily: font.bold, fontSize: 16, color: legacyColors.onPrimary },
 
   // ---- notice modal (warning / restriction) ----
   scrim: {

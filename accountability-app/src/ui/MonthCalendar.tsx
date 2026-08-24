@@ -121,8 +121,8 @@ function calendarPalette(theme: AppThemeColors, mode: AppThemeMode) {
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
     text: mode === 'light' ? legacyColors.text : theme.ink.primary,
     faint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
-    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
   };
 }
 

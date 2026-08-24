@@ -36,7 +36,7 @@ import JourneyJournal from '../../journey/JournalScreen';
 
 /** Quick-add shortcuts shown on an empty day — each opens Add pre-set. */
 const QUICK_ADD = [
-  { type: 'task', icon: 'checkmark-circle', label: 'Task', tint: '#2563eb' },
+  { type: 'task', icon: 'checkmark-circle', label: 'Task', tint: '#6F9F00' },
   { type: 'event', icon: 'calendar', label: 'Event', tint: '#0891b2' },
   { type: 'grocery', icon: 'cart', label: 'Groceries', tint: '#16a34a' },
 ] as const;
@@ -272,16 +272,16 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
 
 function todayPalette(theme: AppThemeColors, mode: AppThemeMode) {
   return {
-    ink: mode === 'light' ? '#1e1b4b' : theme.ink.primary,
-    inkSoft: mode === 'light' ? 'rgba(30,27,75,0.72)' : theme.ink.muted,
-    action: mode === 'light' ? '#2563eb' : theme.ink.action,
+    ink: mode === 'light' ? '#111411' : theme.ink.primary,
+    inkSoft: mode === 'light' ? 'rgba(17,20,17,0.72)' : theme.ink.muted,
+    action: mode === 'light' ? '#446B00' : theme.ink.action,
     toggle: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
     glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
     selected: mode === 'light' ? '#fff' : theme.surface.raised,
-    sunSoft: mode === 'light' ? 'rgba(79,70,229,0.12)' : theme.surface.muted,
+    sunSoft: mode === 'light' ? 'rgba(83,99,78,0.12)' : theme.surface.muted,
     quickSurface: mode === 'light' ? 'rgba(255,255,255,0.6)' : theme.surface.card,
     quickBorder: mode === 'light' ? 'rgba(255,255,255,0.85)' : theme.border.subtle,
-    fabShadow: mode === 'light' ? '#4338ca' : theme.surface.canvas,
+    fabShadow: mode === 'light' ? '#3D5D37' : theme.surface.canvas,
     onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
   } as const;
 }

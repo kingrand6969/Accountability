@@ -8,37 +8,37 @@ import { font, typography } from './typography';
 export { font } from './typography';
 
 export const colors = {
-  // brand — logo blue, one language everywhere
-  primary: '#155EEF',
-  primaryDark: '#1d4ed8',
-  primarySoft: '#eff6ff',
-  navy: '#081A3A',
-  cream: '#F7F4EC',
-  success: '#16a34a',
-  successSoft: '#f0fdf4',
+  // Brand — warm monochrome surfaces with one unmistakable neon signal.
+  primary: '#B9FF3D',
+  primaryDark: '#446B00',
+  primarySoft: '#EEFFD1',
+  navy: '#111411',
+  cream: '#F4F5F1',
+  success: '#2E7D32',
+  successSoft: '#EAF6E9',
   danger: '#dc2626',
   dangerSoft: '#fef2f2',
-  accent: '#fbbf24', // amber flame
-  cheer: '#ea580c', // flame orange — the Encourage reaction
-  pro: '#7c3aed',
-  proSoft: '#f5f3ff',
+  accent: '#B9FF3D',
+  cheer: '#5F8F00',
+  pro: '#53634E',
+  proSoft: '#EEF1EC',
 
-  // glass ink — text on lavender glass surfaces
-  ink: '#1e1b4b',
-  inkSoft: 'rgba(30,27,75,0.72)',
-  inkFaint: 'rgba(30,27,75,0.12)',
+  // glass ink — text on warm translucent surfaces
+  ink: '#111411',
+  inkSoft: 'rgba(17,20,17,0.72)',
+  inkFaint: 'rgba(17,20,17,0.12)',
 
-  // slate neutrals
-  text: '#0f172a',
-  textSecondary: '#334155',
-  textMuted: '#64748b',
-  textFaint: '#94a3b8',
-  border: '#e2e8f0',
-  surface: '#f1f5f9',
-  surfaceAlt: '#f8fafc',
+  // warm neutral foundation
+  text: '#111411',
+  textSecondary: '#3F4741',
+  textMuted: '#626B64',
+  textFaint: '#7E887F',
+  border: '#D9DED7',
+  surface: '#ECEFEA',
+  surfaceAlt: '#F7F8F5',
   card: '#ffffff',
   background: '#ffffff',
-  onPrimary: '#ffffff',
+  onPrimary: '#111411',
 } as const;
 
 export const spacing = {
@@ -79,8 +79,8 @@ export const semanticColors = {
     primary: colors.navy,
     secondary: colors.textSecondary,
     muted: colors.textMuted,
-    inverse: colors.onPrimary,
-    action: colors.primary,
+    inverse: '#FFFFFF',
+    action: colors.primaryDark,
   },
   border: {
     subtle: colors.border,
@@ -100,37 +100,37 @@ export const semanticColors = {
 export type AppThemeMode = 'light' | 'dark';
 
 const lightInteraction = {
-  pressedOverlay: 'rgba(8,26,58,0.08)',
+  pressedOverlay: 'rgba(17,20,17,0.08)',
   disabledOpacity: 0.48,
-  skeleton: '#E8EDF3',
-  scrim: 'rgba(8,26,58,0.48)',
+  skeleton: '#E4E8E1',
+  scrim: 'rgba(17,20,17,0.48)',
   touchTarget: spacing.touch,
 } as const;
 
 const darkSemanticColors = {
   surface: {
-    canvas: '#07111F',
-    card: '#0D1B2E',
-    raised: '#12233A',
-    muted: '#172A43',
-    inverse: '#F8FAFC',
+    canvas: '#0B0D0B',
+    card: '#121512',
+    raised: '#181C18',
+    muted: '#202520',
+    inverse: '#F4F5F1',
   },
   ink: {
-    primary: '#F8FAFC',
-    secondary: '#CBD5E1',
-    muted: '#94A3B8',
-    inverse: colors.navy,
-    action: '#60A5FA',
+    primary: '#F7F8F4',
+    secondary: '#CED4CB',
+    muted: '#9DA59D',
+    inverse: '#0B0D0B',
+    action: '#B9FF3D',
   },
   border: {
-    subtle: '#243B55',
-    strong: '#475569',
-    action: '#60A5FA',
+    subtle: '#272D27',
+    strong: '#465046',
+    action: '#B9FF3D',
     danger: '#F87171',
   },
   status: {
-    success: '#4ADE80',
-    successSoft: '#0D2A20',
+    success: '#87E38D',
+    successSoft: '#17351C',
     danger: '#F87171',
     dangerSoft: '#32151B',
     attention: '#FBBF24',
@@ -138,7 +138,7 @@ const darkSemanticColors = {
   interaction: {
     pressedOverlay: 'rgba(255,255,255,0.10)',
     disabledOpacity: 0.48,
-    skeleton: '#1E334D',
+    skeleton: '#252B25',
     scrim: 'rgba(0,0,0,0.64)',
     touchTarget: spacing.touch,
   },
@@ -190,7 +190,7 @@ export const type = {
   },
   annotation: {
     ...typography.annotation,
-    color: colors.primary,
+    color: colors.primaryDark,
   },
   metric: {
     ...typography.metric,
@@ -211,7 +211,7 @@ export const contentMax = {
 
 export const shadow = {
   card: {
-    shadowColor: '#0f172a',
+    shadowColor: '#111411',
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },

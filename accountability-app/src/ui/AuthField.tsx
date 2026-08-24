@@ -37,7 +37,7 @@ export function AuthField({
     <View style={styles.group}>
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.field, focused && styles.focused, error ? styles.invalid : null]}>
-        <Ionicons name={icon} size={19} color={focused ? colors.primary : colors.textFaint} />
+        <Ionicons name={icon} size={19} color={focused ? colors.primaryDark : colors.textFaint} />
         <TextInput
           {...inputProps}
           style={[styles.input, style]}
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionText: {
-    color: colors.primary,
+    color: colors.primaryDark,
     fontFamily: font.semibold,
     fontSize: 13,
   },

@@ -73,11 +73,11 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
   const markers = showEndpoints && route.length > 1
     ? [
         { ...route[0], color: '#16A36A' },
-        { ...route[route.length - 1], color: '#FF642F' },
+        { ...route[route.length - 1], color: '#B9FF3D' },
       ]
     : [];
   const light = theme === 'day';
-  const ink = light && !usePhoto ? '#0C1C2A' : '#FFFFFF';
+  const ink = light && !usePhoto ? '#111411' : '#FFFFFF';
   const muted = light && !usePhoto ? '#52616B' : 'rgba(255,255,255,0.72)';
   const content = (
     <>
@@ -392,7 +392,7 @@ function MapFocus(data: LayoutData) {
 
 const styles = StyleSheet.create({
   card: { overflow: 'hidden', borderRadius: 24, backgroundColor: '#07121A' },
-  cardLight: { backgroundColor: '#EFF4EF' },
+  cardLight: { backgroundColor: '#EFF2EB' },
   content: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   full: { flex: 1, padding: '6%' },
   header: { alignSelf: 'stretch', maxWidth: '74%' },

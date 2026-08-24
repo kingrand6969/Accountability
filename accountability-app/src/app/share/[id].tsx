@@ -128,7 +128,7 @@ function publicSharePalette(theme: AppThemeColors, mode: AppThemeMode) {
     canvas: mode === 'light' ? colors.cream : theme.surface.canvas,
     ink: mode === 'light' ? colors.navy : theme.ink.primary,
     muted: mode === 'light' ? colors.inkSoft : theme.ink.muted,
-    action: mode === 'light' ? colors.primary : theme.ink.action,
+    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
     onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
   } as const;
 }

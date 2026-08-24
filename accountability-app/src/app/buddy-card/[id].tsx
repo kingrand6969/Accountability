@@ -763,9 +763,9 @@ function buddyCardShellPalette(theme: AppThemeColors, mode: AppThemeMode) {
     mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     faintInk: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    chipSurface: mode === 'light' ? '#eff6ff' : theme.surface.muted,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
-    onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
+    chipSurface: mode === 'light' ? '#F2F5EE' : theme.surface.muted,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     success: mode === 'light' ? legacyColors.success : theme.status.success,
   } as const;
 }

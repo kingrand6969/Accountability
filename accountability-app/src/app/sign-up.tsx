@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     marginLeft: 32,
     marginTop: 5,
   },
-  link: { color: colors.primary, fontFamily: font.semibold },
+  link: { color: colors.primaryDark, fontFamily: font.semibold },
   linkCenter: {
     textAlign: 'center',
     color: colors.textMuted,
@@ -242,5 +242,5 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     marginTop: spacing.xs,
   },
-  linkStrong: { color: colors.primary, fontFamily: font.semibold },
+  linkStrong: { color: colors.primaryDark, fontFamily: font.semibold },
 });

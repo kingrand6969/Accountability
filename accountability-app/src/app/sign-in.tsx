@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: -6,
   },
-  forgotText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13.5 },
+  forgotText: { color: colors.primaryDark, fontFamily: font.semibold, fontSize: 13.5 },
   pressed: { opacity: 0.65 },
   button: { marginTop: -2 },
   privacy: {

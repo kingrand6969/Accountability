@@ -29,7 +29,7 @@ describe('Body and workout manual appearance contract', () => {
     expect(bodySource).toContain("card: mode === 'light' ? '#FFFFFF' : theme.surface.card");
     expect(bodySource).toContain("ink: mode === 'light' ? legacyColors.navy : theme.ink.primary");
     expect(bodySource).toContain("muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted");
-    expect(bodySource).toContain("border: mode === 'light' ? 'rgba(8,26,58,0.10)' : theme.border.subtle");
+    expect(bodySource).toContain("border: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle");
     expect(bodySource).toContain('backgroundColor: palette.canvas');
     expect(bodySource).toContain('backgroundColor: palette.card');
     expect(bodySource).toContain('color: palette.ink');

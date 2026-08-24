@@ -26,8 +26,8 @@ describe('Buddy Card supporting shell appearance contract', () => {
     expect(shell).toContain("secondaryInk: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary");
     expect(shell).toContain("mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted");
     expect(shell).toContain("border: mode === 'light' ? legacyColors.border : theme.border.subtle");
-    expect(shell).toContain("chipSurface: mode === 'light' ? '#eff6ff' : theme.surface.muted");
-    expect(shell).toContain("action: mode === 'light' ? legacyColors.primary : theme.ink.action");
+    expect(shell).toContain("chipSurface: mode === 'light' ? '#F2F5EE' : theme.surface.muted");
+    expect(shell).toContain("action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action");
     expect(shell).toContain("success: mode === 'light' ? legacyColors.success : theme.status.success");
   });
 

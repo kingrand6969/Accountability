@@ -69,7 +69,7 @@ describe('AppThemeProvider', () => {
 
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
 
-    expect(value(renderer)).toBe('dark:#07111F');
+    expect(value(renderer)).toBe('dark:#0B0D0B');
     expect(setColorSchemeSpy).not.toHaveBeenCalled();
     act(() => renderer.unmount());
   });
@@ -93,7 +93,7 @@ describe('AppThemeProvider', () => {
           );
         });
       }).not.toThrow();
-      expect(value(renderer)).toBe('light:#F7F4EC');
+      expect(value(renderer)).toBe('light:#F4F5F1');
       act(() => renderer.unmount());
     } finally {
       Object.defineProperty(Appearance, 'setColorScheme', {
@@ -116,7 +116,7 @@ describe('AppThemeProvider', () => {
       );
     });
 
-    expect(value(renderer)).toBe('light:#F7F4EC');
+    expect(value(renderer)).toBe('light:#F4F5F1');
     expect(mockedStorage.getItem).toHaveBeenCalledWith(APP_THEME_STORAGE_KEY);
     expect(setColorSchemeSpy).toHaveBeenCalledWith('light');
     act(() => renderer.unmount());
@@ -134,16 +134,16 @@ describe('AppThemeProvider', () => {
       );
     });
 
-    expect(value(renderer)).toBe('dark:#07111F');
+    expect(value(renderer)).toBe('dark:#0B0D0B');
     expect(setColorSchemeSpy.mock.calls).toEqual([['light'], ['dark']]);
     await act(async () => renderer.unmount());
   });
 
   test.each([
-    ['dark', 'dark:#07111F'],
-    ['light', 'light:#F7F4EC'],
-    ['system', 'light:#F7F4EC'],
-    [null, 'light:#F7F4EC'],
+    ['dark', 'dark:#0B0D0B'],
+    ['light', 'light:#F4F5F1'],
+    ['system', 'light:#F4F5F1'],
+    [null, 'light:#F4F5F1'],
   ])('hydrates %p as %s without a blocking state', async (stored, expected) => {
     mockedStorage.getItem.mockResolvedValueOnce(stored);
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -174,7 +174,7 @@ describe('AppThemeProvider', () => {
 
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
 
-    expect(value(renderer)).toBe('dark:#07111F');
+    expect(value(renderer)).toBe('dark:#0B0D0B');
     expect(mockedStorage.setItem).toHaveBeenCalledWith(APP_THEME_STORAGE_KEY, 'dark');
     expect(setColorSchemeSpy).toHaveBeenLastCalledWith('dark');
     await act(async () => renderer.unmount());
@@ -196,7 +196,7 @@ describe('AppThemeProvider', () => {
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
     await act(async () => pending.resolve('light'));
 
-    expect(value(renderer)).toBe('dark:#07111F');
+    expect(value(renderer)).toBe('dark:#0B0D0B');
     expect(setColorSchemeSpy.mock.calls).toEqual([['light'], ['dark']]);
     await act(async () => renderer.unmount());
   });

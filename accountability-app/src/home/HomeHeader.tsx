@@ -35,7 +35,7 @@ export function HomeHeader() {
   return (
     <View style={styles.card}>
       <LinearGradient
-        colors={['#3b82f6', '#2563eb', '#1d4ed8']}
+        colors={['#9EDB2B', '#6F9F00', '#446B00']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.gradient}
@@ -93,7 +93,7 @@ export function HomeHeader() {
               <Ionicons name="walk-outline" size={15} color="#fff" />
               <Text style={styles.weekStatText}>{stats.weekActivities}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color="#dbeafe" />
+            <Ionicons name="chevron-forward" size={14} color="#EEF7E4" />
           </BlurView>
         </Pressable>
       </LinearGradient>
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     margin: spacing.lg,
     marginBottom: spacing.sm,
     overflow: 'hidden',
-    shadowColor: '#4338ca',
+    shadowColor: '#3D5D37',
     shadowOpacity: 0.22,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   streakNum: { color: '#fff', fontSize: 26, fontFamily: font.extrabold },
-  streakLabel: { color: '#e0e7ff', fontSize: 14, fontFamily: font.semibold },
+  streakLabel: { color: '#EAF2E5', fontSize: 14, fontFamily: font.semibold },
   buddy: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44, paddingLeft: 8 },
   buddyText: { color: '#fff', fontSize: 16, fontFamily: font.bold },
   badge: {
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
   },
-  weekLabel: { color: '#eff6ff', fontSize: 12, fontFamily: font.bold, flex: 1 },
+  weekLabel: { color: '#F2F5EE', fontSize: 12, fontFamily: font.bold, flex: 1 },
   weekStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   weekStatText: { color: '#fff', fontSize: 14, fontFamily: font.bold },
 });

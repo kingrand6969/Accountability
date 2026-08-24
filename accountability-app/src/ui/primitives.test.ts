@@ -106,7 +106,7 @@ describe('AccountAbility shared primitives', () => {
 
   const buttonCases: [string, ComponentType<any>, string, string][] = [
     ['primary', PrimaryButton, colors.primary, colors.onPrimary],
-    ['outlined', OutlinedButton, semanticColors.surface.card, colors.primary],
+    ['outlined', OutlinedButton, semanticColors.surface.card, semanticColors.ink.action],
   ];
 
   it.each(buttonCases)(

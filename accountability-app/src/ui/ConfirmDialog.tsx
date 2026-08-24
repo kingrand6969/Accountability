@@ -91,7 +91,11 @@ export function ConfirmHost() {
               accessibilityRole="button"
               accessibilityLabel={opts?.confirmLabel ?? 'Confirm'}
             >
-              <Text style={[styles.confirmText, dark && darkStyles.confirmText]}>{opts?.confirmLabel ?? 'Confirm'}</Text>
+              <Text style={[
+                styles.confirmText,
+                destructive ? styles.confirmDangerText : styles.confirmPrimaryText,
+                dark && darkStyles.confirmText,
+              ]}>{opts?.confirmLabel ?? 'Confirm'}</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -157,7 +161,9 @@ const styles = StyleSheet.create({
   cancelText: { fontFamily: font.bold, fontSize: 15, color: colors.textSecondary },
   confirmDanger: { backgroundColor: colors.danger },
   confirmPrimary: { backgroundColor: colors.primary },
-  confirmText: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
+  confirmText: { fontFamily: font.bold, fontSize: 15 },
+  confirmDangerText: { color: '#fff' },
+  confirmPrimaryText: { color: colors.onPrimary },
   pressed: { opacity: 0.85 },
 });
 

@@ -10,8 +10,8 @@ describe('authenticated progress appearance contract', () => {
     expect(insightsSource).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
     expect(insightsSource).toContain('const { colors: theme, mode } = useAppTheme();');
     expect(insightsSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(insightsSource).toContain("mode === 'light' ? '#E4DCF7' : theme.surface.canvas");
-    expect(insightsSource).toContain("mode === 'light' ? '#1e1b4b' : theme.ink.primary");
+    expect(insightsSource).toContain("mode === 'light' ? '#E8ECE4' : theme.surface.canvas");
+    expect(insightsSource).toContain("mode === 'light' ? '#111411' : theme.ink.primary");
     expect(insightsSource).toContain('trackColor={palette.ringTrack}');
     expect(insightsSource).toContain('<ActivityIndicator size="large" color={theme.ink.action} />');
     expect(insightsSource).toContain("router.push('/paywall')");
@@ -21,7 +21,7 @@ describe('authenticated progress appearance contract', () => {
     expect(activitySource).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
     expect(activitySource).toContain('const { colors: theme, mode } = useAppTheme();');
     expect(activitySource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(activitySource).toContain("mode === 'light' ? '#F7F4EC' : theme.surface.canvas");
+    expect(activitySource).toContain("mode === 'light' ? '#F4F5F1' : theme.surface.canvas");
     expect(activitySource).toContain('trackColor={palette.ringTrack}');
     expect(activitySource).toContain('export default JourneyMomentum;');
   });
@@ -30,7 +30,7 @@ describe('authenticated progress appearance contract', () => {
     expect(todaySource).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
     expect(todaySource).toContain('const { colors: theme, mode } = useAppTheme();');
     expect(todaySource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(todaySource).toContain("mode === 'light' ? '#2563eb' : theme.ink.action");
+    expect(todaySource).toContain("mode === 'light' ? '#446B00' : theme.ink.action");
     expect(todaySource).toContain('backgroundColor: palette.toggle');
     expect(todaySource).toContain('borderColor: palette.glassBorder');
     expect(todaySource).toContain('color={palette.action}');

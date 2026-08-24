@@ -163,7 +163,7 @@ export default function ProfileOverview() {
           <Image source={MOUNTAIN} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
         <LinearGradient
-          colors={['rgba(8,26,58,0.08)', 'rgba(8,26,58,0.52)']}
+          colors={['rgba(17,20,17,0.08)', 'rgba(17,20,17,0.52)']}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.heroTop}>
@@ -335,7 +335,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   heroBrand: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
   heroBrandText: { color: '#fff', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },
-  heroButton: { width: spacing.touch, height: spacing.touch, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,26,58,0.28)' },
+  heroButton: { width: spacing.touch, height: spacing.touch, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,20,17,0.28)' },
   identity: { alignItems: 'center', paddingHorizontal: 24, marginTop: -52 },
   avatarRing: { width: 108, height: 108, borderRadius: 54, padding: 4, backgroundColor: theme.surface.canvas, ...shadow.card },
   avatar: { width: 100, height: 100, borderRadius: 50 },

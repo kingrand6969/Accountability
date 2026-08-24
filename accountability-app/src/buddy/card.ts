@@ -4,7 +4,7 @@ import type { BuddyCardAccessMode } from './buddyCardRelationship';
 import { pickBuddyCardEditorChanges } from './editorModel';
 
 /** Default card background — brand blue. Users can replace it with a photo. */
-export const CARD_BLUE: [string, string] = ['#60a5fa', '#1d4ed8'];
+export const CARD_BLUE: [string, string] = ['#B9FF3D', '#446B00'];
 
 export type BuddyCard = {
   bg_url?: string | null; // custom background photo (else the blue gradient)

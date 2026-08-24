@@ -161,5 +161,5 @@ const styles = StyleSheet.create({
   },
   eye: { position: 'absolute', right: 8, height: 44, width: 40, alignItems: 'center', justifyContent: 'center' },
   button: { marginTop: spacing.xs },
-  back: { textAlign: 'center', fontSize: 14, fontFamily: font.medium, color: colors.primary, marginTop: spacing.md },
+  back: { textAlign: 'center', fontSize: 14, fontFamily: font.medium, color: colors.primaryDark, marginTop: spacing.md },
 });

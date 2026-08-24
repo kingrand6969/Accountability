@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
   },
   outlinedButtonLabel: {
-    color: colors.primary,
+    color: colors.primaryDark,
   },
   iconButton: {
     borderRadius: radius.pill,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     height: undefined,
   },
   heroScrim: {
-    backgroundColor: 'rgba(8,26,58,0.66)',
+    backgroundColor: 'rgba(17,20,17,0.66)',
   },
   heroContent: {
     flex: 1,

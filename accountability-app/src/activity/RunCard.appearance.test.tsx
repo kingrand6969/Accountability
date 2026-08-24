@@ -102,7 +102,7 @@ describe('RunCard approved layouts', () => {
       showLatestMarker: false,
       markers: [
         { lat: points[0].lat, lng: points[0].lon, color: '#16A36A' },
-        { lat: points[2].lat, lng: points[2].lon, color: '#FF642F' },
+        { lat: points[2].lat, lng: points[2].lon, color: '#B9FF3D' },
       ],
     }));
     act(() => renderer.unmount());

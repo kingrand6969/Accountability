@@ -24,7 +24,7 @@ const ZERO: Metrics = {
 };
 
 const FILTERS = [
-  { key: 'all', label: 'All', icon: 'infinite-outline' as const, color: '#155EEF' },
+  { key: 'all', label: 'All', icon: 'infinite-outline' as const, color: '#B9FF3D' },
   { key: 'body', label: 'Body', icon: 'walk-outline' as const, color: '#74A62C' },
   { key: 'focus', label: 'Focus', icon: 'radio-button-on-outline' as const, color: '#B17A31' },
   { key: 'people', label: 'People', icon: 'people-outline' as const, color: '#7D6E9D' },
@@ -205,9 +205,9 @@ function pathPalette(theme: AppThemeColors, mode: AppThemeMode) {
     ink: mode === 'light' ? legacyColors.navy : theme.ink.primary,
     inkSoft: mode === 'light' ? legacyColors.inkSoft : theme.ink.secondary,
     mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
     onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    border: mode === 'light' ? 'rgba(8,26,58,0.13)' : theme.border.subtle,
+    border: mode === 'light' ? 'rgba(17,20,17,0.13)' : theme.border.subtle,
     filterSurface: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
     errorSurface: mode === 'light' ? '#FFFFFF' : theme.status.dangerSoft,
     errorBorder: mode === 'light' ? '#F3B4B4' : theme.border.danger,
@@ -219,11 +219,11 @@ function pathPalette(theme: AppThemeColors, mode: AppThemeMode) {
     medalReached: mode === 'light' ? '#87725A' : theme.surface.raised,
     medalReachedBorder: mode === 'light' ? '#C9B697' : theme.border.strong,
     medalReachedInk: mode === 'light' ? '#FFFFFF' : theme.ink.primary,
-    currentBorder: mode === 'light' ? '#A9C5FF' : theme.border.action,
+    currentBorder: mode === 'light' ? '#CDEAA1' : theme.border.action,
     currentSurface: mode === 'light' ? '#FFFFFF' : theme.surface.raised,
-    currentBorderSoft: mode === 'light' ? 'rgba(8,26,58,0.12)' : theme.border.subtle,
+    currentBorderSoft: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
     progressSurface: mode === 'light' ? 'rgba(255,255,255,0.72)' : theme.surface.card,
-    progressBorder: mode === 'light' ? 'rgba(8,26,58,0.10)' : theme.border.subtle,
+    progressBorder: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle,
   } as const;
 }
 
@@ -244,12 +244,12 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
   },
   summaryRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
   summaryNext: { alignItems: 'flex-end', flexShrink: 1 },
-  summaryKicker: { color: mode === 'light' ? '#9EBEF1' : theme.ink.action, fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1 },
+  summaryKicker: { color: mode === 'light' ? '#68834B' : theme.ink.action, fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1 },
   summaryDay: { color: mode === 'light' ? '#FFFFFF' : theme.ink.primary, fontFamily: font.display, fontSize: 42, lineHeight: 46, marginTop: 2 },
   summaryLandmark: { color: mode === 'light' ? '#FFFFFF' : theme.ink.primary, fontFamily: font.bold, fontSize: 18, lineHeight: 23, marginTop: 5, textAlign: 'right' },
   summaryTrack: { height: 6, marginTop: spacing.md, overflow: 'hidden', borderRadius: 3, backgroundColor: mode === 'light' ? 'rgba(255,255,255,0.20)' : theme.border.strong },
-  summaryProgress: { height: '100%', borderRadius: 3, backgroundColor: mode === 'light' ? '#20C7D9' : theme.ink.action },
-  summaryRemaining: { color: mode === 'light' ? '#D7E4F8' : theme.ink.secondary, fontFamily: font.medium, fontSize: 11.5, marginTop: spacing.sm },
+  summaryProgress: { height: '100%', borderRadius: 3, backgroundColor: mode === 'light' ? '#7FAF1C' : theme.ink.action },
+  summaryRemaining: { color: mode === 'light' ? '#EAF2E5' : theme.ink.secondary, fontFamily: font.medium, fontSize: 11.5, marginTop: spacing.sm },
   segmentedFilters: { flexDirection: 'row', gap: spacing.xs, marginVertical: spacing.md, padding: spacing.xs, borderRadius: 14, backgroundColor: palette.filterSurface, borderWidth: 1, borderColor: palette.border },
   filter: { flex: 1, minWidth: 0, minHeight: 48, paddingHorizontal: spacing.xs, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   filterSelected: { backgroundColor: palette.action, borderColor: palette.action },

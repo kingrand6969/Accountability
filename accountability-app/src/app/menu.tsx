@@ -49,20 +49,20 @@ const APPEARANCE_OPTIONS: AppearanceOption[] = [
 ];
 
 const GRID: GridItem[] = [
-  { icon: 'podium-outline', tint: '#1d4ed8', title: 'Leaderboards & Wins', route: '/compete' },
+  { icon: 'podium-outline', tint: '#446B00', title: 'Leaderboards & Wins', route: '/compete' },
   { icon: 'today-outline', tint: '#0284c7', title: 'Planner', route: '/today' },
-  { icon: 'people-outline', tint: '#2563eb', title: 'Groups', route: '/groups' },
+  { icon: 'people-outline', tint: '#6F9F00', title: 'Groups', route: '/groups' },
   { icon: 'storefront-outline', tint: '#0d9488', title: 'Pages', route: '/pages' },
-  { icon: 'images-outline', tint: '#0ea5e9', title: 'Memories', route: '/memories' },
+  { icon: 'images-outline', tint: '#83B91B', title: 'Memories', route: '/memories' },
   { icon: 'person-add-outline', tint: '#db2777', title: 'Buddies', route: '/buddy' },
-  { icon: 'compass-outline', tint: '#2563eb', title: 'Discover', route: '/discover' },
-  { icon: 'color-palette-outline', tint: '#7c3aed', title: 'My buddy card', action: 'owner-buddy-card' },
-  { icon: 'stats-chart-outline', tint: '#ea580c', title: 'Progress', route: '/insights' },
+  { icon: 'compass-outline', tint: '#6F9F00', title: 'Discover', route: '/discover' },
+  { icon: 'color-palette-outline', tint: '#53634E', title: 'My buddy card', action: 'owner-buddy-card' },
+  { icon: 'stats-chart-outline', tint: '#5F8F00', title: 'Progress', route: '/insights' },
   { icon: 'book-outline', tint: '#0d9488', title: 'Daily Reads', route: '/books' },
-  { icon: 'barbell-outline', tint: '#7c3aed', title: 'Exercises', route: '/gym' },
+  { icon: 'barbell-outline', tint: '#53634E', title: 'Exercises', route: '/gym' },
   { icon: 'nutrition-outline', tint: '#16a34a', title: 'Diet', route: '/diet' },
-  { icon: 'walk-outline', tint: '#ea580c', title: 'Activity', route: '/run' },
-  { icon: 'star-outline', tint: '#7c3aed', title: 'Go Pro', route: '/paywall' },
+  { icon: 'walk-outline', tint: '#5F8F00', title: 'Activity', route: '/run' },
+  { icon: 'star-outline', tint: '#53634E', title: 'Go Pro', route: '/paywall' },
 ];
 
 export default function Menu() {
@@ -135,7 +135,7 @@ export default function Menu() {
         accessibilityLabel="View your profile"
       >
         <LinearGradient
-          colors={['#3b82f6', '#2563eb', '#1e40af']}
+          colors={['#B9FF3D', '#6F9F00', '#263223']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.profileRow}
@@ -151,7 +151,7 @@ export default function Menu() {
             <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
             <Text style={styles.profileSub}>View your profile</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#dbeafe" />
+          <Ionicons name="chevron-forward" size={18} color="#EEF7E4" />
         </LinearGradient>
       </Pressable>
 
@@ -180,7 +180,7 @@ export default function Menu() {
         accessibilityLabel="Invite friends to AccountAbility"
       >
         <View style={styles.inviteIcon}>
-          <Ionicons name="paper-plane" size={19} color="#fff" />
+          <Ionicons name="paper-plane" size={19} color={colors.onPrimary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.inviteTitle}>Invite friends</Text>
@@ -389,7 +389,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     justifyContent: 'center',
   },
   profileName: { fontFamily: font.bold, fontSize: 16, color: '#fff' },
-  profileSub: { fontFamily: font.medium, fontSize: 12.5, color: '#dbeafe' },
+  profileSub: { fontFamily: font.medium, fontSize: 12.5, color: '#EEF7E4' },
   inviteRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -92,8 +92,8 @@ export function RouteTrace({
       <Svg width={width} height={height}>
         <Defs>
           <SvgGradient id="routeStroke" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#60a5fa" />
-            <Stop offset="1" stopColor="#a855f7" />
+            <Stop offset="0" stopColor="#B9FF3D" />
+            <Stop offset="1" stopColor="#5F8F00" />
           </SvgGradient>
         </Defs>
 
@@ -112,12 +112,12 @@ export function RouteTrace({
             {showEndpoints && endStyle === 'dot' ? (
               showHead ? (
                 <>
-                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 3} fill={accent ?? '#60a5fa'} opacity={0.28} />
+                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 3} fill={accent ?? '#B9FF3D'} opacity={0.28} />
                   <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 1.5} fill="#fff" />
-                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 0.9} fill={accent ?? '#2563eb'} />
+                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 0.9} fill={accent ?? '#6F9F00'} />
                 </>
               ) : (
-                <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 1.4} fill={accent ?? '#a855f7'} />
+                <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 1.4} fill={accent ?? '#5F8F00'} />
               )
             ) : null}
           </>

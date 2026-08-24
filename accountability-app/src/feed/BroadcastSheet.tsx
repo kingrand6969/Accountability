@@ -45,7 +45,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
   const { mode } = useAppTheme();
   const dark = mode === 'dark';
   const actionColor = dark ? theme.ink.action : colors.primary;
-  const actionInk = dark ? theme.ink.inverse : '#fff';
+  const actionInk = dark ? theme.ink.inverse : colors.onPrimary;
   const [buddies, setBuddies] = useState<Buddy[] | null>(null);
   const [sent, setSent] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     minHeight: 48,
   },
-  externalText: { fontFamily: font.bold, fontSize: 14.5, color: '#fff' },
+  externalText: { fontFamily: font.bold, fontSize: 14.5, color: colors.onPrimary },
   closeBtn: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
   closeText: { fontFamily: font.bold, fontSize: 14, color: colors.textMuted },
 });

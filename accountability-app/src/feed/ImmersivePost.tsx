@@ -376,14 +376,14 @@ export function ImmersivePost({
               importantForAccessibility="no-hide-descendants"
             >
               <Text style={immersiveStyles.verifiedText}>Verified</Text>
-              <Ionicons name="checkmark-circle-outline" size={30} color="#4F8CFF" />
+              <Ionicons name="checkmark-circle-outline" size={30} color="#B9FF3D" />
             </View>
           ) : null}
         </View>
 
         {route.length > 1 ? (
           <View accessible={false} importantForAccessibility="no-hide-descendants" style={immersiveStyles.route}>
-            <RouteTrace points={route} width={118} height={80} stroke={3} accent="#4F8CFF" pad={7} />
+            <RouteTrace points={route} width={118} height={80} stroke={3} accent="#B9FF3D" pad={7} />
           </View>
         ) : null}
 
@@ -667,7 +667,7 @@ function CheerIcon({ color }: { color: string }) {
 }
 
 function Action({ icon, label, shortLabel, active = false, onPress }: { icon: 'clap' | keyof typeof Ionicons.glyphMap; label: string; shortLabel: string; active?: boolean; onPress(): void }) {
-  const color = active ? '#76A5FF' : '#fff';
+  const color = active ? '#B9FF3D' : '#fff';
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={immersiveStyles.action}>
       {icon === 'clap' ? (
@@ -770,7 +770,7 @@ const immersiveStyles = StyleSheet.create({
   headlineRow: { minHeight: 98, flexDirection: 'row', alignItems: 'flex-start' },
   headline: { flex: 1, color: '#fff', fontFamily: font.serif, fontSize: 34, lineHeight: 37, textShadowColor: 'rgba(0,0,0,.65)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
   verified: { width: 74, alignItems: 'center', transform: [{ rotate: '-7deg' }] },
-  verifiedText: { color: '#5F96FF', fontFamily: font.handwritten, fontSize: 22, lineHeight: 24 },
+  verifiedText: { color: '#B9FF3D', fontFamily: font.handwritten, fontSize: 22, lineHeight: 24 },
   route: { position: 'absolute', right: 0, top: 70 },
   metrics: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,.34)' },
   metric: { flex: 1, alignItems: 'center' },
@@ -795,6 +795,6 @@ const immersiveStyles = StyleSheet.create({
   cheerLeft: { position: 'absolute', left: 0, top: 0 },
   cheerRight: { position: 'absolute', right: 0, top: 2 },
   actionText: { color: '#fff', fontFamily: font.semibold, fontSize: 11 },
-  actionActive: { color: '#76A5FF' },
+  actionActive: { color: '#B9FF3D' },
   pressed: { opacity: 0.72 },
 });

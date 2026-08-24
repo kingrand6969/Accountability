@@ -197,7 +197,7 @@ export function VoiceEncouragementRecorder({
   const { mode } = useAppTheme();
   const dark = mode === 'dark';
   const actionColor = dark ? theme.ink.action : colors.primary;
-  const actionInk = dark ? theme.ink.inverse : '#fff';
+  const actionInk = dark ? theme.ink.inverse : colors.onPrimary;
   const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 100);
   const player = useAudioPlayer(null);
@@ -535,7 +535,7 @@ export function VoiceEncouragementRecorder({
 
 const styles = StyleSheet.create({
   modal: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(8,26,58,0.52)' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(17,20,17,0.52)' },
   sheet: {
     backgroundColor: colors.cream,
     borderTopLeftRadius: 24,
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  recordText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  recordText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
   previewActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl },
   previewButton: {
     minHeight: 48,
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  sendText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.76 },
 });

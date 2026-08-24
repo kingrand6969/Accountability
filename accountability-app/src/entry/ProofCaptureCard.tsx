@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: 1,
   },
-  brandAbility: { color: '#60A5FA' },
+  brandAbility: { color: '#B9FF3D' },
   bottomBlock: { gap: 8 },
   proofHeadline: {
     color: '#FFFFFF',

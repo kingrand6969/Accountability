@@ -78,7 +78,7 @@ function createMarkup(geometry) {
     </svg>`;
   }
 
-  function appIcon(fill = colors.cobalt, background = '#FFFFFC') {
+  function appIcon(fill = colors.cobalt, background = colors.cream) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 96 96">
       <rect width="96" height="96" fill="${background}"/>
       ${markBody(geometry, fill, fill === colors.cobalt ? colors.cyan : fill)}

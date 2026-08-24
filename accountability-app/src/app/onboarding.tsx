@@ -36,10 +36,10 @@ import {
 } from '../navigation/authRouteIntent';
 
 const PROMISES = [
-  { id: 'body-run', group: 'Body', icon: 'walk' as const, color: '#2563EB', title: 'Morning run 3.2 km' },
+  { id: 'body-run', group: 'Body', icon: 'walk' as const, color: '#6F9F00', title: 'Morning run 3.2 km' },
   { id: 'body-strength', group: 'Body', icon: 'barbell' as const, color: '#16A34A', title: 'Strength workout' },
-  { id: 'focus-work', group: 'Focus', icon: 'radio-button-on' as const, color: '#7C3AED', title: '90 min deep work' },
-  { id: 'people-call', group: 'People', icon: 'people' as const, color: '#EA580C', title: 'Call someone I care about' },
+  { id: 'focus-work', group: 'Focus', icon: 'radio-button-on' as const, color: '#53634E', title: '90 min deep work' },
+  { id: 'people-call', group: 'People', icon: 'people' as const, color: '#5F8F00', title: 'Call someone I care about' },
 ] as const;
 
 /** Per-user flag — a second account on the same device gets its own onboarding. */

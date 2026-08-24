@@ -37,13 +37,13 @@ describe('Trophy Case manual appearance contract', () => {
       'const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);',
     );
     expect(trophy).toContain('function trophyPalette(theme: AppThemeColors, mode: AppThemeMode)');
-    expect(trophy).toContain("canvas: mode === 'dark' ? theme.surface.canvas : '#F7F4EC'");
+    expect(trophy).toContain("canvas: mode === 'dark' ? theme.surface.canvas : '#F4F5F1'");
     expect(trophy).toContain("card: mode === 'dark' ? theme.surface.card : '#FFFCF6'");
-    expect(trophy).toContain("ink: mode === 'dark' ? theme.ink.primary : '#081A3A'");
+    expect(trophy).toContain("ink: mode === 'dark' ? theme.ink.primary : '#111411'");
     expect(trophy).toContain("muted: mode === 'dark' ? theme.ink.muted : '#647084'");
     expect(trophy).toContain("border: mode === 'dark' ? theme.border.subtle : '#DED9CC'");
     expect(trophy).toContain("consistencyLockedInk: mode === 'dark' ? theme.ink.muted : '#9AA6B4'");
-    expect(trophy).toContain("ladderLocked: mode === 'dark' ? theme.border.strong : 'rgba(30,27,75,0.12)'");
+    expect(trophy).toContain("ladderLocked: mode === 'dark' ? theme.border.strong : 'rgba(17,20,17,0.12)'");
     expect(trophy).toContain("prestigeLockedIcon: mode === 'dark' ? theme.ink.muted : '#7C8796'");
     expect(trophy).toContain('backgroundColor: palette.canvas');
     expect(trophy).toContain('backgroundColor: palette.card');

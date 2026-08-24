@@ -370,7 +370,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   attending: { backgroundColor: theme.ink.muted },
   attendText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 12 },
-  media: { minHeight: 220, backgroundColor: '#081A3A', overflow: 'hidden' },
+  media: { minHeight: 220, backgroundColor: '#111411', overflow: 'hidden' },
   topScrim: {
     position: 'absolute',
     left: 0,

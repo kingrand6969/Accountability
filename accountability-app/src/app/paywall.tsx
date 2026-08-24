@@ -117,7 +117,7 @@ export default function Paywall() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.heroWrap}>
         <LinearGradient
-          colors={['#8b5cf6', '#7c3aed', '#5b21b6']}
+          colors={['#263223', '#53634E', '#111411']}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.8, y: 1 }}
           style={styles.hero}
@@ -317,7 +317,7 @@ function paywallPalette(theme: AppThemeColors, mode: AppThemeMode) {
     ink: mode === 'light' ? colors.text : theme.ink.primary,
     muted: mode === 'light' ? colors.textMuted : theme.ink.muted,
     faint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    proAccent: mode === 'light' ? colors.pro : '#C4B5FD',
+    proAccent: mode === 'light' ? colors.pro : '#B9FF3D',
     proSurface: mode === 'light' ? colors.proSoft : theme.surface.muted,
     success: mode === 'light' ? colors.success : theme.status.success,
     restoreSurface: mode === 'light' ? colors.surface : theme.surface.muted,
@@ -360,7 +360,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     marginBottom: spacing.sm,
   },
   title: { fontSize: 26, fontFamily: font.extrabold, color: '#fff' },
-  subtitle: { color: '#ede9fe', fontFamily: font.medium, fontSize: 15 },
+  subtitle: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 15 },
   card: {
     backgroundColor: palette.surface,
     borderWidth: 1,

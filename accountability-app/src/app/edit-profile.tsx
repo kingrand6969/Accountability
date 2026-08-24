@@ -414,7 +414,7 @@ export default function Profile() {
           <CachedImage uri={resolvedCoverUrl} style={styles.cover} contentFit="cover" />
         ) : (
           <LinearGradient
-            colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
+            colors={['#263223', '#6F9F00', '#83B91B']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.cover}
@@ -639,8 +639,8 @@ function profilePalette(theme: AppThemeColors, mode: AppThemeMode) {
     muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
     placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
     border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primary : theme.ink.action,
-    onAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
+    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
     danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
     attention: mode === 'light' ? legacyColors.accent : theme.status.attention,
     pro: mode === 'light' ? legacyColors.pro : theme.ink.action,

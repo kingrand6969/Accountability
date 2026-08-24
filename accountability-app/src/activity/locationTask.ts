@@ -391,7 +391,7 @@ const LOCATION_UPDATE_OPTIONS = {
   foregroundService: {
     notificationTitle: 'Tracking your activity',
     notificationBody: 'Recording distance & pace — tap to return.',
-    notificationColor: '#2563eb',
+    notificationColor: '#6F9F00',
   },
 } satisfies Location.LocationTaskOptions;
 

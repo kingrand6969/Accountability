@@ -122,6 +122,6 @@ const styles = StyleSheet.create({
   button: { marginTop: spacing.xs },
   resend: { textAlign: 'center', fontSize: 14, fontFamily: font.regular, color: colors.textMuted, marginTop: spacing.sm },
   resendMuted: { color: colors.textFaint, fontFamily: font.medium },
-  resendLink: { color: colors.primary, fontFamily: font.semibold },
+  resendLink: { color: colors.primaryDark, fontFamily: font.semibold },
   back: { textAlign: 'center', fontSize: 13, fontFamily: font.medium, color: colors.textFaint, marginTop: spacing.sm },
 });

@@ -47,10 +47,10 @@ describe('Accountability Unbroken A brand geometry contract', () => {
   it('defines the approved canvas, colors, and wordmark capitalization', () => {
     expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 96');
     expect(BRAND_GEOMETRY.colors).toEqual({
-      cobalt: '#155EEF',
-      navy: '#081A3A',
-      cyan: '#20C7D9',
-      cream: '#F7F4EC',
+      cobalt: '#B9FF3D',
+      navy: '#111411',
+      cyan: '#7FAF1C',
+      cream: '#F4F5F1',
     });
     expect(BRAND_WORDMARK).toBe('Accountability');
   });
@@ -83,7 +83,7 @@ describe('Accountability Unbroken A brand geometry contract', () => {
     expect(Object.isFrozen(BRAND_GEOMETRY.colors)).toBe(true);
     expect(Object.isFrozen(BRAND_GEOMETRY.mark)).toBe(true);
     (BRAND_GEOMETRY.colors as { cobalt: string }).cobalt = '#000000';
-    expect(BRAND_GEOMETRY.colors.cobalt).toBe('#155EEF');
+    expect(BRAND_GEOMETRY.colors.cobalt).toBe('#B9FF3D');
   });
 
   it('makes the asset generator consume the authoritative TypeScript contract', () => {
@@ -91,10 +91,10 @@ describe('Accountability Unbroken A brand geometry contract', () => {
 
     expect(generator).toContain("loadBrandGeometry('../src/ui/brandGeometry.ts')");
     for (const duplicatedLiteral of [
-      '#155EEF',
-      '#081A3A',
-      '#20C7D9',
-      '#F7F4EC',
+      '#B9FF3D',
+      '#111411',
+      '#7FAF1C',
+      '#F4F5F1',
       'M6 86 36 13',
       'M31 62 58 40',
     ]) {
