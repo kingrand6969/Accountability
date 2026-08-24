@@ -9,12 +9,16 @@ type BridgeEvent =
 
 type BridgeWindow = {
   __handleOsmMessage?: (message: unknown) => void;
-  parent: object;
+  parent: { postMessage: (data: string, origin: string) => void };
+  ReactNativeWebView?: { postMessage: (data: string) => void };
   addEventListener: (type: string, listener: (event: { data: string }) => void) => void;
 };
 
 function executeBridge(initialRoute: LatLng[], parentOrigin = 'https://app.example') {
+  const generation = 'generation-7';
+  const nonce = 'capability-9';
   const events: BridgeEvent[] = [];
+  const readyMessages: unknown[] = [];
   const listeners: Record<string, (event: { data: string }) => void> = {};
   const map = {
     fitBounds(bounds: { points: LatLng[] }) {
@@ -53,7 +57,11 @@ function executeBridge(initialRoute: LatLng[], parentOrigin = 'https://app.examp
     },
     tileLayer: () => ({ addTo: () => undefined }),
   };
-  const parentWindow = {};
+  const parentWindow = {
+    postMessage(data: string) {
+      readyMessages.push(JSON.parse(data));
+    },
+  };
   const bridgeWindow: BridgeWindow = {
     parent: parentWindow,
     addEventListener(type, listener) {
@@ -70,8 +78,10 @@ function executeBridge(initialRoute: LatLng[], parentOrigin = 'https://app.examp
     route: initialRoute,
     showLatestMarker: true,
     parentOrigin,
+    bridgeGeneration: generation,
+    bridgeNonce: nonce,
   });
-  const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
+  const script = html.match(/<script nonce="[^"]+">\s*([\s\S]*?)<\/script>/)?.[1];
   if (!script) throw new Error('Generated OSM page did not include its bridge script');
 
   // This executes the actual generated bridge with a small Leaflet test double.
@@ -80,14 +90,21 @@ function executeBridge(initialRoute: LatLng[], parentOrigin = 'https://app.examp
 
   return {
     events,
+    generation,
+    nonce,
+    readyMessages,
     message(
       message: unknown,
-      event: { origin?: string; source?: object } = {},
+      event: { origin?: string; source?: object; nonce?: string; generation?: string } = {},
     ) {
       const listener = listeners['window:message'];
       if (!listener) throw new Error('Generated OSM page did not register its message bridge');
       listener({
-        data: JSON.stringify(message),
+        data: JSON.stringify({
+          ...(message as Record<string, unknown>),
+          generation: event.generation ?? generation,
+          nonce: event.nonce ?? nonce,
+        }),
         origin: event.origin ?? parentOrigin,
         source: event.source ?? parentWindow,
       } as { data: string });
@@ -115,6 +132,16 @@ describe('generated OSM route bridge', () => {
       { kind: 'remove', layer: 'marker' },
       { kind: 'view', point: [20, 0], zoom: 2 },
     ]);
+  });
+
+  test('announces readiness with the exact document generation and capability', () => {
+    const bridge = executeBridge(routeA);
+
+    expect(bridge.readyMessages).toEqual([{
+      type: 'osm-ready',
+      generation: bridge.generation,
+      nonce: bridge.nonce,
+    }]);
   });
 
   test('preserves a user-controlled viewport during live route updates', () => {
@@ -162,6 +189,21 @@ describe('generated OSM route bridge', () => {
     bridge.message(
       { type: 'clear-route' },
       { source: {} },
+    );
+
+    expect(bridge.events).toEqual([]);
+  });
+
+  test('rejects a same-origin parent command with a stale generation or wrong capability', () => {
+    const bridge = executeBridge(routeA);
+
+    bridge.message(
+      { type: 'clear-route' },
+      { generation: 'generation-6' },
+    );
+    bridge.message(
+      { type: 'clear-route' },
+      { nonce: 'guessed-capability' },
     );
 
     expect(bridge.events).toEqual([]);

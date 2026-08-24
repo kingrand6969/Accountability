@@ -1,22 +1,24 @@
+import * as Crypto from 'expo-crypto';
 import {
   createElement,
   forwardRef,
   useCallback,
-  useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   buildOsmHtml,
-  createOsmRouteMessage,
-  createOsmViewportMessage,
   type LatLng,
   type MapFitPadding,
   type MapMarker,
-  type OsmBridgeMessage,
+  type OsmAuthenticatedBridgeMessage,
+  type OsmDocumentIdentity,
 } from './osmHtml';
+import { OsmBridgeGate } from './osmBridgeGate';
 import type { OsmMapHandle, OsmMapProps } from './OsmMap';
 
 function resolveParentOrigin() {
@@ -51,12 +53,48 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
 ) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const previousDeclarativeRouteLength = useRef(route.length);
+  const loadedGeneration = useRef<string | null>(null);
+  const [securityEpoch, setSecurityEpoch] = useState(0);
   const parentOrigin = useMemo(resolveParentOrigin, []);
-  const sendMessage = useCallback((message: OsmBridgeMessage) => {
+  const serializedMapData = JSON.stringify({ markers, route, fitPadding });
+  const documentKey = JSON.stringify({
+    serializedMapData,
+    interactive,
+    tiles,
+    showLatestMarker,
+    parentOrigin,
+    securityEpoch,
+  });
+  const documentRef = useRef<({ key: string } & OsmDocumentIdentity) | null>(null);
+  if (!documentRef.current || documentRef.current.key !== documentKey) {
+    documentRef.current = {
+      key: documentKey,
+      generation: Crypto.randomUUID(),
+      nonce: Crypto.randomUUID(),
+    };
+  }
+  const documentIdentity: OsmDocumentIdentity = {
+    generation: documentRef.current.generation,
+    nonce: documentRef.current.nonce,
+  };
+  const transportRef = useRef<(message: OsmAuthenticatedBridgeMessage) => void>(() => undefined);
+  transportRef.current = (message) => {
     if (!parentOrigin) return;
     frameRef.current?.contentWindow?.postMessage(JSON.stringify(message), parentOrigin);
-  }, [parentOrigin]);
-  const serializedMapData = JSON.stringify({ markers, route, fitPadding });
+  };
+  const gateRef = useRef<OsmBridgeGate | null>(null);
+  if (!gateRef.current) {
+    gateRef.current = new OsmBridgeGate((message) => transportRef.current(message));
+  }
+  const gate = gateRef.current;
+  gate.setDocument(documentIdentity);
+  const previousRouteLength = previousDeclarativeRouteLength.current;
+  previousDeclarativeRouteLength.current = route.length;
+  if (previousRouteLength > 0 && route.length === 0) {
+    gate.prepareDeclarativeClear();
+  } else if (route.length > 0) {
+    gate.cancelPreparedDeclarativeClear();
+  }
   const html = useMemo(
     () => {
       const stableMapData = JSON.parse(serializedMapData) as {
@@ -70,39 +108,74 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
         tiles,
         showLatestMarker,
         parentOrigin: parentOrigin ?? undefined,
+        bridgeGeneration: documentIdentity.generation,
+        bridgeNonce: documentIdentity.nonce,
       });
     },
-    [serializedMapData, interactive, tiles, showLatestMarker, parentOrigin],
+    [
+      serializedMapData,
+      interactive,
+      tiles,
+      showLatestMarker,
+      parentOrigin,
+      documentIdentity.generation,
+      documentIdentity.nonce,
+    ],
   );
 
   useImperativeHandle(ref, () => ({
     setRoute(r, options) {
-      sendMessage(createOsmRouteMessage(r, options));
+      gate.setRoute(r, options);
     },
     clearRoute() {
-      sendMessage({ type: 'clear-route' });
+      gate.clearRoute();
     },
     centerOn(point) {
-      sendMessage(createOsmViewportMessage({ mode: 'center', center: point }));
+      gate.centerOn(point);
     },
     fitRoute() {
-      sendMessage(createOsmViewportMessage({ mode: 'overview' }));
+      gate.fitRoute();
     },
-  }), [sendMessage]);
+  }), [gate]);
 
-  useEffect(() => {
-    const previousLength = previousDeclarativeRouteLength.current;
-    previousDeclarativeRouteLength.current = route.length;
-    if (previousLength > 0 && route.length === 0) {
-      sendMessage({ type: 'clear-route' });
+  useLayoutEffect(() => {
+    if (!parentOrigin) return undefined;
+    const onMessage = (event: MessageEvent) => {
+      if (
+        event.source !== frameRef.current?.contentWindow ||
+        event.origin !== parentOrigin
+      ) {
+        return;
+      }
+      try {
+        gate.acceptReady(JSON.parse(String(event.data)));
+      } catch {
+        // Ignore malformed messages from the iframe.
+      }
+    };
+    globalThis.addEventListener('message', onMessage);
+    return () => globalThis.removeEventListener('message', onMessage);
+  }, [gate, parentOrigin, documentIdentity.generation, documentIdentity.nonce]);
+
+  const onLoad = useCallback(() => {
+    if (loadedGeneration.current === documentIdentity.generation) {
+      gate.invalidate();
+      loadedGeneration.current = null;
+      setSecurityEpoch((value) => value + 1);
+      return;
     }
-  }, [route.length, sendMessage]);
+    loadedGeneration.current = documentIdentity.generation;
+    gate.requestReady();
+  }, [documentIdentity.generation, gate]);
 
   const iframe = createElement('iframe', {
     ref: frameRef,
     srcDoc: html,
     style: { border: 'none', width: '100%', height: '100%', display: 'block' },
     sandbox: 'allow-scripts allow-same-origin',
+    allow: '',
+    referrerPolicy: 'no-referrer',
+    onLoad,
     title: 'Map',
   });
 
