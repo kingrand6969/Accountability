@@ -81,6 +81,39 @@ function flattenedControlStyle(node: TestRenderer.ReactTestInstance) {
 }
 
 describe('RunTrackerOpenMap', () => {
+  test.each([
+    {
+      name: 'reference phone',
+      viewportWidth: 390,
+      viewportHeight: 844,
+      fontScale: 1,
+      sideInset: 0,
+      expectedMapToolsTop: 408,
+      expectedStatusTop: 532,
+    },
+    {
+      name: 'compact phone',
+      viewportWidth: 320,
+      viewportHeight: 568,
+      fontScale: 1,
+      sideInset: 16,
+      expectedMapToolsTop: 146,
+      expectedStatusTop: 270,
+    },
+  ])('keeps map tools directly above the centered status on the $name', (landmark) => {
+    const { renderer } = render(landmark);
+    const tools = renderer.root.findByProps({ testID: 'run-open-map-map-tools' });
+    const status = renderer.root.findByProps({ testID: 'run-open-map-status' });
+    const toolsStyle = StyleSheet.flatten(tools.props.style);
+    const statusStyle = StyleSheet.flatten(status.props.style);
+
+    expect(toolsStyle.top).toBe(landmark.expectedMapToolsTop);
+    expect(statusStyle.top).toBe(landmark.expectedStatusTop);
+    expect(toolsStyle.top + 48 * 2 + 10).toBeLessThanOrEqual(statusStyle.top - 18);
+    expect(statusStyle.left + statusStyle.width / 2).toBe(landmark.viewportWidth / 2);
+    expect(statusStyle.alignItems).toBe('center');
+  });
+
   test('renders the approved idle hierarchy and isolates every matching callback', () => {
     const { renderer, componentProps } = render();
 
@@ -220,17 +253,30 @@ describe('RunTrackerOpenMap', () => {
     });
 
     const status = renderer.root.findByProps({ testID: 'run-open-map-status' });
+    const mapTools = renderer.root.findByProps({ testID: 'run-open-map-map-tools' });
     const metrics = renderer.root.findByProps({ testID: 'run-open-map-primary-metrics' });
     const secondary = renderer.root.findByProps({ testID: 'run-open-map-secondary-metrics' });
     const action = byLabel(renderer, 'Start Run');
     const statusStyle = StyleSheet.flatten(status.props.style);
+    const mapToolsStyle = StyleSheet.flatten(mapTools.props.style);
     const metricsStyle = StyleSheet.flatten(metrics.props.style);
     const secondaryStyle = StyleSheet.flatten(secondary.props.style);
     const actionStyle = flattenedControlStyle(action);
 
-    expect(metricsStyle.top).toBeGreaterThan(statusStyle.top + statusStyle.minHeight);
-    expect(secondaryStyle.top).toBeGreaterThan(metricsStyle.top);
-    expect(actionStyle.top).toBeGreaterThan(secondaryStyle.top);
+    expect(statusStyle.minHeight).toBeGreaterThanOrEqual(108);
+    expect(mapToolsStyle.flexDirection).toBe('row');
+    expect(mapToolsStyle.height).toBe(48);
+    expect(mapToolsStyle.top + mapToolsStyle.height).toBeLessThanOrEqual(
+      statusStyle.top - 18,
+    );
+    expect(metricsStyle.top).toBeGreaterThanOrEqual(
+      statusStyle.top + statusStyle.minHeight + 12,
+    );
+    expect(secondaryStyle.minHeight).toBeGreaterThanOrEqual(64);
+    expect(secondaryStyle.top).toBeGreaterThanOrEqual(metricsStyle.top + 80);
+    expect(actionStyle.top).toBeGreaterThanOrEqual(
+      secondaryStyle.top + secondaryStyle.minHeight + 14,
+    );
     expect(actionStyle.top + actionStyle.minHeight + 36).toBeLessThanOrEqual(568);
 
     const visibleTexts = renderer.root.findAllByType(Text);
@@ -243,6 +289,26 @@ describe('RunTrackerOpenMap', () => {
     for (const value of primaryValues) {
       expect(value.props.numberOfLines).toBe(1);
       expect(value.props.adjustsFontSizeToFit).toBe(true);
+    }
+
+    const essentialTextIds = [
+      'run-activity-label-run',
+      'run-activity-label-walk',
+      'run-activity-label-ride',
+      'run-status-title',
+      'run-status-detail',
+      'run-metric-label-distance',
+      'run-metric-label-time',
+      'run-secondary-value-pace',
+      'run-secondary-label-pace',
+      'run-secondary-value-calories',
+      'run-secondary-label-calories',
+      'run-primary-action-label',
+    ];
+    for (const testID of essentialTextIds) {
+      const text = renderer.root.findByProps({ testID });
+      expect(text.props.maxFontSizeMultiplier ?? Number.POSITIVE_INFINITY)
+        .toBeGreaterThanOrEqual(2);
     }
   });
 });
