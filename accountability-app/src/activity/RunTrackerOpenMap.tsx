@@ -85,6 +85,7 @@ export function RunTrackerOpenMap({
   const layout = openMapRunLayout(layoutInput);
   const vertical = openMapRunVerticalLayout(layoutInput);
   const constrained = !vertical.supported;
+  const constrainedControlsExpanded = constrained && constrainedMapControlsOpen;
   const naturalLeft = (viewportWidth - layout.contentWidth) / 2;
   const contentLeft = Math.max(sideInset, naturalLeft);
   const contentWidth = Math.max(
@@ -222,41 +223,12 @@ export function RunTrackerOpenMap({
             },
           ]}
         >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Center map on my location"
-          accessibilityHint="Move the map to your latest location"
-          onPress={onCenterMap}
-          style={({ pressed }) => [
-            styles.roundControl,
-            styles.mapControl,
-            { width: layout.controlSize, height: layout.controlSize },
-            pressed && styles.controlPressed,
-          ]}
-        >
-          <Ionicons name="locate" size={21} color={colors.primary} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Show complete route"
-          accessibilityHint={
-            routeOverviewAvailable
-              ? 'Fit the complete recorded route on the map'
-              : 'Route overview is unavailable until enough points are recorded'
-          }
-          accessibilityState={{ disabled: !routeOverviewAvailable }}
-          disabled={!routeOverviewAvailable}
-          onPress={onShowRoute}
-          style={({ pressed }) => [
-            styles.roundControl,
-            styles.mapControl,
-            { width: layout.controlSize, height: layout.controlSize },
-            !routeOverviewAvailable && styles.disabled,
-            pressed && routeOverviewAvailable && styles.controlPressed,
-          ]}
-        >
-          <Ionicons name="scan-outline" size={20} color={palette.ink.primary} />
-        </Pressable>
+          <MapControlButtons
+            controlSize={layout.controlSize}
+            routeOverviewAvailable={routeOverviewAvailable}
+            onCenterMap={onCenterMap}
+            onShowRoute={onShowRoute}
+          />
         </View>
       ) : null}
 
@@ -384,32 +356,35 @@ export function RunTrackerOpenMap({
         </View>
       </View>
 
-      <View
-        pointerEvents="none"
-        accessibilityElementsHidden
-        style={[
-          styles.divider,
-          {
-            left: contentLeft,
-            top: secondaryTop - 8,
-            width: contentWidth,
-          },
-        ]}
-      />
+      {!constrainedControlsExpanded ? (
+        <>
+          <View
+            pointerEvents="none"
+            accessibilityElementsHidden
+            testID="run-open-map-divider"
+            style={[
+              styles.divider,
+              {
+                left: contentLeft,
+                top: secondaryTop - 8,
+                width: contentWidth,
+              },
+            ]}
+          />
 
-      <View
-        pointerEvents="none"
-        testID="run-open-map-secondary-metrics"
-        style={[
-          styles.secondaryMetrics,
-          {
-            left: contentLeft,
-            top: secondaryTop,
-            width: contentWidth,
-            minHeight: secondaryHeight,
-          },
-        ]}
-      >
+          <View
+            pointerEvents="none"
+            testID="run-open-map-secondary-metrics"
+            style={[
+              styles.secondaryMetrics,
+              {
+                left: contentLeft,
+                top: secondaryTop,
+                width: contentWidth,
+                minHeight: secondaryHeight,
+              },
+            ]}
+          >
         <View
           accessible
           accessibilityRole="text"
@@ -471,58 +446,8 @@ export function RunTrackerOpenMap({
             </Text>
           </View>
         </View>
-      </View>
-
-      {constrained && constrainedMapControlsOpen ? (
-        <View
-          pointerEvents="box-none"
-          testID="run-open-map-constrained-map-tools"
-          style={[
-            styles.constrainedMapTools,
-            {
-              right: contentLeft,
-              top: layout.ctaTop - layout.controlSize - 10,
-              height: layout.controlSize,
-              gap: mapToolGap,
-            },
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Center map on my location"
-            accessibilityHint="Move the map to your latest location"
-            onPress={onCenterMap}
-            style={({ pressed }) => [
-              styles.roundControl,
-              styles.mapControl,
-              { width: layout.controlSize, height: layout.controlSize },
-              pressed && styles.controlPressed,
-            ]}
-          >
-            <Ionicons name="locate" size={21} color={colors.primary} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Show complete route"
-            accessibilityHint={
-              routeOverviewAvailable
-                ? 'Fit the complete recorded route on the map'
-                : 'Route overview is unavailable until enough points are recorded'
-            }
-            accessibilityState={{ disabled: !routeOverviewAvailable }}
-            disabled={!routeOverviewAvailable}
-            onPress={onShowRoute}
-            style={({ pressed }) => [
-              styles.roundControl,
-              styles.mapControl,
-              { width: layout.controlSize, height: layout.controlSize },
-              !routeOverviewAvailable && styles.disabled,
-              pressed && routeOverviewAvailable && styles.controlPressed,
-            ]}
-          >
-            <Ionicons name="scan-outline" size={20} color={palette.ink.primary} />
-          </Pressable>
-        </View>
+          </View>
+        </>
       ) : null}
 
       {constrained ? (
@@ -532,6 +457,7 @@ export function RunTrackerOpenMap({
           accessibilityHint="Show location and route map controls"
           accessibilityState={{ expanded: constrainedMapControlsOpen }}
           onPress={() => setConstrainedMapControlsOpen((open) => !open)}
+          testID="run-open-map-controls-trigger"
           style={({ pressed }) => [
             styles.roundControl,
             {
@@ -545,6 +471,31 @@ export function RunTrackerOpenMap({
         >
           <Ionicons name="map-outline" size={21} color={colors.primary} />
         </Pressable>
+      ) : null}
+
+      {constrainedControlsExpanded ? (
+        <View
+          pointerEvents="box-none"
+          testID="run-open-map-constrained-map-tools"
+          style={[
+            styles.constrainedMapTools,
+            {
+              left: contentLeft,
+              top: secondaryTop,
+              width: contentWidth,
+              height: secondaryHeight,
+              gap: mapToolGap,
+            },
+          ]}
+        >
+          <MapControlButtons
+            controlSize={layout.controlSize}
+            routeOverviewAvailable={routeOverviewAvailable}
+            onCenterMap={onCenterMap}
+            onShowRoute={onShowRoute}
+            testIDPrefix="run-open-map-constrained"
+          />
+        </View>
       ) : null}
 
       <Pressable
@@ -585,6 +536,62 @@ export function RunTrackerOpenMap({
         </Text>
       </Pressable>
     </View>
+  );
+}
+
+function MapControlButtons({
+  controlSize,
+  routeOverviewAvailable,
+  onCenterMap,
+  onShowRoute,
+  testIDPrefix,
+}: {
+  controlSize: number;
+  routeOverviewAvailable: boolean;
+  onCenterMap: () => void;
+  onShowRoute: () => void;
+  testIDPrefix?: string;
+}) {
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Center map on my location"
+        accessibilityHint="Move the map to your latest location"
+        onPress={onCenterMap}
+        testID={testIDPrefix ? `${testIDPrefix}-center` : undefined}
+        style={({ pressed }) => [
+          styles.roundControl,
+          styles.mapControl,
+          { width: controlSize, height: controlSize },
+          pressed && styles.controlPressed,
+        ]}
+      >
+        <Ionicons name="locate" size={21} color={colors.primary} />
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Show complete route"
+        accessibilityHint={
+          routeOverviewAvailable
+            ? 'Fit the complete recorded route on the map'
+            : 'Route overview is unavailable until enough points are recorded'
+        }
+        accessibilityState={{ disabled: !routeOverviewAvailable }}
+        disabled={!routeOverviewAvailable}
+        onPress={onShowRoute}
+        testID={testIDPrefix ? `${testIDPrefix}-route` : undefined}
+        style={({ pressed }) => [
+          styles.roundControl,
+          styles.mapControl,
+          { width: controlSize, height: controlSize },
+          !routeOverviewAvailable && styles.disabled,
+          pressed && routeOverviewAvailable && styles.controlPressed,
+        ]}
+      >
+        <Ionicons name="scan-outline" size={20} color={palette.ink.primary} />
+      </Pressable>
+    </>
   );
 }
 
@@ -639,6 +646,8 @@ const styles = StyleSheet.create({
   constrainedMapTools: {
     position: 'absolute',
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   statusRegion: {
     position: 'absolute',

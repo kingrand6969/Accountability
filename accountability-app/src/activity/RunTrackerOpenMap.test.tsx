@@ -272,12 +272,49 @@ describe('RunTrackerOpenMap', () => {
     expect(byLabel(renderer, 'Pace unavailable')).toBeTruthy();
     expect(byLabel(renderer, 'Estimated calories 0')).toBeTruthy();
     expect(byLabel(renderer, 'Start Run')).toBeTruthy();
+    expect(renderer.root.findAllByProps({ testID: 'run-open-map-divider' }).length)
+      .toBeGreaterThan(0);
 
     press(renderer, 'Map controls');
+    const expandedTools = renderer.root.findByProps({
+      testID: 'run-open-map-constrained-map-tools',
+    });
+    const expandedStyle = StyleSheet.flatten(expandedTools.props.style);
+    expect(renderer.root.findAllByProps({ testID: 'run-open-map-secondary-metrics' }))
+      .toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'run-open-map-divider' })).toHaveLength(0);
+    expect(expandedStyle.top).toBe(secondaryStyle.top);
+    expect(expandedStyle.height).toBe(secondaryStyle.minHeight);
+    expect(expandedStyle.top + expandedStyle.height).toBe(
+      secondaryStyle.top + secondaryStyle.minHeight,
+    );
+    const orderedControlIds = renderer.root
+      .findAll((node) => [
+        'run-open-map-controls-trigger',
+        'run-open-map-constrained-center',
+        'run-open-map-constrained-route',
+        'run-primary-action-primary',
+      ].includes(node.props.testID))
+      .map((node) => node.props.testID)
+      .filter((testID, index, all) => all.indexOf(testID) === index);
+    expect(orderedControlIds).toEqual([
+      'run-open-map-controls-trigger',
+      'run-open-map-constrained-center',
+      'run-open-map-constrained-route',
+      'run-primary-action-primary',
+    ]);
     press(renderer, 'Center map on my location');
     press(renderer, 'Show complete route');
     expect(componentProps.onCenterMap).toHaveBeenCalledTimes(1);
     expect(componentProps.onShowRoute).toHaveBeenCalledTimes(1);
+
+    press(renderer, 'Map controls');
+    expect(renderer.root.findAllByProps({ testID: 'run-open-map-constrained-map-tools' }))
+      .toHaveLength(0);
+    expect(renderer.root.findAllByProps({ testID: 'run-open-map-secondary-metrics' }).length)
+      .toBeGreaterThan(0);
+    expect(renderer.root.findAllByProps({ testID: 'run-open-map-divider' }).length)
+      .toBeGreaterThan(0);
   });
 
   test.each([
