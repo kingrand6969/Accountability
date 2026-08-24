@@ -134,6 +134,9 @@ describe('RunTrackerOpenMap', () => {
       const tabStyles = ['Run', 'Walk', 'Ride'].map((label) =>
         flattenedControlStyle(byLabel(renderer, label)),
       );
+      const tabLabels = ['Run', 'Walk', 'Ride'].map((label) =>
+        renderer.root.findByProps({ testID: `run-activity-label-${label.toLowerCase()}` }),
+      );
 
       expect(tabStyles.map((style) => style.width)).toEqual([
         expectedTabWidth,
@@ -146,6 +149,20 @@ describe('RunTrackerOpenMap', () => {
       expect(tabStyles[2].left + tabStyles[2].width).toBe(moreStyle.right === undefined
         ? moreStyle.left
         : viewportWidth - moreStyle.right - moreStyle.width);
+      for (const [index, label] of ['Run', 'Walk', 'Ride'].entries()) {
+        const tabStyle = tabStyles[index];
+        const labelNode = tabLabels[index];
+        const labelStyle = StyleSheet.flatten(labelNode.props.style);
+        const horizontalPadding = tabStyle.paddingHorizontal ?? 0;
+        const usableWidth = tabStyle.width - horizontalPadding * 2;
+        const estimatedGlyphWidth = label.length * labelStyle.fontSize * 2 * 0.64;
+
+        expect(horizontalPadding).toBe(0);
+        expect(labelStyle.fontSize).toBe(12);
+        expect(labelStyle.lineHeight).toBe(16);
+        expect(labelNode.props.numberOfLines).toBe(1);
+        expect(estimatedGlyphWidth).toBeLessThanOrEqual(usableWidth);
+      }
     },
   );
 

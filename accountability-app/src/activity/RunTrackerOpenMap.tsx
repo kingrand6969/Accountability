@@ -171,13 +171,19 @@ export function RunTrackerOpenMap({
                 width: tabWidth,
                 height: layout.controlSize,
               },
+              extraLargeText && styles.activityTabExtraLargeText,
               pressed && !activitySelectorDisabled && styles.tabPressed,
               activitySelectorDisabled && styles.disabled,
             ]}
           >
             <Text
+              numberOfLines={1}
               testID={`run-activity-label-${activity.value}`}
-              style={[styles.activityLabel, selected && styles.activityLabelSelected]}
+              style={[
+                styles.activityLabel,
+                extraLargeText && styles.activityLabelExtraLargeText,
+                selected && styles.activityLabelSelected,
+              ]}
             >
               {activity.label}
             </Text>
@@ -494,6 +500,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
+  activityTabExtraLargeText: { paddingHorizontal: 0 },
   activityLabel: {
     color: palette.ink.muted,
     fontFamily: font.medium,
@@ -502,6 +509,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   activityLabelSelected: { color: colors.primary, fontFamily: font.semibold },
+  activityLabelExtraLargeText: { fontSize: 12, lineHeight: 16 },
   selectedUnderline: {
     position: 'absolute',
     bottom: 4,
