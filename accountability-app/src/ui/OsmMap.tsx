@@ -1,16 +1,25 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { buildOsmHtml, type LatLng, type MapMarker } from './osmHtml';
+import {
+  buildOsmHtml,
+  createOsmRouteMessage,
+  createOsmViewportMessage,
+  type LatLng,
+  type MapFitPadding,
+  type MapMarker,
+  type OsmBridgeMessage,
+  type OsmRouteUpdateOptions,
+} from './osmHtml';
 
-export type OsmMapHandle = { setRoute: (route: LatLng[], center?: LatLng) => void };
-
-export type MapFitPadding = {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
+export type OsmMapHandle = {
+  setRoute: (route: LatLng[], options?: OsmRouteUpdateOptions | LatLng) => void;
+  clearRoute: () => void;
+  centerOn: (point: LatLng) => void;
+  fitRoute: () => void;
 };
+
+export type { MapFitPadding } from './osmHtml';
 
 export type OsmMapProps = {
   markers?: MapMarker[];
@@ -41,6 +50,11 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   ref,
 ) {
   const webRef = useRef<WebView>(null);
+  const sendMessage = useCallback((message: OsmBridgeMessage) => {
+    webRef.current?.injectJavaScript(
+      `window.__handleOsmMessage && window.__handleOsmMessage(${JSON.stringify(message)}); true;`,
+    );
+  }, []);
   const serializedMapData = JSON.stringify({ markers, route, fitPadding });
   const html = useMemo(
     () => {
@@ -55,14 +69,23 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   );
 
   useImperativeHandle(ref, () => ({
-    setRoute(r, center) {
-      webRef.current?.injectJavaScript(
-        `window.__updateRoute && window.__updateRoute(${JSON.stringify(r)}, ${
-          center ? JSON.stringify(center) : 'null'
-        }); true;`,
-      );
+    setRoute(r, options) {
+      sendMessage(createOsmRouteMessage(r, options));
     },
-  }));
+    clearRoute() {
+      sendMessage({ type: 'clear-route' });
+    },
+    centerOn(point) {
+      sendMessage(createOsmViewportMessage({ mode: 'center', center: point }));
+    },
+    fitRoute() {
+      sendMessage(createOsmViewportMessage({ mode: 'overview' }));
+    },
+  }), [sendMessage]);
+
+  useEffect(() => {
+    if (route.length === 0) sendMessage({ type: 'clear-route' });
+  }, [route.length, serializedMapData, sendMessage]);
 
   return (
     <View style={[styles.wrap, style]}>

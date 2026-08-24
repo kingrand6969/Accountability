@@ -1,6 +1,22 @@
-import { createElement, forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
+import {
+  createElement,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from 'react';
 import { StyleSheet, View } from 'react-native';
-import { buildOsmHtml, type LatLng, type MapMarker } from './osmHtml';
+import {
+  buildOsmHtml,
+  createOsmRouteMessage,
+  createOsmViewportMessage,
+  type LatLng,
+  type MapFitPadding,
+  type MapMarker,
+  type OsmBridgeMessage,
+} from './osmHtml';
 import type { OsmMapHandle, OsmMapProps } from './OsmMap';
 
 /**
@@ -8,16 +24,28 @@ import type { OsmMapHandle, OsmMapProps } from './OsmMap';
  * Live updates go through postMessage to the iframe (mirrors the native ref API).
  */
 export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
-  { markers = [], route = [], interactive = true, tiles = 'osm', showLatestMarker = true, style },
+  {
+    markers = [],
+    route = [],
+    interactive = true,
+    tiles = 'osm',
+    showLatestMarker = true,
+    fitPadding,
+    style,
+  },
   ref,
 ) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
-  const serializedMapData = JSON.stringify({ markers, route });
+  const sendMessage = useCallback((message: OsmBridgeMessage) => {
+    frameRef.current?.contentWindow?.postMessage(JSON.stringify(message), '*');
+  }, []);
+  const serializedMapData = JSON.stringify({ markers, route, fitPadding });
   const html = useMemo(
     () => {
       const stableMapData = JSON.parse(serializedMapData) as {
         markers: MapMarker[];
         route: LatLng[];
+        fitPadding?: MapFitPadding;
       };
       return buildOsmHtml({ ...stableMapData, interactive, tiles, showLatestMarker });
     },
@@ -25,10 +53,23 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   );
 
   useImperativeHandle(ref, () => ({
-    setRoute(r, center) {
-      frameRef.current?.contentWindow?.postMessage(JSON.stringify({ type: 'route', route: r, center }), '*');
+    setRoute(r, options) {
+      sendMessage(createOsmRouteMessage(r, options));
     },
-  }));
+    clearRoute() {
+      sendMessage({ type: 'clear-route' });
+    },
+    centerOn(point) {
+      sendMessage(createOsmViewportMessage({ mode: 'center', center: point }));
+    },
+    fitRoute() {
+      sendMessage(createOsmViewportMessage({ mode: 'overview' }));
+    },
+  }), [sendMessage]);
+
+  useEffect(() => {
+    if (route.length === 0) sendMessage({ type: 'clear-route' });
+  }, [route.length, serializedMapData, sendMessage]);
 
   const iframe = createElement('iframe', {
     ref: frameRef,

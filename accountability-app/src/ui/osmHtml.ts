@@ -2,6 +2,55 @@ export type LatLng = { lat: number; lng: number };
 export type MapMarker = LatLng & { label?: string; color?: string };
 export type MapFitPadding = { top: number; right: number; bottom: number; left: number };
 
+export type OsmMapViewport =
+  | { mode: 'preserve' }
+  | { mode: 'center'; center: LatLng }
+  | { mode: 'overview' };
+
+export type OsmRouteUpdateOptions =
+  | { viewport?: 'preserve' }
+  | { viewport: 'center'; center: LatLng }
+  | { viewport: 'overview' };
+
+export type OsmBridgeMessage =
+  | { type: 'route'; route: LatLng[]; viewport: OsmMapViewport }
+  | { type: 'clear-route' }
+  | { type: 'viewport'; viewport: Exclude<OsmMapViewport, { mode: 'preserve' }> };
+
+function isLegacyCenter(value: OsmRouteUpdateOptions | LatLng): value is LatLng {
+  return 'lat' in value && 'lng' in value;
+}
+
+export function createOsmRouteMessage(
+  route: LatLng[],
+  options?: OsmRouteUpdateOptions | LatLng,
+): OsmBridgeMessage {
+  if (route.length === 0) return { type: 'clear-route' };
+  if (!options) {
+    return { type: 'route', route, viewport: { mode: 'preserve' } };
+  }
+  if (isLegacyCenter(options)) {
+    return { type: 'route', route, viewport: { mode: 'center', center: options } };
+  }
+  if (options.viewport === 'center') {
+    return {
+      type: 'route',
+      route,
+      viewport: { mode: 'center', center: options.center },
+    };
+  }
+  if (options.viewport === 'overview') {
+    return { type: 'route', route, viewport: { mode: 'overview' } };
+  }
+  return { type: 'route', route, viewport: { mode: 'preserve' } };
+}
+
+export function createOsmViewportMessage(
+  viewport: Exclude<OsmMapViewport, { mode: 'preserve' }>,
+): OsmBridgeMessage {
+  return { type: 'viewport', viewport };
+}
+
 const ACCENT = '#6F9F00';
 
 /**
@@ -68,18 +117,20 @@ export function buildOsmHtml(opts: {
   var posMarker = null;
   function drawRoute(pts) {
     if (line) { map.removeLayer(line); line = null; }
-    if (pts && pts.length) {
-      var ll = pts.map(function (p) { return [p.lat, p.lng]; });
-      line = L.polyline(ll, { color: '${dark ? '#c6f24e' : ACCENT}', weight: 5, opacity: 0.95, lineJoin: 'round' }).addTo(map);
-      if (showLatestMarker) {
-        // a "you are here" dot at the latest point
-        var last = ll[ll.length - 1];
-        if (posMarker) { posMarker.setLatLng(last); }
-        else {
-          posMarker = L.marker(last, { icon: L.divIcon({ className: '',
-            html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid ${dark ? '#c6f24e' : ACCENT};box-shadow:0 1px 6px rgba(0,0,0,0.5)"></div>',
-            iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
-        }
+    if (!pts || !pts.length) {
+      if (posMarker) { map.removeLayer(posMarker); posMarker = null; }
+      return;
+    }
+    var ll = pts.map(function (p) { return [p.lat, p.lng]; });
+    line = L.polyline(ll, { color: '${dark ? '#c6f24e' : ACCENT}', weight: 5, opacity: 0.95, lineJoin: 'round' }).addTo(map);
+    if (showLatestMarker) {
+      // a "you are here" dot at the latest point
+      var last = ll[ll.length - 1];
+      if (posMarker) { posMarker.setLatLng(last); }
+      else {
+        posMarker = L.marker(last, { icon: L.divIcon({ className: '',
+          html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid ${dark ? '#c6f24e' : ACCENT};box-shadow:0 1px 6px rgba(0,0,0,0.5)"></div>',
+          iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
       }
     }
   }
@@ -115,18 +166,56 @@ export function buildOsmHtml(opts: {
   });
   fitAll();
 
-  // live bridge — the run tracker pushes points here without reloading the page
-  window.__updateRoute = function (pts, center) {
-    drawRoute(pts);
-    if (center) { map.setView([center.lat, center.lng], map.getZoom() < 14 ? 16 : map.getZoom()); }
-    else if (line) { try { map.fitBounds(line.getBounds(), {
+  function fitRoute() {
+    if (!line) { return; }
+    var points = line.getLatLngs();
+    if (points.length > 1) { try { map.fitBounds(line.getBounds(), {
       paddingTopLeft: [fitPadding.left, fitPadding.top],
       paddingBottomRight: [fitPadding.right, fitPadding.bottom],
       maxZoom: 17
     }); } catch (e) {} }
+    else if (points.length === 1) { map.setView(points[0], 16); }
+  }
+
+  function clearRoute() {
+    // One synchronous privacy boundary: remove every route-derived layer, then
+    // discard the former location-centred camera.
+    drawRoute([]);
+    map.setView([20, 0], 2);
+  }
+
+  function applyViewport(viewport) {
+    if (!viewport || viewport.mode === 'preserve') { return; }
+    if (viewport.mode === 'center' && viewport.center) {
+      map.setView(
+        [viewport.center.lat, viewport.center.lng],
+        map.getZoom() < 14 ? 16 : map.getZoom()
+      );
+    } else if (viewport.mode === 'overview') {
+      fitRoute();
+    }
+  }
+
+  // Live bridge — route updates preserve a user's pan/zoom unless the caller
+  // explicitly requests Center or Overview.
+  window.__updateRoute = function (pts, viewport) {
+    if (!pts || !pts.length) { clearRoute(); return; }
+    drawRoute(pts);
+    // Backwards compatibility for callers that used to pass a LatLng directly.
+    if (viewport && typeof viewport.lat === 'number' && typeof viewport.lng === 'number') {
+      viewport = { mode: 'center', center: viewport };
+    }
+    applyViewport(viewport || { mode: 'preserve' });
+  };
+
+  window.__handleOsmMessage = function (d) {
+    if (!d) { return; }
+    if (d.type === 'clear-route') { clearRoute(); }
+    else if (d.type === 'route') { window.__updateRoute(d.route, d.viewport); }
+    else if (d.type === 'viewport') { applyViewport(d.viewport); }
   };
   function onMsg(e) {
-    try { var d = JSON.parse(e.data); if (d && d.type === 'route') { window.__updateRoute(d.route, d.center); } } catch (err) {}
+    try { window.__handleOsmMessage(JSON.parse(e.data)); } catch (err) {}
   }
   document.addEventListener('message', onMsg);
   window.addEventListener('message', onMsg);
