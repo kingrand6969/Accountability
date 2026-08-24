@@ -9,10 +9,11 @@ type BridgeEvent =
 
 type BridgeWindow = {
   __handleOsmMessage?: (message: unknown) => void;
+  parent: object;
   addEventListener: (type: string, listener: (event: { data: string }) => void) => void;
 };
 
-function executeBridge(initialRoute: LatLng[]) {
+function executeBridge(initialRoute: LatLng[], parentOrigin = 'https://app.example') {
   const events: BridgeEvent[] = [];
   const listeners: Record<string, (event: { data: string }) => void> = {};
   const map = {
@@ -52,7 +53,9 @@ function executeBridge(initialRoute: LatLng[]) {
     },
     tileLayer: () => ({ addTo: () => undefined }),
   };
+  const parentWindow = {};
   const bridgeWindow: BridgeWindow = {
+    parent: parentWindow,
     addEventListener(type, listener) {
       listeners[`window:${type}`] = listener;
     },
@@ -63,7 +66,11 @@ function executeBridge(initialRoute: LatLng[]) {
     },
     createElement: () => ({ textContent: '' }),
   };
-  const html = buildOsmHtml({ route: initialRoute, showLatestMarker: true });
+  const html = buildOsmHtml({
+    route: initialRoute,
+    showLatestMarker: true,
+    parentOrigin,
+  });
   const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
   if (!script) throw new Error('Generated OSM page did not include its bridge script');
 
@@ -73,10 +80,17 @@ function executeBridge(initialRoute: LatLng[]) {
 
   return {
     events,
-    message(message: unknown) {
-      const listener = listeners['document:message'];
+    message(
+      message: unknown,
+      event: { origin?: string; source?: object } = {},
+    ) {
+      const listener = listeners['window:message'];
       if (!listener) throw new Error('Generated OSM page did not register its message bridge');
-      listener({ data: JSON.stringify(message) });
+      listener({
+        data: JSON.stringify(message),
+        origin: event.origin ?? parentOrigin,
+        source: event.source ?? parentWindow,
+      } as { data: string });
     },
   };
 }
@@ -135,6 +149,33 @@ describe('generated OSM route bridge', () => {
       { kind: 'remove', layer: 'line' },
       { kind: 'remove', layer: 'marker' },
       { kind: 'view', point: [20, 0], zoom: 2 },
+    ]);
+  });
+
+  test('rejects route messages that are not from the exact same-origin parent', () => {
+    const bridge = executeBridge(routeA);
+
+    bridge.message(
+      { type: 'clear-route' },
+      { origin: 'https://attacker.example' },
+    );
+    bridge.message(
+      { type: 'clear-route' },
+      { source: {} },
+    );
+
+    expect(bridge.events).toEqual([]);
+  });
+
+  test('normalizes the legacy route center field to an explicit center viewport', () => {
+    const bridge = executeBridge(routeA);
+    const latest = routeB.at(-1)!;
+
+    bridge.message({ type: 'route', route: routeB, center: latest });
+
+    expect(bridge.events).toEqual([
+      { kind: 'remove', layer: 'line' },
+      { kind: 'view', point: [latest.lat, latest.lng], zoom: 15 },
     ]);
   });
 });

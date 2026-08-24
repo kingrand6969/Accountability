@@ -38,6 +38,30 @@ function lastNativeMessage() {
 }
 
 describe('native OsmMap imperative bridge', () => {
+  test('does not clear an initially marker-only map or clear it again when marker layout changes', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <OsmMap
+          markers={[{ lat: -31.9523, lng: 115.8613, label: 'You' }]}
+          fitPadding={{ top: 20, right: 20, bottom: 20, left: 20 }}
+        />,
+      );
+      mounted.push(renderer);
+    });
+
+    expect(mockInjectedScripts).toEqual([]);
+
+    act(() => renderer.update(
+      <OsmMap
+        markers={[{ lat: -31.951, lng: 115.864, label: 'You' }]}
+        fitPadding={{ top: 40, right: 24, bottom: 60, left: 24 }}
+      />,
+    ));
+
+    expect(mockInjectedScripts).toEqual([]);
+  });
+
   test('uses preserve as the live-update default and exposes explicit viewport actions', () => {
     const ref = React.createRef<OsmMapHandle>();
     act(() => {
@@ -111,5 +135,43 @@ describe('native OsmMap imperative bridge', () => {
       route,
       viewport: { mode: 'center', center: route[0] },
     });
+  });
+
+  test('allows only internal top-level HTML navigation while leaving approved resources available as subresources', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<OsmMap />);
+      mounted.push(renderer);
+    });
+    const webViewProps = renderer.root.findByProps({ testID: 'native-osm-webview' }).props;
+    const shouldStart = webViewProps.onShouldStartLoadWithRequest as (request: {
+        isTopFrame?: boolean;
+        url: string;
+      }) => boolean;
+
+    expect(webViewProps.originWhitelist).toEqual(['about:*', 'data:*']);
+    expect(shouldStart({ url: 'about:blank', isTopFrame: true })).toBe(true);
+    expect(shouldStart({ url: 'data:text/html;charset=utf-8,%3Chtml%3E', isTopFrame: true }))
+      .toBe(true);
+    expect(shouldStart({
+      url: 'https://a.tile.openstreetmap.org/12/2048/2048.png',
+      isTopFrame: false,
+    })).toBe(true);
+    expect(shouldStart({
+      url: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+      isTopFrame: false,
+    })).toBe(true);
+    expect(shouldStart({
+      url: 'https://www.openstreetmap.org/copyright',
+      isTopFrame: true,
+    })).toBe(false);
+    expect(shouldStart({
+      url: 'https://a.tile.openstreetmap.org/12/2048/2048.png',
+      isTopFrame: true,
+    })).toBe(false);
+    expect(shouldStart({
+      url: 'https://attacker.example/payload.js',
+      isTopFrame: false,
+    })).toBe(false);
   });
 });

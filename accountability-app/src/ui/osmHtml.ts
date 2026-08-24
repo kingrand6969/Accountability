@@ -66,6 +66,7 @@ export function buildOsmHtml(opts: {
   tiles?: 'osm' | 'dark';
   showLatestMarker?: boolean;
   fitPadding?: MapFitPadding;
+  parentOrigin?: string;
 }): string {
   const markers = opts.markers ?? [];
   const route = opts.route ?? [];
@@ -73,6 +74,7 @@ export function buildOsmHtml(opts: {
   const showLatestMarker = opts.showLatestMarker !== false;
   const dark = opts.tiles === 'dark';
   const fitPadding = opts.fitPadding ?? { top: 28, right: 28, bottom: 28, left: 28 };
+  const parentOrigin = opts.parentOrigin ?? null;
   const tileUrl = dark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -104,6 +106,7 @@ export function buildOsmHtml(opts: {
   var interactive = ${interactive ? 'true' : 'false'};
   var showLatestMarker = ${showLatestMarker ? 'true' : 'false'};
   var fitPadding = ${safeJson(fitPadding)};
+  var parentOrigin = ${safeJson(parentOrigin)};
   var map = L.map('map', {
     zoomControl: interactive, dragging: interactive, scrollWheelZoom: interactive,
     doubleClickZoom: interactive, boxZoom: interactive, keyboard: interactive, tap: interactive,
@@ -211,14 +214,18 @@ export function buildOsmHtml(opts: {
   window.__handleOsmMessage = function (d) {
     if (!d) { return; }
     if (d.type === 'clear-route') { clearRoute(); }
-    else if (d.type === 'route') { window.__updateRoute(d.route, d.viewport); }
+    else if (d.type === 'route') {
+      var viewport = d.viewport;
+      if (!viewport && d.center) { viewport = { mode: 'center', center: d.center }; }
+      window.__updateRoute(d.route, viewport);
+    }
     else if (d.type === 'viewport') { applyViewport(d.viewport); }
   };
   function onMsg(e) {
+    if (!parentOrigin || e.source !== window.parent || e.origin !== parentOrigin) { return; }
     try { window.__handleOsmMessage(JSON.parse(e.data)); } catch (err) {}
   }
-  document.addEventListener('message', onMsg);
-  window.addEventListener('message', onMsg);
+  if (parentOrigin) { window.addEventListener('message', onMsg); }
 })();
 </script>
 </body>

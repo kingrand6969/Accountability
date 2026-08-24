@@ -19,6 +19,20 @@ import {
 } from './osmHtml';
 import type { OsmMapHandle, OsmMapProps } from './OsmMap';
 
+function resolveParentOrigin() {
+  const origin = globalThis.location?.origin;
+  if (!origin || origin === 'null') return null;
+  try {
+    const parsed = new URL(origin);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      parsed.origin === origin
+      ? origin
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Web build of OsmMap — the same Leaflet page, hosted in an <iframe srcDoc>.
  * Live updates go through postMessage to the iframe (mirrors the native ref API).
@@ -36,9 +50,12 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   ref,
 ) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const previousDeclarativeRouteLength = useRef(route.length);
+  const parentOrigin = useMemo(resolveParentOrigin, []);
   const sendMessage = useCallback((message: OsmBridgeMessage) => {
-    frameRef.current?.contentWindow?.postMessage(JSON.stringify(message), '*');
-  }, []);
+    if (!parentOrigin) return;
+    frameRef.current?.contentWindow?.postMessage(JSON.stringify(message), parentOrigin);
+  }, [parentOrigin]);
   const serializedMapData = JSON.stringify({ markers, route, fitPadding });
   const html = useMemo(
     () => {
@@ -47,9 +64,15 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
         route: LatLng[];
         fitPadding?: MapFitPadding;
       };
-      return buildOsmHtml({ ...stableMapData, interactive, tiles, showLatestMarker });
+      return buildOsmHtml({
+        ...stableMapData,
+        interactive,
+        tiles,
+        showLatestMarker,
+        parentOrigin: parentOrigin ?? undefined,
+      });
     },
-    [serializedMapData, interactive, tiles, showLatestMarker],
+    [serializedMapData, interactive, tiles, showLatestMarker, parentOrigin],
   );
 
   useImperativeHandle(ref, () => ({
@@ -68,8 +91,12 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   }), [sendMessage]);
 
   useEffect(() => {
-    if (route.length === 0) sendMessage({ type: 'clear-route' });
-  }, [route.length, serializedMapData, sendMessage]);
+    const previousLength = previousDeclarativeRouteLength.current;
+    previousDeclarativeRouteLength.current = route.length;
+    if (previousLength > 0 && route.length === 0) {
+      sendMessage({ type: 'clear-route' });
+    }
+  }, [route.length, sendMessage]);
 
   const iframe = createElement('iframe', {
     ref: frameRef,

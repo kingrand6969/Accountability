@@ -12,6 +12,37 @@ import {
   type OsmRouteUpdateOptions,
 } from './osmHtml';
 
+type OsmNavigationRequest = { url: string; isTopFrame?: boolean };
+
+const APPROVED_OSM_RESOURCE_HOSTS = [
+  'unpkg.com',
+  'tile.openstreetmap.org',
+  'basemaps.cartocdn.com',
+];
+
+function isInternalOsmDocument(url: string) {
+  return url === 'about:blank' ||
+    url === 'about:srcdoc' ||
+    url.startsWith('data:text/html');
+}
+
+function isApprovedOsmResource(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    return APPROVED_OSM_RESOURCE_HOSTS.some(
+      (host) => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function shouldAllowOsmNavigation(request: OsmNavigationRequest) {
+  if (isInternalOsmDocument(request.url)) return true;
+  return request.isTopFrame === false && isApprovedOsmResource(request.url);
+}
+
 export type OsmMapHandle = {
   setRoute: (route: LatLng[], options?: OsmRouteUpdateOptions | LatLng) => void;
   clearRoute: () => void;
@@ -50,6 +81,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   ref,
 ) {
   const webRef = useRef<WebView>(null);
+  const previousDeclarativeRouteLength = useRef(route.length);
   const sendMessage = useCallback((message: OsmBridgeMessage) => {
     webRef.current?.injectJavaScript(
       `window.__handleOsmMessage && window.__handleOsmMessage(${JSON.stringify(message)}); true;`,
@@ -84,21 +116,26 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   }), [sendMessage]);
 
   useEffect(() => {
-    if (route.length === 0) sendMessage({ type: 'clear-route' });
-  }, [route.length, serializedMapData, sendMessage]);
+    const previousLength = previousDeclarativeRouteLength.current;
+    previousDeclarativeRouteLength.current = route.length;
+    if (previousLength > 0 && route.length === 0) {
+      sendMessage({ type: 'clear-route' });
+    }
+  }, [route.length, sendMessage]);
 
   return (
     <View style={[styles.wrap, style]}>
       <WebView
         ref={webRef}
         source={{ html }}
-        originWhitelist={['*']}
+        originWhitelist={['about:*', 'data:*']}
         style={styles.web}
         scrollEnabled={false}
         javaScriptEnabled
         domStorageEnabled
         androidLayerType="hardware"
         setSupportMultipleWindows={false}
+        onShouldStartLoadWithRequest={shouldAllowOsmNavigation}
       />
     </View>
   );
