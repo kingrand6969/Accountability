@@ -13,6 +13,7 @@ export type RunTrackerPrimaryAction = {
   icon: IoniconName;
   tone: 'primary' | 'danger';
   disabled: boolean;
+  busy: boolean;
   onPress: () => void;
 };
 
@@ -115,22 +116,22 @@ export function RunTrackerOpenMap({
     layout.metricBandTop,
     secondaryTop - primaryMetricsHeight - 8,
   );
-  const statusTop = Math.min(
-    layout.statusTop,
-    metricBandTop - statusHeight - 12,
+  const topControlSafeFloor = topControlTop + layout.controlSize + 16;
+  const statusTop = Math.max(
+    topControlSafeFloor,
+    Math.min(layout.statusTop, metricBandTop - statusHeight - 12),
   );
   const mapToolGap = 10;
   const mapToolsHeight = compactExtraLargeText
     ? layout.controlSize
     : layout.controlSize * 2 + mapToolGap;
   const mapToolsTop = Math.max(
-    topControlTop + layout.controlSize + 16,
+    topControlSafeFloor,
     statusTop - mapToolsHeight - 18,
   );
   const paceSpoken = isUnavailablePace(pace)
     ? 'Pace unavailable'
     : `Pace ${pace} per kilometre`;
-  const actionBusy = primaryAction.label.trim().toLowerCase().startsWith('starting');
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill} testID="run-open-map-chrome">
@@ -232,6 +233,7 @@ export function RunTrackerOpenMap({
           onPress={onCenterMap}
           style={({ pressed }) => [
             styles.roundControl,
+            styles.mapControl,
             { width: layout.controlSize, height: layout.controlSize },
             pressed && styles.controlPressed,
           ]}
@@ -251,6 +253,7 @@ export function RunTrackerOpenMap({
           onPress={onShowRoute}
           style={({ pressed }) => [
             styles.roundControl,
+            styles.mapControl,
             { width: layout.controlSize, height: layout.controlSize },
             !routeOverviewAvailable && styles.disabled,
             pressed && routeOverviewAvailable && styles.controlPressed,
@@ -261,7 +264,7 @@ export function RunTrackerOpenMap({
       </View>
 
       <View
-        pointerEvents="box-none"
+        pointerEvents="none"
         testID="run-open-map-status"
         style={[
           styles.statusRegion,
@@ -293,7 +296,7 @@ export function RunTrackerOpenMap({
       </View>
 
       <View
-        pointerEvents="box-none"
+        pointerEvents="none"
         testID="run-open-map-primary-metrics"
         style={[
           styles.primaryMetrics,
@@ -379,7 +382,7 @@ export function RunTrackerOpenMap({
       />
 
       <View
-        pointerEvents="box-none"
+        pointerEvents="none"
         testID="run-open-map-secondary-metrics"
         style={[
           styles.secondaryMetrics,
@@ -437,7 +440,7 @@ export function RunTrackerOpenMap({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={primaryAction.label}
-        accessibilityState={{ busy: actionBusy, disabled: primaryAction.disabled }}
+        accessibilityState={{ busy: primaryAction.busy, disabled: primaryAction.disabled }}
         disabled={primaryAction.disabled}
         onPress={primaryAction.onPress}
         testID={`run-primary-action-${primaryAction.tone}`}
@@ -521,6 +524,7 @@ const styles = StyleSheet.create({
   tabPressed: { opacity: 0.7 },
   disabled: { opacity: palette.interaction.disabledOpacity },
   mapTools: { position: 'absolute' },
+  mapControl: { position: 'relative' },
   statusRegion: {
     position: 'absolute',
     alignItems: 'center',

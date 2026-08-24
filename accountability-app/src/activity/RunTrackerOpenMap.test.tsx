@@ -23,6 +23,7 @@ function idleAction(overrides: Partial<RunTrackerPrimaryAction> = {}): RunTracke
     icon: 'play',
     tone: 'primary',
     disabled: false,
+    busy: false,
     onPress: jest.fn(),
     ...overrides,
   };
@@ -166,12 +167,63 @@ describe('RunTrackerOpenMap', () => {
     },
   );
 
+  test('keeps both map controls in normal flex flow instead of stacking absolutely', () => {
+    const { renderer } = render();
+    const tools = renderer.root.findByProps({ testID: 'run-open-map-map-tools' });
+    const center = byLabel(renderer, 'Center map on my location');
+    const overview = byLabel(renderer, 'Show complete route');
+    const toolsStyle = StyleSheet.flatten(tools.props.style);
+    const centerStyle = flattenedControlStyle(center);
+    const overviewStyle = flattenedControlStyle(overview);
+
+    expect(toolsStyle.flexDirection).toBe('column');
+    expect(toolsStyle.gap).toBe(10);
+    expect(toolsStyle.height).toBe(48 * 2 + 10);
+    expect(centerStyle.position).toBe('relative');
+    expect(overviewStyle.position).toBe('relative');
+    expect(centerStyle.width).toBe(48);
+    expect(overviewStyle.width).toBe(48);
+  });
+
+  test('lets map gestures pass through every informational overlay subtree', () => {
+    const { renderer } = render();
+
+    expect(renderer.root.findByProps({ testID: 'run-open-map-status' }).props.pointerEvents)
+      .toBe('none');
+    expect(
+      renderer.root.findByProps({ testID: 'run-open-map-primary-metrics' }).props.pointerEvents,
+    ).toBe('none');
+    expect(
+      renderer.root.findByProps({ testID: 'run-open-map-secondary-metrics' }).props.pointerEvents,
+    ).toBe('none');
+    expect(byLabel(renderer, 'Center map on my location').props.onPress).toEqual(
+      expect.any(Function),
+    );
+    expect(byLabel(renderer, 'Start Run').props.onPress).toEqual(expect.any(Function));
+  });
+
+  test('never moves the status overlay above the top-control safe floor', () => {
+    const safeTop = 120;
+    const { renderer } = render({
+      viewportWidth: 320,
+      viewportHeight: 568,
+      fontScale: 2,
+      safeTop,
+      sideInset: 16,
+    });
+    const statusStyle = StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'run-open-map-status' }).props.style,
+    );
+
+    expect(statusStyle.top).toBeGreaterThanOrEqual(safeTop + 8 + 48 + 16);
+  });
+
   test.each([
     {
       name: 'Starting',
       statusTitle: 'Getting GPS ready',
       statusDetail: 'Checking location permission',
-      primaryAction: idleAction({ label: 'Starting…', disabled: true }),
+      primaryAction: idleAction({ label: 'Starting…', disabled: true, busy: true }),
     },
     {
       name: 'Pending',
@@ -275,7 +327,7 @@ describe('RunTrackerOpenMap', () => {
   test.each([
     {
       name: 'starting',
-      action: idleAction({ label: 'Starting…', disabled: true }),
+      action: idleAction({ label: 'Starting…', disabled: true, busy: true }),
       expectedTone: 'primary',
     },
     {
@@ -294,7 +346,7 @@ describe('RunTrackerOpenMap', () => {
 
     expect(control.props.disabled).toBe(action.disabled);
     expect(control.props.accessibilityState).toEqual({
-      busy: action.label === 'Starting…',
+      busy: action.busy,
       disabled: action.disabled,
     });
     expect(control.props.testID).toBe(`run-primary-action-${expectedTone}`);
@@ -303,6 +355,20 @@ describe('RunTrackerOpenMap', () => {
       press(renderer, action.label);
       expect(action.onPress).toHaveBeenCalledTimes(1);
     }
+  });
+
+  test('takes busy accessibility state from data rather than action wording', () => {
+    const action = idleAction({
+      label: 'Preparing location',
+      disabled: true,
+      busy: true,
+    });
+    const { renderer } = render({ primaryAction: action });
+
+    expect(byLabel(renderer, 'Preparing location').props.accessibilityState).toEqual({
+      busy: true,
+      disabled: true,
+    });
   });
 
   test('gives every direct control an effective target of at least 48 by 48 points', () => {
