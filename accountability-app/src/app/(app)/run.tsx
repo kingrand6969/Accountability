@@ -146,6 +146,7 @@ export default function ActivityTrack() {
     uri: string | null;
   } | null>(null);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
   // shareable run card, shown after a successful save
   const [shareRun, setShareRun] = useState<FinishedRun | null>(null);
   const [durableQueueConfirmation, setDurableQueueConfirmation] =
@@ -170,6 +171,7 @@ export default function ActivityTrack() {
   const startMsRef = useRef<number>(0);
   const recordingRef = useRef<TrackRecordingIdentity | null>(null);
   const startingRef = useRef(false);
+  const stoppingRef = useRef(false);
   const avatarRevisionRef = useRef(0);
   const authOwnerRef = useRef<string | null>(session?.user.id ?? null);
   const completionOwnerRef = useRef<string | null>(
@@ -593,68 +595,68 @@ export default function ActivityTrack() {
   }
 
   async function onStop() {
-    getCompletionController().reset('stop');
-    hapticImpact();
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = null;
-    await stopUpdatesIfRunning();
-    setTracking(false);
-    const finalElapsed = Math.round((Date.now() - startMsRef.current) / 1000);
-    const points = await readTrackPoints();
-    const finalDistance = totalDistanceMeters(points);
-    setElapsed(finalElapsed);
-    setDistance(finalDistance);
-    setLivePoints(points);
-    if (finalElapsed < 3 && finalDistance < 5) {
-      Alert.alert('Too short', 'That activity was too short to save.');
-      await resetTrackPoints();
-      recordingRef.current = null;
-      setDetailOwnerId(null);
-      return;
-    }
-    const identity =
-      recordingRef.current ??
-      (await readTrackRecording(session?.user.id).catch(() => null));
-    if (!identity) {
-      Alert.alert(
-        'Could not save on this phone',
-        'Your route is still on this phone. Reopen this screen and tap Retry.',
+    if (!acquireSynchronousLock(stoppingRef)) return;
+    setStopping(true);
+    try {
+      getCompletionController().reset('stop');
+      hapticImpact();
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+      await stopUpdatesIfRunning();
+      setTracking(false);
+      const finalElapsed = Math.round(
+        (Date.now() - startMsRef.current) / 1000,
       );
-      return;
-    }
-    const nextPending: PendingSave = {
-      activityId: identity.activityId,
-      ownerId: identity.ownerId,
-      activity: {
-        type,
-        distance_m: finalDistance,
-        duration_s: finalElapsed,
-        route: points,
-        started_at: identity.startedAt,
-      },
-    };
-    setPending(nextPending);
-    await persist(nextPending);
-  }
-
-  function onDiscard() {
-    Alert.alert('Discard recording?', 'This activity will be lost for good.', [
-      { text: 'Keep it', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: async () => {
-          getCompletionController().reset('discard');
-          setPending(null);
-          await resetTrackPoints();
-          recordingRef.current = null;
-          setDetailOwnerId(null);
-          setDistance(0);
-          setElapsed(0);
-          setLivePoints([]);
+      const points = await readTrackPoints();
+      const finalDistance = totalDistanceMeters(points);
+      setElapsed(finalElapsed);
+      setDistance(finalDistance);
+      setLivePoints(points);
+      if (finalElapsed < 3 && finalDistance < 5) {
+        Alert.alert('Too short', 'That activity was too short to save.');
+        await resetTrackPoints();
+        recordingRef.current = null;
+        setDetailOwnerId(null);
+        setDistance(0);
+        setElapsed(0);
+        setLivePoints([]);
+        return;
+      }
+      const identity =
+        recordingRef.current ??
+        (await readTrackRecording(session?.user.id).catch(() => null));
+      if (!identity) {
+        Alert.alert(
+          'Could not save on this phone',
+          'Your route is still on this phone. Reopen this screen and tap Retry.',
+        );
+        return;
+      }
+      const nextPending: PendingSave = {
+        activityId: identity.activityId,
+        ownerId: identity.ownerId,
+        activity: {
+          type,
+          distance_m: finalDistance,
+          duration_s: finalElapsed,
+          route: points,
+          started_at: identity.startedAt,
         },
-      },
-    ]);
+      };
+      setPending(nextPending);
+      await persist(nextPending);
+    } catch {
+      setTracking(false);
+      setRecoveryReadState('error');
+      setRecoveryNotice('tracking_paused');
+      Alert.alert(
+        'Could not finish activity',
+        'Your route is still safe on this phone. Tap Retry resume.',
+      );
+    } finally {
+      releaseSynchronousLock(stoppingRef);
+      setStopping(false);
+    }
   }
 
   const rawDistance = pending ? pending.activity.distance_m : distance;
@@ -729,59 +731,73 @@ export default function ActivityTrack() {
   }, [detailView.visible, recoveryBlocked, shownPoints, visibleTracking]);
 
   const selectorDisabled =
-    visibleTracking || !!visiblePending || recoveryBlocked || starting;
+    visibleTracking || !!visiblePending || recoveryBlocked || starting || stopping;
   const selectedActivityLabel = selectedType ? TYPE_LABEL[selectedType] : 'Run';
-  const status = visiblePending
+  const status = stopping
     ? {
-        title: 'Save needs attention',
-        detail: 'Your route is safe on this phone',
+        title: 'Finishing activity',
+        detail: 'Saving your route safely',
       }
-    : visibleTracking
-      ? { title: 'Recording', detail: 'GPS active' }
-      : starting
-        ? {
-            title: 'Getting GPS ready',
-            detail: 'Checking location permission',
-          }
-        : {
-            title: `Ready to ${selectedType ?? 'run'}`,
-            detail: idlePos ? 'GPS available' : 'GPS checks when you start',
-          };
-  const primaryAction: RunTrackerPrimaryAction = visiblePending
-    ? {
-        label: 'Retry save',
-        icon: 'refresh',
-        tone: 'primary',
-        disabled: saving,
-        busy: saving,
-        onPress: () => void persist(visiblePending),
-      }
-    : visibleTracking
+    : visiblePending
       ? {
-          label: 'Stop & Save',
-          icon: 'stop',
-          tone: 'danger',
+          title: 'Save needs attention',
+          detail: 'Your route is safe on this phone',
+        }
+      : visibleTracking
+        ? { title: 'Recording', detail: 'GPS active' }
+        : starting
+          ? {
+              title: 'Getting GPS ready',
+              detail: 'Checking location permission',
+            }
+          : {
+              title: `Ready to ${selectedType ?? 'run'}`,
+              detail: idlePos ? 'GPS available' : 'GPS checks when you start',
+            };
+  const primaryAction: RunTrackerPrimaryAction = stopping
+    ? {
+        label: 'Finishing…',
+        icon: 'hourglass-outline',
+        tone: 'primary',
+        disabled: true,
+        busy: true,
+        onPress: () => undefined,
+      }
+    : visiblePending
+      ? {
+          label: 'Retry save',
+          icon: 'refresh',
+          tone: 'primary',
           disabled: saving,
           busy: saving,
-          onPress: () => void onStop(),
+          onPress: () => void persist(visiblePending),
         }
-      : starting
+      : visibleTracking
         ? {
-            label: 'Starting…',
-            icon: 'hourglass-outline',
-            tone: 'primary',
-            disabled: true,
-            busy: true,
-            onPress: () => undefined,
+            label: 'Stop & Save',
+            icon: 'stop',
+            tone: 'danger',
+            disabled: saving,
+            busy: saving,
+            onPress: () => void onStop(),
           }
-        : {
-            label: `Start ${selectedActivityLabel}`,
-            icon: 'play',
-            tone: 'primary',
-            disabled: false,
-            busy: false,
-            onPress: () => void onStart(),
-          };
+        : starting
+          ? {
+              label: 'Starting…',
+              icon: 'hourglass-outline',
+              tone: 'primary',
+              disabled: true,
+              busy: true,
+              onPress: () => undefined,
+            }
+          : {
+              label: `Start ${selectedActivityLabel}`,
+              icon: 'play',
+              tone: 'primary',
+              disabled: false,
+              busy: false,
+              onPress: () => void onStart(),
+            };
 
   function onCenterMap() {
     const center = latestSafePoint ?? (!recoveryBlocked ? idlePos : null);
@@ -801,13 +817,16 @@ export default function ActivityTrack() {
   }
 
   function onMoreOptions() {
-    if (visibleTracking || visiblePending) {
-      onDiscard();
-      return;
-    }
+    const detail = stopping
+      ? 'Your activity is being finished and saved safely.'
+      : visibleTracking
+        ? 'Your activity is recording. Use Stop & Save when you finish.'
+        : visiblePending
+          ? 'Your saved route is safe on this phone. Use Retry save when ready.'
+          : 'Choose Run, Walk, or Ride above. GPS and saving are handled when you start.';
     Alert.alert(
       'Run options',
-      'Choose Run, Walk, or Ride above. GPS and saving are handled when you start.',
+      detail,
     );
   }
 
@@ -981,6 +1000,18 @@ export default function ActivityTrack() {
                   </Pressable>
                 ) : null}
               </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Recovery required"
+                accessibilityState={{ disabled: true }}
+                disabled
+                style={styles.recoveryRequiredAction}
+              >
+                <Ionicons name="lock-closed" size={18} color="#101319" />
+                <Text style={styles.recoveryRequiredText}>
+                  Recovery required
+                </Text>
+              </Pressable>
             </View>
           </>
         )}
@@ -1098,6 +1129,21 @@ const styles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 11,
     textAlign: 'center',
+  },
+  recoveryRequiredAction: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 18,
+    backgroundColor: LIME,
+    opacity: 0.58,
+  },
+  recoveryRequiredText: {
+    color: '#101319',
+    fontFamily: font.bold,
+    fontSize: 15,
   },
   actionDisabled: { opacity: 0.55 },
 });
