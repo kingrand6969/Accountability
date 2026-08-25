@@ -10,29 +10,38 @@ export type PendingRecordedActivity = {
   activity: NewActivity;
 };
 
-export type RunCompletionDependencies = {
+export type FinalizedRecordedActivityEnvelope = {
+  recording: PendingRecordedActivity;
+};
+
+export type RunCompletionDependencies<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+> = {
   enqueueActivity: (
     ownerId: string,
     activity: NewActivity,
     id: string,
   ) => Promise<QueuedActivity>;
-  clearRecording: (activityId: string) => Promise<void>;
+  acknowledgeFinalized: (finalized: TFinalized) => Promise<void>;
 };
 
 /**
  * Makes the offline queue the durable handoff boundary. Raw GPS is retained
  * unless and until the stable activity ID has been confirmed in that queue.
  */
-export async function completeRecordedActivity(
-  recording: PendingRecordedActivity,
-  dependencies: RunCompletionDependencies,
+export async function completeRecordedActivity<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+>(
+  finalized: TFinalized,
+  dependencies: RunCompletionDependencies<TFinalized>,
 ): Promise<QueuedActivity> {
+  const { recording } = finalized;
   const queued = await dependencies.enqueueActivity(
     recording.ownerId,
     recording.activity,
     recording.activityId,
   );
-  await dependencies.clearRecording(recording.activityId);
+  await dependencies.acknowledgeFinalized(finalized);
   return queued;
 }
 
@@ -49,20 +58,24 @@ export type DurableCompletionResetReason =
   | 'auth_owner_change'
   | 'current_run_cleared';
 
-export type DurableCompletionController = {
+export type DurableCompletionController<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+> = {
   complete: (
-    recording: PendingRecordedActivity,
+    finalized: TFinalized,
   ) => Promise<QueuedActivity>;
   reset: (reason: DurableCompletionResetReason) => void;
   dispose: () => void;
 };
 
-export function createDurableCompletionController(
-  dependencies: RunCompletionDependencies & {
+export function createDurableCompletionController<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+>(
+  dependencies: RunCompletionDependencies<TFinalized> & {
     onConfirm: (confirmation: DurableQueueConfirmation) => void;
     onReset: (reason: DurableCompletionResetReason) => void;
   },
-): DurableCompletionController {
+): DurableCompletionController<TFinalized> {
   let disposed = false;
   let revision = 0;
   let inFlight: {
@@ -71,8 +84,9 @@ export function createDurableCompletionController(
   } | null = null;
 
   const complete = (
-    recording: PendingRecordedActivity,
+    finalized: TFinalized,
   ): Promise<QueuedActivity> => {
+    const { recording } = finalized;
     if (disposed) {
       return Promise.reject(
         new Error('Durable completion controller is disposed.'),
@@ -88,7 +102,7 @@ export function createDurableCompletionController(
     }
 
     const expectedRevision = revision;
-    const promise = completeRecordedActivity(recording, dependencies)
+    const promise = completeRecordedActivity(finalized, dependencies)
       .then((queued) => {
         if (!disposed && revision === expectedRevision) {
           dependencies.onConfirm({
