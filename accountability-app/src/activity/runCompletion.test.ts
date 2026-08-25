@@ -649,7 +649,7 @@ describe('active GPS task reconciliation', () => {
     expect(start).not.toHaveBeenCalled();
   });
 
-  it('restarts a missing task when permissions still allow tracking', async () => {
+  it('keeps a missing identity-less task paused even when permissions allow tracking', async () => {
     const start = jest.fn(async () => undefined);
     await expect(
       reconcileLocationTask({
@@ -658,21 +658,23 @@ describe('active GPS task reconciliation', () => {
         getBackgroundPermission: granted,
         start,
       }),
-    ).resolves.toBe('restarted');
-    expect(start).toHaveBeenCalledTimes(1);
+    ).resolves.toBe('paused');
+    expect(start).not.toHaveBeenCalled();
   });
 
-  it('returns paused without mutating raw data when task restart fails', async () => {
+  it('never attempts an identity-less native restart', async () => {
+    const start = jest.fn(async () => {
+      throw new Error('must not be called');
+    });
     await expect(
       reconcileLocationTask({
         hasStarted: async () => false,
         getForegroundPermission: granted,
         getBackgroundPermission: granted,
-        start: async () => {
-          throw new Error('native task unavailable');
-        },
+        start,
       }),
     ).resolves.toBe('paused');
+    expect(start).not.toHaveBeenCalled();
   });
 });
 
