@@ -17,6 +17,7 @@ export type FinalizedRecordedActivityEnvelope = {
 export type RunCompletionDependencies<
   TFinalized extends FinalizedRecordedActivityEnvelope,
 > = {
+  claimFinalized: (finalized: TFinalized) => Promise<void>;
   enqueueActivity: (
     ownerId: string,
     activity: NewActivity,
@@ -26,8 +27,8 @@ export type RunCompletionDependencies<
 };
 
 /**
- * Makes the offline queue the durable handoff boundary. Raw GPS is retained
- * unless and until the stable activity ID has been confirmed in that queue.
+ * Claims exact completion authority before the offline queue handoff. Raw GPS
+ * is retained unless and until that stable activity ID is confirmed queued.
  */
 export async function completeRecordedActivity<
   TFinalized extends FinalizedRecordedActivityEnvelope,
@@ -36,6 +37,7 @@ export async function completeRecordedActivity<
   dependencies: RunCompletionDependencies<TFinalized>,
 ): Promise<QueuedActivity> {
   const { recording } = finalized;
+  await dependencies.claimFinalized(finalized);
   const queued = await dependencies.enqueueActivity(
     recording.ownerId,
     recording.activity,
@@ -64,6 +66,7 @@ export type DurableCompletionController<
   complete: (
     finalized: TFinalized,
   ) => Promise<QueuedActivity>;
+  isCompleting: (activityId?: string) => boolean;
   reset: (reason: DurableCompletionResetReason) => void;
   dispose: () => void;
 };
@@ -126,6 +129,9 @@ export function createDurableCompletionController<
 
   return {
     complete,
+    isCompleting: (activityId) =>
+      inFlight !== null &&
+      (activityId === undefined || inFlight.activityId === activityId),
     reset: (reason) => {
       if (disposed) return;
       revision += 1;

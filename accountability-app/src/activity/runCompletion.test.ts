@@ -162,11 +162,15 @@ function memoryStorage(
 }
 
 describe('completeRecordedActivity', () => {
-  it('durably enqueues the canonical snapshot before acknowledging its exact token', async () => {
+  it('claims the exact token before enqueue and acknowledges only after durability', async () => {
     const order: string[] = [];
     const completed = finalized();
 
     const result = await completeRecordedActivity(completed, {
+      claimFinalized: async (value) => {
+        order.push('claim');
+        expect(value).toBe(completed);
+      },
       enqueueActivity: async (ownerId, activity, id) => {
         order.push('enqueue');
         expect([ownerId, id, activity]).toEqual([
@@ -183,14 +187,34 @@ describe('completeRecordedActivity', () => {
     });
 
     expect(result.id).toBe(ACTIVITY_ID);
-    expect(order).toEqual(['enqueue', 'acknowledge']);
+    expect(order).toEqual(['claim', 'enqueue', 'acknowledge']);
   });
 
-  it('never acknowledges the sealed snapshot when durable enqueue fails', async () => {
+  it('never enqueues or acknowledges when the durable claim is refused', async () => {
+    const enqueueActivity = jest.fn(async () => queued());
     const acknowledgeFinalized = jest.fn(async () => undefined);
 
     await expect(
       completeRecordedActivity(finalized(), {
+        claimFinalized: async () => {
+          throw new Error('discard already owns this recording');
+        },
+        enqueueActivity,
+        acknowledgeFinalized,
+      }),
+    ).rejects.toThrow('discard already owns this recording');
+
+    expect(enqueueActivity).not.toHaveBeenCalled();
+    expect(acknowledgeFinalized).not.toHaveBeenCalled();
+  });
+
+  it('never acknowledges the sealed snapshot when durable enqueue fails', async () => {
+    const claimFinalized = jest.fn(async () => undefined);
+    const acknowledgeFinalized = jest.fn(async () => undefined);
+
+    await expect(
+      completeRecordedActivity(finalized(), {
+        claimFinalized,
         enqueueActivity: async () => {
           throw new Error('storage full');
         },
@@ -198,6 +222,7 @@ describe('completeRecordedActivity', () => {
       }),
     ).rejects.toThrow('storage full');
 
+    expect(claimFinalized).toHaveBeenCalledTimes(1);
     expect(acknowledgeFinalized).not.toHaveBeenCalled();
   });
 
@@ -206,6 +231,7 @@ describe('completeRecordedActivity', () => {
     const payloads: string[] = [];
     let acknowledgeAttempts = 0;
     const dependencies = {
+      claimFinalized: async () => undefined,
       enqueueActivity: async (
         _ownerId: string,
         _activity: PendingRecordedActivity['activity'],
@@ -240,6 +266,7 @@ describe('completeRecordedActivity', () => {
     const enqueueActivity = jest.fn(async () => queued(completed.recording));
 
     await completeRecordedActivity(completed, {
+      claimFinalized: async () => undefined,
       enqueueActivity,
       acknowledgeFinalized: async () => undefined,
     });
@@ -258,6 +285,7 @@ describe('createDurableCompletionController', () => {
     const enqueue = deferred<QueuedActivity>();
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
       acknowledgeFinalized: async () => undefined,
       onConfirm,
@@ -283,6 +311,7 @@ describe('createDurableCompletionController', () => {
     const enqueue = deferred<QueuedActivity>();
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
       acknowledgeFinalized: async () => undefined,
       onConfirm,
@@ -301,6 +330,7 @@ describe('createDurableCompletionController', () => {
     const enqueueActivity = jest.fn(() => enqueue.promise);
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity,
       acknowledgeFinalized: async () => undefined,
       onConfirm,
@@ -312,11 +342,34 @@ describe('createDurableCompletionController', () => {
     const retry = controller.complete(completed);
 
     expect(retry).toBe(first);
+    await Promise.resolve();
     expect(enqueueActivity).toHaveBeenCalledTimes(1);
 
     enqueue.resolve(queued());
     await Promise.all([first, retry]);
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an exact completion as busy through reset until claim, enqueue, and ack settle', async () => {
+    const claim = deferred<void>();
+    const controller = createDurableCompletionController({
+      claimFinalized: () => claim.promise,
+      enqueueActivity: async () => queued(),
+      acknowledgeFinalized: async () => undefined,
+      onConfirm: jest.fn(),
+      onReset: jest.fn(),
+    });
+
+    const completion = controller.complete(finalized());
+    expect(controller.isCompleting(ACTIVITY_ID)).toBe(true);
+    expect(controller.isCompleting('different-activity')).toBe(false);
+
+    controller.reset('discard');
+    expect(controller.isCompleting(ACTIVITY_ID)).toBe(true);
+
+    claim.resolve(undefined);
+    await completion;
+    expect(controller.isCompleting(ACTIVITY_ID)).toBe(false);
   });
 
   it('reset clears confirmation and prevents the superseded completion from confirming late', async () => {
@@ -330,6 +383,7 @@ describe('createDurableCompletionController', () => {
     };
     const resetReasons: string[] = [];
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
       acknowledgeFinalized: async () => undefined,
       onConfirm: (value) => {
@@ -372,6 +426,7 @@ describe('createDurableCompletionController', () => {
     const enqueue = deferred<QueuedActivity>();
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
       acknowledgeFinalized: async () => undefined,
       onConfirm,
@@ -982,6 +1037,7 @@ describe('stable ID across an ambiguous committed upload', () => {
       return entry;
     };
     await completeRecordedActivity(completed, {
+      claimFinalized: async () => undefined,
       enqueueActivity,
       acknowledgeFinalized: async () => undefined,
     });

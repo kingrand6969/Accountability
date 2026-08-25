@@ -79,9 +79,22 @@ const mockReadTrackRecording = jest.fn<
 const mockClaimLegacyTrackRecording = jest.fn<
   (ownerId: string, type: ActivityType) => Promise<TrackRecordingRecovery>
 >();
+const mockClaimFinalizedEnqueueFor = jest.fn<
+  (
+    identity: TrackRecordingIdentity,
+    snapshotId: string,
+  ) => Promise<
+    | { kind: 'claimed' }
+    | { kind: 'already_claimed' }
+    | { kind: 'discarding' }
+    | { kind: 'stale' }
+  >
+>();
 const mockClearTrackRecording = jest.fn<(activityId: string) => Promise<void>>();
 const mockDiscardTrackRecordingFor = jest.fn<
-  (identity: TrackRecordingIdentity) => Promise<'discarded' | 'stale'>
+  (
+    identity: TrackRecordingIdentity,
+  ) => Promise<'discarded' | 'completion_in_progress' | 'stale'>
 >();
 const mockPersistCompletedTrackRecording = jest.fn<
   (recording: unknown) => Promise<void>
@@ -205,6 +218,10 @@ jest.mock('./locationTask', () => ({
     mockBeginTrackRecording(...args),
   claimLegacyTrackRecording: (...args: [string, ActivityType]) =>
     mockClaimLegacyTrackRecording(...args),
+  claimFinalizedEnqueueFor: (
+    identity: TrackRecordingIdentity,
+    snapshotId: string,
+  ) => mockClaimFinalizedEnqueueFor(identity, snapshotId),
   clearTrackRecording: (activityId: string) => mockClearTrackRecording(activityId),
   discardTrackRecordingFor: (identity: TrackRecordingIdentity) =>
     mockDiscardTrackRecordingFor(identity),
@@ -371,6 +388,7 @@ beforeEach(() => {
     mockReadTrackPoints,
     mockReadTrackRecording,
     mockClaimLegacyTrackRecording,
+    mockClaimFinalizedEnqueueFor,
     mockClearTrackRecording,
     mockDiscardTrackRecordingFor,
     mockPersistCompletedTrackRecording,
@@ -390,6 +408,7 @@ beforeEach(() => {
   mockReadTrackPoints.mockResolvedValue([]);
   mockReadTrackRecording.mockResolvedValue(null);
   mockClaimLegacyTrackRecording.mockResolvedValue({ kind: 'none' });
+  mockClaimFinalizedEnqueueFor.mockResolvedValue({ kind: 'claimed' });
   mockClearTrackRecording.mockResolvedValue(undefined);
   mockDiscardTrackRecordingFor.mockResolvedValue('discarded');
   mockPersistCompletedTrackRecording.mockResolvedValue(undefined);
@@ -502,6 +521,10 @@ describe('Run tracker Open Map route integration', () => {
     const finalization = deferred<FinalizeTrackRecordingResult>();
     mockFinalizeTrackRecordingFor.mockReturnValueOnce(finalization.promise);
     const order: string[] = [];
+    mockClaimFinalizedEnqueueFor.mockImplementationOnce(async () => {
+      order.push('claim');
+      return { kind: 'claimed' };
+    });
     mockEnqueueActivity.mockImplementationOnce(async () => {
       order.push('enqueue');
       return { id: identity.activityId, ownerId: OWNER_A, status: 'saved' };
@@ -536,7 +559,11 @@ describe('Run tracker Open Map route integration', () => {
     });
     await flush();
 
-    expect(order).toEqual(['enqueue', 'acknowledge']);
+    expect(order).toEqual(['claim', 'enqueue', 'acknowledge']);
+    expect(mockClaimFinalizedEnqueueFor).toHaveBeenCalledWith(
+      identity,
+      `snapshot-${identity.activityId}`,
+    );
     expect(mockEnqueueActivity).toHaveBeenCalledWith(
       OWNER_A,
       activity,
@@ -551,6 +578,62 @@ describe('Run tracker Open Map route integration', () => {
       points: activity.route,
       ownerId: OWNER_A,
     }));
+  });
+
+  test('refuses a stale discard confirmation while the same activity is being claimed and queued', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'run',
+    });
+    const claim = deferred<
+      { kind: 'claimed' }
+      | { kind: 'already_claimed' }
+      | { kind: 'discarding' }
+      | { kind: 'stale' }
+    >();
+    mockClaimFinalizedEnqueueFor.mockReturnValueOnce(claim.promise);
+    const renderer = await renderRoute();
+    const alert = jest.spyOn(Alert, 'alert');
+
+    act(() =>
+      renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress(),
+    );
+    pressLatestAlertButton(alert, 'Discard activity');
+    const staleDiscard = (
+      alert.mock.calls.at(-1)?.[2] as
+        | { text: string; onPress?: () => void }[]
+        | undefined
+    )?.find((button) => button.text === 'Discard permanently')?.onPress;
+    expect(staleDiscard).toBeDefined();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await flush();
+    expect(mockClaimFinalizedEnqueueFor).toHaveBeenCalledWith(
+      identity,
+      `snapshot-${identity.activityId}`,
+    );
+
+    act(() => staleDiscard?.());
+    await flush();
+
+    expect(mockDiscardTrackRecordingFor).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenLastCalledWith(
+      'Activity is being saved',
+      'This activity was not discarded. Finish saving it safely, then delete it from Activity history if you no longer want it.',
+      [expect.objectContaining({ text: 'Close', style: 'cancel' })],
+    );
+
+    claim.resolve({ kind: 'claimed' });
+    await flush();
+    expect(mockEnqueueActivity).toHaveBeenCalledTimes(1);
+    expect(mockAcknowledgeFinalizedTrackRecordingFor).toHaveBeenCalledTimes(1);
   });
 
   test('retries exact acknowledgement without re-finalizing or changing canonical queue bytes', async () => {
@@ -571,6 +654,7 @@ describe('Run tracker Open Map route integration', () => {
       queuedBytes.push(JSON.stringify(queuedActivity));
       return { id: 'activity-a', ownerId: OWNER_A, status: 'saved' };
     });
+    const alert = jest.spyOn(Alert, 'alert');
     const renderer = await renderRoute();
 
     await act(async () => {
@@ -579,12 +663,32 @@ describe('Run tracker Open Map route integration', () => {
     await flush();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Retry save' })).toBeTruthy();
 
+    act(() =>
+      renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress(),
+    );
+    const pendingOptions = alert.mock.calls.at(-1)?.[2] as
+      | { text: string; onPress?: () => void }[]
+      | undefined;
+    expect(pendingOptions?.map((button) => button.text)).not.toContain('Discard activity');
+    expect(alert).toHaveBeenLastCalledWith(
+      'Run options',
+      expect.stringMatching(/already.*saved|finish.*saving|activity history/i),
+      [expect.objectContaining({ text: 'Close', style: 'cancel' })],
+    );
+    expect(mockDiscardTrackRecordingFor).not.toHaveBeenCalled();
+
     await act(async () => {
       await renderer.root.findByProps({ accessibilityLabel: 'Retry save' }).props.onPress();
     });
     await flush();
 
     expect(mockFinalizeTrackRecordingFor).not.toHaveBeenCalled();
+    expect(mockClaimFinalizedEnqueueFor).toHaveBeenCalledTimes(2);
+    expect(mockClaimFinalizedEnqueueFor).toHaveBeenNthCalledWith(
+      2,
+      finalized.identity,
+      finalized.snapshotId,
+    );
     expect(mockEnqueueActivity).toHaveBeenCalledTimes(2);
     expect(mockAcknowledgeFinalizedTrackRecordingFor).toHaveBeenCalledTimes(2);
     expect(mockAcknowledgeFinalizedTrackRecordingFor).toHaveBeenNthCalledWith(
@@ -844,7 +948,7 @@ describe('Run tracker Open Map route integration', () => {
   test.each([
     { name: 'while recording', recovery: 'active' as const },
     { name: 'with a pending save', recovery: 'completed' as const },
-  ])('keeps More options safe until a separately confirmed discard $name', async ({ recovery }) => {
+  ])('keeps More options fail-closed $name', async ({ recovery }) => {
     const activity = {
       type: 'run' as const,
       distance_m: totalDistanceMeters(OWNER_A_POINTS),
@@ -874,31 +978,30 @@ describe('Run tracker Open Map route integration', () => {
       renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress(),
     );
 
-    expect(alert).toHaveBeenCalledWith(
-      'Run options',
-      expect.stringMatching(/safely|recording|saved/i),
-      expect.arrayContaining([
-        expect.objectContaining({ text: 'Keep activity', style: 'cancel' }),
-        expect.objectContaining({ text: 'Discard activity', style: 'destructive' }),
-      ]),
-    );
     const menuButtons = alert.mock.calls.at(-1)?.[2] as
       | { text: string; onPress?: () => void }[]
       | undefined;
-    act(() => menuButtons?.find((button) => button.text === 'Keep activity')?.onPress?.());
+    if (recovery === 'active') {
+      expect(menuButtons).toEqual(expect.arrayContaining([
+        expect.objectContaining({ text: 'Keep activity', style: 'cancel' }),
+        expect.objectContaining({ text: 'Discard activity', style: 'destructive' }),
+      ]));
+      act(() => menuButtons?.find((button) => button.text === 'Keep activity')?.onPress?.());
+    } else {
+      expect(alert).toHaveBeenLastCalledWith(
+        'Run options',
+        expect.stringMatching(/already.*saved|finish.*saving|activity history/i),
+        [expect.objectContaining({ text: 'Close', style: 'cancel' })],
+      );
+      expect(menuButtons?.map((button) => button.text)).not.toContain('Discard activity');
+    }
     expect(mockPauseTrackLocationTaskFor).not.toHaveBeenCalled();
     expect(mockClearTrackRecording).not.toHaveBeenCalled();
     expect(mockPersistCompletedTrackRecording).not.toHaveBeenCalled();
     expect(mockEnqueueActivity).not.toHaveBeenCalled();
   });
 
-  test.each([
-    { recovery: 'active' as const, expectedPrimary: 'Stop & Save' },
-    { recovery: 'completed' as const, expectedPrimary: 'Retry save' },
-  ])('requires confirmation before completely discarding a $recovery recording', async ({
-    recovery,
-    expectedPrimary,
-  }) => {
+  test('requires confirmation before completely discarding an active recording', async () => {
     const activity = {
       type: 'run' as const,
       distance_m: totalDistanceMeters(OWNER_A_POINTS),
@@ -906,21 +1009,14 @@ describe('Run tracker Open Map route integration', () => {
       route: OWNER_A_POINTS,
       started_at: STARTED_AT,
     };
-    mockRecoverTrackRecording.mockResolvedValueOnce(
-      recovery === 'active'
-        ? {
-            activityId: 'activity-a',
-            kind: 'active',
-            ownerId: OWNER_A,
-            points: OWNER_A_POINTS,
-            startedAt: STARTED_AT,
-            type: 'run',
-          }
-        : {
-            kind: 'completed',
-            finalized: finalizedTrack(activity),
-          },
-    );
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      activityId: 'activity-a',
+      kind: 'active',
+      ownerId: OWNER_A,
+      points: OWNER_A_POINTS,
+      startedAt: STARTED_AT,
+      type: 'run',
+    });
     const renderer = await renderRoute();
     const alert = jest.spyOn(Alert, 'alert');
 
@@ -937,7 +1033,7 @@ describe('Run tracker Open Map route integration', () => {
       ]),
     );
     pressLatestAlertButton(alert, 'Keep activity');
-    expect(renderer.root.findByProps({ accessibilityLabel: expectedPrimary })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
     expect(mockDiscardTrackRecordingFor).not.toHaveBeenCalled();
     expect(mockClearTrackRecording).not.toHaveBeenCalled();
 
@@ -986,7 +1082,7 @@ describe('Run tracker Open Map route integration', () => {
     expect(renderer.root.findByProps({ testID: 'mock-run-share-sheet' })).toBeTruthy();
   });
 
-  test('discards a completed save without requiring an active location lease', async () => {
+  test('does not offer discard for a completed save that may already be queued', async () => {
     const activity = {
       type: 'run' as const,
       distance_m: totalDistanceMeters(OWNER_A_POINTS),
@@ -1003,18 +1099,15 @@ describe('Run tracker Open Map route integration', () => {
     const alert = jest.spyOn(Alert, 'alert');
 
     act(() => renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress());
-    pressLatestAlertButton(alert, 'Discard activity');
-    pressLatestAlertButton(alert, 'Discard permanently');
-    await flush();
+    const buttons = alert.mock.calls.at(-1)?.[2] as
+      | { text: string; onPress?: () => void }[]
+      | undefined;
 
-    expect(mockDiscardTrackRecordingFor).toHaveBeenCalledWith({
-      activityId: 'activity-a',
-      ownerId: OWNER_A,
-      startedAt: STARTED_AT,
-    });
+    expect(buttons?.map((button) => button.text)).not.toContain('Discard activity');
+    expect(mockDiscardTrackRecordingFor).not.toHaveBeenCalled();
     expect(mockPauseTrackLocationTaskFor).not.toHaveBeenCalled();
     expect(mockClearTrackRecording).not.toHaveBeenCalled();
-    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry save' })).toBeTruthy();
   });
 
   test('moves a failed deep active discard into a recoverable paused state', async () => {
@@ -1081,7 +1174,12 @@ describe('Run tracker Open Map route integration', () => {
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
   });
 
-  test('keeps a pending save retryable when deep discard fails', async () => {
+  test('never reports discarded when durable enqueue authority refuses deep discard', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
     const activity = {
       type: 'run' as const,
       distance_m: totalDistanceMeters(OWNER_A_POINTS),
@@ -1089,11 +1187,18 @@ describe('Run tracker Open Map route integration', () => {
       route: OWNER_A_POINTS,
       started_at: STARTED_AT,
     };
-    mockRecoverTrackRecording.mockResolvedValueOnce({
-      kind: 'completed',
-      finalized: finalizedTrack(activity),
-    });
-    mockDiscardTrackRecordingFor.mockRejectedValueOnce(new Error('discard failed'));
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        points: OWNER_A_POINTS,
+        type: 'run',
+      })
+      .mockResolvedValueOnce({
+        kind: 'completed',
+        finalized: finalizedTrack(activity, identity),
+      });
+    mockDiscardTrackRecordingFor.mockResolvedValueOnce('completion_in_progress');
     const renderer = await renderRoute();
     const alert = jest.spyOn(Alert, 'alert');
 
@@ -1103,17 +1208,62 @@ describe('Run tracker Open Map route integration', () => {
     pressLatestAlertButton(alert, 'Discard activity');
     pressLatestAlertButton(alert, 'Discard permanently');
     await flush();
+    await flush();
 
-    expect(mockDiscardTrackRecordingFor).toHaveBeenCalledWith({
+    expect(mockDiscardTrackRecordingFor).toHaveBeenCalledWith(identity);
+    expect(alert).toHaveBeenLastCalledWith(
+      'Activity is being saved',
+      'This activity was not discarded. Retry save to finish safely, then delete it from Activity history if you no longer want it.',
+      [expect.objectContaining({ text: 'Close', style: 'cancel' })],
+    );
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry save' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Start Run' })).toHaveLength(0);
+  });
+
+  test('refuses an old discard confirmation after enqueue succeeds but acknowledgement fails', async () => {
+    const identity = {
       activityId: 'activity-a',
       ownerId: OWNER_A,
       startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'run',
     });
-    expect(mockClearTrackRecording).not.toHaveBeenCalled();
+    mockAcknowledgeFinalizedTrackRecordingFor.mockRejectedValueOnce(
+      new Error('ack failed'),
+    );
+    const renderer = await renderRoute();
+    const alert = jest.spyOn(Alert, 'alert');
+
+    act(() =>
+      renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress(),
+    );
+    pressLatestAlertButton(alert, 'Discard activity');
+    const staleDiscard = (
+      alert.mock.calls.at(-1)?.[2] as
+        | { text: string; onPress?: () => void }[]
+        | undefined
+    )?.find((button) => button.text === 'Discard permanently')?.onPress;
+    expect(staleDiscard).toBeDefined();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await flush();
+    expect(mockEnqueueActivity).toHaveBeenCalledTimes(1);
     expect(renderer.root.findByProps({ accessibilityLabel: 'Retry save' })).toBeTruthy();
-    expect(renderer.root.findByProps({ accessibilityLabel: 'More options' })).toBeTruthy();
-    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Recovery required' })).toHaveLength(0);
-    expect(textOf(renderer)).toContain(formatKm(activity.distance_m));
+
+    act(() => staleDiscard?.());
+    await flush();
+
+    expect(mockDiscardTrackRecordingFor).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenLastCalledWith(
+      'Activity is being saved',
+      'This activity was not discarded. Finish saving it safely, then delete it from Activity history if you no longer want it.',
+      [expect.objectContaining({ text: 'Close', style: 'cancel' })],
+    );
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry save' })).toBeTruthy();
   });
 
   test('keeps the recording recoverable when deep finalization rejects', async () => {
@@ -1639,6 +1789,61 @@ describe('Run tracker Open Map route integration', () => {
     await flush();
 
     expect(mockEnqueueActivity).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findAllByProps({ testID: 'mock-run-share-sheet' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+  });
+
+  test('never lets an old discard confirmation race a claimed completion after A to B to A', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'run',
+    });
+    const claim = deferred<
+      { kind: 'claimed' }
+      | { kind: 'already_claimed' }
+      | { kind: 'discarding' }
+      | { kind: 'stale' }
+    >();
+    mockClaimFinalizedEnqueueFor.mockReturnValueOnce(claim.promise);
+    const renderer = await renderRoute();
+    const alert = jest.spyOn(Alert, 'alert');
+
+    act(() =>
+      renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress(),
+    );
+    pressLatestAlertButton(alert, 'Discard activity');
+    const staleDiscard = (
+      alert.mock.calls.at(-1)?.[2] as
+        | { text: string; onPress?: () => void }[]
+        | undefined
+    )?.find((button) => button.text === 'Discard permanently')?.onPress;
+    expect(staleDiscard).toBeDefined();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await flush();
+    await switchOwner(renderer, OWNER_B);
+    await switchOwner(renderer, OWNER_A);
+    act(() => staleDiscard?.());
+
+    expect(mockDiscardTrackRecordingFor).not.toHaveBeenCalled();
+
+    claim.resolve({ kind: 'claimed' });
+    await flush();
+    await flush();
+
+    expect(mockClaimFinalizedEnqueueFor).toHaveBeenCalledWith(
+      identity,
+      `snapshot-${identity.activityId}`,
+    );
+    expect(mockEnqueueActivity).toHaveBeenCalledTimes(1);
+    expect(mockAcknowledgeFinalizedTrackRecordingFor).toHaveBeenCalledTimes(1);
     expect(renderer.root.findAllByProps({ testID: 'mock-run-share-sheet' })).toHaveLength(0);
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
   });

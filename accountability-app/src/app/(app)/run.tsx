@@ -42,6 +42,7 @@ import {
 import {
   acknowledgeFinalizedTrackRecordingFor,
   beginTrackRecording,
+  claimFinalizedEnqueueFor,
   claimLegacyTrackRecording,
   discardTrackRecordingFor,
   ensureTrackLocationTaskFor,
@@ -203,6 +204,24 @@ export default function ActivityTrack() {
       completionControllerRef.current =
         createDurableCompletionController({
           enqueueActivity,
+          claimFinalized: async (finalized) => {
+            const claimed = await claimFinalizedEnqueueFor(
+              finalized.identity,
+              finalized.snapshotId,
+            );
+            if (
+              claimed.kind === 'claimed' ||
+              claimed.kind === 'already_claimed'
+            ) {
+              return;
+            }
+            requestAuthoritativeRecovery();
+            throw new Error(
+              claimed.kind === 'discarding'
+                ? 'This activity is already being discarded.'
+                : 'The finalized recording changed before it could be saved.',
+            );
+          },
           acknowledgeFinalized: async (finalized) => {
             const acknowledged = await acknowledgeFinalizedTrackRecordingFor(
               finalized.identity,
@@ -225,11 +244,12 @@ export default function ActivityTrack() {
         });
     }
     return completionControllerRef.current;
-  }, [isCommandCurrent]);
+  }, [isCommandCurrent, requestAuthoritativeRecovery]);
 
   const startedAtRef = useRef<string>('');
   const startMsRef = useRef<number>(0);
   const recordingRef = useRef<TrackRecordingIdentity | null>(null);
+  const pendingRef = useRef<PendingSave | null>(null);
   const finishSummaryRef = useRef<{
     identity: TrackRecordingIdentity;
     type: ActivityType;
@@ -242,11 +262,16 @@ export default function ActivityTrack() {
   const completionOwnerRef = useRef<string | null>(
     session?.user.id ?? null,
   );
+  const commitPending = useCallback((next: PendingSave | null) => {
+    pendingRef.current = next;
+    setPending(next);
+  }, []);
   useLayoutEffect(() => {
     const nextOwnerId = session?.user.id ?? null;
     if (authOwnerRef.current === nextOwnerId) return;
     const previousRecording = leaseIdentityRef.current ?? recordingRef.current;
     leaseIdentityRef.current = null;
+    pendingRef.current = null;
     finishSummaryRef.current = null;
     if (previousRecording) {
       void pauseTrackLocationTaskFor(previousRecording).then(
@@ -408,12 +433,12 @@ export default function ActivityTrack() {
       setRecoveryReadState('error');
       setRecoveryNotice('tracking_paused');
       setTracking(false);
-      setPending(null);
+      commitPending(null);
       setDistance(0);
       setElapsed(0);
       setLivePoints([]);
     },
-    [getCompletionController, invalidateTimer],
+    [commitPending, getCompletionController, invalidateTimer],
   );
 
   const restoreRecovery = useCallback(
@@ -425,7 +450,7 @@ export default function ActivityTrack() {
         recordingRef.current = null;
         setDetailOwnerId(null);
         setTracking(false);
-        setPending(null);
+        commitPending(null);
         setDistance(0);
         setElapsed(0);
         setLivePoints([]);
@@ -442,7 +467,7 @@ export default function ActivityTrack() {
           recovery.kind === 'owner_mismatch' ? recovery.ownerId : null,
         );
         setTracking(false);
-        setPending(null);
+        commitPending(null);
         setDistance(0);
         setElapsed(0);
         setLivePoints([]);
@@ -456,7 +481,7 @@ export default function ActivityTrack() {
         startMsRef.current = 0;
         setDetailOwnerId(null);
         setTracking(false);
-        setPending(null);
+        commitPending(null);
         setType('run');
         setDistance(0);
         setElapsed(0);
@@ -481,7 +506,7 @@ export default function ActivityTrack() {
         setDistance(recording.activity.distance_m);
         setElapsed(recording.activity.duration_s);
         setLivePoints(recording.activity.route);
-        setPending(finalized);
+        commitPending(finalized);
         finishSummaryRef.current = null;
         return;
       }
@@ -498,7 +523,7 @@ export default function ActivityTrack() {
         startedAtRef.current = recovery.identity.startedAt;
         startMsRef.current = Date.parse(recovery.identity.startedAt);
         setTracking(false);
-        setPending(null);
+        commitPending(null);
         setDistance(0);
         setElapsed(0);
         setLivePoints([]);
@@ -517,7 +542,7 @@ export default function ActivityTrack() {
       startedAtRef.current = recovery.startedAt;
       startMsRef.current = Date.parse(recovery.startedAt);
       setRecoveryNotice(null);
-      setPending(null);
+      commitPending(null);
       setType(recovery.type);
       setLivePoints(recovery.points);
       setDistance(totalDistanceMeters(recovery.points));
@@ -527,7 +552,7 @@ export default function ActivityTrack() {
       setTracking(true);
       startTrackingTimer(recovery.ownerId);
     },
-    [getCompletionController, invalidateTimer, startTrackingTimer],
+    [commitPending, getCompletionController, invalidateTimer, startTrackingTimer],
   );
 
   useEffect(() => {
@@ -827,7 +852,7 @@ export default function ActivityTrack() {
         return;
       }
       const recording = p.recording;
-      setPending(null);
+      commitPending(null);
       recordingRef.current = null;
       // saved to the log — now offer the shareable run card
       const completedAt = completedRunTimestamp(
@@ -849,7 +874,7 @@ export default function ActivityTrack() {
       setShareAuthority(command);
     } catch (e) {
       if (!isCommandCurrent(command)) return;
-      setPending(p);
+      commitPending(p);
       Alert.alert(
         'Could not save on this phone',
         `${String((e as Error).message ?? e)}\n\nYour recording is safe — tap Retry.`,
@@ -943,7 +968,7 @@ export default function ActivityTrack() {
         setDistance(canonical.distance_m);
         setLivePoints(canonical.route);
       }
-      if (isCommandCurrent(command)) setPending(nextPending);
+      if (isCommandCurrent(command)) commitPending(nextPending);
       await persist(nextPending, command);
     } catch {
       if (isCommandCurrent(command)) {
@@ -974,7 +999,7 @@ export default function ActivityTrack() {
     startedAtRef.current = '';
     startMsRef.current = 0;
     setTracking(false);
-    setPending(null);
+    commitPending(null);
     setDistance(0);
     setElapsed(0);
     setLivePoints([]);
@@ -989,12 +1014,39 @@ export default function ActivityTrack() {
     command: OwnerCommandScope,
   ) {
     if (!isCommandCurrent(command) || identity.ownerId !== command.ownerId) return;
-    const wasActiveRecording = pending === null;
+    const currentPending = pendingRef.current;
+    const sameFinalizedRecording =
+      currentPending?.identity.activityId === identity.activityId &&
+      currentPending.identity.ownerId === identity.ownerId &&
+      currentPending.identity.startedAt === identity.startedAt;
+    const completionController = getCompletionController();
+    if (
+      stoppingRef.current ||
+      sameFinalizedRecording ||
+      completionController.isCompleting(identity.activityId)
+    ) {
+      Alert.alert(
+        'Activity is being saved',
+        'This activity was not discarded. Finish saving it safely, then delete it from Activity history if you no longer want it.',
+        [{ text: 'Close', style: 'cancel' }],
+      );
+      return;
+    }
+    const wasActiveRecording = currentPending === null;
     setSaving(true);
-    getCompletionController().reset('discard');
+    completionController.reset('discard');
     invalidateTimer();
     try {
       const discardStatus = await discardTrackRecordingFor(identity);
+      if (discardStatus === 'completion_in_progress') {
+        Alert.alert(
+          'Activity is being saved',
+          'This activity was not discarded. Retry save to finish safely, then delete it from Activity history if you no longer want it.',
+          [{ text: 'Close', style: 'cancel' }],
+        );
+        requestAuthoritativeRecovery();
+        return;
+      }
       if (discardStatus === 'stale') {
         requestAuthoritativeRecovery();
         return;
@@ -1220,19 +1272,25 @@ export default function ActivityTrack() {
   }
 
   function onMoreOptions() {
-    const detail = stopping
-      ? 'Your activity is being finished and saved safely.'
-      : visibleTracking
-        ? 'Your activity is recording. Use Stop & Save when you finish.'
-        : visiblePending
-          ? 'Your saved route is safe on this phone. Use Retry save when ready.'
+    const detail = visiblePending
+      ? 'This finished activity may already be saved on this phone. Retry save to finish safely, then delete it from Activity history if you no longer want it.'
+      : stopping
+        ? 'Your activity is being finished and saved safely.'
+        : visibleTracking
+          ? 'Your activity is recording. Use Stop & Save when you finish.'
           : 'Choose Run, Walk, or Ride above. GPS and saving are handled when you start.';
     const identity = visiblePending
       ? visiblePending.identity
       : visibleTracking
         ? recordingRef.current
         : null;
-    if (!identity || stopping || saving) {
+    if (
+      !identity ||
+      visiblePending !== null ||
+      stopping ||
+      saving ||
+      getCompletionController().isCompleting(identity.activityId)
+    ) {
       Alert.alert('Run options', detail, [{ text: 'Close', style: 'cancel' }]);
       return;
     }
