@@ -20,11 +20,17 @@ import type {
 
 const OWNER_A = 'owner-a';
 const OWNER_B = 'owner-b';
+const OWNER_C = 'owner-c';
 const STARTED_AT = '2026-08-25T09:00:00.000Z';
 const OWNER_A_POINTS: Pt[] = [
   { lat: -31.9523, lon: 115.8613 },
   { lat: -31.947, lon: 115.869 },
   { lat: -31.941, lon: 115.875 },
+];
+const OWNER_B_POINTS: Pt[] = [
+  { lat: -33.8688, lon: 151.2093 },
+  { lat: -33.8215, lon: 151.1809 },
+  { lat: -33.773, lon: 151.124 },
 ];
 
 let mockOwnerId: string | null = OWNER_A;
@@ -55,10 +61,15 @@ const mockRecoverTrackRecording = jest.fn<
 const mockBeginTrackRecording = jest.fn<
   (ownerId: string, type: ActivityType) => Promise<TrackRecordingIdentity>
 >();
-const mockEnsureTrackLocationTask = jest.fn<
-  () => Promise<'running' | 'restarted' | 'paused'>
+const mockEnsureTrackLocationTaskFor = jest.fn<
+  (identity: TrackRecordingIdentity) => Promise<'running' | 'restarted' | 'paused' | 'stale'>
 >();
-const mockStartTrackLocationTask = jest.fn<() => Promise<void>>();
+const mockStartTrackLocationTaskFor = jest.fn<
+  (identity: TrackRecordingIdentity) => Promise<'running' | 'restarted' | 'paused' | 'stale'>
+>();
+const mockPauseTrackLocationTaskFor = jest.fn<
+  (identity: TrackRecordingIdentity) => Promise<'paused' | 'already_paused' | 'stale'>
+>();
 const mockReadTrackPoints = jest.fn<() => Promise<Pt[]>>();
 const mockReadTrackRecording = jest.fn<
   (ownerId?: string | null) => Promise<(TrackRecordingIdentity & { points: Pt[] }) | null>
@@ -70,9 +81,6 @@ const mockClearTrackRecording = jest.fn<(activityId: string) => Promise<void>>()
 const mockPersistCompletedTrackRecording = jest.fn<
   (recording: unknown) => Promise<void>
 >();
-const mockResetTrackPoints = jest.fn<() => Promise<void>>();
-const mockHasStartedLocationUpdates = jest.fn<() => Promise<boolean>>();
-const mockStopLocationUpdates = jest.fn<() => Promise<void>>();
 const mockEnqueueActivity = jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>>>();
 
 jest.mock('../auth/AuthProvider', () => ({
@@ -127,10 +135,8 @@ jest.mock('expo-linear-gradient', () => {
 jest.mock('expo-location', () => ({
   getForegroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
   getLastKnownPositionAsync: jest.fn(async () => null),
-  hasStartedLocationUpdatesAsync: () => mockHasStartedLocationUpdates(),
   requestBackgroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted' })),
-  stopLocationUpdatesAsync: () => mockStopLocationUpdates(),
 }));
 
 jest.mock('../ui/OsmMap', () => {
@@ -174,21 +180,23 @@ jest.mock('./RunShareSheet', () => {
 });
 
 jest.mock('./locationTask', () => ({
-  LOCATION_TASK_NAME: 'test-location-task',
   beginTrackRecording: (...args: [string, ActivityType]) =>
     mockBeginTrackRecording(...args),
   claimLegacyTrackRecording: (...args: [string, ActivityType]) =>
     mockClaimLegacyTrackRecording(...args),
   clearTrackRecording: (activityId: string) => mockClearTrackRecording(activityId),
-  ensureTrackLocationTask: () => mockEnsureTrackLocationTask(),
+  ensureTrackLocationTaskFor: (identity: TrackRecordingIdentity) =>
+    mockEnsureTrackLocationTaskFor(identity),
   persistCompletedTrackRecording: (recording: unknown) =>
     mockPersistCompletedTrackRecording(recording),
   readTrackPoints: () => mockReadTrackPoints(),
   readTrackRecording: (ownerId?: string | null) => mockReadTrackRecording(ownerId),
   recoverTrackRecording: (...args: [string | null, ActivityType]) =>
     mockRecoverTrackRecording(...args),
-  resetTrackPoints: () => mockResetTrackPoints(),
-  startTrackLocationTask: () => mockStartTrackLocationTask(),
+  startTrackLocationTaskFor: (identity: TrackRecordingIdentity) =>
+    mockStartTrackLocationTaskFor(identity),
+  pauseTrackLocationTaskFor: (identity: TrackRecordingIdentity) =>
+    mockPauseTrackLocationTaskFor(identity),
 }));
 
 jest.mock('./offlineQueueStore', () => ({
@@ -264,6 +272,21 @@ async function renderRoute() {
   return renderer;
 }
 
+async function renderRouteStrictMode() {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      <React.StrictMode>
+        <RunRoute />
+      </React.StrictMode>,
+      { unstable_strictMode: true } as never,
+    );
+    mounted.push(renderer);
+  });
+  await flush();
+  return renderer;
+}
+
 async function switchOwner(
   renderer: TestRenderer.ReactTestRenderer,
   ownerId: string | null,
@@ -286,22 +309,33 @@ beforeEach(() => {
   mockStaticTabOptions = null;
   mockShareSheetProps = null;
   jest.clearAllMocks();
+  [
+    mockRecoverTrackRecording,
+    mockBeginTrackRecording,
+    mockEnsureTrackLocationTaskFor,
+    mockStartTrackLocationTaskFor,
+    mockPauseTrackLocationTaskFor,
+    mockReadTrackPoints,
+    mockReadTrackRecording,
+    mockClaimLegacyTrackRecording,
+    mockClearTrackRecording,
+    mockPersistCompletedTrackRecording,
+    mockEnqueueActivity,
+  ].forEach((mock) => mock.mockReset());
   mockRecoverTrackRecording.mockResolvedValue({ kind: 'none' });
   mockBeginTrackRecording.mockResolvedValue({
     activityId: 'activity-a',
     ownerId: OWNER_A,
     startedAt: STARTED_AT,
   });
-  mockEnsureTrackLocationTask.mockResolvedValue('running');
-  mockStartTrackLocationTask.mockResolvedValue(undefined);
+  mockEnsureTrackLocationTaskFor.mockResolvedValue('running');
+  mockStartTrackLocationTaskFor.mockResolvedValue('restarted');
+  mockPauseTrackLocationTaskFor.mockResolvedValue('paused');
   mockReadTrackPoints.mockResolvedValue([]);
   mockReadTrackRecording.mockResolvedValue(null);
   mockClaimLegacyTrackRecording.mockResolvedValue({ kind: 'none' });
   mockClearTrackRecording.mockResolvedValue(undefined);
   mockPersistCompletedTrackRecording.mockResolvedValue(undefined);
-  mockResetTrackPoints.mockResolvedValue(undefined);
-  mockHasStartedLocationUpdates.mockResolvedValue(false);
-  mockStopLocationUpdates.mockResolvedValue(undefined);
   mockEnqueueActivity.mockResolvedValue({
     id: 'activity-a',
     ownerId: OWNER_A,
@@ -369,9 +403,188 @@ describe('Run tracker Open Map route integration', () => {
 
     expect(mockRecoverTrackRecording).toHaveBeenLastCalledWith(OWNER_A, 'walk');
     expect(mockBeginTrackRecording).toHaveBeenCalledWith(OWNER_A, 'walk');
-    expect(mockStartTrackLocationTask).toHaveBeenCalledTimes(1);
+    expect(mockStartTrackLocationTaskFor).toHaveBeenCalledWith({
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    });
     expect(renderer.root.findByProps({ accessibilityLabel: 'Recording. GPS active' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+  });
+
+  test('never enters tracking UI when a newly started recording lease is stale', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    let recoveryReads = 0;
+    mockRecoverTrackRecording.mockImplementation(async () => {
+      recoveryReads += 1;
+      return recoveryReads < 3
+        ? { kind: 'none' }
+        : { ...identity, kind: 'active', points: [], type: 'run' };
+    });
+    mockStartTrackLocationTaskFor.mockResolvedValueOnce('stale');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Start Run' }).props.onPress());
+    await flush();
+
+    expect(mockStartTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+  });
+
+  test('refreshes recovery instead of tracking a stale recovered lease', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        points: OWNER_A_POINTS,
+        type: 'run',
+      })
+      .mockResolvedValueOnce({ kind: 'none' });
+    mockEnsureTrackLocationTaskFor.mockResolvedValueOnce('stale');
+
+    const renderer = await renderRoute();
+
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+    expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
+  });
+
+  test('pauses a recovered A lease when its owner changes while resume is pending', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    const leaseResume = deferred<'running'>();
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'run',
+    });
+    mockEnsureTrackLocationTaskFor.mockReturnValueOnce(leaseResume.promise);
+    const renderer = await renderRoute();
+
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    await switchOwner(renderer, OWNER_B);
+
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    leaseResume.resolve('running');
+    await flush();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+    expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
+  });
+
+  test('prioritizes the current in-flight lease over a stale prior-owner recording ref', async () => {
+    const identityA = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    const identityB = {
+      activityId: 'activity-b',
+      ownerId: OWNER_B,
+      startedAt: '2026-08-25T10:00:00.000Z',
+    };
+    const pauseA = deferred<'paused'>();
+    const leaseResumeB = deferred<'running'>();
+    mockRecoverTrackRecording.mockImplementation(async (ownerId) => {
+      if (ownerId === OWNER_A) {
+        return { ...identityA, kind: 'active', points: OWNER_A_POINTS, type: 'run' };
+      }
+      if (ownerId === OWNER_B) {
+        return { ...identityB, kind: 'active', points: [], type: 'walk' };
+      }
+      return { kind: 'none' };
+    });
+    mockEnsureTrackLocationTaskFor
+      .mockResolvedValueOnce('running')
+      .mockReturnValueOnce(leaseResumeB.promise);
+    mockPauseTrackLocationTaskFor
+      .mockReturnValueOnce(pauseA.promise)
+      .mockResolvedValue('paused');
+    const renderer = await renderRoute();
+
+    await switchOwner(renderer, OWNER_B);
+    await flush();
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenLastCalledWith(identityB);
+    mockPauseTrackLocationTaskFor.mockClear();
+
+    await switchOwner(renderer, OWNER_C);
+
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identityB);
+    pauseA.resolve('paused');
+    leaseResumeB.resolve('running');
+    await flush();
+  });
+
+  test('reconciles an active recording found during Start before showing tracking UI', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({ kind: 'none' })
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        points: OWNER_A_POINTS,
+        type: 'run',
+      });
+    mockEnsureTrackLocationTaskFor.mockResolvedValueOnce('paused');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Start Run' }).props.onPress());
+    await flush();
+
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+    expect(mockBeginTrackRecording).not.toHaveBeenCalled();
+  });
+
+  test('pauses an existing A lease found during Start when its owner changes while resume is pending', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    const leaseResume = deferred<'running'>();
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({ kind: 'none' })
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        points: OWNER_A_POINTS,
+        type: 'run',
+      });
+    mockEnsureTrackLocationTaskFor.mockReturnValueOnce(leaseResume.promise);
+    const renderer = await renderRoute();
+
+    act(() => {
+      void renderer.root.findByProps({ accessibilityLabel: 'Start Run' }).props.onPress();
+    });
+    await flush();
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+
+    await switchOwner(renderer, OWNER_B);
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    leaseResume.resolve('running');
+    await flush();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+    expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
   });
 
   test.each([
@@ -423,8 +636,7 @@ describe('Run tracker Open Map route integration', () => {
       | { text: string; onPress?: () => void }[]
       | undefined;
     act(() => menuButtons?.find((button) => button.text === 'Keep activity')?.onPress?.());
-    expect(mockResetTrackPoints).not.toHaveBeenCalled();
-    expect(mockStopLocationUpdates).not.toHaveBeenCalled();
+    expect(mockPauseTrackLocationTaskFor).not.toHaveBeenCalled();
     expect(mockClearTrackRecording).not.toHaveBeenCalled();
     expect(mockPersistCompletedTrackRecording).not.toHaveBeenCalled();
     expect(mockEnqueueActivity).not.toHaveBeenCalled();
@@ -463,7 +675,6 @@ describe('Run tracker Open Map route integration', () => {
             },
           },
     );
-    if (recovery === 'active') mockHasStartedLocationUpdates.mockResolvedValueOnce(true);
     const renderer = await renderRoute();
     const alert = jest.spyOn(Alert, 'alert');
 
@@ -491,14 +702,70 @@ describe('Run tracker Open Map route integration', () => {
     await flush();
 
     if (recovery === 'active') {
-      expect(mockStopLocationUpdates).toHaveBeenCalledTimes(1);
+      expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith({
+        activityId: 'activity-a',
+        ownerId: OWNER_A,
+        startedAt: STARTED_AT,
+      });
+    } else {
+      expect(mockPauseTrackLocationTaskFor).not.toHaveBeenCalled();
     }
     expect(mockClearTrackRecording).toHaveBeenCalledWith('activity-a');
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
     expect(textOf(renderer)).not.toContain(formatKm(activity.distance_m));
   });
 
-  test.each(['native stop', 'durable clear'] as const)(
+  test('retries a completed save without requiring an active location lease', async () => {
+    const activity = {
+      type: 'run' as const,
+      distance_m: totalDistanceMeters(OWNER_A_POINTS),
+      duration_s: 360,
+      route: OWNER_A_POINTS,
+      started_at: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      kind: 'completed',
+      recording: { activityId: 'activity-a', ownerId: OWNER_A, activity },
+    });
+    mockPauseTrackLocationTaskFor.mockResolvedValueOnce('stale');
+    const renderer = await renderRoute();
+
+    await act(async () => {
+      await renderer.root.findByProps({ accessibilityLabel: 'Retry save' }).props.onPress();
+    });
+    await flush();
+
+    expect(mockPersistCompletedTrackRecording).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueActivity).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findByProps({ testID: 'mock-run-share-sheet' })).toBeTruthy();
+  });
+
+  test('discards a completed save without requiring an active location lease', async () => {
+    const activity = {
+      type: 'run' as const,
+      distance_m: totalDistanceMeters(OWNER_A_POINTS),
+      duration_s: 360,
+      route: OWNER_A_POINTS,
+      started_at: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      kind: 'completed',
+      recording: { activityId: 'activity-a', ownerId: OWNER_A, activity },
+    });
+    mockPauseTrackLocationTaskFor.mockResolvedValueOnce('stale');
+    const renderer = await renderRoute();
+    const alert = jest.spyOn(Alert, 'alert');
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress());
+    pressLatestAlertButton(alert, 'Discard activity');
+    pressLatestAlertButton(alert, 'Discard permanently');
+    await flush();
+
+    expect(mockClearTrackRecording).toHaveBeenCalledWith('activity-a');
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+  });
+
+  test.each(['lease pause', 'durable clear'] as const)(
     'moves a failed active discard into recoverable paused state after %s fails',
     async (failureStage) => {
       mockRecoverTrackRecording.mockResolvedValueOnce({
@@ -509,9 +776,8 @@ describe('Run tracker Open Map route integration', () => {
         startedAt: STARTED_AT,
         type: 'run',
       });
-      mockHasStartedLocationUpdates.mockResolvedValueOnce(true);
-      if (failureStage === 'native stop') {
-        mockStopLocationUpdates.mockRejectedValueOnce(new Error('native stop failed'));
+      if (failureStage === 'lease pause') {
+        mockPauseTrackLocationTaskFor.mockRejectedValueOnce(new Error('lease pause failed'));
       } else {
         mockClearTrackRecording.mockRejectedValueOnce(new Error('durable clear failed'));
       }
@@ -525,9 +791,13 @@ describe('Run tracker Open Map route integration', () => {
       pressLatestAlertButton(alert, 'Discard permanently');
       await flush();
 
-      expect(mockStopLocationUpdates).toHaveBeenCalledTimes(1);
+      expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith({
+        activityId: 'activity-a',
+        ownerId: OWNER_A,
+        startedAt: STARTED_AT,
+      });
       expect(mockClearTrackRecording).toHaveBeenCalledTimes(
-        failureStage === 'native stop' ? 0 : 1,
+        failureStage === 'lease pause' ? 0 : 1,
       );
       expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
       expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
@@ -565,20 +835,20 @@ describe('Run tracker Open Map route integration', () => {
     expect(textOf(renderer)).toContain(formatKm(activity.distance_m));
   });
 
-  test('single-flights Stop and keeps Finishing visible until native stop and route read settle', async () => {
+  test('single-flights Stop and keeps Finishing visible until lease pause and route read settle', async () => {
+    const startedAt = new Date().toISOString();
     mockRecoverTrackRecording.mockResolvedValueOnce({
       activityId: 'activity-a',
       kind: 'active',
       ownerId: OWNER_A,
       points: [],
-      startedAt: new Date().toISOString(),
+      startedAt,
       type: 'run',
     });
-    mockHasStartedLocationUpdates.mockResolvedValueOnce(true);
-    const nativeStop = deferred<void>();
-    const routeRead = deferred<Pt[]>();
-    mockStopLocationUpdates.mockReturnValueOnce(nativeStop.promise);
-    mockReadTrackPoints.mockReturnValueOnce(routeRead.promise);
+    const leasePause = deferred<'paused'>();
+    const routeRead = deferred<TrackRecordingIdentity & { points: Pt[] }>();
+    mockPauseTrackLocationTaskFor.mockReturnValueOnce(leasePause.promise);
+    mockReadTrackRecording.mockReturnValueOnce(routeRead.promise);
     const renderer = await renderRoute();
     const stop = renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props
       .onPress as () => void;
@@ -590,9 +860,13 @@ describe('Run tracker Open Map route integration', () => {
       await Promise.resolve();
     });
 
-    expect(mockHasStartedLocationUpdates).toHaveBeenCalledTimes(1);
-    expect(mockStopLocationUpdates).toHaveBeenCalledTimes(1);
-    expect(mockReadTrackPoints).not.toHaveBeenCalled();
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledTimes(1);
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith({
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt,
+    });
+    expect(mockReadTrackRecording).not.toHaveBeenCalled();
     expect(
       renderer.root.findByProps({
         accessibilityLabel: 'Finishing activity. Saving your route safely',
@@ -607,20 +881,25 @@ describe('Run tracker Open Map route integration', () => {
     expect(renderer.root.findByProps({ accessibilityLabel: 'Run' }).props.accessibilityState.disabled)
       .toBe(true);
 
-    nativeStop.resolve(undefined);
+    leasePause.resolve('paused');
     await flush();
-    expect(mockReadTrackPoints).toHaveBeenCalledTimes(1);
+    expect(mockReadTrackRecording).toHaveBeenCalledTimes(1);
     expect(renderer.root.findByProps({ accessibilityLabel: 'Finishing…' })).toBeTruthy();
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Start Run' })).toHaveLength(0);
 
-    routeRead.resolve([]);
+    routeRead.resolve({
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt,
+      points: [],
+    });
     await flush();
     expect(mockClearTrackRecording).toHaveBeenCalledWith('activity-a');
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Finishing…' })).toHaveLength(0);
   });
 
-  test('keeps the recording recoverable when native location updates cannot stop', async () => {
+  test('keeps the recording recoverable when its owner-bound lease cannot pause', async () => {
     mockRecoverTrackRecording.mockResolvedValueOnce({
       activityId: 'activity-a',
       kind: 'active',
@@ -629,8 +908,7 @@ describe('Run tracker Open Map route integration', () => {
       startedAt: STARTED_AT,
       type: 'run',
     });
-    mockHasStartedLocationUpdates.mockResolvedValueOnce(true);
-    mockStopLocationUpdates.mockRejectedValueOnce(new Error('native stop failed'));
+    mockPauseTrackLocationTaskFor.mockRejectedValueOnce(new Error('lease pause failed'));
     const renderer = await renderRoute();
 
     act(() =>
@@ -638,11 +916,67 @@ describe('Run tracker Open Map route integration', () => {
     );
     await flush();
 
-    expect(mockStopLocationUpdates).toHaveBeenCalledTimes(1);
-    expect(mockReadTrackPoints).not.toHaveBeenCalled();
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith({
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    });
+    expect(mockReadTrackRecording).not.toHaveBeenCalled();
     expect(mockPersistCompletedTrackRecording).not.toHaveBeenCalled();
     expect(mockClearTrackRecording).not.toHaveBeenCalled();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+  });
+
+  test('does not read or save points when Stop discovers a stale recording lease', async () => {
+    const identity = { activityId: 'activity-a', ownerId: OWNER_A, startedAt: STARTED_AT };
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        points: OWNER_A_POINTS,
+        type: 'run',
+      })
+      .mockResolvedValueOnce({ kind: 'none' });
+    mockPauseTrackLocationTaskFor.mockResolvedValueOnce('stale');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await flush();
+
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(mockReadTrackRecording).not.toHaveBeenCalled();
+    expect(mockPersistCompletedTrackRecording).not.toHaveBeenCalled();
+    expect(mockClearTrackRecording).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+  });
+
+  test('refuses to save a Stop snapshot whose exact recording identity changed', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'run',
+    });
+    mockReadTrackRecording.mockResolvedValueOnce({
+      activityId: 'activity-b',
+      ownerId: OWNER_B,
+      startedAt: '2026-08-25T10:00:00.000Z',
+      points: OWNER_B_POINTS,
+    });
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await flush();
+
+    expect(mockPersistCompletedTrackRecording).not.toHaveBeenCalled();
+    expect(mockEnqueueActivity).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+    expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_B_POINTS)));
   });
 
   test('releases the Stop lock after a route-read error so recovery can retry', async () => {
@@ -657,14 +991,21 @@ describe('Run tracker Open Map route integration', () => {
     mockRecoverTrackRecording
       .mockResolvedValueOnce(activeRecovery)
       .mockResolvedValueOnce(activeRecovery);
-    mockReadTrackPoints.mockRejectedValueOnce(new Error('temporary read failure'));
+    mockReadTrackRecording
+      .mockRejectedValueOnce(new Error('temporary read failure'))
+      .mockResolvedValueOnce({
+        activityId: activeRecovery.activityId,
+        ownerId: activeRecovery.ownerId,
+        startedAt: activeRecovery.startedAt,
+        points: [],
+      });
     const renderer = await renderRoute();
 
     act(() =>
       renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress(),
     );
     await flush();
-    expect(mockReadTrackPoints).toHaveBeenCalledTimes(1);
+    expect(mockReadTrackRecording).toHaveBeenCalledTimes(1);
     expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
 
     await act(async () => {
@@ -677,7 +1018,7 @@ describe('Run tracker Open Map route integration', () => {
       renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress(),
     );
     await flush();
-    expect(mockReadTrackPoints).toHaveBeenCalledTimes(2);
+    expect(mockReadTrackRecording).toHaveBeenCalledTimes(2);
     expect(mockClearTrackRecording).toHaveBeenCalledWith('activity-a');
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
   });
@@ -697,7 +1038,7 @@ describe('Run tracker Open Map route integration', () => {
     await flush();
 
     expect(mockBeginTrackRecording).not.toHaveBeenCalled();
-    expect(mockStartTrackLocationTask).not.toHaveBeenCalled();
+    expect(mockStartTrackLocationTaskFor).not.toHaveBeenCalled();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
   });
@@ -719,9 +1060,33 @@ describe('Run tracker Open Map route integration', () => {
     begun.resolve({ activityId: 'durable-a', ownerId: OWNER_A, startedAt: STARTED_AT });
     await flush();
 
-    expect(mockStartTrackLocationTask).not.toHaveBeenCalled();
+    expect(mockStartTrackLocationTaskFor).not.toHaveBeenCalled();
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+  });
+
+  test('pauses A when its owner changes while the leased native start is pending', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    const leasedStart = deferred<'running'>();
+    mockStartTrackLocationTaskFor.mockReturnValueOnce(leasedStart.promise);
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Start Run' }).props.onPress());
+    await flush();
+    expect(mockStartTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+
+    await switchOwner(renderer, OWNER_B);
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    leasedStart.resolve('running');
+    await flush();
+
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Distance 0.00 kilometres' })).toBeTruthy();
   });
 
   test('rejects a stale legacy-claim result after the owner generation changes', async () => {
@@ -755,6 +1120,66 @@ describe('Run tracker Open Map route integration', () => {
     expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
   });
 
+  test('reconciles a claimed legacy recording lease before showing tracking UI', async () => {
+    const identity = {
+      activityId: 'claimed-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({ kind: 'legacy_unclaimed' });
+    mockClaimLegacyTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'walk',
+    });
+    mockEnsureTrackLocationTaskFor.mockResolvedValueOnce('paused');
+    const renderer = await renderRoute();
+
+    await act(async () => {
+      await renderer.root.findByProps({
+        accessibilityLabel: 'Restore to this account',
+      }).props.onPress();
+    });
+
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+  });
+
+  test('pauses a claimed legacy A lease when its owner changes while resume is pending', async () => {
+    const identity = {
+      activityId: 'claimed-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    const leaseResume = deferred<'running'>();
+    mockRecoverTrackRecording.mockResolvedValueOnce({ kind: 'legacy_unclaimed' });
+    mockClaimLegacyTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'walk',
+    });
+    mockEnsureTrackLocationTaskFor.mockReturnValueOnce(leaseResume.promise);
+    const renderer = await renderRoute();
+
+    act(() => {
+      void renderer.root.findByProps({
+        accessibilityLabel: 'Restore to this account',
+      }).props.onPress();
+    });
+    await flush();
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+
+    await switchOwner(renderer, OWNER_B);
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    leaseResume.resolve('running');
+    await flush();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+    expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
+  });
+
   test('rejects a stale retry-resume result after A to B to A', async () => {
     mockRecoverTrackRecording.mockResolvedValueOnce({
       activityId: 'activity-a',
@@ -764,7 +1189,7 @@ describe('Run tracker Open Map route integration', () => {
       startedAt: STARTED_AT,
       type: 'run',
     });
-    mockEnsureTrackLocationTask.mockResolvedValueOnce('paused');
+    mockEnsureTrackLocationTaskFor.mockResolvedValueOnce('paused');
     const renderer = await renderRoute();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
     const retryRecovery = deferred<TrackRecordingRecovery>();
@@ -802,26 +1227,209 @@ describe('Run tracker Open Map route integration', () => {
       type: 'run',
     });
     const renderer = await renderRoute();
-    const nativeStatus = deferred<boolean>();
-    mockHasStartedLocationUpdates.mockReturnValueOnce(nativeStatus.promise);
-    mockReadTrackPoints.mockResolvedValueOnce(OWNER_A_POINTS);
+    const leasePause = deferred<'paused'>();
+    mockPauseTrackLocationTaskFor.mockReturnValue(leasePause.promise);
+    mockReadTrackRecording.mockResolvedValueOnce({
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+      points: OWNER_A_POINTS,
+    });
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
     mockRecoverTrackRecording
       .mockResolvedValueOnce({ kind: 'none' })
       .mockResolvedValueOnce({ kind: 'none' });
     await switchOwner(renderer, OWNER_B);
     await switchOwner(renderer, OWNER_A);
-    nativeStatus.resolve(true);
+    leasePause.resolve('paused');
     await flush();
     await flush();
 
-    expect(mockStopLocationUpdates).toHaveBeenCalledTimes(1);
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith({
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    });
     expect(mockPersistCompletedTrackRecording).toHaveBeenCalledTimes(1);
     expect(mockEnqueueActivity).toHaveBeenCalledTimes(1);
     expect(renderer.root.findAllByProps({ testID: 'mock-run-share-sheet' })).toHaveLength(0);
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
     expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
   });
+
+  test('pauses the immutable A recording lease immediately at an owner boundary', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'run',
+    });
+    const renderer = await renderRoute();
+    const ownerBRecovery = deferred<TrackRecordingRecovery>();
+    mockRecoverTrackRecording.mockImplementation(async (ownerId) =>
+      ownerId === OWNER_B ? ownerBRecovery.promise : { kind: 'none' },
+    );
+
+    await switchOwner(renderer, OWNER_B);
+
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(renderer.root.findAllByProps({ testID: 'mock-osm-map' })).toHaveLength(0);
+    ownerBRecovery.resolve({ kind: 'none' });
+    await flush();
+  });
+
+  test('reconciles a stale too-short Stop after its owner-bound clear finishes across A to B to A', async () => {
+    const startedAt = new Date().toISOString();
+    const identity = { activityId: 'activity-a', ownerId: OWNER_A, startedAt };
+    let ownerAReads = 0;
+    mockRecoverTrackRecording.mockImplementation(async (ownerId) => {
+      if (ownerId === OWNER_B) {
+        return { activityId: identity.activityId, kind: 'owner_mismatch', ownerId: OWNER_A };
+      }
+      ownerAReads += 1;
+      return ownerAReads < 3
+        ? { ...identity, kind: 'active', points: [], type: 'run' }
+        : { kind: 'none' };
+    });
+    const leasePause = deferred<'paused'>();
+    const durableClear = deferred<void>();
+    mockPauseTrackLocationTaskFor.mockReturnValue(leasePause.promise);
+    mockReadTrackRecording.mockResolvedValueOnce({ ...identity, points: [] });
+    mockClearTrackRecording.mockReturnValueOnce(durableClear.promise);
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await switchOwner(renderer, OWNER_B);
+    await switchOwner(renderer, OWNER_A);
+    leasePause.resolve('paused');
+    await flush();
+    expect(mockClearTrackRecording).toHaveBeenCalledWith(identity.activityId);
+
+    durableClear.resolve(undefined);
+    await flush();
+    await flush();
+
+    expect(ownerAReads).toBeGreaterThanOrEqual(3);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+  });
+
+  test('reconciles a stale too-short Stop clear failure to paused recovery across A to B to A', async () => {
+    const startedAt = new Date().toISOString();
+    const identity = { activityId: 'activity-a', ownerId: OWNER_A, startedAt };
+    let ownerAReads = 0;
+    mockRecoverTrackRecording.mockImplementation(async (ownerId) => {
+      if (ownerId === OWNER_B) {
+        return { activityId: identity.activityId, kind: 'owner_mismatch', ownerId: OWNER_A };
+      }
+      ownerAReads += 1;
+      return { ...identity, kind: 'active', points: [], type: 'run' };
+    });
+    mockEnsureTrackLocationTaskFor.mockImplementation(async () =>
+      ownerAReads >= 3 ? 'paused' : 'running',
+    );
+    const leasePause = deferred<'paused'>();
+    const durableClear = deferred<void>();
+    mockPauseTrackLocationTaskFor.mockReturnValue(leasePause.promise);
+    mockReadTrackRecording.mockResolvedValueOnce({ ...identity, points: [] });
+    mockClearTrackRecording.mockReturnValueOnce(durableClear.promise);
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await switchOwner(renderer, OWNER_B);
+    await switchOwner(renderer, OWNER_A);
+    leasePause.resolve('paused');
+    await flush();
+    expect(mockClearTrackRecording).toHaveBeenCalledWith(identity.activityId);
+
+    durableClear.reject(new Error('clear failed'));
+    await flush();
+    await flush();
+
+    expect(ownerAReads).toBeGreaterThanOrEqual(3);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+  });
+
+  test('reconciles a stale Stop read error to paused recovery across A to B to A', async () => {
+    const identity = { activityId: 'activity-a', ownerId: OWNER_A, startedAt: STARTED_AT };
+    let ownerAReads = 0;
+    mockRecoverTrackRecording.mockImplementation(async (ownerId) => {
+      if (ownerId === OWNER_B) {
+        return { activityId: identity.activityId, kind: 'owner_mismatch', ownerId: OWNER_A };
+      }
+      ownerAReads += 1;
+      return { ...identity, kind: 'active', points: [], type: 'run' };
+    });
+    mockEnsureTrackLocationTaskFor.mockImplementation(async () =>
+      ownerAReads >= 3 ? 'paused' : 'running',
+    );
+    const leasePause = deferred<'paused'>();
+    mockPauseTrackLocationTaskFor.mockReturnValue(leasePause.promise);
+    mockReadTrackRecording.mockRejectedValueOnce(new Error('route read failed'));
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await switchOwner(renderer, OWNER_B);
+    await switchOwner(renderer, OWNER_A);
+    leasePause.resolve('paused');
+    await flush();
+    await flush();
+
+    expect(ownerAReads).toBeGreaterThanOrEqual(3);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+  });
+
+  test.each(['clear succeeds', 'clear fails'] as const)(
+    'reconciles stale confirmed discard when durable %s across A to B to A',
+    async (clearOutcome) => {
+      const identity = { activityId: 'activity-a', ownerId: OWNER_A, startedAt: STARTED_AT };
+      let ownerAReads = 0;
+      mockRecoverTrackRecording.mockImplementation(async (ownerId) => {
+        if (ownerId === OWNER_B) {
+          return { activityId: identity.activityId, kind: 'owner_mismatch', ownerId: OWNER_A };
+        }
+        ownerAReads += 1;
+        if (ownerAReads >= 3 && clearOutcome === 'clear succeeds') return { kind: 'none' };
+        return { ...identity, kind: 'active', points: OWNER_A_POINTS, type: 'run' };
+      });
+      mockEnsureTrackLocationTaskFor.mockImplementation(async () =>
+        ownerAReads >= 3 ? 'paused' : 'running',
+      );
+      const leasePause = deferred<'paused'>();
+      const durableClear = deferred<void>();
+      mockPauseTrackLocationTaskFor.mockReturnValue(leasePause.promise);
+      mockClearTrackRecording.mockReturnValueOnce(durableClear.promise);
+      const renderer = await renderRoute();
+      const alert = jest.spyOn(Alert, 'alert');
+
+      act(() => renderer.root.findByProps({ accessibilityLabel: 'More options' }).props.onPress());
+      pressLatestAlertButton(alert, 'Discard activity');
+      pressLatestAlertButton(alert, 'Discard permanently');
+      await switchOwner(renderer, OWNER_B);
+      await switchOwner(renderer, OWNER_A);
+      leasePause.resolve('paused');
+      await flush();
+      if (clearOutcome === 'clear succeeds') durableClear.resolve(undefined);
+      else durableClear.reject(new Error('clear failed'));
+      await flush();
+      await flush();
+
+      expect(ownerAReads).toBeGreaterThanOrEqual(3);
+      if (clearOutcome === 'clear succeeds') {
+        expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+      } else {
+        expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+      }
+      expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+    },
+  );
 
   test('finishes durable A persist but suppresses stale completion UI after account changes', async () => {
     const activity = {
@@ -867,8 +1475,12 @@ describe('Run tracker Open Map route integration', () => {
     const renderer = await renderRoute();
     const queued = deferred<Record<string, unknown>>();
     const cleared = deferred<void>();
+    let recordingCleared = false;
     mockEnqueueActivity.mockReturnValueOnce(queued.promise);
-    mockClearTrackRecording.mockReturnValueOnce(cleared.promise);
+    mockClearTrackRecording.mockImplementationOnce(async () => {
+      await cleared.promise;
+      recordingCleared = true;
+    });
 
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Retry save' }).props.onPress());
     await flush();
@@ -878,7 +1490,7 @@ describe('Run tracker Open Map route integration', () => {
     mockRecoverTrackRecording.mockImplementation(async (ownerId) => {
       if (ownerId !== OWNER_B) return { kind: 'none' };
       ownerBRecoveryReads += 1;
-      return ownerBRecoveryReads === 1
+      return !recordingCleared
         ? {
             activityId: 'activity-a',
             kind: 'owner_mismatch',
@@ -900,10 +1512,34 @@ describe('Run tracker Open Map route integration', () => {
     await flush();
 
     expect(mockRecoverTrackRecording).toHaveBeenLastCalledWith(OWNER_B, 'run');
-    expect(ownerBRecoveryReads).toBe(2);
+    expect(ownerBRecoveryReads).toBeGreaterThanOrEqual(2);
     expect(renderer.root.findByProps({ testID: 'mock-osm-map' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
     expect(textOf(renderer)).not.toContain(formatKm(activity.distance_m));
+  });
+
+  test('keeps save-to-share authority valid through Strict Mode effect replay', async () => {
+    const activity = {
+      type: 'run' as const,
+      distance_m: totalDistanceMeters(OWNER_A_POINTS),
+      duration_s: 360,
+      route: OWNER_A_POINTS,
+      started_at: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValue({
+      kind: 'completed',
+      recording: { activityId: 'activity-a', ownerId: OWNER_A, activity },
+    });
+    const renderer = await renderRouteStrictMode();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Retry save' }).props.onPress());
+    await flush();
+
+    expect(mockPauseTrackLocationTaskFor).not.toHaveBeenCalled();
+    expect(mockPersistCompletedTrackRecording).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueActivity).toHaveBeenCalledTimes(1);
+    expect(mockShareSheetProps?.run.ownerId).toBe(OWNER_A);
+    expect(renderer.root.findByProps({ testID: 'mock-run-share-sheet' })).toBeTruthy();
   });
 
   test('never reveals an A completion after its share sheet closes under B', async () => {
@@ -927,7 +1563,9 @@ describe('Run tracker Open Map route integration', () => {
     expect(mockShareSheetProps?.run.ownerId).toBe(OWNER_A);
 
     const ownerBRecovery = deferred<TrackRecordingRecovery>();
-    mockRecoverTrackRecording.mockReturnValueOnce(ownerBRecovery.promise);
+    mockRecoverTrackRecording.mockImplementation(async (ownerId) =>
+      ownerId === OWNER_B ? ownerBRecovery.promise : { kind: 'none' },
+    );
     await switchOwner(renderer, OWNER_B);
     expect(renderer.root.findAllByProps({ testID: 'mock-run-share-sheet' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ testID: 'mock-osm-map' })).toHaveLength(0);
@@ -1086,7 +1724,7 @@ describe('Run tracker Open Map route integration', () => {
           startedAt: STARTED_AT,
           type: 'ride',
         });
-        mockEnsureTrackLocationTask.mockResolvedValueOnce('paused');
+        mockEnsureTrackLocationTaskFor.mockResolvedValueOnce('paused');
       } else if (state === 'owner_mismatch') {
         mockOwnerId = OWNER_B;
         mockRecoverTrackRecording.mockResolvedValueOnce({
@@ -1179,7 +1817,9 @@ describe('Run tracker Open Map route integration', () => {
       .toBe(true);
 
     const ownerBRecovery = deferred<TrackRecordingRecovery>();
-    mockRecoverTrackRecording.mockReturnValueOnce(ownerBRecovery.promise);
+    mockRecoverTrackRecording.mockImplementation(async (ownerId) =>
+      ownerId === OWNER_B ? ownerBRecovery.promise : { kind: 'none' },
+    );
     mockClearRoute.mockClear();
     const ownerAMounts = mockMapMounts;
     mockOwnerId = OWNER_B;
