@@ -497,11 +497,19 @@ describe('RunMediaActions feed availability', () => {
     expect(feedDisabledReasonFor(false)).toBeNull();
   });
 
-  test('normalizes null and Error failures without leaving an empty message', () => {
-    expect(runMediaErrorMessage(new Error('Network unavailable'))).toBe(
-      'Network unavailable',
+  test('turns internal failures into concise destination-safe messages', () => {
+    expect(runMediaErrorMessage('story', new Error('Network unavailable'))).toBe(
+      'Couldn’t add this run to My Day. Your run is still saved—try again.',
     );
-    expect(runMediaErrorMessage(null)).toBe('Something went wrong');
+    expect(runMediaErrorMessage('phone', null)).toBe(
+      'Couldn’t save this image to your phone. Your run is still saved—try again.',
+    );
+    expect(
+      runMediaErrorMessage(
+        'phone',
+        new Error('Photo library permission is required to save this run image.'),
+      ),
+    ).toBe('Allow photo access to save this run image.');
   });
 });
 

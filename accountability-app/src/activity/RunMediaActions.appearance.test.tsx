@@ -69,4 +69,43 @@ describe('completed Run sharing actions', () => {
     })).toBeTruthy();
     act(() => renderer.unmount());
   });
+
+  test('shows one concise destination error at a time instead of raw stacked failures', async () => {
+    const onMyDay = jest.fn(async () => {
+      throw new Error('Upload service is out of date. Please try again shortly.');
+    });
+    const onDestination = jest.fn(async () => {
+      throw new Error(
+        'Method createAssetAsync imported from "expo-media-library" is deprecated.\nhttps://docs.expo.dev/',
+      );
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = TestRenderer.create(
+        <RunMediaActions
+          onContinueToFeed={jest.fn()}
+          onMyDay={onMyDay}
+          onDestination={onDestination}
+        />,
+      );
+    });
+
+    await act(async () => {
+      await renderer.root.findByProps({ accessibilityLabel: 'Add to My Day' }).props.onPress();
+    });
+    expect([...new Set(renderer.root.findAllByProps({ accessibilityRole: 'alert' }).map((node) => node.props.children))]).toEqual([
+      'Couldn’t add this run to My Day. Your run is still saved—try again.',
+    ]);
+
+    await act(async () => {
+      await renderer.root.findByProps({ accessibilityLabel: 'Save to phone' }).props.onPress();
+    });
+    expect([...new Set(renderer.root.findAllByProps({ accessibilityRole: 'alert' }).map((node) => node.props.children))]).toEqual([
+      'Couldn’t save this image to your phone. Your run is still saved—try again.',
+    ]);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('createAssetAsync');
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('docs.expo.dev');
+    act(() => renderer.unmount());
+  });
 });

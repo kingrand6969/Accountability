@@ -39,7 +39,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 jest.mock('expo-media-library', () => ({
   requestPermissionsAsync: jest.fn(),
-  createAssetAsync: jest.fn(),
+  Asset: { create: jest.fn() },
 }));
 jest.mock('expo-file-system', () => ({
   File: class {

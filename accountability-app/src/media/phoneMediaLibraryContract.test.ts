@@ -18,4 +18,10 @@ describe('phone-only media library boundary', () => {
     const helper = source('src/media/phoneMediaLibrary.ts');
     expect(helper).toMatch(/Platform\.OS === 'web'[\s\S]*?throw new Error[\s\S]*?await import\('expo-media-library'\)/);
   });
+
+  test('uses the SDK 56 Asset API instead of the legacy method that throws at runtime', () => {
+    const helper = source('src/media/phoneMediaLibrary.ts');
+    expect(helper).toContain('mediaLibrary.Asset.create(uri)');
+    expect(helper).not.toContain('mediaLibrary.createAssetAsync(uri)');
+  });
 });

@@ -80,10 +80,32 @@ export function feedDisabledReasonFor(
   return activityQueued ? 'Post to Feed is available after this activity syncs.' : null;
 }
 
-export function runMediaErrorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : String(error ?? 'Something went wrong');
+export function runMediaErrorMessage(
+  destination: UtilityDestination,
+  error: unknown,
+): string {
+  const detail = error instanceof Error ? error.message : String(error ?? '');
+
+  if (/account changed/i.test(detail)) {
+    return 'Your account changed. Nothing was shared or saved.';
+  }
+  if (/photo library permission|photo access/i.test(detail)) {
+    return 'Allow photo access to save this run image.';
+  }
+  if (/could not (?:render|prepare).*image/i.test(detail)) {
+    return 'Couldn’t prepare this run image. Your run is still saved—try again.';
+  }
+
+  switch (destination) {
+    case 'story':
+      return 'Couldn’t add this run to My Day. Your run is still saved—try again.';
+    case 'phone':
+      return 'Couldn’t save this image to your phone. Your run is still saved—try again.';
+    case 'memories':
+      return 'Couldn’t save this run to Memories. Your run is still saved—try again.';
+    case 'share':
+      return 'Couldn’t open sharing. Your run is still saved—try again.';
+  }
 }
 
 export function RunMediaActions({
@@ -100,10 +122,16 @@ export function RunMediaActions({
 
   async function run(destination: UtilityDestination) {
     if (disabled || working) return;
-    setStates((current) => ({
-      ...current,
-      [destination]: { status: 'working', error: null },
-    }));
+    setStates((current) => {
+      const next = { ...current };
+      for (const action of actions) {
+        if (next[action.destination].status === 'error') {
+          next[action.destination] = { status: 'idle', error: null };
+        }
+      }
+      next[destination] = { status: 'working', error: null };
+      return next;
+    });
     try {
       if (destination === 'story') await onMyDay();
       else await onDestination(destination);
@@ -116,7 +144,7 @@ export function RunMediaActions({
         ...current,
         [destination]: {
           status: 'error',
-          error: runMediaErrorMessage(error),
+          error: runMediaErrorMessage(destination, error),
         },
       }));
     }

@@ -14,5 +14,5 @@ export async function requestPhonePhotoPermission(): Promise<{ granted: boolean 
 
 export async function createPhonePhoto(uri: string): Promise<unknown> {
   const mediaLibrary = await phoneMediaLibrary();
-  return mediaLibrary.createAssetAsync(uri);
+  return mediaLibrary.Asset.create(uri);
 }
