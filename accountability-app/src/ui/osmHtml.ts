@@ -74,6 +74,7 @@ export function buildOsmHtml(opts: {
   route?: LatLng[];
   interactive?: boolean;
   tiles?: 'osm' | 'dark';
+  showZoomControl?: boolean;
   showLatestMarker?: boolean;
   fitPadding?: MapFitPadding;
   parentOrigin?: string;
@@ -83,6 +84,7 @@ export function buildOsmHtml(opts: {
   const markers = opts.markers ?? [];
   const route = opts.route ?? [];
   const interactive = opts.interactive !== false;
+  const showZoomControl = interactive && opts.showZoomControl !== false;
   const showLatestMarker = opts.showLatestMarker !== false;
   const dark = opts.tiles === 'dark';
   const fitPadding = opts.fitPadding ?? { top: 28, right: 28, bottom: 28, left: 28 };
@@ -135,13 +137,14 @@ export function buildOsmHtml(opts: {
   var route = ${safeJson(route)};
   var markers = ${safeJson(markers)};
   var interactive = ${interactive ? 'true' : 'false'};
+  var showZoomControl = ${showZoomControl ? 'true' : 'false'};
   var showLatestMarker = ${showLatestMarker ? 'true' : 'false'};
   var fitPadding = ${safeJson(fitPadding)};
   var parentOrigin = ${safeJson(parentOrigin)};
   var bridgeGeneration = ${safeJson(bridgeGeneration)};
   var bridgeNonce = ${safeJson(bridgeNonce)};
   var map = L.map('map', {
-    zoomControl: interactive, dragging: interactive, scrollWheelZoom: interactive,
+    zoomControl: showZoomControl, dragging: interactive, scrollWheelZoom: interactive,
     doubleClickZoom: interactive, boxZoom: interactive, keyboard: interactive, tap: interactive,
     attributionControl: true
   });

@@ -161,6 +161,18 @@ describe('web OsmMap imperative bridge', () => {
     )).toBe(true);
   });
 
+  test('forwards hidden zoom chrome into the generated Leaflet document', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<OsmMap interactive showZoomControl={false} />);
+      mounted.push(renderer);
+    });
+
+    expect(renderer.root.findByType('iframe').props.srcDoc).toContain(
+      'var showZoomControl = false;',
+    );
+  });
+
   test('uses the same preserve, center, overview, and clear messages as native', () => {
     const postMessage = jest.fn();
     const frameWindow = { postMessage };

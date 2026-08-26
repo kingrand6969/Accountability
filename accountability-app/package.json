@@ -85,6 +85,7 @@
   },
   "scripts": {
     "postinstall": "patch-package --error-on-fail",
+    "eas-build-post-install": "node --test scripts/location-drain-bridge-patch.test.mjs",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
@@ -97,6 +98,23 @@
     "test:location-drain-patch": "node --test scripts/location-drain-bridge-patch.test.mjs",
     "release:challenge-lockdown": "node scripts/check-challenge-lockdown-rollout.mjs",
     "release:budget": "expo export --platform android --output-dir dist && node scripts/check-update-budget.mjs dist"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-location",
+          "expo-task-manager",
+          "unimodules-app-loader"
+        ]
+      },
+      "ios": {
+        "buildFromSource": [
+          "expo-location",
+          "expo-task-manager"
+        ]
+      }
+    }
   },
   "overrides": {
     "image-size": "1.2.1",

@@ -455,7 +455,11 @@ describe('Run tracker Open Map route integration', () => {
       expect.objectContaining({ tabBarStyle: { display: 'none' } }),
     );
     expect(mockMapProps).toEqual(
-      expect.objectContaining({ interactive: true, tiles: 'dark' }),
+      expect.objectContaining({
+        interactive: true,
+        showZoomControl: false,
+        tiles: 'dark',
+      }),
     );
     expect(renderer.root.findByProps({ testID: 'run-open-map-chrome' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Distance 0.00 kilometres' })).toBeTruthy();

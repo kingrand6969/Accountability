@@ -1431,6 +1431,7 @@ export default function ActivityTrack() {
             markers={idleMarkers}
             interactive
             tiles="dark"
+            showZoomControl={false}
             fitPadding={{
               top: insets.top + 88,
               right: sideInset + 64,

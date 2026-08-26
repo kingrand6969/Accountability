@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFile as execFileCallback } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import test from 'node:test';
+
+const execFile = promisify(execFileCallback);
 
 const files = {
   package: new URL('../package.json', import.meta.url),
@@ -763,14 +768,54 @@ test('clean installs apply the bridge only to locked Expo Location 56.0.22', asy
   assert.equal(packageJson.dependencies['expo-task-manager'], '56.0.23');
   assert.equal(packageJson.devDependencies['patch-package'], '8.0.0');
   assert.equal(packageJson.scripts.postinstall, 'patch-package --error-on-fail');
+  assert.equal(
+    packageJson.scripts['eas-build-post-install'],
+    'node --test scripts/location-drain-bridge-patch.test.mjs',
+  );
+  assert.deepEqual(
+    packageJson.expo?.autolinking?.android?.buildFromSource,
+    ['expo-location', 'expo-task-manager', 'unimodules-app-loader'],
+  );
+  assert.deepEqual(
+    packageJson.expo?.autolinking?.ios?.buildFromSource,
+    ['expo-location', 'expo-task-manager'],
+  );
   assert.match(await source('patch'), /node_modules\/expo-location/);
   assert.match(taskManagerPatch, /node_modules\/expo-task-manager/);
   assert.match(taskManagerPatch, /GENERATION_TASK_OPTION/);
   assert.match(taskManagerPatch, /didFailToLoadTaskApp/);
   assert.match(taskManagerPatch, /Task registration could not be durably persisted/);
+  assert.match(taskManagerPatch, /BareTasksAndEventsRepository\.java/);
+  assert.match(taskManagerPatch, /ManagedTasksAndEventsRepository\.java/);
+  assert.match(
+    taskManagerPatch,
+    /public boolean persistTasksForAppScopeKey[\s\S]{0,220}return tasksPersistence\.persistTasksForAppScopeKey/,
+  );
   assert.match(taskManagerPatch, /UIBackgroundFetchResultFailed/);
   assert.match(taskManagerPatch, /\.commit\(\)/);
   assert.match(taskManagerPatch, /return \[userDefaults synchronize\];/);
+});
+
+test('Expo autolinking resolves patched Android modules from source', async () => {
+  const cli = fileURLToPath(
+    new URL(
+      '../node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js',
+      import.meta.url,
+    ),
+  );
+  const cwd = fileURLToPath(new URL('..', import.meta.url));
+  const { stdout } = await execFile(
+    process.execPath,
+    [cli, 'resolve', '--platform', 'android', '--json'],
+    { cwd },
+  );
+  const resolution = JSON.parse(stdout);
+
+  assert.deepEqual(resolution.configuration?.buildFromSource, [
+    'expo-location',
+    'expo-task-manager',
+    'unimodules-app-loader',
+  ]);
 });
 
 test('Android generation collector awaits source removal and JS task acknowledgements', async () => {

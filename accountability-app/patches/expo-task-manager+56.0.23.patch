@@ -188,6 +188,23 @@ index 44cd804..6b66e9f 100644
 +    }
 +  }
 +
+diff --git a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/BareTasksAndEventsRepository.java b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/BareTasksAndEventsRepository.java
+--- a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/BareTasksAndEventsRepository.java
++++ b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/BareTasksAndEventsRepository.java
+@@ -118 +118 @@ public class BareTasksAndEventsRepository implements TasksAndEventsRepository {
+-  public void persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey) {
++  public boolean persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey) {
+@@ -120 +120 @@ public class BareTasksAndEventsRepository implements TasksAndEventsRepository {
+-    tasksPersistence.persistTasksForAppScopeKey(preferences, appScopeKey, getTasks(appScopeKey));
++    return tasksPersistence.persistTasksForAppScopeKey(preferences, appScopeKey, getTasks(appScopeKey));
+diff --git a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/ManagedTasksAndEventsRepository.java b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/ManagedTasksAndEventsRepository.java
+--- a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/ManagedTasksAndEventsRepository.java
++++ b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/ManagedTasksAndEventsRepository.java
+@@ -101,2 +101,2 @@ public class ManagedTasksAndEventsRepository implements TasksAndEventsRepository {
+-  public void persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey) {
+-    tasksPersistence.persistTasksForAppScopeKey(preferences, appScopeKey, getTasks(appScopeKey));
++  public boolean persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey) {
++    return tasksPersistence.persistTasksForAppScopeKey(preferences, appScopeKey, getTasks(appScopeKey));
 diff --git a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksAndEventsRepository.java b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksAndEventsRepository.java
 index 185a391..64c7929 100644
 --- a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksAndEventsRepository.java

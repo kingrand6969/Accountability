@@ -36,4 +36,18 @@ describe('generated OSM document isolation', () => {
     expect(html).toContain("document.addEventListener('click', blockNavigation, true)");
     expect(html).toContain('map.attributionControl.setPrefix(false)');
   });
+
+  test('can hide Leaflet zoom chrome without disabling map gestures', () => {
+    const html = buildOsmHtml({
+      interactive: true,
+      showZoomControl: false,
+    });
+
+    expect(html).toContain('var showZoomControl = false;');
+    expect(html).toContain('zoomControl: showZoomControl');
+    expect(html).toContain('dragging: interactive');
+    expect(buildOsmHtml({ interactive: false })).toContain(
+      'var showZoomControl = false;',
+    );
+  });
 });

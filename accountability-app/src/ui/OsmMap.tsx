@@ -58,6 +58,7 @@ export type OsmMapProps = {
   route?: LatLng[];
   interactive?: boolean;
   tiles?: 'osm' | 'dark';
+  showZoomControl?: boolean;
   showLatestMarker?: boolean;
   fitPadding?: MapFitPadding;
   style?: StyleProp<ViewStyle>;
@@ -75,6 +76,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
     route = [],
     interactive = true,
     tiles = 'osm',
+    showZoomControl = true,
     showLatestMarker = true,
     fitPadding,
     style,
@@ -90,6 +92,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
     serializedMapData,
     interactive,
     tiles,
+    showZoomControl,
     showLatestMarker,
     securityEpoch,
   });
@@ -135,6 +138,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
         ...stableMapData,
         interactive,
         tiles,
+        showZoomControl,
         showLatestMarker,
         bridgeGeneration: documentIdentity.generation,
         bridgeNonce: documentIdentity.nonce,
@@ -144,6 +148,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
       serializedMapData,
       interactive,
       tiles,
+      showZoomControl,
       showLatestMarker,
       documentIdentity.generation,
       documentIdentity.nonce,

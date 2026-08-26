@@ -98,6 +98,18 @@ describe('native OsmMap imperative bridge', () => {
     );
   });
 
+  test('forwards hidden zoom chrome into the generated Leaflet document', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<OsmMap interactive showZoomControl={false} />);
+      mounted.push(renderer);
+    });
+
+    expect(nativeWebView(renderer).props.source.html).toContain(
+      'var showZoomControl = false;',
+    );
+  });
+
   test('does not clear an initially marker-only map or clear it again when marker layout changes', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {
