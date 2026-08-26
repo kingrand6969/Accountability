@@ -503,7 +503,381 @@ describe('Run tracker Open Map route integration', () => {
       startedAt: STARTED_AT,
     });
     expect(renderer.root.findByProps({ accessibilityLabel: 'Recording. GPS active' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Walk' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+  });
+
+  test('labels the pause control for a Ride recording', async () => {
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Ride' }).props.onPress());
+    await act(async () => {
+      await renderer.root.findByProps({ accessibilityLabel: 'Start Ride' }).props.onPress();
+    });
+    await flush();
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Ride' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+  });
+
+  test('pauses the owner-bound recording without finalizing and keeps its map and metrics visible', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      type: 'run',
+      points: OWNER_A_POINTS,
+      recordingState: 'recording',
+      activeDurationMs: 12_000,
+      resumeAfterOwnerCheck: false,
+    } as TrackRecordingRecovery);
+    const renderer = await renderRoute();
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Run' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Pause Run' }).props.onPress());
+    await flush();
+
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledTimes(1);
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(mockFinalizeTrackRecordingFor).not.toHaveBeenCalled();
+    expect(mockEnqueueActivity).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ testID: 'mock-osm-map' })).toBeTruthy();
+    expect(renderer.root.findByProps({
+      accessibilityLabel: `Distance ${formatKm(totalDistanceMeters(OWNER_A_POINTS))} kilometres`,
+    })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:12' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Resume Run' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+  });
+
+  test('resumes a durably paused recording through its existing owner-bound identity', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      type: 'run',
+      points: OWNER_A_POINTS,
+      recordingState: 'paused',
+      activeDurationMs: 42_000,
+      resumeAfterOwnerCheck: false,
+    } as TrackRecordingRecovery);
+    const renderer = await renderRoute();
+
+    expect(mockEnsureTrackLocationTaskFor).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ testID: 'mock-osm-map' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:42' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Resume Run' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Resume Run' }).props.onPress());
+    await flush();
+
+    expect(mockStartTrackLocationTaskFor).toHaveBeenCalledTimes(1);
+    expect(mockStartTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(mockBeginTrackRecording).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Run' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+  });
+
+  test('still performs the owner-check recovery for a safety-paused background recording', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      type: 'run',
+      points: OWNER_A_POINTS,
+      recordingState: 'paused',
+      activeDurationMs: 18_000,
+      resumeAfterOwnerCheck: true,
+    } as TrackRecordingRecovery);
+
+    const renderer = await renderRoute();
+
+    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Run' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:18' })).toBeTruthy();
+  });
+
+  test('does not finalize concurrently when Pause and Stop are pressed in one frame', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      type: 'run',
+      points: OWNER_A_POINTS,
+      recordingState: 'recording',
+      activeDurationMs: 12_000,
+      resumeAfterOwnerCheck: false,
+    } as TrackRecordingRecovery);
+    const pauseResult = deferred<'paused'>();
+    mockPauseTrackLocationTaskFor.mockReturnValueOnce(pauseResult.promise);
+    const renderer = await renderRoute();
+    const pause = renderer.root.findByProps({ accessibilityLabel: 'Pause Run' });
+    const stop = renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' });
+
+    act(() => {
+      pause.props.onPress();
+      stop.props.onPress();
+    });
+
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledTimes(1);
+    expect(mockFinalizeTrackRecordingFor).not.toHaveBeenCalled();
+
+    pauseResult.resolve('paused');
+    await flush();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Resume Run' })).toBeTruthy();
+  });
+
+  test('does not finalize concurrently when Resume and Stop are pressed in one frame', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      type: 'run',
+      points: OWNER_A_POINTS,
+      recordingState: 'paused',
+      activeDurationMs: 42_000,
+      resumeAfterOwnerCheck: false,
+    } as TrackRecordingRecovery);
+    const resumeResult = deferred<'restarted'>();
+    mockStartTrackLocationTaskFor.mockReturnValueOnce(resumeResult.promise);
+    const renderer = await renderRoute();
+    const resume = renderer.root.findByProps({ accessibilityLabel: 'Resume Run' });
+    const stop = renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' });
+
+    act(() => {
+      resume.props.onPress();
+      stop.props.onPress();
+    });
+
+    expect(mockStartTrackLocationTaskFor).toHaveBeenCalledTimes(1);
+    expect(mockFinalizeTrackRecordingFor).not.toHaveBeenCalled();
+
+    resumeResult.resolve('restarted');
+    await flush();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Run' })).toBeTruthy();
+  });
+
+  test('does not claim a pause when both pause attempts and recovery are unavailable', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        type: 'run',
+        points: OWNER_A_POINTS,
+        recordingState: 'recording',
+        activeDurationMs: 12_000,
+        resumeAfterOwnerCheck: false,
+      } as TrackRecordingRecovery)
+      .mockRejectedValueOnce(new Error('storage unavailable'));
+    mockPauseTrackLocationTaskFor.mockRejectedValue(new Error('pause unavailable'));
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Pause Run' }).props.onPress());
+    await flush();
+    await flush();
+
+    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledTimes(2);
+    expect(alert).toHaveBeenCalledWith(
+      'Pause not confirmed',
+      expect.stringMatching(/could not confirm whether GPS stopped/i),
+    );
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Resume Run' })).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'run-private-map-placeholder' })).toBeTruthy();
+    alert.mockRestore();
+  });
+
+  test('keeps GPS stop unconfirmed when both pause attempts throw and storage only proves a paused lease', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        type: 'run',
+        points: OWNER_A_POINTS,
+        recordingState: 'recording',
+        activeDurationMs: 12_000,
+        resumeAfterOwnerCheck: false,
+      } as TrackRecordingRecovery)
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        type: 'run',
+        points: OWNER_A_POINTS,
+        recordingState: 'paused',
+        activeDurationMs: 12_000,
+        resumeAfterOwnerCheck: false,
+      } as TrackRecordingRecovery);
+    mockPauseTrackLocationTaskFor.mockRejectedValue(new Error('native stop uncertain'));
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Pause Run' }).props.onPress());
+    await flush();
+    await flush();
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry stop GPS' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Resume Run' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Pause Run' })).toHaveLength(0);
+    expect(alert).toHaveBeenCalledWith(
+      'GPS stop not confirmed',
+      expect.stringMatching(/phone has not confirmed that GPS stopped/i),
+    );
+    alert.mockRestore();
+  });
+
+  test('keeps GPS stop unconfirmed when failed resume cleanup throws and storage only proves a paused lease', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    const pausedRecovery = {
+      ...identity,
+      kind: 'active',
+      type: 'run',
+      points: OWNER_A_POINTS,
+      recordingState: 'paused',
+      activeDurationMs: 42_000,
+      resumeAfterOwnerCheck: false,
+    } as TrackRecordingRecovery;
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce(pausedRecovery)
+      .mockResolvedValueOnce(pausedRecovery);
+    mockStartTrackLocationTaskFor.mockRejectedValueOnce(new Error('resume uncertain'));
+    mockPauseTrackLocationTaskFor.mockRejectedValueOnce(new Error('native stop uncertain'));
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Resume Run' }).props.onPress());
+    await flush();
+    await flush();
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry stop GPS' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Resume Run' })).toHaveLength(0);
+    expect(alert).toHaveBeenCalledWith(
+      'GPS stop not confirmed',
+      expect.stringMatching(/phone has not confirmed that GPS stopped/i),
+    );
+    alert.mockRestore();
+  });
+
+  test('restores authoritative recording state when resume and safety-pause both fail', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        type: 'run',
+        points: OWNER_A_POINTS,
+        recordingState: 'paused',
+        activeDurationMs: 42_000,
+        resumeAfterOwnerCheck: false,
+      } as TrackRecordingRecovery)
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        type: 'run',
+        points: OWNER_A_POINTS,
+        recordingState: 'recording',
+        activeDurationMs: 43_000,
+        resumeAfterOwnerCheck: false,
+      } as TrackRecordingRecovery);
+    mockStartTrackLocationTaskFor.mockRejectedValueOnce(new Error('resume uncertain'));
+    mockPauseTrackLocationTaskFor.mockRejectedValueOnce(new Error('pause uncertain'));
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Resume Run' }).props.onPress());
+    await flush();
+    await flush();
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Run' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Resume Run' })).toHaveLength(0);
+    expect(alert).toHaveBeenCalledWith(
+      'GPS state changed',
+      expect.stringMatching(/may be recording/i),
+    );
+    alert.mockRestore();
+  });
+
+  test('excludes the paused gap from the visible timer and finalized duration', async () => {
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    jest.setSystemTime(new Date('2026-08-25T09:00:00.000Z'));
+    try {
+      const renderer = await renderRoute();
+      await act(async () => {
+        await renderer.root.findByProps({ accessibilityLabel: 'Start Run' }).props.onPress();
+      });
+      await flush();
+
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+        await Promise.resolve();
+      });
+      expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:05' })).toBeTruthy();
+
+      act(() => renderer.root.findByProps({ accessibilityLabel: 'Pause Run' }).props.onPress());
+      await flush();
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+        await Promise.resolve();
+      });
+      expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:05' })).toBeTruthy();
+
+      act(() => renderer.root.findByProps({ accessibilityLabel: 'Resume Run' }).props.onPress());
+      await flush();
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+        await Promise.resolve();
+      });
+      expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:10' })).toBeTruthy();
+
+      act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+      await flush();
+      expect(mockFinalizeTrackRecordingFor).toHaveBeenCalledWith(
+        expect.objectContaining({ ownerId: OWNER_A }),
+        { type: 'run', durationS: 10 },
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('single-flights Stop through one deep finalize and queues before exact acknowledgement', async () => {
@@ -877,8 +1251,45 @@ describe('Run tracker Open Map route integration', () => {
     await flush();
 
     expect(mockStartTrackLocationTaskFor).toHaveBeenCalledWith(identity);
-    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry stop GPS' })).toBeTruthy();
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
+  });
+
+  test('does not claim GPS stopped when a new recording start throws with only a paused durable lease', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording
+      .mockResolvedValueOnce({ kind: 'none' })
+      .mockResolvedValueOnce({ kind: 'none' })
+      .mockResolvedValueOnce({
+        ...identity,
+        kind: 'active',
+        type: 'run',
+        points: [],
+        recordingState: 'paused',
+        activeDurationMs: 0,
+        resumeAfterOwnerCheck: false,
+      } as TrackRecordingRecovery);
+    mockStartTrackLocationTaskFor.mockRejectedValueOnce(
+      new Error('native collector state uncertain'),
+    );
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Start Run' }).props.onPress());
+    await flush();
+    await flush();
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry stop GPS' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Retry resume' })).toHaveLength(0);
+    expect(alert).toHaveBeenCalledWith(
+      'GPS stop not confirmed',
+      expect.stringMatching(/phone has not confirmed that GPS stopped/i),
+    );
+    alert.mockRestore();
   });
 
   test('refreshes recovery instead of tracking a stale recovered lease', async () => {

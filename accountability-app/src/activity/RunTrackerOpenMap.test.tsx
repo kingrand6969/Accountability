@@ -523,6 +523,80 @@ describe('RunTrackerOpenMap', () => {
     }
   });
 
+  test('shows separate Pause Run and Stop & Save controls with 48-point targets while recording', () => {
+    const pauseAction = idleAction({
+      label: 'Pause Run',
+      icon: 'pause',
+      onPress: jest.fn(),
+    });
+    const stopAction = idleAction({
+      label: 'Stop & Save',
+      icon: 'stop',
+      tone: 'danger',
+      onPress: jest.fn(),
+    });
+    const { renderer } = render({
+      primaryAction: stopAction,
+      secondaryAction: pauseAction,
+    });
+    const pause = byLabel(renderer, 'Pause Run');
+    const stop = byLabel(renderer, 'Stop & Save');
+    const pauseStyle = flattenedControlStyle(pause);
+    const stopStyle = flattenedControlStyle(stop);
+
+    expect(pause.props.accessibilityRole).toBe('button');
+    expect(stop.props.accessibilityRole).toBe('button');
+    expect(pauseStyle.width ?? pauseStyle.minWidth).toBeGreaterThanOrEqual(48);
+    expect(pauseStyle.height ?? pauseStyle.minHeight).toBeGreaterThanOrEqual(48);
+    expect(stopStyle.width ?? stopStyle.minWidth).toBeGreaterThanOrEqual(48);
+    expect(stopStyle.height ?? stopStyle.minHeight).toBeGreaterThanOrEqual(48);
+    expect(pauseStyle.top).toBe(stopStyle.top);
+    expect(pauseStyle.left + pauseStyle.width).toBeLessThanOrEqual(stopStyle.left);
+
+    press(renderer, 'Pause Run');
+    expect(pauseAction.onPress).toHaveBeenCalledTimes(1);
+    expect(stopAction.onPress).not.toHaveBeenCalled();
+    press(renderer, 'Stop & Save');
+    expect(stopAction.onPress).toHaveBeenCalledTimes(1);
+  });
+
+  test('uses compact stacked action labels at 200% text on a narrow phone', () => {
+    const { renderer } = render({
+      viewportWidth: 320,
+      viewportHeight: 568,
+      fontScale: 2,
+      safeTop: 24,
+      safeBottom: 20,
+      sideInset: 16,
+      secondaryAction: idleAction({
+        label: 'Pause Run',
+        compactLabel: 'Pause',
+        icon: 'pause',
+      }),
+      primaryAction: idleAction({
+        label: 'Stop & Save',
+        compactLabel: 'Finish',
+        icon: 'stop',
+        tone: 'danger',
+      }),
+    });
+    const pause = byLabel(renderer, 'Pause Run');
+    const stop = byLabel(renderer, 'Stop & Save');
+    const pauseStyle = flattenedControlStyle(pause);
+    const stopStyle = flattenedControlStyle(stop);
+
+    expect(pauseStyle.flexDirection).toBe('column');
+    expect(stopStyle.flexDirection).toBe('column');
+    expect(pauseStyle.minHeight).toBeGreaterThanOrEqual(48);
+    expect(stopStyle.minHeight).toBeGreaterThanOrEqual(48);
+    expect(pauseStyle.top + pauseStyle.minHeight + 36).toBeLessThanOrEqual(568);
+    expect(stopStyle.top + stopStyle.minHeight + 36).toBeLessThanOrEqual(568);
+    expect(renderer.root.findByProps({ testID: 'run-secondary-action-label' }).props.children)
+      .toBe('Pause');
+    expect(renderer.root.findByProps({ testID: 'run-primary-action-label' }).props.children)
+      .toBe('Finish');
+  });
+
   test('keeps the 200% text composition ordered, scalable, and free of clipped labels', () => {
     const { renderer } = render({
       viewportWidth: 320,

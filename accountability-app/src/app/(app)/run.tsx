@@ -106,6 +106,13 @@ const SAMPLE_ROUTE: Pt[] = [
 
 type PendingSave = FinalizedTrackRecording;
 
+type RunTrackingPhase =
+  | 'idle'
+  | 'recording'
+  | 'pausing'
+  | 'paused'
+  | 'resuming';
+
 type OwnerCommandScope = {
   ownerId: string | null;
   generation: number;
@@ -119,7 +126,11 @@ export default function ActivityTrack() {
   const navigation = useNavigation();
   const { width: W, height: H, fontScale } = useWindowDimensions();
   const [type, setType] = useState<ActivityType>('run');
-  const [tracking, setTracking] = useState(false);
+  const [trackingPhase, setTrackingPhase] = useState<RunTrackingPhase>('idle');
+  const tracking =
+    trackingPhase === 'recording' ||
+    trackingPhase === 'pausing' ||
+    trackingPhase === 'resuming';
   const [distance, setDistance] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -129,6 +140,7 @@ export default function ActivityTrack() {
     | 'needs_owner'
     | 'owner_mismatch'
     | 'storage_error'
+    | 'gps_unconfirmed'
     | 'tracking_paused'
     | 'finishing'
     | 'legacy_unprovable'
@@ -259,7 +271,7 @@ export default function ActivityTrack() {
   } | null>(null);
   const leaseIdentityRef = useRef<TrackRecordingIdentity | null>(null);
   const startingRef = useRef(false);
-  const stoppingRef = useRef(false);
+  const sessionTransitionRef = useRef(false);
   const avatarRevisionRef = useRef(0);
   const completionOwnerRef = useRef<string | null>(
     session?.user.id ?? null,
@@ -290,9 +302,10 @@ export default function ActivityTrack() {
     mapRef.current?.clearRoute();
     completionControllerRef.current?.reset('auth_owner_change');
     startingRef.current = false;
-    stoppingRef.current = false;
+    sessionTransitionRef.current = false;
     setStarting(false);
     setStopping(false);
+    setTrackingPhase('idle');
     setSaving(false);
     setIdlePos(null);
     setRecoveryReadState('checking');
@@ -434,7 +447,7 @@ export default function ActivityTrack() {
       setDetailOwnerId(recovery.ownerId);
       setRecoveryReadState('error');
       setRecoveryNotice('tracking_paused');
-      setTracking(false);
+      setTrackingPhase('idle');
       commitPending(null);
       setDistance(0);
       setElapsed(0);
@@ -453,7 +466,7 @@ export default function ActivityTrack() {
         recordingRef.current = null;
         legacyDiscardTokenRef.current = recovery.discardToken;
         setDetailOwnerId(null);
-        setTracking(false);
+        setTrackingPhase('idle');
         commitPending(null);
         setDistance(0);
         setElapsed(0);
@@ -471,7 +484,7 @@ export default function ActivityTrack() {
         setDetailOwnerId(
           recovery.kind === 'owner_mismatch' ? recovery.ownerId : null,
         );
-        setTracking(false);
+        setTrackingPhase('idle');
         commitPending(null);
         setDistance(0);
         setElapsed(0);
@@ -485,7 +498,7 @@ export default function ActivityTrack() {
         startedAtRef.current = '';
         startMsRef.current = 0;
         setDetailOwnerId(null);
-        setTracking(false);
+        setTrackingPhase('idle');
         commitPending(null);
         setType('run');
         setDistance(0);
@@ -505,7 +518,7 @@ export default function ActivityTrack() {
         };
         setDetailOwnerId(recording.ownerId);
         startedAtRef.current = recording.activity.started_at;
-        setTracking(false);
+        setTrackingPhase('idle');
         setRecoveryNotice(null);
         setType(recording.activity.type);
         setDistance(recording.activity.distance_m);
@@ -527,7 +540,7 @@ export default function ActivityTrack() {
         setDetailOwnerId(recovery.identity.ownerId);
         startedAtRef.current = recovery.identity.startedAt;
         startMsRef.current = Date.parse(recovery.identity.startedAt);
-        setTracking(false);
+        setTrackingPhase('idle');
         commitPending(null);
         setDistance(0);
         setElapsed(0);
@@ -556,10 +569,25 @@ export default function ActivityTrack() {
       setType(recovery.type);
       setLivePoints(recovery.points);
       setDistance(totalDistanceMeters(recovery.points));
-      setElapsed(
-        Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
-      );
-      setTracking(true);
+      const recoveredElapsed =
+        typeof recovery.activeDurationMs === 'number' &&
+        Number.isFinite(recovery.activeDurationMs)
+          ? Math.max(0, Math.round(recovery.activeDurationMs / 1000))
+          : Math.max(
+              0,
+              Math.round((Date.now() - startMsRef.current) / 1000),
+            );
+      setElapsed(recoveredElapsed);
+      startMsRef.current = Date.now() - recoveredElapsed * 1000;
+      if (
+        recovery.recordingState === 'paused' &&
+        recovery.resumeAfterOwnerCheck !== true
+      ) {
+        invalidateTimer();
+        setTrackingPhase('paused');
+        return;
+      }
+      setTrackingPhase('recording');
       startTrackingTimer(recovery.ownerId);
     },
     [commitPending, getCompletionController, invalidateTimer, startTrackingTimer],
@@ -580,6 +608,13 @@ export default function ActivityTrack() {
       .then(async (recovery) => {
         if (!active || !isCommandCurrent(command)) return;
         if (recovery.kind === 'active') {
+          if (
+            recovery.recordingState === 'paused' &&
+            recovery.resumeAfterOwnerCheck !== true
+          ) {
+            restoreRecovery(recovery);
+            return;
+          }
           const taskStatus = await ensureRecordingLease({
             activityId: recovery.activityId,
             ownerId: recovery.ownerId,
@@ -726,20 +761,27 @@ export default function ActivityTrack() {
         if (!isCommandCurrent(command)) return;
         if (existing.kind !== 'none') {
           if (existing.kind === 'active') {
-            const taskStatus = await ensureRecordingLease({
-              activityId: existing.activityId,
-              ownerId: existing.ownerId,
-              startedAt: existing.startedAt,
-            });
-            if (!isCommandCurrent(command)) return;
-            if (taskStatus === 'stale') {
-              requestAuthoritativeRecovery();
-              return;
-            }
-            if (taskStatus === 'paused') {
-              restorePausedRecovery(existing);
-            } else {
+            if (
+              existing.recordingState === 'paused' &&
+              existing.resumeAfterOwnerCheck !== true
+            ) {
               restoreRecovery(existing);
+            } else {
+              const taskStatus = await ensureRecordingLease({
+                activityId: existing.activityId,
+                ownerId: existing.ownerId,
+                startedAt: existing.startedAt,
+              });
+              if (!isCommandCurrent(command)) return;
+              if (taskStatus === 'stale') {
+                requestAuthoritativeRecovery();
+                return;
+              }
+              if (taskStatus === 'paused') {
+                restorePausedRecovery(existing);
+              } else {
+                restoreRecovery(existing);
+              }
             }
           } else {
             restoreRecovery(existing);
@@ -793,17 +835,53 @@ export default function ActivityTrack() {
       setRecoveryReadState('ready');
       startedAtRef.current = recording.startedAt;
       startMsRef.current = Date.now();
+      let taskStatus: Awaited<ReturnType<typeof startTrackLocationTaskFor>>;
       try {
-        const taskStatus = await startTrackLocationTaskFor(recording);
+        taskStatus = await startTrackLocationTaskFor(recording);
+      } catch {
+        const recovery = await recoverTrackRecording(
+          ownerId,
+          selectedTypeAtStart,
+        ).catch(() => null);
         if (!isCommandCurrent(command)) return;
-        if (taskStatus !== 'running' && taskStatus !== 'restarted') {
-          throw new Error(
-            taskStatus === 'stale'
-              ? 'The saved recording changed before GPS could start.'
-              : 'GPS could not stay active.',
+        if (recovery?.kind === 'active') {
+          if (recovery.recordingState === 'recording') {
+            restoreRecovery(recovery);
+            Alert.alert(
+              'GPS state changed',
+              'This activity may be recording. Check the status above, then Pause or use Stop & Save.',
+            );
+          } else {
+            invalidateTimer();
+            setTrackingPhase('idle');
+            setRecoveryReadState('error');
+            setRecoveryNotice('gps_unconfirmed');
+            Alert.alert(
+              'GPS stop not confirmed',
+              'New route points are blocked, but the phone has not confirmed that GPS stopped. Retry stopping GPS.',
+            );
+          }
+        } else if (recovery) {
+          restoreRecovery(recovery);
+        } else {
+          setTrackingPhase('idle');
+          setRecoveryReadState('error');
+          setRecoveryNotice('storage_error');
+          Alert.alert(
+            'GPS state not confirmed',
+            'We could not confirm whether tracking started or stopped. Activity details stay hidden until the saved state can be checked.',
           );
         }
-      } catch (e) {
+        return;
+      }
+      if (!isCommandCurrent(command)) return;
+      if (taskStatus === 'stale') {
+        setTrackingPhase('idle');
+        setRecoveryReadState('error');
+        setRecoveryNotice('gps_unconfirmed');
+        return;
+      }
+      if (taskStatus === 'paused') {
         const recovery = await recoverTrackRecording(
           ownerId,
           selectedTypeAtStart,
@@ -814,20 +892,292 @@ export default function ActivityTrack() {
         } else if (recovery) {
           restoreRecovery(recovery);
         } else {
+          setTrackingPhase('idle');
           setRecoveryReadState('error');
           setRecoveryNotice('storage_error');
         }
         Alert.alert(
           'Tracking paused',
-          `${String((e as Error).message ?? e)}\n\nYour recording is safe. Tap Retry resume.`,
+          'GPS could not stay active. Your recording is safe. Tap Retry resume.',
         );
         return;
       }
-      setTracking(true);
+      setTrackingPhase('recording');
       startTrackingTimer(ownerId);
     } finally {
       releaseSynchronousLock(startingRef);
       if (isCommandCurrent(command)) setStarting(false);
+    }
+  }
+
+  async function onPause() {
+    if (
+      trackingPhase !== 'recording' ||
+      !acquireSynchronousLock(sessionTransitionRef)
+    ) {
+      return;
+    }
+    const identity = recordingRef.current;
+    if (!identity) {
+      releaseSynchronousLock(sessionTransitionRef);
+      return;
+    }
+    const command = captureCommand(identity.ownerId);
+    const frozenElapsed = Math.max(
+      elapsed,
+      Math.max(0, Math.round((Date.now() - startMsRef.current) / 1000)),
+    );
+    invalidateTimer();
+    setTrackingPhase('pausing');
+    try {
+      hapticImpact();
+      const pauseStatus = await pauseTrackLocationTaskFor(identity);
+      if (!isCommandCurrent(command)) return;
+      if (pauseStatus === 'stale') {
+        setTrackingPhase('idle');
+        requestAuthoritativeRecovery();
+        return;
+      }
+
+      const storedPoints = await readTrackPoints().catch(() => livePoints);
+      const points = storedPoints.length > 0 ? storedPoints : livePoints;
+      if (!isCommandCurrent(command)) return;
+      setLivePoints(points);
+      setDistance(totalDistanceMeters(points));
+      setElapsed(frozenElapsed);
+      startMsRef.current = Date.now() - frozenElapsed * 1000;
+      setRecoveryReadState('ready');
+      setRecoveryNotice(null);
+      setTrackingPhase('paused');
+    } catch {
+      if (!isCommandCurrent(command)) return;
+      try {
+        const retryStatus = await pauseTrackLocationTaskFor(identity);
+        if (!isCommandCurrent(command)) return;
+        if (retryStatus === 'stale') {
+          setTrackingPhase('idle');
+          requestAuthoritativeRecovery();
+          return;
+        }
+        const storedPoints = await readTrackPoints().catch(() => livePoints);
+        const points = storedPoints.length > 0 ? storedPoints : livePoints;
+        if (!isCommandCurrent(command)) return;
+        setLivePoints(points);
+        setDistance(totalDistanceMeters(points));
+        setElapsed(frozenElapsed);
+        startMsRef.current = Date.now() - frozenElapsed * 1000;
+        setRecoveryReadState('ready');
+        setRecoveryNotice(null);
+        setTrackingPhase('paused');
+        return;
+      } catch {
+        // Fall through to an authoritative recovery read. A failed pause must
+        // never be presented as confirmed while its durable state is unknown.
+      }
+
+      const recovery = await recoverTrackRecording(identity.ownerId, type).catch(
+        () => null,
+      );
+      if (!isCommandCurrent(command)) return;
+      if (recovery) {
+        if (
+          recovery.kind === 'active' &&
+          recovery.recordingState === 'recording'
+        ) {
+          restoreRecovery(recovery);
+          Alert.alert(
+            'Pause not confirmed',
+            'This activity may still be recording. Try Pause again, or use Stop & Save.',
+          );
+          return;
+        }
+        if (recovery.kind === 'active') {
+          setTrackingPhase('idle');
+          setRecoveryReadState('error');
+          setRecoveryNotice('gps_unconfirmed');
+          Alert.alert(
+            'GPS stop not confirmed',
+            'New route points are blocked, but the phone has not confirmed that GPS stopped. Retry stopping GPS.',
+          );
+          return;
+        }
+        restoreRecovery(recovery);
+        return;
+      }
+
+      setTrackingPhase('idle');
+      setRecoveryReadState('error');
+      setRecoveryNotice('storage_error');
+      Alert.alert(
+        'Pause not confirmed',
+        'We could not confirm whether GPS stopped, so this run is not marked as paused. Activity details stay hidden until the saved state can be checked.',
+      );
+    } finally {
+      releaseSynchronousLock(sessionTransitionRef);
+    }
+  }
+
+  async function onRetryConfirmGpsStop() {
+    if (!acquireSynchronousLock(sessionTransitionRef)) return;
+    const identity = recordingRef.current;
+    if (!identity) {
+      releaseSynchronousLock(sessionTransitionRef);
+      return;
+    }
+    const command = captureCommand(identity.ownerId);
+    setSaving(true);
+    setRecoveryReadState('checking');
+    try {
+      const pauseStatus = await pauseTrackLocationTaskFor(identity);
+      if (!isCommandCurrent(command)) return;
+      if (pauseStatus === 'stale') {
+        setTrackingPhase('idle');
+        requestAuthoritativeRecovery();
+        return;
+      }
+
+      const recovery = await recoverTrackRecording(identity.ownerId, type).catch(
+        () => null,
+      );
+      if (!isCommandCurrent(command)) return;
+      if (recovery?.kind === 'active') {
+        if (
+          recovery.recordingState === 'paused' &&
+          recovery.resumeAfterOwnerCheck !== true
+        ) {
+          restoreRecovery(recovery);
+          return;
+        }
+        setTrackingPhase('idle');
+        setRecoveryReadState('error');
+        setRecoveryNotice('gps_unconfirmed');
+        Alert.alert(
+          'GPS stop not confirmed',
+          'The saved GPS state changed before it could be confirmed. Retry stopping GPS.',
+        );
+        return;
+      }
+      if (recovery) {
+        restoreRecovery(recovery);
+        return;
+      }
+
+      // The native stop and durable suspension both returned successfully.
+      // Keep the owner-safe in-memory summary visible even if this follow-up
+      // read is temporarily unavailable.
+      invalidateTimer();
+      setTrackingPhase('paused');
+      setRecoveryReadState('ready');
+      setRecoveryNotice(null);
+    } catch {
+      if (!isCommandCurrent(command)) return;
+      invalidateTimer();
+      setTrackingPhase('idle');
+      setRecoveryReadState('error');
+      setRecoveryNotice('gps_unconfirmed');
+      Alert.alert(
+        'GPS stop not confirmed',
+        'The phone still has not confirmed that GPS stopped. Retry before leaving this activity.',
+      );
+    } finally {
+      releaseSynchronousLock(sessionTransitionRef);
+      if (isCommandCurrent(command)) setSaving(false);
+    }
+  }
+
+  async function onResume() {
+    if (
+      trackingPhase !== 'paused' ||
+      !acquireSynchronousLock(sessionTransitionRef)
+    ) {
+      return;
+    }
+    const identity = recordingRef.current;
+    if (!identity) {
+      releaseSynchronousLock(sessionTransitionRef);
+      return;
+    }
+    const command = captureCommand(identity.ownerId);
+    const resumeRequestedAtMs = Date.now();
+    setTrackingPhase('resuming');
+    try {
+      hapticImpact();
+      const taskStatus = await startTrackLocationTaskFor(identity);
+      if (!isCommandCurrent(command)) return;
+      if (taskStatus === 'stale') {
+        setTrackingPhase('idle');
+        requestAuthoritativeRecovery();
+        return;
+      }
+      if (taskStatus !== 'running' && taskStatus !== 'restarted') {
+        throw new Error('GPS could not stay active.');
+      }
+
+      startMsRef.current = resumeRequestedAtMs - elapsed * 1000;
+      setRecoveryReadState('ready');
+      setRecoveryNotice(null);
+      setTrackingPhase('recording');
+      startTrackingTimer(identity.ownerId);
+    } catch {
+      try {
+        const pauseStatus = await pauseTrackLocationTaskFor(identity);
+        if (!isCommandCurrent(command)) return;
+        if (pauseStatus === 'stale') {
+          setTrackingPhase('idle');
+          requestAuthoritativeRecovery();
+          return;
+        }
+        invalidateTimer();
+        setTrackingPhase('paused');
+        Alert.alert(
+          'Could not resume',
+          'Your activity is still paused. Check GPS and try again.',
+        );
+        return;
+      } catch {
+        // Verify the durable lease before describing the activity as paused.
+      }
+
+      const recovery = await recoverTrackRecording(identity.ownerId, type).catch(
+        () => null,
+      );
+      if (!isCommandCurrent(command)) return;
+      if (recovery) {
+        if (
+          recovery.kind === 'active' &&
+          recovery.recordingState === 'recording'
+        ) {
+          restoreRecovery(recovery);
+          Alert.alert(
+            'GPS state changed',
+            'This activity may be recording. Check the status above, then Pause or use Stop & Save.',
+          );
+          return;
+        }
+        if (recovery.kind === 'active') {
+          setTrackingPhase('idle');
+          setRecoveryReadState('error');
+          setRecoveryNotice('gps_unconfirmed');
+          Alert.alert(
+            'GPS stop not confirmed',
+            'New route points are blocked, but the phone has not confirmed that GPS stopped. Retry stopping GPS.',
+          );
+          return;
+        }
+        restoreRecovery(recovery);
+        return;
+      }
+
+      invalidateTimer();
+      setTrackingPhase('idle');
+      setRecoveryReadState('error');
+      setRecoveryNotice('storage_error');
+      Alert.alert(
+        'GPS state not confirmed',
+        'We could not confirm whether tracking resumed or stopped. Activity details stay hidden until the saved state can be checked.',
+      );
+    } finally {
+      releaseSynchronousLock(sessionTransitionRef);
     }
   }
 
@@ -881,7 +1231,7 @@ export default function ActivityTrack() {
   }
 
   async function onStop() {
-    if (!acquireSynchronousLock(stoppingRef)) return;
+    if (!acquireSynchronousLock(sessionTransitionRef)) return;
     const capturedIdentity = recordingRef.current;
     const ownerId = capturedIdentity?.ownerId ?? detailOwnerId;
     const command = captureCommand(ownerId);
@@ -905,10 +1255,14 @@ export default function ActivityTrack() {
         storedSummary.identity.startedAt === identity.startedAt
           ? storedSummary
           : null;
-      const finalElapsed = exactStoredSummary?.durationS ?? Math.max(
-        0,
-        Math.round((Date.now() - startedAtMs) / 1000),
-      );
+      const liveElapsed =
+        trackingPhase === 'paused'
+          ? elapsed
+          : Math.max(
+              elapsed,
+              Math.max(0, Math.round((Date.now() - startedAtMs) / 1000)),
+            );
+      const finalElapsed = exactStoredSummary?.durationS ?? liveElapsed;
       const finishType = exactStoredSummary?.type ?? selectedTypeAtStop;
       finishSummaryRef.current = {
         identity,
@@ -925,7 +1279,7 @@ export default function ActivityTrack() {
       }
       if (result.kind === 'closing') {
         if (isCommandCurrent(command)) {
-          setTracking(false);
+          setTrackingPhase('idle');
           setRecoveryReadState('error');
           setRecoveryNotice(
             result.reason === 'legacy_unprovable' ||
@@ -958,7 +1312,7 @@ export default function ActivityTrack() {
       const canonical = nextPending.recording.activity;
       if (isCommandCurrent(command)) {
         finishSummaryRef.current = null;
-        setTracking(false);
+        setTrackingPhase('idle');
         setRecoveryReadState('ready');
         setRecoveryNotice(null);
         setElapsed(canonical.duration_s);
@@ -969,7 +1323,7 @@ export default function ActivityTrack() {
       await persist(nextPending, command);
     } catch {
       if (isCommandCurrent(command)) {
-        setTracking(false);
+        setTrackingPhase('idle');
         setRecoveryReadState('error');
         setRecoveryNotice('finishing');
         Alert.alert(
@@ -978,7 +1332,7 @@ export default function ActivityTrack() {
         );
       }
     } finally {
-      releaseSynchronousLock(stoppingRef);
+      releaseSynchronousLock(sessionTransitionRef);
       if (isCommandCurrent(command)) {
         setStopping(false);
       } else {
@@ -996,7 +1350,7 @@ export default function ActivityTrack() {
     finishSummaryRef.current = null;
     startedAtRef.current = '';
     startMsRef.current = 0;
-    setTracking(false);
+    setTrackingPhase('idle');
     commitPending(null);
     setDistance(0);
     setElapsed(0);
@@ -1023,7 +1377,7 @@ export default function ActivityTrack() {
       currentPending.identity.startedAt === identity.startedAt;
     const completionController = getCompletionController();
     if (
-      stoppingRef.current ||
+      sessionTransitionRef.current ||
       sameFinalizedRecording ||
       completionController.isCompleting(identity.activityId)
     ) {
@@ -1058,7 +1412,7 @@ export default function ActivityTrack() {
     } catch {
       if (!isCommandCurrent(command)) return;
       if (wasActiveRecording) {
-        setTracking(false);
+        setTrackingPhase('idle');
         setRecoveryReadState('error');
         setRecoveryNotice(failureNotice);
       }
@@ -1130,9 +1484,15 @@ export default function ActivityTrack() {
   const rawDistance = pending ? pending.recording.activity.distance_m : distance;
   const rawElapsed = pending ? pending.recording.activity.duration_s : elapsed;
   const rawPoints = pending ? pending.recording.activity.route : livePoints;
+  const paused = trackingPhase === 'paused';
   const ownerlessPrivateDetail =
     detailOwnerId === null &&
-    (pending !== null || tracking || rawDistance > 0 || rawElapsed > 0 || rawPoints.length > 0);
+    (pending !== null ||
+      tracking ||
+      paused ||
+      rawDistance > 0 ||
+      rawElapsed > 0 ||
+      rawPoints.length > 0);
   const detailView = detailOwnerId
     ? recordingDetailView(
         {
@@ -1158,6 +1518,8 @@ export default function ActivityTrack() {
   const shownPoints = detailView.points;
   const visiblePending = detailView.visible ? pending : null;
   const visibleTracking = detailView.visible && tracking;
+  const visiblePaused = detailView.visible && paused;
+  const visibleSession = visibleTracking || visiblePaused;
   const currentOwnerId = session?.user.id ?? null;
   const ownerTransitionPending = authoritativeOwnerId !== currentOwnerId;
   const visibleShareRun =
@@ -1205,7 +1567,7 @@ export default function ActivityTrack() {
     !ownerlessPrivateDetail;
   const mapAuthorityKey = `${currentOwnerId ?? 'signed-out'}:${ownerRenderGeneration}`;
   const idleMarkers =
-    !recoveryBlocked && !visibleTracking && safeRoute.length === 0 && idlePos
+    !recoveryBlocked && !visibleSession && safeRoute.length === 0 && idlePos
       ? [{ lat: idlePos.lat, lng: idlePos.lng, label: 'You', color: LIME }]
       : [];
   const sideInset = Math.max(16, (W - contentMaxWidth(W)) / 2);
@@ -1240,7 +1602,7 @@ export default function ActivityTrack() {
   }, [mapAuthorityKey, mapAuthorityResolved, shownPoints, visibleTracking]);
 
   const selectorDisabled =
-    visibleTracking || !!visiblePending || recoveryBlocked || starting || stopping;
+    visibleSession || !!visiblePending || recoveryBlocked || starting || stopping;
   const selectedActivityLabel = selectedType ? TYPE_LABEL[selectedType] : 'Run';
   const status = stopping
     ? {
@@ -1252,8 +1614,14 @@ export default function ActivityTrack() {
           title: 'Save needs attention',
           detail: 'Your route is safe on this phone',
         }
-      : visibleTracking
-        ? { title: 'Recording', detail: 'GPS active' }
+      : trackingPhase === 'pausing'
+        ? { title: 'Pausing', detail: 'Securing your route' }
+        : trackingPhase === 'resuming'
+          ? { title: 'Resuming', detail: 'Reconnecting GPS' }
+          : visiblePaused
+            ? { title: 'Paused', detail: 'GPS paused' }
+            : visibleTracking
+              ? { title: 'Recording', detail: 'GPS active' }
         : starting
           ? {
               title: 'Getting GPS ready',
@@ -1281,12 +1649,16 @@ export default function ActivityTrack() {
           busy: saving,
           onPress: () => void persist(visiblePending),
         }
-      : visibleTracking
+      : visibleSession
         ? {
             label: 'Stop & Save',
+            compactLabel: 'Finish',
             icon: 'stop',
             tone: 'danger',
-            disabled: saving,
+            disabled:
+              saving ||
+              trackingPhase === 'pausing' ||
+              trackingPhase === 'resuming',
             busy: saving,
             onPress: () => void onStop(),
           }
@@ -1307,6 +1679,49 @@ export default function ActivityTrack() {
               busy: false,
               onPress: () => void onStart(),
             };
+  const secondaryAction: RunTrackerPrimaryAction | undefined = stopping
+    ? undefined
+    : trackingPhase === 'recording'
+      ? {
+          label: `Pause ${selectedActivityLabel}`,
+          compactLabel: 'Pause',
+          icon: 'pause',
+          tone: 'primary',
+          disabled: false,
+          busy: false,
+          onPress: () => void onPause(),
+        }
+      : trackingPhase === 'pausing'
+        ? {
+            label: 'Pausing…',
+            compactLabel: 'Pausing…',
+            icon: 'hourglass-outline',
+            tone: 'primary',
+            disabled: true,
+            busy: true,
+            onPress: () => undefined,
+          }
+        : trackingPhase === 'paused'
+          ? {
+              label: `Resume ${selectedActivityLabel}`,
+              compactLabel: 'Resume',
+              icon: 'play',
+              tone: 'primary',
+              disabled: false,
+              busy: false,
+              onPress: () => void onResume(),
+            }
+          : trackingPhase === 'resuming'
+            ? {
+                label: 'Resuming…',
+                compactLabel: 'Resuming…',
+                icon: 'hourglass-outline',
+                tone: 'primary',
+                disabled: true,
+                busy: true,
+                onPress: () => undefined,
+              }
+            : undefined;
 
   function onCenterMap() {
     const center = latestSafePoint ?? (!recoveryBlocked ? idlePos : null);
@@ -1330,12 +1745,14 @@ export default function ActivityTrack() {
       ? 'This finished activity may already be saved on this phone. Retry save to finish safely, then delete it from Activity history if you no longer want it.'
       : stopping
         ? 'Your activity is being finished and saved safely.'
-        : visibleTracking
-          ? 'Your activity is recording. Use Stop & Save when you finish.'
+        : visiblePaused
+          ? 'Your activity is paused. Resume when you are ready, or use Stop & Save to finish.'
+          : visibleTracking
+            ? 'Your activity is recording. Use Stop & Save when you finish.'
           : 'Choose Run, Walk, or Ride above. GPS and saving are handled when you start.';
     const identity = visiblePending
       ? visiblePending.identity
-      : visibleTracking
+      : visibleSession
         ? recordingRef.current
         : null;
     if (
@@ -1343,6 +1760,8 @@ export default function ActivityTrack() {
       visiblePending !== null ||
       stopping ||
       saving ||
+      trackingPhase === 'pausing' ||
+      trackingPhase === 'resuming' ||
       getCompletionController().isCompleting(identity.activityId)
     ) {
       Alert.alert('Run options', detail, [{ text: 'Close', style: 'cancel' }]);
@@ -1384,6 +1803,8 @@ export default function ActivityTrack() {
       ? 'Older recording cannot be finished'
       : recoveryNotice === 'storage_error'
         ? 'Saved activity could not be checked'
+        : recoveryNotice === 'gps_unconfirmed'
+          ? 'GPS stop not confirmed'
         : recoveryNotice === 'tracking_paused'
           ? 'Tracking paused'
           : recoveryNotice === 'finishing'
@@ -1400,6 +1821,8 @@ export default function ActivityTrack() {
       ? 'Sign in as the recording owner to recover it.'
       : recoveryNotice === 'storage_error'
           ? 'Details stay hidden until storage is available.'
+          : recoveryNotice === 'gps_unconfirmed'
+            ? 'The app cannot confirm that the phone stopped GPS. Retry the stop check before leaving this activity.'
           : recoveryNotice === 'tracking_paused'
             ? 'Your route is safe. Resume tracking to continue.'
             : recoveryNotice === 'finishing'
@@ -1473,6 +1896,7 @@ export default function ActivityTrack() {
             elapsed={formatDuration(shownElapsed)}
             pace={formatPace(shownDist, shownElapsed)}
             estimatedCalories={kcal}
+            secondaryAction={secondaryAction}
             primaryAction={primaryAction}
             viewportWidth={W}
             viewportHeight={H}
@@ -1532,6 +1956,21 @@ export default function ActivityTrack() {
                   <Text style={styles.recoveryNoticeTitle}>{recoveryTitle}</Text>
                   <Text style={styles.recoveryNoticeDetail}>{recoveryDetail}</Text>
                 </View>
+                {recoveryNotice === 'gps_unconfirmed' ? (
+                  <Pressable
+                    style={[
+                      styles.restoreLegacyBtn,
+                      saving && styles.actionDisabled,
+                    ]}
+                    onPress={() => void onRetryConfirmGpsStop()}
+                    disabled={saving}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry stop GPS"
+                    accessibilityState={{ disabled: saving }}
+                  >
+                    <Text style={styles.restoreLegacyText}>Retry stop GPS</Text>
+                  </Pressable>
+                ) : null}
                 {recoveryNotice === 'tracking_paused' ? (
                   <Pressable
                     style={[

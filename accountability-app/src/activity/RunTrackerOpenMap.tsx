@@ -13,6 +13,7 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export type RunTrackerPrimaryAction = {
   label: string;
+  compactLabel?: string;
   icon: IoniconName;
   tone: 'primary' | 'danger';
   disabled: boolean;
@@ -35,6 +36,7 @@ export type RunTrackerOpenMapProps = {
   elapsed: string;
   pace: string;
   estimatedCalories: number;
+  secondaryAction?: RunTrackerPrimaryAction;
   primaryAction: RunTrackerPrimaryAction;
   viewportWidth: number;
   viewportHeight: number;
@@ -66,6 +68,7 @@ export function RunTrackerOpenMap({
   elapsed,
   pace,
   estimatedCalories,
+  secondaryAction,
   primaryAction,
   viewportWidth,
   viewportHeight,
@@ -127,6 +130,16 @@ export function RunTrackerOpenMap({
   const actionWidth = constrained
     ? contentWidth - layout.controlSize - constrainedActionGap
     : contentWidth;
+  const actionRailGap = secondaryAction ? 10 : 0;
+  const secondaryActionWidth = secondaryAction
+    ? Math.max(48, Math.floor((actionWidth - actionRailGap) / 2))
+    : 0;
+  const primaryActionWidth = secondaryAction
+    ? Math.max(48, actionWidth - actionRailGap - secondaryActionWidth)
+    : actionWidth;
+  const primaryActionLeft = secondaryAction
+    ? contentLeft + secondaryActionWidth + actionRailGap
+    : contentLeft;
   const paceSpoken = isUnavailablePace(pace)
     ? 'Pace unavailable'
     : `Pace ${pace} per kilometre`;
@@ -500,44 +513,104 @@ export function RunTrackerOpenMap({
         </View>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={primaryAction.label}
-        accessibilityState={{ busy: primaryAction.busy, disabled: primaryAction.disabled }}
-        disabled={primaryAction.disabled}
-        onPress={primaryAction.onPress}
-        testID={`run-primary-action-${primaryAction.tone}`}
-        style={({ pressed }) => [
-          styles.primaryAction,
-          primaryAction.tone === 'danger' ? styles.actionDanger : styles.actionPrimary,
-          {
-            left: contentLeft,
-            top: layout.ctaTop,
-            width: actionWidth,
-            minHeight: layout.ctaHeight,
-          },
-          fontScale >= 1.75 && styles.primaryActionExtraLargeText,
-          primaryAction.disabled && styles.disabled,
-          pressed && !primaryAction.disabled && styles.actionPressed,
+      {secondaryAction ? (
+        <RunTrackerActionButton
+          action={secondaryAction}
+          slot="secondary"
+          left={contentLeft}
+          top={layout.ctaTop}
+          width={secondaryActionWidth}
+          minHeight={layout.ctaHeight}
+          constrained={constrained}
+          extraLargeText={fontScale >= 1.75}
+          dual
+        />
+      ) : null}
+
+      <RunTrackerActionButton
+        action={primaryAction}
+        slot="primary"
+        left={primaryActionLeft}
+        top={layout.ctaTop}
+        width={primaryActionWidth}
+        minHeight={layout.ctaHeight}
+        constrained={constrained}
+        extraLargeText={fontScale >= 1.75}
+        dual={Boolean(secondaryAction)}
+      />
+    </View>
+  );
+}
+
+function RunTrackerActionButton({
+  action,
+  slot,
+  left,
+  top,
+  width,
+  minHeight,
+  constrained,
+  extraLargeText,
+  dual,
+}: {
+  action: RunTrackerPrimaryAction;
+  slot: 'primary' | 'secondary';
+  left: number;
+  top: number;
+  width: number;
+  minHeight: number;
+  constrained: boolean;
+  extraLargeText: boolean;
+  dual: boolean;
+}) {
+  const danger = action.tone === 'danger';
+  const outlinedSecondary = slot === 'secondary' && !danger;
+  const visibleLabel = dual && extraLargeText && action.compactLabel
+    ? action.compactLabel
+    : action.label;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={action.label}
+      accessibilityState={{ busy: action.busy, disabled: action.disabled }}
+      disabled={action.disabled}
+      onPress={action.onPress}
+      testID={`run-${slot}-action-${action.tone}`}
+      style={({ pressed }) => [
+        styles.primaryAction,
+        danger ? styles.actionDanger : styles.actionPrimary,
+        outlinedSecondary && styles.actionSecondary,
+        {
+          left,
+          top,
+          width,
+          minHeight,
+        },
+        dual && styles.actionDual,
+        extraLargeText && styles.primaryActionExtraLargeText,
+        dual && extraLargeText && styles.actionDualExtraLargeText,
+        action.disabled && styles.disabled,
+        pressed && !action.disabled && styles.actionPressed,
+      ]}
+    >
+      <Ionicons
+        name={action.icon}
+        size={20}
+        color={danger ? '#FFFFFF' : outlinedSecondary ? colors.primary : colors.onPrimary}
+      />
+      <Text
+        testID={`run-${slot}-action-label`}
+        style={[
+          styles.actionLabel,
+          constrained && styles.actionLabelConstrained,
+          danger && styles.actionLabelDanger,
+          outlinedSecondary && styles.actionLabelSecondary,
         ]}
       >
-        <Ionicons
-          name={primaryAction.icon}
-          size={20}
-          color={primaryAction.tone === 'danger' ? '#FFFFFF' : colors.onPrimary}
-        />
-        <Text
-          testID="run-primary-action-label"
-          style={[
-            styles.actionLabel,
-            constrained && styles.actionLabelConstrained,
-            primaryAction.tone === 'danger' && styles.actionLabelDanger,
-          ]}
-        >
-          {primaryAction.label}
-        </Text>
-      </Pressable>
-    </View>
+        {visibleLabel}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -773,6 +846,21 @@ const styles = StyleSheet.create({
   primaryActionExtraLargeText: { paddingVertical: 8 },
   actionPrimary: { backgroundColor: colors.primary },
   actionDanger: { backgroundColor: colors.danger },
+  actionSecondary: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(11,13,11,0.88)',
+  },
+  actionDual: {
+    gap: 7,
+    paddingHorizontal: 12,
+  },
+  actionDualExtraLargeText: {
+    flexDirection: 'column',
+    gap: 0,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
   actionPressed: { opacity: 0.82 },
   actionLabel: {
     flexShrink: 1,
@@ -784,4 +872,5 @@ const styles = StyleSheet.create({
   },
   actionLabelConstrained: { fontSize: 14, lineHeight: 19 },
   actionLabelDanger: { color: '#FFFFFF' },
+  actionLabelSecondary: { color: colors.primary },
 });

@@ -549,6 +549,46 @@ describe('immutable raw location WAL', () => {
     });
   });
 
+  it('recovers explicit pause state and lease-derived active duration without counting the pause gap', async () => {
+    const storage = memoryStorage();
+    let nowMs = 1_000;
+    const store = createLocationRecordingStore({
+      storage,
+      createActivityId: () => 'activity-pause-duration',
+      createSessionId: () => 'session-pause-duration',
+      nowIso: () => '2026-08-25T00:00:00.000Z',
+      nowMs: () => nowMs,
+    });
+    const identity = await store.begin('owner-a', 'run');
+    await store.acquireTaskLease(identity, 'lease-1', nowMs);
+
+    nowMs = 6_000;
+    await expect(store.recover('owner-a')).resolves.toMatchObject({
+      kind: 'active',
+      recordingState: 'recording',
+      activeDurationMs: 5_000,
+      resumeAfterOwnerCheck: false,
+    });
+
+    await store.suspendTaskLeaseFor(identity, nowMs);
+    nowMs = 66_000;
+    await expect(store.recover('owner-a')).resolves.toMatchObject({
+      kind: 'active',
+      recordingState: 'paused',
+      activeDurationMs: 5_000,
+      resumeAfterOwnerCheck: false,
+    });
+
+    await store.acquireTaskLease(identity, 'lease-2', nowMs);
+    nowMs = 69_000;
+    await expect(store.recover('owner-a')).resolves.toMatchObject({
+      kind: 'active',
+      recordingState: 'recording',
+      activeDurationMs: 8_000,
+      resumeAfterOwnerCheck: false,
+    });
+  });
+
   it('clamps pause and terminal cutoffs when the device clock moves backwards', async () => {
     const pausedStorage = memoryStorage();
     const pausedStore = createLocationRecordingStore({

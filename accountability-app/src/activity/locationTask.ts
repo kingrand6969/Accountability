@@ -247,6 +247,9 @@ export type TrackRecordingRecovery =
       kind: 'active';
       type: NewActivity['type'];
       points: Pt[];
+      recordingState?: 'recording' | 'paused';
+      activeDurationMs?: number;
+      resumeAfterOwnerCheck?: boolean;
     })
   | {
       kind: 'closing';
@@ -614,6 +617,9 @@ export function createLocationRecordingStore(
         ...identityOf(parsed.blob),
         type: parsed.blob.type,
         points: await mergedPointsFor(parsed.blob),
+        recordingState: activeLeaseOf(parsed.blob) ? 'recording' : 'paused',
+        activeDurationMs: activeRecordingDurationMs(parsed.blob, options.nowMs()),
+        resumeAfterOwnerCheck: parsed.blob.resumeAfterOwnerCheck,
       };
     });
   }
@@ -661,6 +667,9 @@ export function createLocationRecordingStore(
               ...identityOf(parsed.blob),
               type: parsed.blob.type,
               points: await mergedPointsFor(parsed.blob),
+              recordingState: activeLeaseOf(parsed.blob) ? 'recording' : 'paused',
+              activeDurationMs: activeRecordingDurationMs(parsed.blob, options.nowMs()),
+              resumeAfterOwnerCheck: parsed.blob.resumeAfterOwnerCheck,
             };
       }
 
@@ -5083,6 +5092,34 @@ function activeLeaseOf(blob: RecordingBlob): LocationTaskLease | null {
     }
   }
   return null;
+}
+
+function activeRecordingDurationMs(blob: RecordingBlob, nowMs: number): number {
+  const intervals = blob.locationLeases
+    .filter((lease) => leaseMatchesRecording(lease, blob))
+    .map((lease) => ({
+      start: lease.activatedAt,
+      end: Math.max(
+        lease.activatedAt,
+        lease.revokedAtExclusive ?? nowMs,
+      ),
+    }))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  if (intervals.length === 0) return 0;
+
+  let total = 0;
+  let currentStart = intervals[0].start;
+  let currentEnd = intervals[0].end;
+  for (const interval of intervals.slice(1)) {
+    if (interval.start > currentEnd) {
+      total += currentEnd - currentStart;
+      currentStart = interval.start;
+      currentEnd = interval.end;
+      continue;
+    }
+    currentEnd = Math.max(currentEnd, interval.end);
+  }
+  return Math.max(0, total + currentEnd - currentStart);
 }
 
 function activeLeaseFromParts(
