@@ -1,0 +1,3755 @@
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt
+index 04171f2..3fea4ac 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt
+@@ -345,6 +345,277 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+       return@AsyncFunction mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)
+     }
+
++    AsyncFunction("getLocationCollectorDrainCapabilityAsync") {
++      return@AsyncFunction mapOf("available" to true, "version" to 3)
++    }
++
++    AsyncFunction("getLocationCollectorStateAsync") { taskName: String ->
++      val appScopeKey = mTaskManager.appScopeKey
++        ?: throw IllegalStateException("Location collector app scope is unavailable")
++      val highWater = LocationTaskConsumer.generationHighWater(
++        mContext,
++        appScopeKey,
++        taskName
++      )
++      if (!mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)) {
++        val active = LocationTaskConsumer.persistedActiveGeneration(
++          mContext,
++          appScopeKey,
++          taskName
++        )
++        return@AsyncFunction if (active != null) {
++          mapOf(
++            "running" to true,
++            "generation" to active.toDouble(),
++            "highWater" to highWater.toDouble()
++          )
++        } else {
++          mapOf(
++            "running" to false,
++            "generation" to null,
++            "highWater" to highWater.toDouble()
++          )
++        }
++      }
++      val consumer = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++        ?: throw IllegalStateException("Location collector state is unconfirmed")
++      val registeredGeneration = consumer.registeredGeneration()
++      if (
++        registeredGeneration != null &&
++        LocationTaskConsumer.persistedDrainProof(
++          mContext,
++          appScopeKey,
++          taskName,
++          registeredGeneration
++        ) != null
++      ) {
++        mTaskManager.unregisterTask(taskName, LocationTaskConsumer::class.java)
++        return@AsyncFunction mapOf(
++          "running" to false,
++          "generation" to null,
++          "highWater" to highWater.toDouble()
++        )
++      }
++      // A restored generation is intentionally source-inert, but the OS may
++      // still hold its pre-crash request. Expose it as potentially running so
++      // owner-free boot always exact-drains it rather than hiding the source.
++      val generation = consumer.confirmedGeneration() ?: registeredGeneration
++      generation ?: throw IllegalStateException("Location collector state is unconfirmed")
++      return@AsyncFunction mapOf(
++        "running" to true,
++        "generation" to generation.toDouble(),
++        "highWater" to highWater.toDouble()
++      )
++    }
++
++    AsyncFunction("reserveLocationCollectorGenerationAsync") {
++        taskName: String,
++        minimumGeneration: Double ->
++      val exactMinimum = requireCollectorGeneration(minimumGeneration)
++      val appScopeKey = mTaskManager.appScopeKey
++        ?: throw IllegalStateException("Location collector app scope is unavailable")
++      if (mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)) {
++        throw IllegalStateException("A location collector is already registered")
++      }
++      val reserved = LocationTaskConsumer.reserveCollectorGeneration(
++        mContext,
++        appScopeKey,
++        taskName,
++        exactMinimum
++      )
++      if (mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)) {
++        LocationTaskConsumer.abortInactiveCollectorClaim(
++          mContext,
++          appScopeKey,
++          taskName,
++          reserved
++        )
++        throw IllegalStateException("A location collector was registered during reservation")
++      }
++      return@AsyncFunction reserved.toDouble()
++    }
++
++    AsyncFunction("startLocationUpdatesWithGenerationAsync") Coroutine {
++        taskName: String,
++        generation: Double,
++        options: LocationTaskOptions ->
++      val exactGeneration = requireCollectorGeneration(generation)
++      val appScopeKey = mTaskManager.appScopeKey
++        ?: throw IllegalStateException("Location collector app scope is unavailable")
++
++      if (mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)) {
++        val existing = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++          ?: throw IllegalStateException("Existing location collector state is unconfirmed")
++        if (existing.confirmedGeneration() == exactGeneration) {
++          return@Coroutine
++        }
++        throw IllegalStateException("A different or legacy location collector is already registered")
++      }
++
++      val shouldUseForegroundService = options.foregroundService != null
++      if (isMissingForegroundPermissions()) throw LocationBackgroundUnauthorizedException()
++      if (!shouldUseForegroundService && isMissingBackgroundPermissions()) {
++        throw LocationBackgroundUnauthorizedException()
++      }
++      if (!AppForegroundedSingleton.isForegrounded && shouldUseForegroundService) {
++        throw ForegroundServiceStartNotAllowedException()
++      }
++      if (!hasForegroundServicePermissions()) throw ForegroundServicePermissionsException()
++
++      LocationTaskConsumer.requireReservedCollectorGeneration(
++        mContext,
++        appScopeKey,
++        taskName,
++        exactGeneration
++      )
++      options.collectorGeneration = generation
++      mTaskManager.registerTask(taskName, LocationTaskConsumer::class.java, options.toMutableMap())
++      val consumer = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++        ?: throw IllegalStateException("Registered location collector could not be confirmed")
++      consumer.activateCollectorStart(exactGeneration)
++    }
++
++    AsyncFunction("acknowledgeLocationCollectorBatchAsync") {
++        taskName: String,
++        generation: Double,
++        batchId: String,
++        throughSequence: Double ->
++      val exactGeneration = requireCollectorGeneration(generation)
++      val exactThroughSequence = requireCollectorGeneration(throughSequence)
++      runCatching { java.util.UUID.fromString(batchId) }
++        .getOrElse { throw IllegalArgumentException("Location collector batch ID is invalid") }
++      val appScopeKey = mTaskManager.appScopeKey
++        ?: throw IllegalStateException("Location collector app scope is unavailable")
++      val consumer = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++      if (consumer == null) {
++        val proof = LocationTaskConsumer.persistedDrainProof(
++          mContext,
++          appScopeKey,
++          taskName,
++          exactGeneration
++        )
++        if (proof != null && exactThroughSequence <= proof) return@AsyncFunction
++        throw IllegalStateException("Location collector state is unconfirmed")
++      }
++      consumer.acknowledgePersistedCollectorBatch(
++        exactGeneration,
++        batchId,
++        exactThroughSequence
++      )
++    }
++
++    AsyncFunction("taintAndAcknowledgeLocationCollectorBatchAsync") {
++        taskName: String,
++        generation: Double,
++        batchId: String,
++        throughSequence: Double ->
++      val exactGeneration = requireCollectorGeneration(generation)
++      val exactThroughSequence = requireCollectorGeneration(throughSequence)
++      runCatching { java.util.UUID.fromString(batchId) }
++        .getOrElse { throw IllegalArgumentException("Location collector batch ID is invalid") }
++      val appScopeKey = mTaskManager.appScopeKey
++        ?: throw IllegalStateException("Location collector app scope is unavailable")
++      val consumer = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++      if (consumer == null) {
++        val proof = LocationTaskConsumer.persistedDrainOutcome(
++          mContext,
++          appScopeKey,
++          taskName,
++          exactGeneration
++        )
++        if (
++          proof != null &&
++          proof.tainted &&
++          exactThroughSequence <= proof.throughSequence
++        ) return@AsyncFunction
++        throw IllegalStateException("Location collector discard-only state is unconfirmed")
++      }
++      consumer.taintAndAcknowledgePersistedCollectorBatch(
++        exactGeneration,
++        batchId,
++        exactThroughSequence
++      )
++    }
++
++    AsyncFunction("stopLegacyLocationCollectorAsync") Coroutine { taskName: String ->
++      if (!mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)) {
++        return@Coroutine
++      }
++      val appScopeKey = mTaskManager.appScopeKey
++        ?: throw IllegalStateException("Location collector app scope is unavailable")
++      val consumer = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++        ?: throw IllegalStateException("Legacy location collector state is unconfirmed")
++      if (!consumer.isLegacyCollector()) {
++        throw IllegalStateException("Generation collectors require an exact drain proof")
++      }
++      consumer.stopLegacyAndAwait()
++      mTaskManager.unregisterTask(taskName, LocationTaskConsumer::class.java)
++    }
++
++    AsyncFunction("stopLocationUpdatesAndDrainAsync") Coroutine {
++        taskName: String,
++        generation: Double ->
++      val exactGeneration = requireCollectorGeneration(generation)
++      val appScopeKey = mTaskManager.appScopeKey
++        ?: throw IllegalStateException("Location collector app scope is unavailable")
++      val persistedProof = LocationTaskConsumer.persistedDrainOutcome(
++        mContext,
++        appScopeKey,
++        taskName,
++        exactGeneration
++      )
++      if (persistedProof != null) {
++        if (mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)) {
++          val registered = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++            ?: throw IllegalStateException("Location collector state is unconfirmed")
++          if (registered.registeredGeneration() == exactGeneration) {
++            mTaskManager.unregisterTask(taskName, LocationTaskConsumer::class.java)
++          }
++        }
++        return@Coroutine mapOf(
++          "generation" to generation,
++          "drained" to true,
++          "throughSequence" to persistedProof.throughSequence.toDouble(),
++          "outcome" to if (persistedProof.tainted) "discard-only" else "exact"
++        )
++      }
++      if (!mTaskManager.taskHasConsumerOfClass(taskName, LocationTaskConsumer::class.java)) {
++        val abortedThrough = LocationTaskConsumer.abortInactiveCollectorClaim(
++          mContext,
++          appScopeKey,
++          taskName,
++          exactGeneration
++        ) ?: throw IllegalStateException(
++          "Exact location collector is not registered and source non-activation is unconfirmed"
++        )
++        return@Coroutine mapOf(
++          "generation" to generation,
++          "drained" to true,
++          "throughSequence" to abortedThrough.toDouble(),
++          "outcome" to "exact"
++        )
++      }
++      val consumer = LocationTaskConsumer.findCollector(appScopeKey, taskName)
++        ?: throw IllegalStateException("Location collector state is unconfirmed")
++      val throughSequence = consumer.stopAndDrain(exactGeneration)
++      val outcome = LocationTaskConsumer.persistedDrainOutcome(
++        mContext,
++        appScopeKey,
++        taskName,
++        exactGeneration
++      ) ?: throw IllegalStateException("Location collector drain outcome was not persisted")
++      if (outcome.throughSequence != throughSequence) {
++        throw IllegalStateException("Location collector drain outcome does not match")
++      }
++      mTaskManager.unregisterTask(taskName, LocationTaskConsumer::class.java)
++      return@Coroutine mapOf(
++        "generation" to generation,
++        "drained" to true,
++        "throughSequence" to throughSequence.toDouble(),
++        "outcome" to if (outcome.tainted) "discard-only" else "exact"
++      )
++    }
++
+     AsyncFunction("startGeofencingAsync") { taskName: String, options: GeofencingOptions ->
+       if (isMissingBackgroundPermissions()) {
+         throw LocationBackgroundUnauthorizedException()
+@@ -664,6 +935,18 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+     sendEvent(LOCATION_EVENT_NAME, responseBundle)
+   }
+
++  private fun requireCollectorGeneration(value: Double): Long {
++    if (
++      !value.isFinite() ||
++      value < 1.0 ||
++      value > 9007199254740991.0 ||
++      value % 1.0 != 0.0
++    ) {
++      throw IllegalArgumentException("Location collector generation must be a positive safe integer")
++    }
++    return value.toLong()
++  }
++
+   private fun calcMagNorth(azimuth: Float): Float {
+     val azimuthDeg = Math.toDegrees(azimuth.toDouble()).toFloat()
+     return (azimuthDeg + 360) % 360
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/records/LocationArguments.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/records/LocationArguments.kt
+index 594ba75..5b730e0 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/records/LocationArguments.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/records/LocationArguments.kt
+@@ -62,7 +62,8 @@ internal class LocationTaskOptions(
+   @Field var deferredUpdatesDistance: Float? = 0f,
+   @Field var deferredUpdatesInterval: Float? = 0f,
+   @Field var deferredUpdatesTimeout: Float? = null,
+-  @Field var foregroundService: LocationTaskServiceOptions? = null
++  @Field var foregroundService: LocationTaskServiceOptions? = null,
++  @Field var collectorGeneration: Double? = null
+ ) : LocationOptions() {
+   internal fun toMutableMap(): MutableMap<String, Any?> = mutableMapOf<String, Any?>(
+     "accuracy" to accuracy,
+@@ -71,7 +72,8 @@ internal class LocationTaskOptions(
+     "timeInterval" to timeInterval,
+     "deferredUpdatesDistance" to deferredUpdatesDistance,
+     "deferredUpdatesInterval" to deferredUpdatesInterval,
+-    "deferredUpdatesTimeout" to deferredUpdatesTimeout
++    "deferredUpdatesTimeout" to deferredUpdatesTimeout,
++    "collectorGeneration" to collectorGeneration
+   ).apply {
+     foregroundService?.let {
+       this["foregroundService"] = it.toMutableMap()
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
+index b4f6c06..03259fc 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
+@@ -7,11 +7,16 @@ import android.content.ComponentName
+ import android.content.Context
+ import android.content.Intent
+ import android.content.ServiceConnection
++import android.content.SharedPreferences
+ import android.location.Location
+ import android.os.Build
+ import android.os.Bundle
++import android.os.Handler
+ import android.os.IBinder
++import android.os.Looper
++import android.os.Parcel
+ import android.os.PersistableBundle
++import android.util.Base64
+ import android.util.Log
+ import com.google.android.gms.location.FusedLocationProviderClient
+ import com.google.android.gms.location.LocationRequest
+@@ -31,6 +36,12 @@ import expo.modules.location.records.LocationOptions
+ import expo.modules.location.records.LocationResponse
+ import expo.modules.location.services.LocationTaskService
+ import expo.modules.location.services.LocationTaskService.ServiceBinder
++import kotlinx.coroutines.CompletableDeferred
++import java.util.concurrent.ConcurrentHashMap
++import java.util.UUID
++import kotlin.coroutines.resume
++import kotlin.coroutines.resumeWithException
++import kotlin.coroutines.suspendCoroutine
+ import kotlin.math.abs
+
+ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsInterface?) : TaskConsumer(context, taskManagerUtils), TaskConsumerInterface, LifecycleEventListener {
+@@ -41,6 +52,24 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+   private var mLastReportedLocation: Location? = null
+   private var mDeferredDistance = 0.0
+   private val mDeferredLocations: MutableList<Location> = ArrayList()
++  private val collectorLock = Any()
++  private var collectorGeneration: Long? = null
++  private var collectorSequence = 0L
++  private var collectorStart: CompletableDeferred<Unit>? = null
++  private var collectorStartFailure: Throwable? = null
++  private var collectorRecoveredInactive = false
++  private var collectorSourceActivated = false
++  private var collectorDrain: CompletableDeferred<Long>? = null
++  private var collectorFailure: Throwable? = null
++  private var collectorTerminalFailure: Throwable? = null
++  private var collectorDiscardCorruptOutbox = false
++  private var collectorSourceDrained = false
++  private var collectorAcceptingEvents = true
++  private var collectorNativeCallbacksInFlight = 0
++  private val collectorDispatchedBatchIds = mutableSetOf<String>()
++  private var collectorRegistryKey: String? = null
++
++  private class CollectorOutboxCapacityException(message: String) : IllegalStateException(message)
+
+   // Apps start in foreground state; lifecycle callbacks update this after initialization
+   private var mIsHostPaused = false
+@@ -55,21 +84,88 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+
+   override fun didRegister(task: TaskInterface) {
+     mTask = task
++    collectorGeneration = generationFrom(task.options)
++    collectorRegistryKey = collectorKey(task.appScopeKey, task.name)
++    sCollectors[collectorRegistryKey!!] = this
++    collectorGeneration?.let { generation ->
++      collectorStart = CompletableDeferred()
++      persistedDrainProof(context, task.appScopeKey, task.name, generation)?.let { proof ->
++        collectorSequence = proof
++        collectorSourceDrained = true
++        collectorAcceptingEvents = false
++        collectorStart?.complete(Unit)
++        return
++      }
++      // Reconstruct the deterministic PendingIntent before validating durable
++      // claim metadata. Even corrupt/missing claim state must not prevent a
++      // best-effort exact OS source removal during fail-closed drain.
++      try {
++        prepareCollectorSourceIdentity()
++        ensureCollectorGenerationHighWater(
++          context,
++          task.appScopeKey,
++          task.name,
++          generation
++        )
++        verifyCollectorGenerationClaim(context, task.appScopeKey, task.name, generation)
++      } catch (error: Throwable) {
++        failStopCollector(error)
++        collectorStart?.completeExceptionally(error)
++        return
++      }
++      collectorRecoveredInactive = true
++      try {
++        collectorSequence = readSequence(task, generation)
++        validateRestoredCollectorOutbox(task, generation)
++        collectorTerminalFailure = readTerminalFailure(task, generation)
++      } catch (error: Throwable) {
++        armRestoredOutboxDiscardOnly(task, generation, error)
++        return
++      }
++      // Do not restart the source, but accept any exact PendingIntent callback
++      // already delivered for this durable task/generation before drain removal.
++      collectorAcceptingEvents = collectorTerminalFailure == null
++      if (collectorTerminalFailure != null) {
++        failStopLocationUpdates()
++      }
++      Handler(Looper.getMainLooper()).post { replayPersistedCollectorBatches() }
++      return
++    }
+     startLocationUpdates()
+     maybeStartForegroundService()
+   }
+
+   override fun didUnregister() {
++    val task = mTask
++    val generation = collectorGeneration
++    val hasProof = if (task != null && generation != null) {
++      persistedDrainProof(context, task.appScopeKey, task.name, generation) != null
++    } else {
++      false
++    }
++    if (generation != null && collectorDrain?.isCompleted != true && !hasProof) {
++      failCollector(IllegalStateException("Location collector was unregistered without a drain proof"))
++    }
+     stopLocationUpdates()
+     stopForegroundService()
++    collectorRegistryKey?.let { sCollectors.remove(it, this) }
+     mTask = null
+     mPendingIntent = null
+     mLocationRequest = null
++    collectorRegistryKey = null
+   }
+
+   override fun setOptions(options: Map<String, Any>) {
++    val nextGeneration = generationFrom(options)
++    if (collectorGeneration != null && collectorGeneration != nextGeneration) {
++      throw IllegalStateException("A location collector generation is immutable until it is drained")
++    }
+     super.setOptions(options)
+
++    if (collectorSourceDrained || collectorRecoveredInactive) {
++      return
++    }
++
+     // Restart location updates
+     stopLocationUpdates()
+     startLocationUpdates()
+@@ -80,15 +176,38 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+
+   override fun didReceiveBroadcast(intent: Intent) {
+     mTask ?: return
+-    val result = LocationResult.extractResult(intent)
++    if (!beginNativeCollectorCallback()) return
++    val result = try {
++      LocationResult.extractResult(intent)
++    } catch (error: Throwable) {
++      if (collectorGeneration != null) failStopCollector(error)
++      finishNativeCollectorCallback()
++      Log.e(TAG, "Cannot extract location result: " + error.message)
++      return
++    }
+     if (result != null) {
+-      handleLocationUpdate(result.locations)
++      try {
++        handleLocationUpdate(result.locations)
++      } catch (error: Throwable) {
++        if (collectorGeneration != null) failStopCollector(error)
++        Log.e(TAG, "Cannot handle location result: " + error.message)
++      } finally {
++        finishNativeCollectorCallback()
++      }
+     } else {
+       try {
+         mLocationClient.lastLocation.addOnCompleteListener { task ->
+-          task.result?.let { handleLocationUpdate(listOf(it)) }
++          try {
++            task.result?.let { handleLocationUpdate(listOf(it)) }
++          } catch (error: Throwable) {
++            if (collectorGeneration != null) failStopCollector(error)
++          } finally {
++            finishNativeCollectorCallback()
++          }
+         }
+-      } catch (e: SecurityException) {
++      } catch (e: Throwable) {
++        if (collectorGeneration != null) failStopCollector(e)
++        finishNativeCollectorCallback()
+         Log.e(TAG, "Cannot get last location: " + e.message)
+       }
+     }
+@@ -113,6 +232,10 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+   }
+
+   override fun didExecuteJob(jobService: JobService, params: JobParameters): Boolean {
++    if (!beginNativeCollectorCallback()) {
++      jobService.jobFinished(params, false)
++      return false
++    }
+     val data = taskManagerUtils.extractDataFromJobParams(params)
+     val locationBundles = ArrayList<Bundle>()
+     for (persistableLocationBundle in data) {
+@@ -125,7 +248,11 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+         locationBundles.add(locationBundle)
+       }
+     }
+-    executeTaskWithLocationBundles(locationBundles) { jobService.jobFinished(params, false) }
++    try {
++      executeTaskWithLocationBundles(locationBundles) { jobService.jobFinished(params, false) }
++    } finally {
++      finishNativeCollectorCallback()
++    }
+
+     // Returning `true` indicates that the job is still running, but in async mode.
+     // In that case we're obligated to call `jobService.jobFinished` as soon as the async block finishes.
+@@ -135,37 +262,71 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+   //region private
+   private fun startLocationUpdates() {
+     val context = context ?: run {
+-      Log.w(TAG, "The context has been abandoned")
++      failCollectorStart(IllegalStateException("The context has been abandoned"))
+       return
+     }
+
+     if (!LocationHelpers.isAnyProviderAvailable(context)) {
+-      Log.w(TAG, "There is no location provider available")
++      failCollectorStart(IllegalStateException("There is no location provider available"))
+       return
+     }
+     val task = mTask ?: run {
+-      Log.w(TAG, "Could not find a location task for the location update")
++      failCollectorStart(IllegalStateException("Could not find a location task for the location update"))
+       return
+     }
+-    mLocationRequest = LocationHelpers.prepareLocationRequest(LocationOptions(task.options))
+-    mPendingIntent = preparePendingIntent()
++    prepareCollectorSourceIdentity()
+
+     val locationRequest = mLocationRequest ?: run {
+-      Log.w(TAG, "Could not find a location request for the location update")
++      failCollectorStart(IllegalStateException("Could not find a location request for the location update"))
+       return
+     }
+     val intent = mPendingIntent ?: run {
+-      Log.w(TAG, "Could not find intent for the location update")
++      failCollectorStart(IllegalStateException("Could not find intent for the location update"))
+       return
+     }
+
++    collectorGeneration?.let { generation ->
++      if (!persistCollectorPhase(task, generation, COLLECTOR_PHASE_STARTING)) {
++        failCollectorStart(IllegalStateException("Location collector start phase could not be persisted"))
++        return
++      }
++    }
++
+     try {
+       mLocationClient.requestLocationUpdates(locationRequest, intent)
++        .addOnSuccessListener {
++          val phasePersisted = collectorGeneration?.let { generation ->
++            persistCollectorPhase(task, generation, COLLECTOR_PHASE_STARTED)
++          } ?: true
++          synchronized(collectorLock) {
++            collectorSourceActivated = true
++            if (phasePersisted) {
++              collectorStartFailure = null
++              collectorStart?.complete(Unit)
++            } else {
++              failCollectorStartLocked(IllegalStateException("Location collector active phase could not be persisted"))
++            }
++          }
++          if (collectorGeneration != null && phasePersisted) {
++            Handler(Looper.getMainLooper()).post { replayPersistedCollectorBatches() }
++          }
++        }
++        .addOnFailureListener { failCollectorStart(it) }
++        .addOnCanceledListener {
++          failCollectorStart(IllegalStateException("Location collector start was cancelled"))
++        }
+     } catch (e: SecurityException) {
++      failCollectorStart(e)
+       Log.w(TAG, "Location request has been rejected.", e)
+     }
+   }
+
++  private fun prepareCollectorSourceIdentity() {
++    val task = mTask ?: return
++    mPendingIntent = preparePendingIntent()
++    mLocationRequest = LocationHelpers.prepareLocationRequest(LocationOptions(task.options))
++  }
++
+   private fun stopLocationUpdates() {
+     mPendingIntent?.let {
+       mLocationClient.removeLocationUpdates(it)
+@@ -173,6 +334,27 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+     }
+   }
+
++  private suspend fun removeLocationUpdatesAndAwait() {
++    val intent = mPendingIntent ?: return
++    suspendCoroutine { continuation ->
++      try {
++        mLocationClient.removeLocationUpdates(intent)
++          .addOnSuccessListener {
++            intent.cancel()
++            continuation.resume(Unit)
++          }
++          .addOnFailureListener { continuation.resumeWithException(it) }
++          .addOnCanceledListener {
++            continuation.resumeWithException(
++              IllegalStateException("Location collector removal was cancelled")
++            )
++          }
++      } catch (error: Throwable) {
++        continuation.resumeWithException(error)
++      }
++    }
++  }
++
+   private fun maybeStartForegroundService() {
+     // Foreground service is available as of Android Oreo.
+     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+@@ -246,6 +428,10 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+    */
+   private fun reportLocationsImmediately(locations: List<Location>) {
+     if (locations.isEmpty()) return
++    if (collectorGeneration != null) {
++      reportGenerationLocations(locations)
++      return
++    }
+     val context = context.applicationContext
+     val data: MutableList<PersistableBundle> = ArrayList()
+     var lastReported: Location? = null
+@@ -282,6 +468,16 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+     if (!shouldReportDeferredLocations()) {
+       return
+     }
++    if (collectorGeneration != null) {
++      val locations = mDeferredLocations.toList()
++      if (locations.isNotEmpty()) {
++        mLastReportedLocation = locations.last()
++        mDeferredDistance = 0.0
++        mDeferredLocations.clear()
++        reportGenerationLocations(locations)
++      }
++      return
++    }
+     val context = context.applicationContext
+     val data: MutableList<PersistableBundle> = ArrayList()
+     for (location in mDeferredLocations) {
+@@ -326,9 +522,28 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+     return taskManagerUtils.createTaskIntent(context, mTask)
+   }
+
++  private fun reportGenerationLocations(locations: List<Location>) {
++    val locationBundles = ArrayList<Bundle>()
++    for (location in locations) {
++      locationBundles.add(LocationResponse(location).toBundle(Bundle::class.java))
++    }
++    if (locationBundles.isNotEmpty()) {
++      mLastReportedLocation = locations.last()
++      executeTaskWithLocationBundles(
++        locationBundles,
++        TaskExecutionCallback { _ -> }
++      )
++    }
++  }
++
+   private fun executeTaskWithLocationBundles(locationBundles: ArrayList<Bundle>, callback: TaskExecutionCallback) {
+     if (locationBundles.isNotEmpty() && mTask != null) {
+       val data = Bundle()
++      val generation = collectorGeneration
++      if (generation != null) {
++        executeGenerationLocationBatches(locationBundles, generation, callback)
++        return
++      }
+       data.putParcelableArrayList("locations", locationBundles)
+       mTask?.execute(data, null, callback)
+     } else {
+@@ -336,6 +551,843 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+     }
+   }
+
++  private fun executeGenerationLocationBatches(
++    locationBundles: ArrayList<Bundle>,
++    generation: Long,
++    callback: TaskExecutionCallback
++  ) {
++    val persisted = try {
++      prepareAndPersistCollectorBatches(locationBundles, generation)
++    } catch (error: Throwable) {
++      // Any inability to durably persist the exact native callback is terminal
++      // for this generation. Stop the source and leave a durable marker; never
++      // keep collecting behind a failed outbox.
++      failStopCollector(error)
++      callback.onFinished(null)
++      return
++    }
++
++    if (persisted.isEmpty()) {
++      callback.onFinished(null)
++      return
++    }
++    val completionLock = Any()
++    var remaining = persisted.size
++    var completed = false
++    fun finishOne(response: Map<String, Any>?) {
++      synchronized(completionLock) {
++        if (completed) return
++        remaining -= 1
++        if (remaining == 0) {
++          completed = true
++          callback.onFinished(response)
++        }
++      }
++    }
++    for ((batchId, data) in persisted) {
++      try {
++        dispatchPersistedCollectorBatch(batchId, data) { response ->
++          finishOne(response)
++        }
++      } catch (error: Throwable) {
++        failStopCollector(error)
++        finishOne(null)
++      }
++    }
++  }
++
++  fun confirmedGeneration(): Long? = synchronized(collectorLock) {
++    val start = collectorStart
++    if (
++      collectorGeneration != null &&
++      start != null &&
++      start.isCompleted &&
++      !start.isCancelled &&
++      collectorStartFailure == null &&
++      collectorFailure == null &&
++      collectorTerminalFailure == null &&
++      collectorSourceActivated &&
++      !collectorSourceDrained
++    ) {
++      collectorGeneration
++    } else {
++      null
++    }
++  }
++
++  fun registeredGeneration(): Long? = synchronized(collectorLock) {
++    collectorGeneration
++  }
++
++  fun isLegacyCollector(): Boolean = synchronized(collectorLock) {
++    collectorGeneration == null
++  }
++
++  suspend fun stopLegacyAndAwait() {
++    synchronized(collectorLock) {
++      if (collectorGeneration != null) {
++        throw IllegalStateException("Generation collectors require an exact drain proof")
++      }
++    }
++    removeLocationUpdatesAndAwait()
++  }
++
++  suspend fun awaitCollectorStarted(expectedGeneration: Long) {
++    val start = synchronized(collectorLock) {
++      if (collectorGeneration != expectedGeneration) {
++        throw IllegalStateException("Location collector generation does not match")
++      }
++      collectorStart ?: throw IllegalStateException("Location collector start is unavailable")
++    }
++    start.await()
++  }
++
++  suspend fun activateCollectorStart(expectedGeneration: Long) {
++    val start = synchronized(collectorLock) {
++      if (collectorGeneration != expectedGeneration) {
++        throw IllegalStateException("Location collector generation does not match")
++      }
++      collectorFailure?.let { throw it }
++      collectorTerminalFailure?.let { throw it }
++      if (collectorSourceDrained) {
++        throw IllegalStateException("Location collector generation has already been drained")
++      }
++      if (!collectorRecoveredInactive) {
++        throw IllegalStateException("Location collector start has already been activated")
++      }
++      collectorRecoveredInactive = false
++      collectorAcceptingEvents = true
++      collectorStartFailure = null
++      CompletableDeferred<Unit>().also { collectorStart = it }
++    }
++    startLocationUpdates()
++    maybeStartForegroundService()
++    start.await()
++  }
++
++  suspend fun stopAndDrain(expectedGeneration: Long): Long {
++    var initiator = false
++    val drain = synchronized(collectorLock) {
++      if (collectorGeneration != expectedGeneration) {
++        throw IllegalStateException("Location collector generation does not match")
++      }
++      collectorDrain ?: CompletableDeferred<Long>().also {
++        collectorDrain = it
++        initiator = true
++      }
++    }
++
++    if (initiator) {
++      try {
++        if (!collectorRecoveredInactive) {
++          try {
++            awaitCollectorStarted(expectedGeneration)
++          } catch (_: Throwable) {
++            // A rejected start may still have created the exact PendingIntent;
++            // stop and remove it before considering a drain proof.
++          }
++        }
++        removeLocationUpdatesAndAwait()
++        sealCollectorSourceOnMainThread()
++      } catch (error: Throwable) {
++        failCollector(error)
++      }
++    }
++
++    return awaitTaskAcknowledgements(drain)
++  }
++
++  private suspend fun awaitTaskAcknowledgements(drain: CompletableDeferred<Long>): Long {
++    return drain.await()
++  }
++
++  private suspend fun sealCollectorSourceOnMainThread() {
++    suspendCoroutine { continuation ->
++      Handler(Looper.getMainLooper()).post {
++        try {
++          if (mDeferredLocations.isNotEmpty()) {
++            val locations = mDeferredLocations.toList()
++            mLastReportedLocation = locations.last()
++            mDeferredDistance = 0.0
++            mDeferredLocations.clear()
++            reportGenerationLocations(locations)
++          }
++          replayPersistedCollectorBatches()
++          synchronized(collectorLock) {
++            collectorSourceDrained = true
++            if (collectorNativeCallbacksInFlight == 0) {
++              collectorAcceptingEvents = false
++            }
++            maybeCompleteCollectorDrainLocked()
++          }
++          continuation.resume(Unit)
++        } catch (error: Throwable) {
++          continuation.resumeWithException(error)
++        }
++      }
++    }
++  }
++
++  private fun beginNativeCollectorCallback(): Boolean = synchronized(collectorLock) {
++    if (collectorGeneration == null) return@synchronized true
++    if (
++      collectorSourceDrained ||
++      !collectorAcceptingEvents ||
++      collectorFailure != null ||
++      collectorTerminalFailure != null
++    ) {
++      return@synchronized false
++    }
++    collectorNativeCallbacksInFlight += 1
++    true
++  }
++
++  private fun finishNativeCollectorCallback() {
++    synchronized(collectorLock) {
++      if (collectorGeneration == null) return
++      collectorNativeCallbacksInFlight -= 1
++      if (collectorNativeCallbacksInFlight < 0) {
++        failCollectorLocked(IllegalStateException("Location collector callback count underflow"))
++        return
++      }
++      if (collectorSourceDrained && collectorNativeCallbacksInFlight == 0) {
++        collectorAcceptingEvents = false
++      }
++      maybeCompleteCollectorDrainLocked()
++    }
++  }
++
++  private fun prepareAndPersistCollectorBatches(
++    locationBundles: ArrayList<Bundle>,
++    generation: Long
++  ): List<Pair<String, Bundle>> = synchronized(collectorLock) {
++      if (!collectorAcceptingEvents || collectorFailure != null || collectorTerminalFailure != null) {
++        throw IllegalStateException("Location collector is no longer accepting events")
++      }
++      val task = mTask ?: throw IllegalStateException("Location task is unavailable")
++      if (collectorGeneration != generation) {
++        throw IllegalStateException("Location collector generation does not match")
++      }
++      val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++      val pending = pendingBatchIds(preferences, task.appScopeKey, task.name, generation)
++      var pendingEncodedBytes = 0L
++      for (pendingBatchId in pending) {
++        val pendingBatch = preferences.getString(
++          batchDataKey(task.appScopeKey, task.name, generation, pendingBatchId),
++          null
++        ) ?: throw IllegalStateException("Persisted location collector batch is missing")
++        if (pendingBatch.length > MAX_COLLECTOR_ENCODED_BATCH_BYTES) {
++          throw IllegalStateException("Persisted location collector batch exceeds the durable bridge limit")
++        }
++        pendingEncodedBytes += pendingBatch.length.toLong()
++        if (pendingEncodedBytes > MAX_COLLECTOR_PENDING_ENCODED_BYTES) {
++          throw persistCollectorCapacityFailure(
++            preferences,
++            task,
++            generation,
++            "Location collector pending outbox exceeds its durable byte budget"
++          )
++        }
++      }
++      val incomingBatchCount =
++        (locationBundles.size + MAX_COLLECTOR_SAMPLES_PER_BATCH - 1) /
++          MAX_COLLECTOR_SAMPLES_PER_BATCH
++      if (
++        pending.size > MAX_COLLECTOR_PENDING_BATCHES ||
++        incomingBatchCount > MAX_COLLECTOR_PENDING_BATCHES - pending.size
++      ) {
++        throw persistCollectorCapacityFailure(
++          preferences,
++          task,
++          generation,
++          "Location collector pending outbox exceeds its durable batch budget"
++        )
++      }
++      val persisted = mutableListOf<Pair<String, Bundle>>()
++      val encoded = mutableListOf<Pair<String, String>>()
++      var nextSequence = collectorSequence
++      for (chunk in locationBundles.chunked(MAX_COLLECTOR_SAMPLES_PER_BATCH)) {
++        val exactLocations = ArrayList(chunk)
++        for (locationBundle in exactLocations) {
++          if (nextSequence >= MAX_SAFE_INTEGER) {
++            throw IllegalStateException("Location collector sequence is exhausted")
++          }
++          nextSequence += 1L
++          locationBundle.putDouble("nativeSequence", nextSequence.toDouble())
++        }
++        val batchId = UUID.randomUUID().toString()
++        val data = Bundle().apply {
++          putDouble("collectorGeneration", generation.toDouble())
++          putParcelableArrayList("locations", exactLocations)
++          putString("collectorBatchId", batchId)
++          putDouble("collectorThroughSequence", nextSequence.toDouble())
++        }
++        val encodedBatch = encodeBundle(data)
++        if (encodedBatch.length > MAX_COLLECTOR_ENCODED_BATCH_BYTES) {
++          throw IllegalStateException("Location collector batch exceeds the durable bridge limit")
++        }
++        if (encodedBatch.length.toLong() > MAX_COLLECTOR_PENDING_ENCODED_BYTES - pendingEncodedBytes) {
++          throw persistCollectorCapacityFailure(
++            preferences,
++            task,
++            generation,
++            "Location collector pending outbox exceeds its durable byte budget"
++          )
++        }
++        pendingEncodedBytes += encodedBatch.length.toLong()
++        if (!pending.add(batchId)) {
++          throw IllegalStateException("Location collector batch ID was reused")
++        }
++        persisted.add(batchId to data)
++        encoded.add(batchId to encodedBatch)
++      }
++      val editor = preferences.edit()
++        .putStringSet(pendingIndexKey(task.appScopeKey, task.name, generation), pending)
++        .putLong(sequenceKey(task.appScopeKey, task.name, generation), nextSequence)
++      for ((batchId, encodedBatch) in encoded) {
++        editor.putString(
++          batchDataKey(task.appScopeKey, task.name, generation, batchId),
++          encodedBatch
++        )
++      }
++      val committed = editor.commit()
++      if (!committed) {
++        throw IllegalStateException("Location collector batches could not be persisted")
++      }
++      collectorSequence = nextSequence
++      persisted
++  }
++
++  private fun persistCollectorCapacityFailure(
++    preferences: SharedPreferences,
++    task: TaskInterface,
++    generation: Long,
++    message: String
++  ): CollectorOutboxCapacityException {
++    val error = CollectorOutboxCapacityException(message)
++    val committed = preferences.edit()
++      .putString(terminalFailureKey(task.appScopeKey, task.name, generation), message)
++      .commit()
++    if (!committed) {
++      return CollectorOutboxCapacityException(
++        "Location collector capacity failure could not be durably persisted"
++      )
++    }
++    collectorTerminalFailure = error
++    return error
++  }
++
++  private fun dispatchPersistedCollectorBatch(
++    batchId: String,
++    data: Bundle,
++    callback: TaskExecutionCallback = TaskExecutionCallback { _ -> }
++  ) {
++    val task = synchronized(collectorLock) {
++      if (!collectorDispatchedBatchIds.add(batchId)) return
++      mTask ?: run {
++        collectorDispatchedBatchIds.remove(batchId)
++        throw IllegalStateException("Location task is unavailable")
++      }
++    }
++    try {
++      task.execute(data, null) { response ->
++        val firstCompletion = synchronized(collectorLock) {
++          val removed = collectorDispatchedBatchIds.remove(batchId)
++          if (removed) {
++            maybeCompleteCollectorDrainLocked()
++          }
++          removed
++        }
++        if (firstCompletion) {
++          callback.onFinished(response)
++        }
++      }
++    } catch (error: Throwable) {
++      synchronized(collectorLock) { collectorDispatchedBatchIds.remove(batchId) }
++      throw error
++    }
++  }
++
++  private fun replayPersistedCollectorBatches() {
++    val batches = try {
++      synchronized(collectorLock) {
++        val task = mTask ?: throw IllegalStateException("Location task is unavailable")
++        val generation = collectorGeneration
++          ?: throw IllegalStateException("Location collector generation is unavailable")
++        val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        pendingBatchIds(preferences, task.appScopeKey, task.name, generation)
++          .sorted()
++          .map { batchId ->
++            val encoded = preferences.getString(
++              batchDataKey(task.appScopeKey, task.name, generation, batchId),
++              null
++            ) ?: throw IllegalStateException("Persisted location collector batch is missing")
++            batchId to decodeBundle(encoded)
++          }
++      }
++    } catch (error: Throwable) {
++      failStopCollector(error)
++      return
++    }
++    for ((batchId, data) in batches) {
++      try {
++        dispatchPersistedCollectorBatch(batchId, data)
++      } catch (error: Throwable) {
++        failStopCollector(error)
++        return
++      }
++    }
++  }
++
++  fun acknowledgePersistedCollectorBatch(
++    expectedGeneration: Long,
++    batchId: String,
++    expectedThroughSequence: Long
++  ) {
++    acknowledgePersistedCollectorBatch(
++      expectedGeneration,
++      batchId,
++      expectedThroughSequence,
++      taintGeneration = false
++    )
++  }
++
++  fun taintAndAcknowledgePersistedCollectorBatch(
++    expectedGeneration: Long,
++    batchId: String,
++    expectedThroughSequence: Long
++  ) {
++    acknowledgePersistedCollectorBatch(
++      expectedGeneration,
++      batchId,
++      expectedThroughSequence,
++      taintGeneration = true
++    )
++    failStopLocationUpdates()
++  }
++
++  /**
++   * Invoked reflectively by the patched TaskManager when its JS app loader or
++   * completion watchdog fails. The durable task registration is intentionally
++   * retained so a later authenticated process can replay/ack the exact outbox.
++   */
++  fun didFailToLoadTaskApp(message: String) {
++    if (collectorGeneration == null) return
++    failStopCollector(IllegalStateException(message))
++  }
++
++  private fun acknowledgePersistedCollectorBatch(
++    expectedGeneration: Long,
++    batchId: String,
++    expectedThroughSequence: Long,
++    taintGeneration: Boolean
++  ) {
++    synchronized(collectorLock) {
++      if (collectorGeneration != expectedGeneration) {
++        throw IllegalStateException("Location collector generation does not match")
++      }
++      val task = mTask ?: throw IllegalStateException("Location task is unavailable")
++      persistedDrainOutcome(
++        context,
++        task.appScopeKey,
++        task.name,
++        expectedGeneration
++      )?.let { proof ->
++        if (
++          expectedThroughSequence <= proof.throughSequence &&
++          (!taintGeneration || proof.tainted)
++        ) return
++        throw IllegalStateException("Location collector acknowledgement exceeds its drain proof")
++      }
++      val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++      val ackThroughKey = acknowledgementThroughKey(
++        task.appScopeKey,
++        task.name,
++        expectedGeneration
++      )
++      val acknowledgedThrough = preferences.getLong(ackThroughKey, 0L)
++      if (acknowledgedThrough < 0L || acknowledgedThrough > collectorSequence) {
++        throw IllegalStateException("Location collector acknowledgement high-water is corrupt")
++      }
++      val dataKey = batchDataKey(task.appScopeKey, task.name, expectedGeneration, batchId)
++      val encoded = preferences.getString(dataKey, null)
++      if (encoded == null) {
++        if (
++          expectedThroughSequence <= acknowledgedThrough &&
++          (!taintGeneration || preferences.contains(
++            terminalFailureKey(task.appScopeKey, task.name, expectedGeneration)
++          ))
++        ) return
++        throw IllegalStateException("Location collector batch is not pending")
++      }
++      val data = decodeBundle(encoded)
++      val generation = data.getDouble("collectorGeneration", Double.NaN)
++      val throughSequence = data.getDouble("collectorThroughSequence", Double.NaN)
++      if (
++        generation != expectedGeneration.toDouble() ||
++        data.getString("collectorBatchId") != batchId ||
++        throughSequence != expectedThroughSequence.toDouble()
++      ) {
++        throw IllegalStateException("Location collector acknowledgement does not match its batch")
++      }
++      val pending = pendingBatchIds(
++        preferences,
++        task.appScopeKey,
++        task.name,
++        expectedGeneration
++      )
++      if (!pending.remove(batchId)) {
++        throw IllegalStateException("Location collector batch is not indexed as pending")
++      }
++      val editor = preferences.edit()
++        .remove(dataKey)
++        .putStringSet(
++          pendingIndexKey(task.appScopeKey, task.name, expectedGeneration),
++          pending
++        )
++        .putLong(ackThroughKey, maxOf(acknowledgedThrough, expectedThroughSequence))
++      if (taintGeneration) {
++        editor.putString(
++          terminalFailureKey(task.appScopeKey, task.name, expectedGeneration),
++          COLLECTOR_JS_DISCARD_MESSAGE
++        )
++      }
++      val committed = editor.commit()
++      if (!committed) {
++        throw IllegalStateException("Location collector acknowledgement could not be persisted")
++      }
++      if (taintGeneration) {
++        collectorTerminalFailure = IllegalStateException(COLLECTOR_JS_DISCARD_MESSAGE)
++        collectorAcceptingEvents = false
++      }
++      maybeCompleteCollectorDrainLocked()
++    }
++  }
++
++  private fun maybeCompleteCollectorDrainLocked() {
++    val drain = collectorDrain ?: return
++    if (drain.isCompleted) return
++    collectorFailure?.let {
++      drain.completeExceptionally(it)
++      return
++    }
++    if (
++      !collectorSourceDrained ||
++      collectorAcceptingEvents ||
++      collectorNativeCallbacksInFlight != 0 ||
++      collectorDispatchedBatchIds.isNotEmpty()
++    ) {
++      return
++    }
++    val task = mTask ?: run {
++      drain.completeExceptionally(IllegalStateException("Location task disappeared before drain proof"))
++      return
++    }
++    val generation = collectorGeneration ?: run {
++      drain.completeExceptionally(IllegalStateException("Location collector generation disappeared before drain proof"))
++      return
++    }
++    val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++    if (collectorDiscardCorruptOutbox) {
++      if (!completeDiscardOnlyRecoveryLocked(task, generation, preferences)) {
++        drain.completeExceptionally(IllegalStateException("Discard-only location drain proof could not be persisted"))
++        return
++      }
++      collectorDiscardCorruptOutbox = false
++      drain.complete(collectorSequence)
++      return
++    }
++    try {
++      validateRestoredCollectorOutbox(task, generation)
++    } catch (error: Throwable) {
++      armRestoredOutboxDiscardOnly(task, generation, error)
++      return
++    }
++    if (pendingBatchIds(preferences, task.appScopeKey, task.name, generation).isNotEmpty()) {
++      return
++    }
++    val committed = synchronized(sCollectorClaimsLock) {
++      val activeKey = activeGenerationKey(task.appScopeKey, task.name)
++      if (preferences.getLong(activeKey, 0L) != generation) {
++        false
++      } else {
++        val tainted = collectorTerminalFailure != null ||
++          preferences.contains(terminalFailureKey(task.appScopeKey, task.name, generation))
++        val exactBatchPrefix = exactBatchDataPrefix(task.appScopeKey, task.name, generation)
++        val exactBatchKeys = preferences.all.keys.filter { it.startsWith(exactBatchPrefix) }
++        val editor = preferences.edit()
++          .putLong(drainProofGenerationKey(task.appScopeKey, task.name), generation)
++          .putLong(drainProofThroughSequenceKey(task.appScopeKey, task.name), collectorSequence)
++          .putBoolean(drainProofTaintedKey(task.appScopeKey, task.name), tainted)
++          .remove(activeKey)
++          .remove(collectorPhaseKey(task.appScopeKey, task.name))
++          .remove(terminalFailureKey(task.appScopeKey, task.name, generation))
++          .remove(sequenceKey(task.appScopeKey, task.name, generation))
++          .remove(pendingIndexKey(task.appScopeKey, task.name, generation))
++          .remove(acknowledgementThroughKey(task.appScopeKey, task.name, generation))
++        for (batchKey in exactBatchKeys) {
++          editor.remove(batchKey)
++        }
++        editor.commit()
++      }
++    }
++    if (!committed) {
++      drain.completeExceptionally(IllegalStateException("Location drain proof could not be persisted"))
++      return
++    }
++    drain.complete(collectorSequence)
++  }
++
++  private fun completeDiscardOnlyRecoveryLocked(
++    task: TaskInterface,
++    generation: Long,
++    preferences: SharedPreferences
++  ): Boolean = synchronized(sCollectorClaimsLock) {
++    val activeKey = activeGenerationKey(task.appScopeKey, task.name)
++    if (preferences.getLong(activeKey, 0L) != generation) {
++      return@synchronized false
++    }
++    val exactBatchPrefix = exactBatchDataPrefix(task.appScopeKey, task.name, generation)
++    val exactBatchKeys = preferences.all.keys.filter { it.startsWith(exactBatchPrefix) }
++    val editor = preferences.edit()
++      .putLong(drainProofGenerationKey(task.appScopeKey, task.name), generation)
++      .putLong(drainProofThroughSequenceKey(task.appScopeKey, task.name), collectorSequence)
++      .putBoolean(drainProofTaintedKey(task.appScopeKey, task.name), true)
++      .remove(activeKey)
++      .remove(collectorPhaseKey(task.appScopeKey, task.name))
++      .remove(terminalFailureKey(task.appScopeKey, task.name, generation))
++      .remove(sequenceKey(task.appScopeKey, task.name, generation))
++      .remove(pendingIndexKey(task.appScopeKey, task.name, generation))
++      .remove(acknowledgementThroughKey(task.appScopeKey, task.name, generation))
++    for (batchKey in exactBatchKeys) {
++      editor.remove(batchKey)
++    }
++    editor.commit()
++  }
++
++  private fun failCollectorStart(error: Throwable) {
++    synchronized(collectorLock) { failCollectorStartLocked(error) }
++  }
++
++  private fun failCollectorStartLocked(error: Throwable) {
++    collectorStartFailure = error
++    collectorStart?.completeExceptionally(error)
++  }
++
++  private fun failCollector(error: Throwable) {
++    synchronized(collectorLock) { failCollectorLocked(error) }
++  }
++
++  private fun failStopCollector(error: Throwable) {
++    synchronized(collectorLock) {
++      val task = mTask
++      val generation = collectorGeneration
++      if (task != null && generation != null) {
++        val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        val key = terminalFailureKey(task.appScopeKey, task.name, generation)
++        if (!preferences.contains(key) && !preferences.edit().putString(key, error.message ?: "Location collector terminal failure").commit()) {
++          failCollectorLocked(IllegalStateException("Location collector terminal failure could not be persisted"))
++        }
++      }
++      if (collectorTerminalFailure == null) collectorTerminalFailure = error
++      collectorAcceptingEvents = false
++    }
++    failStopLocationUpdates()
++  }
++
++  private fun armRestoredOutboxDiscardOnly(
++    task: TaskInterface,
++    generation: Long,
++    error: Throwable
++  ) {
++    synchronized(collectorLock) {
++      val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++      val rawSequence = preferences.all[sequenceKey(task.appScopeKey, task.name, generation)]
++      collectorSequence = (rawSequence as? Long)
++        ?.takeIf { it in 0L..MAX_SAFE_INTEGER }
++        ?: 0L
++      val message = error.message ?: "Restored location collector outbox is corrupt"
++      // This durable taint commit must precede deletion of any exact-generation
++      // outbox bytes. Cleanup happens only after the source-removal barrier.
++      val committed = preferences.edit()
++        .putString(terminalFailureKey(task.appScopeKey, task.name, generation), message)
++        .commit()
++      if (!committed) {
++        failCollectorLocked(IllegalStateException("Restored location collector taint could not be persisted"))
++      } else {
++        collectorTerminalFailure = IllegalStateException(message)
++        collectorDiscardCorruptOutbox = true
++      }
++      collectorAcceptingEvents = false
++    }
++    failStopLocationUpdates()
++  }
++
++  private fun validateRestoredCollectorOutbox(task: TaskInterface, generation: Long) {
++    val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++    val pending = pendingBatchIds(preferences, task.appScopeKey, task.name, generation)
++    val exactBatchPrefix = exactBatchDataPrefix(task.appScopeKey, task.name, generation)
++    val exactBatchKeys = preferences.all.keys.filter { it.startsWith(exactBatchPrefix) }.toSet()
++    val indexedBatchKeys = pending.map {
++      batchDataKey(task.appScopeKey, task.name, generation, it)
++    }.toSet()
++    if (exactBatchKeys != indexedBatchKeys) {
++      throw IllegalStateException("Persisted location collector batch index is corrupt")
++    }
++    val rawAcknowledgedThrough = preferences.all[
++      acknowledgementThroughKey(task.appScopeKey, task.name, generation)
++    ]
++    val acknowledgedThrough = when (rawAcknowledgedThrough) {
++      null -> 0L
++      is Long -> rawAcknowledgedThrough
++      else -> throw IllegalStateException("Location collector acknowledgement high-water is corrupt")
++    }
++    if (acknowledgedThrough !in 0L..collectorSequence) {
++      throw IllegalStateException("Location collector acknowledgement high-water is corrupt")
++    }
++    val pendingSequenceRanges = mutableListOf<LongRange>()
++    var maximumAccountedSequence = acknowledgedThrough
++    for (batchId in pending) {
++      try {
++        if (UUID.fromString(batchId).toString() != batchId) {
++          throw IllegalArgumentException("Location collector batch ID is not canonical")
++        }
++      } catch (_: IllegalArgumentException) {
++        throw IllegalStateException("Persisted location collector batch ID is corrupt")
++      }
++      val encoded = preferences.getString(
++        batchDataKey(task.appScopeKey, task.name, generation, batchId),
++        null
++      ) ?: throw IllegalStateException("Persisted location collector batch is missing")
++      val data = decodeBundle(encoded)
++      val storedGeneration = data.getDouble("collectorGeneration", Double.NaN)
++      val throughSequence = data.getDouble("collectorThroughSequence", Double.NaN)
++      @Suppress("DEPRECATION")
++      val locations = data.getParcelableArrayList<Bundle>("locations")
++      if (
++        storedGeneration != generation.toDouble() ||
++        data.getString("collectorBatchId") != batchId ||
++        !throughSequence.isFinite() ||
++        throughSequence % 1.0 != 0.0 ||
++        throughSequence < 1.0 ||
++        throughSequence > collectorSequence.toDouble() ||
++        locations == null ||
++        locations.isEmpty() ||
++        locations.size > MAX_COLLECTOR_SAMPLES_PER_BATCH
++      ) {
++        throw IllegalStateException("Persisted location collector batch metadata is corrupt")
++      }
++      val firstSequence = throughSequence.toLong() - locations.size + 1L
++      if (firstSequence < 1L) {
++        throw IllegalStateException("Persisted location collector batch sequence is corrupt")
++      }
++      val exactThroughSequence = throughSequence.toLong()
++      pendingSequenceRanges.add(firstSequence..exactThroughSequence)
++      maximumAccountedSequence = maxOf(maximumAccountedSequence, exactThroughSequence)
++      locations.forEachIndexed { index, location ->
++        val nativeSequence = location.getDouble("nativeSequence", Double.NaN)
++        val coords = location.getBundle("coords")
++          ?: throw IllegalStateException("Persisted location collector coordinates are corrupt")
++        val latitude = coords.getDouble("latitude", Double.NaN)
++        val longitude = coords.getDouble("longitude", Double.NaN)
++        val timestamp = location.getDouble("timestamp", Double.NaN)
++        if (
++          nativeSequence != (firstSequence + index).toDouble() ||
++          !latitude.isFinite() || latitude !in -90.0..90.0 ||
++          !longitude.isFinite() || longitude !in -180.0..180.0 ||
++          !timestamp.isFinite() || timestamp < 0.0
++        ) {
++          throw IllegalStateException("Persisted location collector sample is corrupt")
++        }
++      }
++    }
++    val orderedRanges = pendingSequenceRanges.sortedBy { it.first }
++    for (index in 1 until orderedRanges.size) {
++      if (orderedRanges[index].first <= orderedRanges[index - 1].last) {
++        throw IllegalStateException("Persisted location collector batch sequences overlap")
++      }
++    }
++    if (maximumAccountedSequence != collectorSequence) {
++      throw IllegalStateException("Persisted location collector sequence is not accounted for")
++    }
++  }
++
++  private fun failStopLocationUpdates() {
++    val intent = synchronized(collectorLock) {
++      collectorAcceptingEvents = false
++      mPendingIntent
++    }
++    if (intent == null) {
++      stopForegroundService()
++      return
++    }
++    try {
++      mLocationClient.removeLocationUpdates(intent)
++        .addOnSuccessListener {
++          intent.cancel()
++          synchronized(collectorLock) {
++            collectorSourceDrained = true
++            maybeCompleteCollectorDrainLocked()
++          }
++          stopForegroundService()
++        }
++        .addOnFailureListener { removalError ->
++          synchronized(collectorLock) { failCollectorLocked(removalError) }
++          stopForegroundService()
++        }
++        .addOnCanceledListener {
++          synchronized(collectorLock) {
++            failCollectorLocked(IllegalStateException("Location collector fail-stop removal was cancelled"))
++          }
++          stopForegroundService()
++        }
++    } catch (removalError: Throwable) {
++      synchronized(collectorLock) { failCollectorLocked(removalError) }
++      stopForegroundService()
++    }
++  }
++
++  private fun failCollectorLocked(error: Throwable) {
++    if (collectorFailure == null) collectorFailure = error
++    collectorDrain?.takeUnless { it.isCompleted }?.completeExceptionally(error)
++  }
++
++  private fun readSequence(task: TaskInterface, generation: Long): Long {
++    val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++    val stored = preferences.all[sequenceKey(task.appScopeKey, task.name, generation)] ?: return 0L
++    val sequence = stored as? Long
++      ?: throw IllegalStateException("Location collector sequence is corrupt")
++    if (sequence !in 0L..MAX_SAFE_INTEGER) {
++      throw IllegalStateException("Location collector sequence is corrupt")
++    }
++    return sequence
++  }
++
++  private fun readTerminalFailure(task: TaskInterface, generation: Long): Throwable? {
++    val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++    val key = terminalFailureKey(task.appScopeKey, task.name, generation)
++    val stored = preferences.all[key] ?: return null
++    val message = stored as? String
++      ?: return IllegalStateException("Location collector terminal failure marker is corrupt")
++    return IllegalStateException(message.ifBlank { "Location collector terminal failure" })
++  }
++
++  private fun persistCollectorPhase(
++    task: TaskInterface,
++    generation: Long,
++    phase: String
++  ): Boolean {
++    synchronized(sCollectorClaimsLock) {
++      val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++      if (preferences.getLong(activeGenerationKey(task.appScopeKey, task.name), 0L) != generation) {
++        return false
++      }
++      return preferences.edit()
++        .putString(collectorPhaseKey(task.appScopeKey, task.name), phase)
++        .commit()
++    }
++  }
++
+   override fun onHostResume() {
+     mIsHostPaused = false
+     maybeReportDeferredLocations()
+@@ -352,7 +1404,367 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+   companion object {
+     private const val TAG = "LocationTaskConsumer"
+     private const val FOREGROUND_SERVICE_KEY = "foregroundService"
++    private const val COLLECTOR_GENERATION_KEY = "collectorGeneration"
++    private const val COLLECTOR_PREFERENCES = "ExpoLocationCollectorDrain"
++    private const val MAX_SAFE_INTEGER = 9007199254740991L
++    private const val MAX_COLLECTOR_SAMPLES_PER_BATCH = 128
++    private const val MAX_COLLECTOR_ENCODED_BATCH_BYTES = 192 * 1024
++    private const val MAX_COLLECTOR_PENDING_BATCHES = 64
++    private const val MAX_COLLECTOR_PENDING_ENCODED_BYTES = 4L * 1024L * 1024L
++    private const val COLLECTOR_PHASE_CLAIMED = "claimed"
++    private const val COLLECTOR_PHASE_STARTING = "starting"
++    private const val COLLECTOR_PHASE_STARTED = "started"
++    private const val COLLECTOR_JS_DISCARD_MESSAGE = "JavaScript durably marked the location batch discard-only"
++    private val sCollectors = ConcurrentHashMap<String, LocationTaskConsumer>()
++    private val sCollectorClaimsLock = Any()
+     private var sLastTimestamp: Long = 0
++
++    data class CollectorDrainOutcome(
++      val throughSequence: Long,
++      val tainted: Boolean
++    )
++
++    fun findCollector(appScopeKey: String, taskName: String): LocationTaskConsumer? {
++      return sCollectors[collectorKey(appScopeKey, taskName)]
++    }
++
++    fun persistedDrainProof(
++      context: Context,
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ): Long? = persistedDrainOutcome(
++      context,
++      appScopeKey,
++      taskName,
++      generation
++    )?.throughSequence
++
++    fun persistedDrainOutcome(
++      context: Context,
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ): CollectorDrainOutcome? {
++      val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++      if (preferences.getLong(drainProofGenerationKey(appScopeKey, taskName), 0L) != generation) {
++        return null
++      }
++      val throughSequence = preferences
++        .getLong(drainProofThroughSequenceKey(appScopeKey, taskName), -1L)
++        .takeIf { it >= 0L }
++        ?: return null
++      val tainted = when (val stored = preferences.all[drainProofTaintedKey(appScopeKey, taskName)]) {
++        // A pre-v3 proof has no integrity outcome and therefore cannot certify
++        // an exact history. Migrate it fail-closed as discard-only.
++        null -> true
++        is Boolean -> stored
++        else -> throw IllegalStateException("Location drain proof outcome is corrupt")
++      }
++      return CollectorDrainOutcome(throughSequence, tainted)
++    }
++
++    fun generationHighWater(
++      context: Context,
++      appScopeKey: String,
++      taskName: String
++    ): Long = synchronized(sCollectorClaimsLock) {
++      val highWater = context
++        .getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        .getLong(generationHighWaterKey(appScopeKey, taskName), 0L)
++      if (highWater < 0L || highWater > MAX_SAFE_INTEGER) {
++        throw IllegalStateException("Location collector generation high-water is corrupt")
++      }
++      highWater
++    }
++
++    fun persistedActiveGeneration(
++      context: Context,
++      appScopeKey: String,
++      taskName: String
++    ): Long? = synchronized(sCollectorClaimsLock) {
++      val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++      val active = preferences.getLong(activeGenerationKey(appScopeKey, taskName), 0L)
++      val highWater = preferences.getLong(generationHighWaterKey(appScopeKey, taskName), 0L)
++      if (
++        active < 0L || active > MAX_SAFE_INTEGER ||
++        highWater < 0L || highWater > MAX_SAFE_INTEGER ||
++        active > highWater
++      ) {
++        throw IllegalStateException("Location collector generation state is corrupt")
++      }
++      active.takeIf { it > 0L }
++    }
++
++    fun reserveCollectorGeneration(
++      context: Context,
++      appScopeKey: String,
++      taskName: String,
++      minimumGeneration: Long
++    ): Long {
++      synchronized(sCollectorClaimsLock) {
++        val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        val activeKey = activeGenerationKey(appScopeKey, taskName)
++        val highWaterKey = generationHighWaterKey(appScopeKey, taskName)
++        val active = preferences.getLong(activeKey, 0L)
++        val highWater = preferences.getLong(highWaterKey, 0L)
++        if (highWater < 0L || highWater >= MAX_SAFE_INTEGER) {
++          throw IllegalStateException("Location collector generation space is exhausted or corrupt")
++        }
++        if (active != 0L) {
++          throw IllegalStateException("A location collector generation is already active")
++        }
++        val generation = maxOf(minimumGeneration, highWater + 1L)
++        val committed = preferences.edit()
++          .putLong(activeKey, generation)
++          .putLong(highWaterKey, generation)
++          .putString(collectorPhaseKey(appScopeKey, taskName), COLLECTOR_PHASE_CLAIMED)
++          .commit()
++        if (!committed) {
++          throw IllegalStateException("Location collector generation reservation could not be persisted")
++        }
++        return generation
++      }
++    }
++
++    fun requireReservedCollectorGeneration(
++      context: Context,
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ) {
++      synchronized(sCollectorClaimsLock) {
++        val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        if (
++          preferences.getLong(activeGenerationKey(appScopeKey, taskName), 0L) != generation ||
++          preferences.getLong(generationHighWaterKey(appScopeKey, taskName), 0L) < generation ||
++          preferences.getString(collectorPhaseKey(appScopeKey, taskName), null) != COLLECTOR_PHASE_CLAIMED ||
++          persistedDrainProof(context, appScopeKey, taskName, generation) != null
++        ) {
++          throw IllegalStateException("Location collector generation was not reserved for start")
++        }
++      }
++    }
++
++    private fun verifyCollectorGenerationClaim(
++      context: Context,
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ) {
++      synchronized(sCollectorClaimsLock) {
++        val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        if (
++          preferences.getLong(activeGenerationKey(appScopeKey, taskName), 0L) != generation ||
++          preferences.getLong(generationHighWaterKey(appScopeKey, taskName), 0L) < generation ||
++          persistedDrainProof(context, appScopeKey, taskName, generation) != null
++        ) {
++          throw IllegalStateException("Location collector generation claim is unconfirmed")
++        }
++      }
++    }
++
++    private fun ensureCollectorGenerationHighWater(
++      context: Context,
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ) {
++      synchronized(sCollectorClaimsLock) {
++        val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        val highWaterKey = generationHighWaterKey(appScopeKey, taskName)
++        val stored = preferences.all[highWaterKey]
++        if (stored != null && stored !is Long) {
++          throw IllegalStateException("Location collector generation high-water is corrupt")
++        }
++        val highWater = stored as? Long
++        if (highWater != null && (highWater < 0L || highWater > MAX_SAFE_INTEGER)) {
++          throw IllegalStateException("Location collector generation high-water is corrupt")
++        }
++        if (highWater != null && highWater >= generation) {
++          return
++        }
++        if (!preferences.edit().putLong(highWaterKey, generation).commit()) {
++          throw IllegalStateException("Location collector generation high-water could not be persisted")
++        }
++      }
++    }
++
++    fun abortInactiveCollectorClaim(
++      context: Context,
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ): Long? {
++      synchronized(sCollectorClaimsLock) {
++        persistedDrainProof(context, appScopeKey, taskName, generation)?.let { return it }
++        val preferences = context.getSharedPreferences(COLLECTOR_PREFERENCES, Context.MODE_PRIVATE)
++        if (preferences.getLong(activeGenerationKey(appScopeKey, taskName), 0L) != generation) {
++          return null
++        }
++        if (preferences.getString(collectorPhaseKey(appScopeKey, taskName), null) != COLLECTOR_PHASE_CLAIMED) {
++          return null
++        }
++        if (
++          preferences.getLong(sequenceKey(appScopeKey, taskName, generation), 0L) != 0L ||
++          preferences.getLong(acknowledgementThroughKey(appScopeKey, taskName, generation), 0L) != 0L ||
++          pendingBatchIds(preferences, appScopeKey, taskName, generation).isNotEmpty() ||
++          preferences.all.keys.any {
++            it.startsWith(exactBatchDataPrefix(appScopeKey, taskName, generation))
++          } ||
++          preferences.contains(terminalFailureKey(appScopeKey, taskName, generation))
++        ) {
++          return null
++        }
++        val editor = preferences.edit()
++          .putLong(drainProofGenerationKey(appScopeKey, taskName), generation)
++          .putLong(drainProofThroughSequenceKey(appScopeKey, taskName), 0L)
++          .putBoolean(drainProofTaintedKey(appScopeKey, taskName), false)
++          .remove(activeGenerationKey(appScopeKey, taskName))
++          .remove(collectorPhaseKey(appScopeKey, taskName))
++          .remove(terminalFailureKey(appScopeKey, taskName, generation))
++          .remove(sequenceKey(appScopeKey, taskName, generation))
++          .remove(pendingIndexKey(appScopeKey, taskName, generation))
++          .remove(acknowledgementThroughKey(appScopeKey, taskName, generation))
++        return if (editor.commit()) 0L else null
++      }
++    }
++
++    private fun generationFrom(options: Map<String, *>): Long? {
++      val raw = options[COLLECTOR_GENERATION_KEY] ?: return null
++      val value = (raw as? Number)?.toDouble()
++        ?: throw IllegalStateException("Location collector generation must be numeric")
++      if (!value.isFinite() || value < 1.0 || value > MAX_SAFE_INTEGER.toDouble() || value % 1.0 != 0.0) {
++        throw IllegalStateException("Location collector generation must be a positive safe integer")
++      }
++      return value.toLong()
++    }
++
++    private fun collectorKey(appScopeKey: String, taskName: String): String {
++      return "$appScopeKey\u0000$taskName"
++    }
++
++    private fun sequenceKey(appScopeKey: String, taskName: String, generation: Long): String {
++      return "sequence:$appScopeKey:$taskName:$generation"
++    }
++
++    private fun activeGenerationKey(appScopeKey: String, taskName: String): String {
++      return "active:$appScopeKey:$taskName"
++    }
++
++    private fun generationHighWaterKey(appScopeKey: String, taskName: String): String {
++      return "high-water:$appScopeKey:$taskName"
++    }
++
++    private fun collectorPhaseKey(appScopeKey: String, taskName: String): String {
++      return "phase:$appScopeKey:$taskName"
++    }
++
++    private fun pendingIndexKey(appScopeKey: String, taskName: String, generation: Long): String {
++      return "pending:$appScopeKey:$taskName:$generation"
++    }
++
++    private fun terminalFailureKey(appScopeKey: String, taskName: String, generation: Long): String {
++      return "terminal:$appScopeKey:$taskName:$generation"
++    }
++
++    private fun batchDataKey(
++      appScopeKey: String,
++      taskName: String,
++      generation: Long,
++      batchId: String
++    ): String {
++      return "batch:$appScopeKey:$taskName:$generation:$batchId"
++    }
++
++    private fun exactBatchDataPrefix(
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ): String {
++      return "batch:$appScopeKey:$taskName:$generation:"
++    }
++
++    private fun acknowledgementThroughKey(
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ): String {
++      return "ack-through:$appScopeKey:$taskName:$generation"
++    }
++
++    private fun pendingBatchIds(
++      preferences: SharedPreferences,
++      appScopeKey: String,
++      taskName: String,
++      generation: Long
++    ): MutableSet<String> {
++      val pending = preferences.getStringSet(
++        pendingIndexKey(appScopeKey, taskName, generation),
++        emptySet()
++      )?.toMutableSet() ?: mutableSetOf()
++      if (pending.size > MAX_COLLECTOR_PENDING_BATCHES) {
++        throw CollectorOutboxCapacityException(
++          "Restored location collector outbox exceeds its durable batch budget"
++        )
++      }
++      var encodedBytes = 0L
++      for (batchId in pending) {
++        val encoded = preferences.getString(
++          batchDataKey(appScopeKey, taskName, generation, batchId),
++          null
++        ) ?: throw IllegalStateException("Persisted location collector batch is missing")
++        if (encoded.length > MAX_COLLECTOR_ENCODED_BATCH_BYTES) {
++          throw CollectorOutboxCapacityException(
++            "Restored location collector batch exceeds its durable bridge limit"
++          )
++        }
++        encodedBytes += encoded.length.toLong()
++        if (encodedBytes > MAX_COLLECTOR_PENDING_ENCODED_BYTES) {
++          throw CollectorOutboxCapacityException(
++            "Restored location collector outbox exceeds its durable byte budget"
++          )
++        }
++      }
++      return pending
++    }
++
++    private fun encodeBundle(bundle: Bundle): String {
++      val parcel = Parcel.obtain()
++      return try {
++        bundle.writeToParcel(parcel, 0)
++        Base64.encodeToString(parcel.marshall(), Base64.NO_WRAP)
++      } finally {
++        parcel.recycle()
++      }
++    }
++
++    private fun decodeBundle(encoded: String): Bundle {
++      val bytes = Base64.decode(encoded, Base64.NO_WRAP)
++      val parcel = Parcel.obtain()
++      return try {
++        parcel.unmarshall(bytes, 0, bytes.size)
++        parcel.setDataPosition(0)
++        Bundle.CREATOR.createFromParcel(parcel).apply {
++          classLoader = LocationTaskConsumer::class.java.classLoader
++        }
++      } finally {
++        parcel.recycle()
++      }
++    }
++
++    private fun drainProofGenerationKey(appScopeKey: String, taskName: String): String {
++      return "drain-generation:$appScopeKey:$taskName"
++    }
++
++    private fun drainProofThroughSequenceKey(appScopeKey: String, taskName: String): String {
++      return "drain-through:$appScopeKey:$taskName"
++    }
++
++    private fun drainProofTaintedKey(appScopeKey: String, taskName: String): String {
++      return "drain-tainted:$appScopeKey:$taskName"
++    }
++
+     fun shouldUseForegroundService(options: Map<String?, Any?>): Boolean {
+       return options.containsKey(FOREGROUND_SERVICE_KEY)
+     }
+diff --git a/node_modules/expo-location/ios/LocationModule.swift b/node_modules/expo-location/ios/LocationModule.swift
+index 6d41d09..6641e4a 100644
+--- a/node_modules/expo-location/ios/LocationModule.swift
++++ b/node_modules/expo-location/ios/LocationModule.swift
+@@ -255,6 +255,222 @@ public final class LocationModule: Module {
+       return try taskManager.task(withName: taskName, hasConsumerOf: EXLocationTaskConsumer.self)
+     }
+
++    AsyncFunction("getLocationCollectorDrainCapabilityAsync") {
++      return ["available": true, "version": 3]
++    }
++
++    AsyncFunction("getLocationCollectorStateAsync") { (taskName: String) -> [String: Any?] in
++      let manager = try taskManager
++      guard let highWater = EXLocationTaskConsumer.generationHighWater(taskName: taskName) else {
++        throw collectorError("Location collector generation high-water is corrupt")
++      }
++      guard try manager.task(withName: taskName, hasConsumerOf: EXLocationTaskConsumer.self) else {
++        if let active = EXLocationTaskConsumer.persistedActiveGeneration(taskName: taskName) {
++          return ["running": true, "generation": active, "highWater": highWater]
++        }
++        return ["running": false, "generation": nil, "highWater": highWater]
++      }
++      if let registered = EXLocationTaskConsumer.registeredGeneration(taskName: taskName),
++        EXLocationTaskConsumer.persistedDrainProof(
++          taskName: taskName,
++          generation: registered
++        ) != nil {
++        try EXUtilities.catchException {
++          manager.unregisterTask(withName: taskName, consumerClass: EXLocationTaskConsumer.self)
++        }
++        return ["running": false, "generation": nil, "highWater": highWater]
++      }
++      guard let generation = EXLocationTaskConsumer.confirmedGeneration(taskName: taskName) else {
++        // A restored generation is source-inert in this process, but its
++        // pre-crash OS source may still exist. Surface it so boot exact-drains.
++        if let registered = EXLocationTaskConsumer.registeredGeneration(taskName: taskName) {
++          return ["running": true, "generation": registered, "highWater": highWater]
++        }
++        throw collectorError("Location collector state is unconfirmed")
++      }
++      return ["running": true, "generation": generation, "highWater": highWater]
++    }
++
++    AsyncFunction("reserveLocationCollectorGenerationAsync") {
++      (taskName: String, minimumGeneration: Double) -> NSNumber in
++      let exactMinimum = try requireCollectorGeneration(minimumGeneration)
++      let manager = try taskManager
++      let isRegistered = try manager.task(
++        withName: taskName,
++        hasConsumerOf: EXLocationTaskConsumer.self
++      )
++      guard !isRegistered else {
++        throw collectorError("A location collector is already registered")
++      }
++      guard let reserved = EXLocationTaskConsumer.reserveGeneration(
++        atLeast: exactMinimum,
++        taskName: taskName
++      ) else {
++        throw collectorError("Location collector generation could not be reserved")
++      }
++      if try manager.task(withName: taskName, hasConsumerOf: EXLocationTaskConsumer.self) {
++        _ = EXLocationTaskConsumer.abortInactiveClaim(
++          taskName: taskName,
++          generation: reserved
++        )
++        throw collectorError("A location collector was registered during reservation")
++      }
++      return reserved
++    }
++
++    AsyncFunction("startLocationUpdatesWithGenerationAsync") {
++      (taskName: String, generation: Double, options: [String: Any]) in
++      let exactGeneration = try requireCollectorGeneration(generation)
++      let manager = try taskManager
++      if try manager.task(withName: taskName, hasConsumerOf: EXLocationTaskConsumer.self) {
++        guard let existing = EXLocationTaskConsumer.confirmedGeneration(taskName: taskName),
++          existing == exactGeneration else {
++          throw collectorError("A different or legacy location collector is already registered")
++        }
++        return
++      }
++
++      try ensureLocationServicesEnabled()
++      try ensureForegroundLocationPermissions(appContext)
++      guard CLLocationManager.significantLocationChangeMonitoringAvailable() else {
++        throw Exceptions.LocationUpdatesUnavailable()
++      }
++      guard try manager.hasBackgroundModeEnabled("location") else {
++        throw Exceptions.LocationUpdatesUnavailable()
++      }
++
++      if let reservationError = EXLocationTaskConsumer.requireReservedGeneration(
++        exactGeneration,
++        taskName: taskName
++      ) {
++        throw reservationError
++      }
++
++      var collectorOptions = options
++      collectorOptions["collectorGeneration"] = exactGeneration
++      try manager.registerTask(
++        withName: taskName,
++        consumer: EXLocationTaskConsumer.self,
++        options: collectorOptions
++      )
++      if let startError = EXLocationTaskConsumer.start(
++        taskName: taskName,
++        generation: exactGeneration
++      ) {
++        throw startError
++      }
++      guard EXLocationTaskConsumer.confirmedGeneration(taskName: taskName) == exactGeneration else {
++        throw collectorError("Registered location collector could not be confirmed")
++      }
++    }
++
++    AsyncFunction("acknowledgeLocationCollectorBatchAsync") {
++      (taskName: String, generation: Double, batchId: String, throughSequence: Double) in
++      let exactGeneration = try requireCollectorGeneration(generation)
++      let exactThroughSequence = try requireCollectorGeneration(throughSequence)
++      guard let uuid = UUID(uuidString: batchId),
++        uuid.uuidString.lowercased() == batchId.lowercased() else {
++        throw collectorError("Location collector batch ID is invalid")
++      }
++      try await acknowledgeCollectorBatch(
++        taskName: taskName,
++        generation: exactGeneration,
++        batchId: batchId.lowercased(),
++        throughSequence: exactThroughSequence
++      )
++    }
++
++    AsyncFunction("taintAndAcknowledgeLocationCollectorBatchAsync") {
++      (taskName: String, generation: Double, batchId: String, throughSequence: Double) in
++      let exactGeneration = try requireCollectorGeneration(generation)
++      let exactThroughSequence = try requireCollectorGeneration(throughSequence)
++      guard let uuid = UUID(uuidString: batchId),
++        uuid.uuidString.lowercased() == batchId.lowercased() else {
++        throw collectorError("Location collector batch ID is invalid")
++      }
++      try await taintAndAcknowledgeCollectorBatch(
++        taskName: taskName,
++        generation: exactGeneration,
++        batchId: batchId.lowercased(),
++        throughSequence: exactThroughSequence
++      )
++    }
++
++    AsyncFunction("stopLegacyLocationCollectorAsync") { (taskName: String) in
++      let manager = try taskManager
++      guard try manager.task(withName: taskName, hasConsumerOf: EXLocationTaskConsumer.self) else {
++        return
++      }
++      try await stopLegacyCollector(taskName: taskName)
++      try EXUtilities.catchException {
++        manager.unregisterTask(withName: taskName, consumerClass: EXLocationTaskConsumer.self)
++      }
++    }
++
++    AsyncFunction("stopLocationUpdatesAndDrainAsync") {
++      (taskName: String, generation: Double) -> [String: Any] in
++      let exactGeneration = try requireCollectorGeneration(generation)
++      let manager = try taskManager
++      if let proof = EXLocationTaskConsumer.persistedDrainProof(
++        taskName: taskName,
++        generation: exactGeneration
++      ) {
++        guard let tainted = EXLocationTaskConsumer.persistedDrainProofTainted(
++          taskName: taskName,
++          generation: exactGeneration
++        ) else {
++          throw collectorError("Location collector drain outcome is corrupt")
++        }
++        if try manager.task(withName: taskName, hasConsumerOf: EXLocationTaskConsumer.self),
++          EXLocationTaskConsumer.registeredGeneration(taskName: taskName) == exactGeneration {
++          try EXUtilities.catchException {
++            manager.unregisterTask(withName: taskName, consumerClass: EXLocationTaskConsumer.self)
++          }
++        }
++        return [
++          "generation": exactGeneration,
++          "drained": true,
++          "throughSequence": proof,
++          "outcome": tainted.boolValue ? "discard-only" : "exact"
++        ]
++      }
++      guard try manager.task(withName: taskName, hasConsumerOf: EXLocationTaskConsumer.self) else {
++        guard let abortedThrough = EXLocationTaskConsumer.abortInactiveClaim(
++          taskName: taskName,
++          generation: exactGeneration
++        ) else {
++          throw collectorError(
++            "Exact location collector is not registered and source non-activation is unconfirmed"
++          )
++        }
++        return [
++          "generation": exactGeneration,
++          "drained": true,
++          "throughSequence": abortedThrough,
++          "outcome": "exact"
++        ]
++      }
++      let throughSequence = try await stopAndDrainCollector(
++        taskName: taskName,
++        generation: exactGeneration
++      )
++      guard let tainted = EXLocationTaskConsumer.persistedDrainProofTainted(
++        taskName: taskName,
++        generation: exactGeneration
++      ) else {
++        throw collectorError("Location collector drain outcome was not persisted")
++      }
++      try EXUtilities.catchException {
++        manager.unregisterTask(withName: taskName, consumerClass: EXLocationTaskConsumer.self)
++      }
++      return [
++        "generation": exactGeneration,
++        "drained": true,
++        "throughSequence": throughSequence,
++        "outcome": tainted.boolValue ? "discard-only" : "exact"
++      ]
++    }
++
+     // Geofencing
+
+     AsyncFunction("startGeofencingAsync") { (taskName: String, options: [String: Any]) in
+@@ -282,4 +498,103 @@ public final class LocationModule: Module {
+       return try taskManager.task(withName: taskName, hasConsumerOf: EXGeofencingTaskConsumer.self)
+     }
+   }
++
++  private func requireCollectorGeneration(_ value: Double) throws -> NSNumber {
++    guard value.isFinite,
++      value >= 1,
++      value <= 9_007_199_254_740_991,
++      value.rounded(.towardZero) == value else {
++      throw collectorError("Location collector generation must be a positive safe integer")
++    }
++    return NSNumber(value: value)
++  }
++
++  private func stopAndDrainCollector(
++    taskName: String,
++    generation: NSNumber
++  ) async throws -> NSNumber {
++    return try await withCheckedThrowingContinuation { continuation in
++      EXLocationTaskConsumer.stopAndDrain(
++        taskName: taskName,
++        generation: generation
++      ) { throughSequence, error in
++        if let error {
++          continuation.resume(throwing: error)
++        } else if let throughSequence {
++          continuation.resume(returning: throughSequence)
++        } else {
++          continuation.resume(
++            throwing: collectorError("Location collector drain proof is unconfirmed")
++          )
++        }
++      }
++    }
++  }
++
++  private func acknowledgeCollectorBatch(
++    taskName: String,
++    generation: NSNumber,
++    batchId: String,
++    throughSequence: NSNumber
++  ) async throws {
++    try await withCheckedThrowingContinuation {
++      (continuation: CheckedContinuation<Void, Error>) in
++      EXLocationTaskConsumer.acknowledge(
++        taskName: taskName,
++        generation: generation,
++        batchId: batchId,
++        throughSequence: throughSequence
++      ) { error in
++        if let error {
++          continuation.resume(throwing: error)
++        } else {
++          continuation.resume(returning: ())
++        }
++      }
++    }
++  }
++
++  private func taintAndAcknowledgeCollectorBatch(
++    taskName: String,
++    generation: NSNumber,
++    batchId: String,
++    throughSequence: NSNumber
++  ) async throws {
++    try await withCheckedThrowingContinuation {
++      (continuation: CheckedContinuation<Void, Error>) in
++      EXLocationTaskConsumer.taintAndAcknowledge(
++        taskName: taskName,
++        generation: generation,
++        batchId: batchId,
++        throughSequence: throughSequence
++      ) { error in
++        if let error {
++          continuation.resume(throwing: error)
++        } else {
++          continuation.resume(returning: ())
++        }
++      }
++    }
++  }
++
++  private func stopLegacyCollector(taskName: String) async throws {
++    try await withCheckedThrowingContinuation {
++      (continuation: CheckedContinuation<Void, Error>) in
++      EXLocationTaskConsumer.stopLegacy(taskName: taskName) { error in
++        if let error {
++          continuation.resume(throwing: error)
++        } else {
++          continuation.resume(returning: ())
++        }
++      }
++    }
++  }
++
++  private func collectorError(_ message: String) -> NSError {
++    return NSError(
++      domain: "ExpoLocationCollectorDrain",
++      code: 1,
++      userInfo: [NSLocalizedDescriptionKey: message]
++    )
++  }
+ }
+diff --git a/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.h b/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.h
+index 4d7ff94..053f910 100644
+--- a/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.h
++++ b/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.h
+@@ -9,6 +9,54 @@ NS_ASSUME_NONNULL_BEGIN
+
+ @property (nonatomic, strong) id<EXTaskInterface> task;
+
+++ (nullable NSNumber *)confirmedGenerationForTaskName:(NSString *)taskName
++  NS_SWIFT_NAME(confirmedGeneration(taskName:));
+++ (nullable NSNumber *)registeredGenerationForTaskName:(NSString *)taskName
++  NS_SWIFT_NAME(registeredGeneration(taskName:));
+++ (nullable NSNumber *)generationHighWaterForTaskName:(NSString *)taskName
++  NS_SWIFT_NAME(generationHighWater(taskName:));
+++ (nullable NSNumber *)persistedActiveGenerationForTaskName:(NSString *)taskName
++  NS_SWIFT_NAME(persistedActiveGeneration(taskName:));
+++ (BOOL)isLegacyTaskName:(NSString *)taskName
++  NS_SWIFT_NAME(isLegacy(taskName:));
+++ (nullable NSNumber *)persistedDrainProofForTaskName:(NSString *)taskName
++                                           generation:(NSNumber *)generation
++  NS_SWIFT_NAME(persistedDrainProof(taskName:generation:));
+++ (nullable NSNumber *)persistedDrainProofTaintedForTaskName:(NSString *)taskName
++                                                   generation:(NSNumber *)generation
++  NS_SWIFT_NAME(persistedDrainProofTainted(taskName:generation:));
+++ (nullable NSNumber *)reserveGenerationAtLeast:(NSNumber *)minimumGeneration
++                                        taskName:(NSString *)taskName
++  NS_SWIFT_NAME(reserveGeneration(atLeast:taskName:));
+++ (nullable NSError *)requireReservedGeneration:(NSNumber *)generation
++                                        taskName:(NSString *)taskName
++  NS_SWIFT_NAME(requireReservedGeneration(_:taskName:));
+++ (nullable NSError *)startTaskName:(NSString *)taskName
++                         generation:(NSNumber *)generation
++  NS_SWIFT_NAME(start(taskName:generation:));
+++ (nullable NSNumber *)abortInactiveClaimForTaskName:(NSString *)taskName
++                                           generation:(NSNumber *)generation
++  NS_SWIFT_NAME(abortInactiveClaim(taskName:generation:));
+++ (void)acknowledgeTaskName:(NSString *)taskName
++                 generation:(NSNumber *)generation
++                    batchId:(NSString *)batchId
++            throughSequence:(NSNumber *)throughSequence
++                 completion:(void (^)(NSError * _Nullable error))completion
++  NS_SWIFT_NAME(acknowledge(taskName:generation:batchId:throughSequence:completion:));
+++ (void)taintAndAcknowledgeTaskName:(NSString *)taskName
++                         generation:(NSNumber *)generation
++                            batchId:(NSString *)batchId
++                    throughSequence:(NSNumber *)throughSequence
++                         completion:(void (^)(NSError * _Nullable error))completion
++  NS_SWIFT_NAME(taintAndAcknowledge(taskName:generation:batchId:throughSequence:completion:));
+++ (void)stopLegacyTaskName:(NSString *)taskName
++                completion:(void (^)(NSError * _Nullable error))completion
++  NS_SWIFT_NAME(stopLegacy(taskName:completion:));
+++ (void)stopAndDrainTaskName:(NSString *)taskName
++                  generation:(NSNumber *)generation
++                  completion:(void (^)(NSNumber * _Nullable throughSequence, NSError * _Nullable error))completion
++  NS_SWIFT_NAME(stopAndDrain(taskName:generation:completion:));
++
+ @end
+
+ NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.m b/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.m
+index fe1d9dd..789e6b7 100644
+--- a/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.m
++++ b/node_modules/expo-location/ios/TaskConsumers/EXLocationTaskConsumer.m
+@@ -2,18 +2,125 @@
+
+ #import <CoreLocation/CLLocationManager.h>
+ #import <CoreLocation/CLErrorDomain.h>
++#import <math.h>
+
+ #import <ExpoModulesCore/EXUtilities.h>
+ #import <ExpoModulesCore/EXTaskInterface.h>
+ #import <ExpoLocation/EXLocation.h>
+ #import <ExpoLocation/EXLocationTaskConsumer.h>
+
++static NSString * const EXLocationCollectorGenerationKey = @"collectorGeneration";
++static NSString * const EXLocationCollectorPreferences = @"ExpoLocationCollectorDrain";
++static long long const EXLocationCollectorMaxSafeInteger = 9007199254740991LL;
++static NSString * const EXLocationCollectorStateActive = @"active";
++static NSString * const EXLocationCollectorStateHighWater = @"highWater";
++static NSString * const EXLocationCollectorStateDrainGeneration = @"drainGeneration";
++static NSString * const EXLocationCollectorStateDrainThrough = @"drainThrough";
++static NSString * const EXLocationCollectorStateDrainTainted = @"drainTainted";
++static NSString * const EXLocationCollectorStateRecoveryTainted = @"recoveryTainted";
++static NSString * const EXLocationCollectorStatePhase = @"phase";
++static NSString * const EXLocationCollectorStateAppId = @"appId";
++static NSString * const EXLocationCollectorPhaseClaimed = @"claimed";
++static NSString * const EXLocationCollectorPhaseStarting = @"starting";
++static NSString * const EXLocationCollectorPhaseStarted = @"started";
++static NSString * const EXLocationCollectorOutboxSequence = @"sequence";
++static NSString * const EXLocationCollectorOutboxPending = @"pending";
++static NSString * const EXLocationCollectorOutboxAcknowledgedThrough = @"acknowledgedThrough";
++static NSString * const EXLocationCollectorOutboxTerminalFailure = @"terminalFailure";
++static NSUInteger const EXLocationCollectorMaxSamplesPerBatch = 128;
++static NSUInteger const EXLocationCollectorMaxEncodedBatchBytes = 192 * 1024;
++static NSUInteger const EXLocationCollectorMaxPendingBatches = 64;
++static NSUInteger const EXLocationCollectorMaxPendingEncodedBytes = 4 * 1024 * 1024;
++static NSString * const EXLocationCollectorJavaScriptDiscardMessage = @"JavaScript durably marked the location batch discard-only";
++
++static BOOL EXLocationCollectorIsSafeInteger(id value, BOOL allowZero)
++{
++  if (![value isKindOfClass:[NSNumber class]] ||
++      CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) {
++    return NO;
++  }
++  double number = [value doubleValue];
++  return isfinite(number) &&
++    floor(number) == number &&
++    number >= (allowZero ? 0 : 1) &&
++    number <= EXLocationCollectorMaxSafeInteger;
++}
++
++static BOOL EXLocationCollectorIsFiniteNumber(id value)
++{
++  return [value isKindOfClass:[NSNumber class]] &&
++    CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID() &&
++    isfinite([value doubleValue]);
++}
++
++static NSMutableDictionary<NSString *, EXLocationTaskConsumer *> *EXLocationCollectors(void)
++{
++  static NSMutableDictionary<NSString *, EXLocationTaskConsumer *> *collectors;
++  static dispatch_once_t onceToken;
++  dispatch_once(&onceToken, ^{
++    collectors = [NSMutableDictionary new];
++  });
++  return collectors;
++}
++
+ @interface EXLocationTaskConsumer ()
+
+ @property (nonatomic, strong) CLLocationManager *locationManager;
+ @property (nonatomic, strong) NSMutableArray<CLLocation *> *deferredLocations;
+ @property (nonatomic, strong) CLLocation *lastReportedLocation;
+ @property (nonatomic, assign) CLLocationDistance deferredDistance;
++@property (nonatomic, strong) NSNumber *collectorGeneration;
++@property (nonatomic, assign) long long collectorSequence;
++@property (nonatomic, assign) BOOL collectorSourceDrained;
++@property (nonatomic, assign) BOOL collectorAcceptingEvents;
++@property (nonatomic, assign) BOOL collectorRecoveredInactive;
++@property (nonatomic, assign) BOOL collectorStartAuthorized;
++@property (nonatomic, assign) BOOL collectorSourceActivated;
++@property (nonatomic, strong) NSError *collectorFailure;
++@property (nonatomic, strong) NSError *collectorTerminalFailure;
++@property (nonatomic, assign) BOOL collectorDiscardCorruptOutbox;
++@property (nonatomic, strong) NSMutableArray *collectorDrainCompletions;
++@property (nonatomic, strong) NSMutableSet<NSString *> *collectorDispatchedBatchIds;
++
++- (BOOL)persistCollectorBatches:(NSArray<NSDictionary *> *)batches
++                 throughSequence:(long long)throughSequence;
++- (void)dispatchPersistedCollectorBatch:(NSDictionary *)batch batchId:(NSString *)batchId;
++- (void)replayPersistedCollectorBatches;
++- (BOOL)hasPendingCollectorBatches;
++- (void)acknowledgeGeneration:(NSNumber *)generation
++                      batchId:(NSString *)batchId
++              throughSequence:(NSNumber *)throughSequence
++              taintGeneration:(BOOL)taintGeneration
++                   completion:(void (^)(NSError * _Nullable error))completion;
++- (nullable NSDictionary *)collectorOutboxForTask:(id<EXTaskInterface>)task
++                                        generation:(NSNumber *)generation;
++- (BOOL)persistCollectorOutbox:(NSDictionary *)outbox
++                           task:(id<EXTaskInterface>)task
++                     generation:(NSNumber *)generation;
++- (BOOL)persistTerminalFailureMessage:(NSString *)message
++                           usingOutbox:(NSDictionary *)outbox
++                                  task:(id<EXTaskInterface>)task
++                            generation:(NSNumber *)generation;
++- (BOOL)cleanupOutboxAfterProof;
++- (BOOL)armDiscardOnlyRecoveryForTask:(id<EXTaskInterface>)task
++                           generation:(NSNumber *)generation
++                              message:(NSString *)message;
++- (void)failStopCollectorSource;
++- (void)didFailToLoadTaskApp:(NSString *)message;
++
+++ (NSDictionary *)collectorStateForTaskName:(NSString *)taskName;
+++ (BOOL)persistCollectorState:(NSDictionary *)state taskName:(NSString *)taskName;
+++ (nullable NSError *)verifyGenerationClaim:(NSNumber *)generation taskName:(NSString *)taskName;
+++ (nullable NSError *)ensureGenerationHighWater:(NSNumber *)generation taskName:(NSString *)taskName;
+++ (nullable NSError *)persistCollectorAppId:(NSString *)appId
++                                  generation:(NSNumber *)generation
++                                    taskName:(NSString *)taskName;
+++ (NSString *)stateKeyForTaskName:(NSString *)taskName;
+++ (NSString *)outboxKeyForAppId:(NSString *)appId
++                        taskName:(NSString *)taskName
++                      generation:(NSNumber *)generation;
++- (BOOL)persistCollectorPhase:(NSString *)phase;
++- (nullable NSError *)activateCollectorStartGeneration:(NSNumber *)generation;
+
+ @end
+
+@@ -24,6 +131,9 @@
+   if (self = [super init]) {
+     _deferredLocations = [NSMutableArray new];
+     _deferredDistance = 0.0;
++    _collectorAcceptingEvents = YES;
++    _collectorDrainCompletions = [NSMutableArray new];
++    _collectorDispatchedBatchIds = [NSMutableSet new];
+   }
+   return self;
+ }
+@@ -47,6 +157,73 @@
+
+     self->_task = task;
+     self->_locationManager = locationManager;
++    self->_collectorGeneration = [self validGeneration:task.options[EXLocationCollectorGenerationKey]];
++    EXLocationCollectors()[task.name] = self;
++    if (self->_collectorGeneration != nil) {
++      NSNumber *proof = [EXLocationTaskConsumer persistedDrainProofForTaskName:task.name
++                                                                    generation:self->_collectorGeneration];
++      if (proof != nil) {
++        self->_collectorSequence = proof.longLongValue;
++        self->_collectorSourceDrained = YES;
++        self->_collectorAcceptingEvents = NO;
++        locationManager.delegate = nil;
++        [locationManager stopUpdatingLocation];
++        [locationManager stopMonitoringSignificantLocationChanges];
++        [self cleanupOutboxAfterProof];
++        return;
++      }
++      NSError *claimError = [EXLocationTaskConsumer ensureGenerationHighWater:self->_collectorGeneration
++                                                                      taskName:task.name];
++      if (claimError == nil) {
++        claimError = [EXLocationTaskConsumer persistCollectorAppId:task.appId
++                                                        generation:self->_collectorGeneration
++                                                          taskName:task.name];
++      }
++      if (claimError == nil) {
++        claimError = [EXLocationTaskConsumer verifyGenerationClaim:self->_collectorGeneration
++                                                            taskName:task.name];
++      }
++      if (claimError != nil) {
++        self->_collectorFailure = claimError;
++        locationManager.delegate = nil;
++        [locationManager stopUpdatingLocation];
++        [locationManager stopMonitoringSignificantLocationChanges];
++        return;
++      }
++      NSDictionary *collectorState = [EXLocationTaskConsumer collectorStateForTaskName:task.name];
++      id recoveryTainted = collectorState[EXLocationCollectorStateRecoveryTainted];
++      NSDictionary *outbox = [self collectorOutboxForTask:task generation:self->_collectorGeneration];
++      if (recoveryTainted != nil || outbox == nil) {
++        NSString *message = recoveryTainted != nil
++          ? @"Restored location collector outbox was previously marked discard-only"
++          : @"Restored location collector outbox is corrupt or exceeds its durable budget";
++        if (![self armDiscardOnlyRecoveryForTask:task
++                                      generation:self->_collectorGeneration
++                                         message:message]) {
++          self->_collectorFailure = [self collectorError:@"Restored location collector taint could not be persisted"];
++        }
++        self->_collectorRecoveredInactive = YES;
++        [self failStopCollectorSource];
++        return;
++      }
++      self->_collectorSequence = [outbox[EXLocationCollectorOutboxSequence] longLongValue];
++      NSString *terminalMessage = outbox[EXLocationCollectorOutboxTerminalFailure];
++      if (terminalMessage != nil) {
++        self->_collectorTerminalFailure = [self collectorError:terminalMessage];
++      }
++      self->_collectorRecoveredInactive = YES;
++      // Installing a delegate does not start Core Location. It lets us persist
++      // an already-delivered callback for this exact durable generation while
++      // the source remains inert until stop-and-drain removes it.
++      self->_collectorAcceptingEvents = self->_collectorTerminalFailure == nil;
++      if (self->_collectorTerminalFailure == nil) {
++        locationManager.delegate = self;
++      } else {
++        [self failStopCollectorSource];
++      }
++      [self replayPersistedCollectorBatches];
++      return;
++    }
+
+     locationManager.delegate = self;
+     locationManager.allowsBackgroundLocationUpdates = YES;
+@@ -58,12 +235,29 @@
+
+ - (void)didUnregister
+ {
++  NSNumber *proof = _collectorGeneration == nil || _task.name == nil
++    ? nil
++    : [EXLocationTaskConsumer persistedDrainProofForTaskName:_task.name generation:_collectorGeneration];
++  if (_collectorGeneration != nil && !_collectorSourceDrained && proof == nil) {
++    _collectorFailure = [self collectorError:@"Location collector was unregistered without a drain proof"];
++    [self maybeCompleteCollectorDrain];
++  }
+   [self reset];
+ }
+
+ - (void)setOptions:(NSDictionary *)options
+ {
++  NSNumber *nextGeneration = [self validGeneration:options[EXLocationCollectorGenerationKey]];
++  if (_collectorGeneration != nil && ![_collectorGeneration isEqualToNumber:nextGeneration]) {
++    @throw [NSException exceptionWithName:@"E_LOCATION_COLLECTOR_IMMUTABLE"
++                                   reason:@"A location collector generation is immutable until it is drained"
++                                 userInfo:nil];
++  }
+   [EXUtilities performSynchronouslyOnMainThread:^{
++    if (self->_collectorSourceDrained || self->_collectorRecoveredInactive ||
++        (self->_collectorGeneration != nil && !self->_collectorStartAuthorized)) {
++      return;
++    }
+     CLLocationManager *locationManager = self->_locationManager;
+     EXLocationAccuracy accuracy = [options[@"accuracy"] unsignedIntegerValue] ?: EXLocationAccuracyBalanced;
+
+@@ -82,7 +276,7 @@
+
+ - (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations
+ {
+-  if (_task != nil && locations.count > 0) {
++  if (_task != nil && _collectorAcceptingEvents && _collectorFailure == nil && _collectorTerminalFailure == nil && locations.count > 0) {
+     [self deferLocations:locations];
+     [self maybeReportDeferredLocations];
+   }
+@@ -90,7 +284,70 @@
+
+ - (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error
+ {
+-  [_task executeWithData:nil withError:error];
++  if (_collectorGeneration == nil) {
++    [_task executeWithData:nil withError:error];
++    return;
++  }
++  if (!_collectorAcceptingEvents || _collectorFailure != nil || _collectorTerminalFailure != nil) {
++    return;
++  }
++  NSString *message = error.localizedDescription ?: @"Core Location failed";
++  NSDictionary *outbox = [self collectorOutboxForTask:_task generation:_collectorGeneration];
++  if (outbox == nil ||
++      ![self persistTerminalFailureMessage:message
++                               usingOutbox:outbox
++                                      task:_task
++                                generation:_collectorGeneration]) {
++    _collectorFailure = [self collectorError:@"Core Location failure could not be durably persisted"];
++  }
++  [self failStopCollectorSource];
++  [self replayPersistedCollectorBatches];
++  [self maybeCompleteCollectorDrain];
++}
++
++- (void)didFinish
++{
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    if (self->_collectorGeneration == nil) {
++      return;
++    }
++    NSString *batchId = self->_collectorDispatchedBatchIds.anyObject;
++    if (batchId == nil) {
++      return;
++    }
++    [self->_collectorDispatchedBatchIds removeObject:batchId];
++    [self maybeCompleteCollectorDrain];
++    if ([self hasPendingCollectorBatches]) {
++      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
++        [self replayPersistedCollectorBatches];
++      });
++    }
++  }];
++}
++
++- (void)didFailToLoadTaskApp:(NSString *)message
++{
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    if (self->_collectorGeneration == nil || self->_task == nil) {
++      return;
++    }
++    NSDictionary *outbox = [self collectorOutboxForTask:self->_task
++                                              generation:self->_collectorGeneration];
++    if (outbox == nil) {
++      if (![self armDiscardOnlyRecoveryForTask:self->_task
++                                    generation:self->_collectorGeneration
++                                       message:message]) {
++        self->_collectorFailure = [self collectorError:@"Task loader failure taint could not be persisted"];
++      }
++    } else if (![self persistTerminalFailureMessage:message
++                                        usingOutbox:outbox
++                                               task:self->_task
++                                         generation:self->_collectorGeneration]) {
++      self->_collectorFailure = [self collectorError:@"Task loader failure could not be durably persisted"];
++    }
++    [self failStopCollectorSource];
++    [self maybeCompleteCollectorDrain];
++  }];
+ }
+
+ # pragma mark - internal
+@@ -98,8 +355,12 @@
+ - (void)reset
+ {
+   [EXUtilities performSynchronouslyOnMainThread:^{
++    if (self->_task.name != nil) {
++      [EXLocationCollectors() removeObjectForKey:self->_task.name];
++    }
+     [self->_locationManager stopUpdatingLocation];
+     [self->_locationManager stopMonitoringSignificantLocationChanges];
++    self->_locationManager.delegate = nil;
+     [self->_deferredLocations removeAllObjects];
+     self->_lastReportedLocation = nil;
+     self->_deferredDistance = 0.0;
+@@ -110,6 +371,86 @@
+
+ - (void)executeTaskWithDeferredLocations
+ {
++  if (_collectorGeneration != nil) {
++    if (!_collectorAcceptingEvents || _collectorFailure != nil || _collectorTerminalFailure != nil || _deferredLocations.count == 0) {
++      [_deferredLocations removeAllObjects];
++      return;
++    }
++    NSArray<CLLocation *> *sourceLocations = [_deferredLocations copy];
++    NSUInteger persistedCount = 0;
++    long long nextSequence = _collectorSequence;
++    BOOL sequenceExhausted = NO;
++    NSMutableArray<NSDictionary *> *batches = [NSMutableArray new];
++    while (persistedCount < sourceLocations.count) {
++      NSUInteger count = MIN(
++        EXLocationCollectorMaxSamplesPerBatch,
++        sourceLocations.count - persistedCount
++      );
++      NSArray<CLLocation *> *sourceBatch = [sourceLocations subarrayWithRange:NSMakeRange(
++        persistedCount,
++        count
++      )];
++      NSMutableArray<NSDictionary *> *locations = [NSMutableArray new];
++      for (CLLocation *location in sourceBatch) {
++        if (nextSequence >= EXLocationCollectorMaxSafeInteger) {
++          sequenceExhausted = YES;
++          break;
++        }
++        nextSequence += 1;
++        NSMutableDictionary *exported = [[EXLocation exportLocation:location] mutableCopy];
++        exported[@"nativeSequence"] = @(nextSequence);
++        [locations addObject:exported];
++      }
++      if (locations.count != sourceBatch.count) {
++        break;
++      }
++      NSString *batchId = [[NSUUID UUID] UUIDString].lowercaseString;
++      NSDictionary *batch = @{
++        @"collectorGeneration": _collectorGeneration,
++        @"collectorBatchId": batchId,
++        @"collectorThroughSequence": @(nextSequence),
++        @"locations": locations,
++      };
++      [batches addObject:@{ @"batchId": batchId, @"batch": batch }];
++      persistedCount += count;
++    }
++
++    if (sequenceExhausted) {
++      NSDictionary *outbox = [self collectorOutboxForTask:_task generation:_collectorGeneration];
++      if (outbox == nil ||
++          ![self persistTerminalFailureMessage:@"Location collector sequence is exhausted"
++                                   usingOutbox:outbox
++                                          task:_task
++                                    generation:_collectorGeneration]) {
++        _collectorFailure = [self collectorError:@"Location collector sequence failure could not be durably persisted"];
++      }
++      [self failStopCollectorSource];
++      [self replayPersistedCollectorBatches];
++      [self maybeCompleteCollectorDrain];
++      return;
++    }
++
++    if (persistedCount > 0 && ![self persistCollectorBatches:batches throughSequence:nextSequence]) {
++      if (_collectorTerminalFailure == nil && _collectorFailure == nil) {
++        _collectorFailure = [self collectorError:@"Location collector batches could not be persisted"];
++      }
++      [self failStopCollectorSource];
++      [self replayPersistedCollectorBatches];
++      [self maybeCompleteCollectorDrain];
++      return;
++    }
++
++    if (persistedCount > 0) {
++      _collectorSequence = nextSequence;
++      _lastReportedLocation = sourceLocations[persistedCount - 1];
++      [_deferredLocations removeObjectsInRange:NSMakeRange(0, persistedCount)];
++      if (_deferredLocations.count == 0) {
++        _deferredDistance = 0.0;
++      }
++      [self replayPersistedCollectorBatches];
++    }
++    return;
++  }
+   // Execute task with deferred locations.
+   NSDictionary *data = @{ @"locations": [EXLocationTaskConsumer _exportLocations:_deferredLocations] };
+   [_task executeWithData:data withError:nil];
+@@ -161,6 +502,1023 @@
+   return [newestLocation.timestamp timeIntervalSinceDate:oldestLocation.timestamp] >= interval / 1000.0 && _deferredDistance >= distance;
+ }
+
+++ (nullable NSNumber *)confirmedGenerationForTaskName:(NSString *)taskName
++{
++  __block NSNumber *generation = nil;
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    EXLocationTaskConsumer *consumer = EXLocationCollectors()[taskName];
++    if (consumer != nil &&
++        consumer.collectorFailure == nil &&
++        consumer.collectorSourceActivated &&
++        !consumer.collectorSourceDrained) {
++      generation = consumer.collectorGeneration;
++    }
++  }];
++  return generation;
++}
++
+++ (nullable NSNumber *)registeredGenerationForTaskName:(NSString *)taskName
++{
++  __block NSNumber *generation = nil;
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    generation = EXLocationCollectors()[taskName].collectorGeneration;
++  }];
++  return generation;
++}
++
+++ (nullable NSNumber *)generationHighWaterForTaskName:(NSString *)taskName
++{
++  @synchronized(self) {
++    NSDictionary *state = [self collectorStateForTaskName:taskName];
++    id rawHighWater = state[EXLocationCollectorStateHighWater];
++    NSNumber *highWater = rawHighWater == nil ? @0 : rawHighWater;
++    if (!EXLocationCollectorIsSafeInteger(highWater, YES)) {
++      return nil;
++    }
++    id active = state[EXLocationCollectorStateActive];
++    if (active != nil &&
++        (!EXLocationCollectorIsSafeInteger(active, NO) ||
++         [active longLongValue] > highWater.longLongValue)) {
++      return nil;
++    }
++    return highWater;
++  }
++}
++
+++ (nullable NSNumber *)persistedActiveGenerationForTaskName:(NSString *)taskName
++{
++  @synchronized(self) {
++    NSNumber *highWater = [self generationHighWaterForTaskName:taskName];
++    if (highWater == nil) {
++      return nil;
++    }
++    id active = [self collectorStateForTaskName:taskName][EXLocationCollectorStateActive];
++    return EXLocationCollectorIsSafeInteger(active, NO) &&
++      [active longLongValue] <= highWater.longLongValue ? active : nil;
++  }
++}
++
+++ (BOOL)isLegacyTaskName:(NSString *)taskName
++{
++  __block BOOL isLegacy = NO;
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    EXLocationTaskConsumer *consumer = EXLocationCollectors()[taskName];
++    isLegacy = consumer != nil && consumer.collectorGeneration == nil;
++  }];
++  return isLegacy;
++}
++
+++ (nullable NSNumber *)persistedDrainProofForTaskName:(NSString *)taskName
++                                           generation:(NSNumber *)generation
++{
++  @synchronized(self) {
++    NSDictionary *state = [self collectorStateForTaskName:taskName];
++    NSNumber *drainGeneration = state[EXLocationCollectorStateDrainGeneration];
++    if (![drainGeneration isEqualToNumber:generation]) {
++      return nil;
++    }
++    NSNumber *throughSequence = state[EXLocationCollectorStateDrainThrough];
++    return throughSequence.longLongValue >= 0 ? throughSequence : nil;
++  }
++}
++
+++ (nullable NSNumber *)persistedDrainProofTaintedForTaskName:(NSString *)taskName
++                                                   generation:(NSNumber *)generation
++{
++  @synchronized(self) {
++    NSDictionary *state = [self collectorStateForTaskName:taskName];
++    if (![state[EXLocationCollectorStateDrainGeneration] isEqualToNumber:generation]) {
++      return nil;
++    }
++    id tainted = state[EXLocationCollectorStateDrainTainted];
++    if (tainted == nil) {
++      // A pre-v3 proof has no integrity outcome. It is never safe to infer
++      // exactness, so migrate it as discard-only.
++      return @YES;
++    }
++    if (![tainted isKindOfClass:[NSNumber class]] ||
++        CFGetTypeID((__bridge CFTypeRef)tainted) != CFBooleanGetTypeID()) {
++      return nil;
++    }
++    return tainted;
++  }
++}
++
+++ (nullable NSNumber *)reserveGenerationAtLeast:(NSNumber *)minimumGeneration
++                                        taskName:(NSString *)taskName
++{
++  @synchronized(self) {
++    NSMutableDictionary *state = [[self collectorStateForTaskName:taskName] mutableCopy];
++    NSNumber *active = state[EXLocationCollectorStateActive];
++    id rawHighWater = state[EXLocationCollectorStateHighWater];
++    NSNumber *highWater = rawHighWater == nil ? @0 : rawHighWater;
++    if (!EXLocationCollectorIsSafeInteger(minimumGeneration, NO) ||
++        !EXLocationCollectorIsSafeInteger(highWater, YES) ||
++        highWater.longLongValue >= EXLocationCollectorMaxSafeInteger) {
++      return nil;
++    }
++    if (active != nil) {
++      return nil;
++    }
++    long long reserved = MAX(minimumGeneration.longLongValue, highWater.longLongValue + 1);
++    NSNumber *generation = @(reserved);
++    [state removeObjectForKey:EXLocationCollectorStateAppId];
++    state[EXLocationCollectorStateActive] = generation;
++    state[EXLocationCollectorStateHighWater] = generation;
++    state[EXLocationCollectorStatePhase] = EXLocationCollectorPhaseClaimed;
++    if (![self persistCollectorState:state taskName:taskName]) {
++      return nil;
++    }
++    return generation;
++  }
++}
++
+++ (nullable NSError *)requireReservedGeneration:(NSNumber *)generation taskName:(NSString *)taskName
++{
++  @synchronized(self) {
++    NSDictionary *state = [self collectorStateForTaskName:taskName];
++    NSNumber *active = state[EXLocationCollectorStateActive];
++    NSNumber *highWater = state[EXLocationCollectorStateHighWater];
++    if (![active isEqualToNumber:generation] ||
++        !EXLocationCollectorIsSafeInteger(highWater, YES) ||
++        highWater.longLongValue < generation.longLongValue ||
++        ![state[EXLocationCollectorStatePhase] isEqualToString:EXLocationCollectorPhaseClaimed] ||
++        [self persistedDrainProofForTaskName:taskName generation:generation] != nil) {
++      return [self staticCollectorError:@"Location collector generation was not reserved for start"];
++    }
++    return nil;
++  }
++}
++
+++ (nullable NSError *)verifyGenerationClaim:(NSNumber *)generation taskName:(NSString *)taskName
++{
++  @synchronized(self) {
++    NSDictionary *state = [self collectorStateForTaskName:taskName];
++    NSNumber *active = state[EXLocationCollectorStateActive];
++    id rawHighWater = state[EXLocationCollectorStateHighWater];
++    NSNumber *highWater = rawHighWater == nil ? @0 : rawHighWater;
++    if (!EXLocationCollectorIsSafeInteger(highWater, YES)) {
++      return [self staticCollectorError:@"Location collector generation high-water is corrupt"];
++    }
++    if (![active isEqualToNumber:generation] ||
++        highWater.longLongValue < generation.longLongValue ||
++        [self persistedDrainProofForTaskName:taskName generation:generation] != nil) {
++      return [self staticCollectorError:@"Location collector generation claim is unconfirmed"];
++    }
++    return nil;
++  }
++}
++
+++ (nullable NSError *)ensureGenerationHighWater:(NSNumber *)generation taskName:(NSString *)taskName
++{
++  @synchronized(self) {
++    NSMutableDictionary *state = [[self collectorStateForTaskName:taskName] mutableCopy];
++    id rawHighWater = state[EXLocationCollectorStateHighWater];
++    if (rawHighWater != nil && !EXLocationCollectorIsSafeInteger(rawHighWater, YES)) {
++      return [self staticCollectorError:@"Location collector generation high-water is corrupt"];
++    }
++    NSNumber *highWater = rawHighWater ?: @0;
++    if (highWater.longLongValue >= generation.longLongValue) {
++      return nil;
++    }
++    state[EXLocationCollectorStateHighWater] = generation;
++    return [self persistCollectorState:state taskName:taskName]
++      ? nil
++      : [self staticCollectorError:@"Location collector generation high-water could not be persisted"];
++  }
++}
++
+++ (nullable NSError *)persistCollectorAppId:(NSString *)appId
++                                  generation:(NSNumber *)generation
++                                    taskName:(NSString *)taskName
++{
++  @synchronized(self) {
++    if (appId.length == 0) {
++      return [self staticCollectorError:@"Location collector app identity is unavailable"];
++    }
++    NSMutableDictionary *state = [[self collectorStateForTaskName:taskName] mutableCopy];
++    id active = state[EXLocationCollectorStateActive];
++    if (active != nil && ![active isEqual:generation]) {
++      return [self staticCollectorError:@"Location collector generation claim is unconfirmed"];
++    }
++    NSString *persistedAppId = state[EXLocationCollectorStateAppId];
++    if (persistedAppId != nil &&
++        (![persistedAppId isKindOfClass:[NSString class]] ||
++         ![persistedAppId isEqualToString:appId])) {
++      return [self staticCollectorError:@"Location collector app identity does not match"];
++    }
++    state[EXLocationCollectorStateAppId] = appId;
++    return [self persistCollectorState:state taskName:taskName]
++      ? nil
++      : [self staticCollectorError:@"Location collector app identity could not be persisted"];
++  }
++}
++
+++ (nullable NSError *)startTaskName:(NSString *)taskName generation:(NSNumber *)generation
++{
++  __block NSError *startError = nil;
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    EXLocationTaskConsumer *consumer = EXLocationCollectors()[taskName];
++    if (consumer == nil) {
++      startError = [self staticCollectorError:@"Registered location collector could not be confirmed"];
++      return;
++    }
++    startError = [consumer activateCollectorStartGeneration:generation];
++  }];
++  return startError;
++}
++
+++ (nullable NSNumber *)abortInactiveClaimForTaskName:(NSString *)taskName generation:(NSNumber *)generation
++{
++  @synchronized(self) {
++    NSNumber *proof = [self persistedDrainProofForTaskName:taskName generation:generation];
++    if (proof != nil) {
++      return proof;
++    }
++    NSMutableDictionary *state = [[self collectorStateForTaskName:taskName] mutableCopy];
++    if (![state[EXLocationCollectorStateActive] isEqual:generation] ||
++        ![state[EXLocationCollectorStatePhase] isEqual:EXLocationCollectorPhaseClaimed] ||
++        state[EXLocationCollectorStateRecoveryTainted] != nil) {
++      return nil;
++    }
++    NSString *appId = state[EXLocationCollectorStateAppId];
++    NSString *outboxKey = nil;
++    if (appId != nil) {
++      if (![appId isKindOfClass:[NSString class]] || appId.length == 0) {
++        return nil;
++      }
++      outboxKey = [self outboxKeyForAppId:appId taskName:taskName generation:generation];
++      id storedOutbox = [[NSUserDefaults standardUserDefaults] objectForKey:outboxKey];
++      if (storedOutbox != nil) {
++        if (![storedOutbox isKindOfClass:[NSDictionary class]]) {
++          return nil;
++        }
++        NSDictionary *outbox = storedOutbox;
++        NSNumber *sequence = outbox[EXLocationCollectorOutboxSequence];
++        NSDictionary *pending = outbox[EXLocationCollectorOutboxPending];
++        NSNumber *acknowledgedThrough = outbox[EXLocationCollectorOutboxAcknowledgedThrough];
++        id terminalFailure = outbox[EXLocationCollectorOutboxTerminalFailure];
++        if (!EXLocationCollectorIsSafeInteger(sequence, YES) ||
++            sequence.longLongValue != 0 ||
++            ![pending isKindOfClass:[NSDictionary class]] || pending.count != 0 ||
++            !EXLocationCollectorIsSafeInteger(acknowledgedThrough, YES) ||
++            acknowledgedThrough.longLongValue != 0 ||
++            terminalFailure != nil) {
++          return nil;
++        }
++      }
++    }
++    [state removeObjectForKey:EXLocationCollectorStateActive];
++    [state removeObjectForKey:EXLocationCollectorStatePhase];
++    [state removeObjectForKey:EXLocationCollectorStateAppId];
++    state[EXLocationCollectorStateDrainGeneration] = generation;
++    state[EXLocationCollectorStateDrainThrough] = @0;
++    state[EXLocationCollectorStateDrainTainted] = @NO;
++    if (![NSPropertyListSerialization propertyList:state isValidForFormat:NSPropertyListBinaryFormat_v1_0]) {
++      return nil;
++    }
++    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
++    [defaults setObject:state forKey:[self stateKeyForTaskName:taskName]];
++    if (outboxKey != nil) {
++      [defaults removeObjectForKey:outboxKey];
++    }
++    return [defaults synchronize] ? @0 : nil;
++  }
++}
++
+++ (void)acknowledgeTaskName:(NSString *)taskName
++                 generation:(NSNumber *)generation
++                    batchId:(NSString *)batchId
++            throughSequence:(NSNumber *)throughSequence
++                 completion:(void (^)(NSError * _Nullable))completion
++{
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    EXLocationTaskConsumer *consumer = EXLocationCollectors()[taskName];
++    if (consumer == nil) {
++      NSNumber *proof = [self persistedDrainProofForTaskName:taskName generation:generation];
++      if (proof != nil && throughSequence.longLongValue <= proof.longLongValue) {
++        completion(nil);
++      } else {
++        completion([self staticCollectorError:@"Location collector state is unconfirmed"]);
++      }
++      return;
++    }
++    [consumer acknowledgeGeneration:generation
++                            batchId:batchId
++                    throughSequence:throughSequence
++                   taintGeneration:NO
++                         completion:completion];
++  }];
++}
++
+++ (void)taintAndAcknowledgeTaskName:(NSString *)taskName
++                         generation:(NSNumber *)generation
++                            batchId:(NSString *)batchId
++                    throughSequence:(NSNumber *)throughSequence
++                         completion:(void (^)(NSError * _Nullable))completion
++{
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    EXLocationTaskConsumer *consumer = EXLocationCollectors()[taskName];
++    if (consumer == nil) {
++      NSNumber *proof = [self persistedDrainProofForTaskName:taskName generation:generation];
++      NSNumber *tainted = [self persistedDrainProofTaintedForTaskName:taskName generation:generation];
++      if (proof != nil && tainted.boolValue && throughSequence.longLongValue <= proof.longLongValue) {
++        completion(nil);
++      } else {
++        completion([self staticCollectorError:@"Location collector discard-only state is unconfirmed"]);
++      }
++      return;
++    }
++    [consumer acknowledgeGeneration:generation
++                            batchId:batchId
++                    throughSequence:throughSequence
++                   taintGeneration:YES
++                         completion:completion];
++  }];
++}
++
+++ (void)stopLegacyTaskName:(NSString *)taskName completion:(void (^)(NSError * _Nullable))completion
++{
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    EXLocationTaskConsumer *consumer = EXLocationCollectors()[taskName];
++    if (consumer == nil) {
++      completion([self staticCollectorError:@"Legacy location collector state is unconfirmed"]);
++      return;
++    }
++    if (consumer.collectorGeneration != nil) {
++      completion([self staticCollectorError:@"Generation collectors require an exact drain proof"]);
++      return;
++    }
++    [consumer.locationManager stopUpdatingLocation];
++    [consumer.locationManager stopMonitoringSignificantLocationChanges];
++    consumer.locationManager.delegate = nil;
++    consumer.collectorSourceDrained = YES;
++    consumer.collectorAcceptingEvents = NO;
++    completion(nil);
++  }];
++}
++
+++ (void)stopAndDrainTaskName:(NSString *)taskName
++                  generation:(NSNumber *)generation
++                  completion:(void (^)(NSNumber * _Nullable, NSError * _Nullable))completion
++{
++  [EXUtilities performSynchronouslyOnMainThread:^{
++    EXLocationTaskConsumer *consumer = EXLocationCollectors()[taskName];
++    if (consumer == nil) {
++      NSNumber *proof = [self persistedDrainProofForTaskName:taskName generation:generation];
++      if (proof != nil) {
++        completion(proof, nil);
++      } else {
++        completion(nil, [self staticCollectorError:@"Exact location collector is not registered and has no drain proof"]);
++      }
++      return;
++    }
++    [consumer beginStopAndDrainGeneration:generation completion:completion];
++  }];
++}
++
++- (void)beginStopAndDrainGeneration:(NSNumber *)generation
++                         completion:(void (^)(NSNumber * _Nullable, NSError * _Nullable))completion
++{
++  if (![_collectorGeneration isEqualToNumber:generation]) {
++    completion(nil, [self collectorError:@"Location collector generation does not match"]);
++    return;
++  }
++  [_collectorDrainCompletions addObject:[completion copy]];
++  if (_collectorSourceDrained) {
++    [self maybeCompleteCollectorDrain];
++    return;
++  }
++
++  // The Core Location delegate runs on this same main queue. Flushing here,
++  // then clearing the delegate after stop, forms the native source barrier.
++  if (_deferredLocations.count > 0) {
++    [self executeTaskWithDeferredLocations];
++  }
++  [_locationManager stopUpdatingLocation];
++  [_locationManager stopMonitoringSignificantLocationChanges];
++  _locationManager.delegate = nil;
++  _collectorSourceDrained = YES;
++  _collectorAcceptingEvents = NO;
++  [self replayPersistedCollectorBatches];
++  [self maybeCompleteCollectorDrain];
++}
++
++- (void)failStopCollectorSource
++{
++  _collectorAcceptingEvents = NO;
++  _collectorStartAuthorized = NO;
++  [_locationManager stopUpdatingLocation];
++  [_locationManager stopMonitoringSignificantLocationChanges];
++  _locationManager.delegate = nil;
++  _collectorSourceDrained = YES;
++  [_deferredLocations removeAllObjects];
++}
++
++- (void)maybeCompleteCollectorDrain
++{
++  if (_collectorDrainCompletions.count == 0) {
++    return;
++  }
++  if (_collectorFailure != nil) {
++    NSArray *completions = [_collectorDrainCompletions copy];
++    [_collectorDrainCompletions removeAllObjects];
++    for (void (^completion)(NSNumber *, NSError *) in completions) {
++      completion(nil, _collectorFailure);
++    }
++    return;
++  }
++  if (!_collectorSourceDrained || _collectorDispatchedBatchIds.count != 0) {
++    return;
++  }
++  if (!_collectorDiscardCorruptOutbox && [self hasPendingCollectorBatches]) {
++    return;
++  }
++
++  NSString *taskName = _task.name;
++  NSString *appId = _task.appId;
++  if (taskName == nil || appId == nil || _collectorGeneration == nil) {
++    _collectorFailure = [self collectorError:@"Location task disappeared before drain proof"];
++    [self maybeCompleteCollectorDrain];
++    return;
++  }
++  @synchronized([EXLocationTaskConsumer class]) {
++    NSMutableDictionary *state = [[EXLocationTaskConsumer collectorStateForTaskName:taskName] mutableCopy];
++    if (![state[EXLocationCollectorStateActive] isEqualToNumber:_collectorGeneration]) {
++      _collectorFailure = [self collectorError:@"Location collector generation claim is unconfirmed"];
++      [self maybeCompleteCollectorDrain];
++      return;
++    }
++    [state removeObjectForKey:EXLocationCollectorStateActive];
++    [state removeObjectForKey:EXLocationCollectorStatePhase];
++    [state removeObjectForKey:EXLocationCollectorStateAppId];
++    [state removeObjectForKey:EXLocationCollectorStateRecoveryTainted];
++    state[EXLocationCollectorStateDrainGeneration] = _collectorGeneration;
++    state[EXLocationCollectorStateDrainThrough] = @(_collectorSequence);
++    state[EXLocationCollectorStateDrainTainted] = @(_collectorTerminalFailure != nil || _collectorDiscardCorruptOutbox);
++    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
++    [defaults setObject:state forKey:[EXLocationTaskConsumer stateKeyForTaskName:taskName]];
++    [defaults removeObjectForKey:[EXLocationTaskConsumer outboxKeyForAppId:appId
++                                                                    taskName:taskName
++                                                                  generation:_collectorGeneration]];
++    if (![defaults synchronize]) {
++      _collectorFailure = [self collectorError:@"Location drain proof could not be persisted"];
++      [self maybeCompleteCollectorDrain];
++      return;
++    }
++  }
++
++  NSArray *completions = [_collectorDrainCompletions copy];
++  [_collectorDrainCompletions removeAllObjects];
++  _collectorDiscardCorruptOutbox = NO;
++  NSNumber *throughSequence = @(_collectorSequence);
++  for (void (^completion)(NSNumber *, NSError *) in completions) {
++    completion(throughSequence, nil);
++  }
++}
++
++- (BOOL)persistCollectorPhase:(NSString *)phase
++{
++  if (_task.name == nil || _collectorGeneration == nil) {
++    return NO;
++  }
++  @synchronized([EXLocationTaskConsumer class]) {
++    NSMutableDictionary *state = [[EXLocationTaskConsumer collectorStateForTaskName:_task.name] mutableCopy];
++    if (![state[EXLocationCollectorStateActive] isEqualToNumber:_collectorGeneration]) {
++      return NO;
++    }
++    state[EXLocationCollectorStatePhase] = phase;
++    return [EXLocationTaskConsumer persistCollectorState:state taskName:_task.name];
++  }
++}
++
++- (nullable NSError *)activateCollectorStartGeneration:(NSNumber *)generation
++{
++  if (![_collectorGeneration isEqualToNumber:generation]) {
++    return [self collectorError:@"Location collector generation does not match"];
++  }
++  if (_collectorFailure != nil) {
++    return _collectorFailure;
++  }
++  if (_collectorTerminalFailure != nil) {
++    return _collectorTerminalFailure;
++  }
++  if (_collectorSourceDrained) {
++    return [self collectorError:@"Location collector generation has already been drained"];
++  }
++  if (!_collectorRecoveredInactive) {
++    return [self collectorError:@"Location collector start has already been activated"];
++  }
++  _collectorRecoveredInactive = NO;
++  _collectorStartAuthorized = YES;
++  _collectorAcceptingEvents = YES;
++  if (![self persistCollectorPhase:EXLocationCollectorPhaseStarting]) {
++    _collectorFailure = [self collectorError:@"Location collector start phase could not be persisted"];
++    return _collectorFailure;
++  }
++
++  _locationManager.delegate = self;
++  _locationManager.allowsBackgroundLocationUpdates = YES;
++  [self setOptions:_task.options];
++  _collectorSourceActivated = YES;
++  if (![self persistCollectorPhase:EXLocationCollectorPhaseStarted]) {
++    _collectorFailure = [self collectorError:@"Location collector active phase could not be persisted"];
++    [_locationManager stopUpdatingLocation];
++    [_locationManager stopMonitoringSignificantLocationChanges];
++    _locationManager.delegate = nil;
++    return _collectorFailure;
++  }
++  [self replayPersistedCollectorBatches];
++  return nil;
++}
++
++- (BOOL)persistCollectorBatches:(NSArray<NSDictionary *> *)batches
++                 throughSequence:(long long)throughSequence
++{
++  id<EXTaskInterface> task = _task;
++  if (task == nil || _collectorGeneration == nil) {
++    return NO;
++  }
++  NSDictionary *existing = [self collectorOutboxForTask:task generation:_collectorGeneration];
++  if (existing == nil) {
++    return NO;
++  }
++  NSString *existingTerminalFailure = existing[EXLocationCollectorOutboxTerminalFailure];
++  if (existingTerminalFailure != nil) {
++    _collectorTerminalFailure = [self collectorError:existingTerminalFailure];
++    return NO;
++  }
++  NSMutableDictionary *outbox = [existing mutableCopy];
++  NSMutableDictionary *pending = [outbox[EXLocationCollectorOutboxPending] mutableCopy] ?: [NSMutableDictionary new];
++  NSString *terminalMessage = nil;
++  for (NSDictionary *entry in batches) {
++    NSString *batchId = entry[@"batchId"];
++    NSDictionary *batch = entry[@"batch"];
++    if (![batchId isKindOfClass:[NSString class]] || ![batch isKindOfClass:[NSDictionary class]]) {
++      terminalMessage = @"Location collector produced an invalid durable batch";
++      break;
++    }
++    if (pending[batchId] != nil && ![pending[batchId] isEqual:batch]) {
++      terminalMessage = @"Location collector batch ID was reused";
++      break;
++    }
++    pending[batchId] = batch;
++  }
++  if (terminalMessage == nil && pending.count > EXLocationCollectorMaxPendingBatches) {
++    terminalMessage = @"Location collector pending outbox exceeds its durable batch budget";
++  }
++  NSUInteger pendingEncodedBytes = 0;
++  if (terminalMessage == nil) {
++    for (id batchValue in pending.allValues) {
++      if (![batchValue isKindOfClass:[NSDictionary class]]) {
++        terminalMessage = @"Location collector pending outbox is corrupt";
++        break;
++      }
++      NSDictionary *batch = batchValue;
++      NSError *encodingError = nil;
++      NSData *encoded = [NSPropertyListSerialization dataWithPropertyList:batch
++                                                                   format:NSPropertyListBinaryFormat_v1_0
++                                                                  options:0
++                                                                    error:&encodingError];
++      if (encoded == nil || encodingError != nil || encoded.length > EXLocationCollectorMaxEncodedBatchBytes) {
++        terminalMessage = @"Location collector batch exceeds the durable bridge limit";
++        break;
++      }
++      if (encoded.length > EXLocationCollectorMaxPendingEncodedBytes - pendingEncodedBytes) {
++        terminalMessage = @"Location collector pending outbox exceeds its durable byte budget";
++        break;
++      }
++      pendingEncodedBytes += encoded.length;
++    }
++  }
++  if (terminalMessage != nil) {
++    if (![self persistTerminalFailureMessage:terminalMessage
++                                 usingOutbox:existing
++                                        task:task
++                                  generation:_collectorGeneration]) {
++      _collectorFailure = [self collectorError:@"Location collector terminal failure could not be persisted"];
++    }
++    return NO;
++  }
++  outbox[EXLocationCollectorOutboxSequence] = @(throughSequence);
++  outbox[EXLocationCollectorOutboxPending] = pending;
++  if ([self persistCollectorOutbox:outbox task:task generation:_collectorGeneration]) {
++    return YES;
++  }
++  if (![self persistTerminalFailureMessage:@"Location collector batches could not be durably persisted"
++                               usingOutbox:existing
++                                      task:task
++                                generation:_collectorGeneration]) {
++    _collectorFailure = [self collectorError:@"Location collector terminal failure could not be persisted"];
++  }
++  return NO;
++}
++
++- (void)dispatchPersistedCollectorBatch:(NSDictionary *)batch batchId:(NSString *)batchId
++{
++  if (_collectorFailure != nil || _collectorDispatchedBatchIds.count != 0) {
++    return;
++  }
++  id<EXTaskInterface> task = _task;
++  if (task == nil) {
++    _collectorFailure = [self collectorError:@"Location task is unavailable"];
++    [self maybeCompleteCollectorDrain];
++    return;
++  }
++  [_collectorDispatchedBatchIds addObject:batchId];
++  [task executeWithData:batch withError:nil];
++}
++
++- (void)replayPersistedCollectorBatches
++{
++  if (_collectorGeneration == nil || _collectorFailure != nil || _collectorDispatchedBatchIds.count != 0) {
++    return;
++  }
++  id<EXTaskInterface> task = _task;
++  if (task == nil) {
++    _collectorFailure = [self collectorError:@"Location task is unavailable"];
++    [self maybeCompleteCollectorDrain];
++    return;
++  }
++  NSDictionary *outbox = [self collectorOutboxForTask:task generation:_collectorGeneration];
++  NSDictionary *pending = outbox[EXLocationCollectorOutboxPending];
++  if (outbox == nil || ![pending isKindOfClass:[NSDictionary class]]) {
++    _collectorFailure = [self collectorError:@"Location collector outbox is corrupt"];
++    [self maybeCompleteCollectorDrain];
++    return;
++  }
++  NSString *batchId = [[pending.allKeys sortedArrayUsingSelector:@selector(compare:)] firstObject];
++  if (batchId == nil) {
++    [self maybeCompleteCollectorDrain];
++    return;
++  }
++  NSDictionary *batch = pending[batchId];
++  if (![batch isKindOfClass:[NSDictionary class]] || ![batch[@"collectorBatchId"] isEqual:batchId]) {
++    _collectorFailure = [self collectorError:@"Persisted location collector batch is corrupt"];
++    [self maybeCompleteCollectorDrain];
++    return;
++  }
++  [self dispatchPersistedCollectorBatch:batch batchId:batchId];
++}
++
++- (BOOL)hasPendingCollectorBatches
++{
++  if (_task == nil || _collectorGeneration == nil) {
++    return YES;
++  }
++  NSDictionary *outbox = [self collectorOutboxForTask:_task generation:_collectorGeneration];
++  NSDictionary *pending = outbox[EXLocationCollectorOutboxPending];
++  if (outbox == nil || ![pending isKindOfClass:[NSDictionary class]]) {
++    _collectorFailure = [self collectorError:@"Location collector outbox is corrupt"];
++    return YES;
++  }
++  return pending.count > 0;
++}
++
++- (void)acknowledgeGeneration:(NSNumber *)generation
++                      batchId:(NSString *)batchId
++              throughSequence:(NSNumber *)throughSequence
++              taintGeneration:(BOOL)taintGeneration
++                   completion:(void (^)(NSError * _Nullable))completion
++{
++  if (![_collectorGeneration isEqualToNumber:generation]) {
++    completion([self collectorError:@"Location collector generation does not match"]);
++    return;
++  }
++  id<EXTaskInterface> task = _task;
++  if (task == nil) {
++    completion([self collectorError:@"Location task is unavailable"]);
++    return;
++  }
++  NSNumber *proof = [EXLocationTaskConsumer persistedDrainProofForTaskName:task.name
++                                                                  generation:generation];
++  if (proof != nil) {
++    NSNumber *tainted = [EXLocationTaskConsumer persistedDrainProofTaintedForTaskName:task.name
++                                                                           generation:generation];
++    completion(throughSequence.longLongValue <= proof.longLongValue &&
++      (!taintGeneration || tainted.boolValue)
++      ? nil
++      : [self collectorError:@"Location collector acknowledgement exceeds its drain proof"]);
++    return;
++  }
++  NSDictionary *existing = [self collectorOutboxForTask:task generation:generation];
++  if (existing == nil) {
++    completion([self collectorError:@"Location collector outbox is corrupt"]);
++    return;
++  }
++  NSMutableDictionary *outbox = [existing mutableCopy];
++  NSMutableDictionary *pending = [outbox[EXLocationCollectorOutboxPending] mutableCopy] ?: [NSMutableDictionary new];
++  NSNumber *acknowledgedThrough = outbox[EXLocationCollectorOutboxAcknowledgedThrough] ?: @0;
++  if (!EXLocationCollectorIsSafeInteger(acknowledgedThrough, YES) ||
++      acknowledgedThrough.longLongValue > _collectorSequence) {
++    completion([self collectorError:@"Location collector acknowledgement high-water is corrupt"]);
++    return;
++  }
++  NSDictionary *batch = pending[batchId];
++  if (batch == nil) {
++    completion(throughSequence.longLongValue <= acknowledgedThrough.longLongValue &&
++      (!taintGeneration || outbox[EXLocationCollectorOutboxTerminalFailure] != nil)
++      ? nil
++      : [self collectorError:@"Location collector batch is not pending"]);
++    return;
++  }
++  if (![batch isKindOfClass:[NSDictionary class]] ||
++      ![batch[@"collectorGeneration"] isEqual:generation] ||
++      ![batch[@"collectorBatchId"] isEqual:batchId] ||
++      ![batch[@"collectorThroughSequence"] isEqual:throughSequence]) {
++    completion([self collectorError:@"Location collector acknowledgement does not match its batch"]);
++    return;
++  }
++  [pending removeObjectForKey:batchId];
++  outbox[EXLocationCollectorOutboxPending] = pending;
++  outbox[EXLocationCollectorOutboxAcknowledgedThrough] = @(
++    MAX(acknowledgedThrough.longLongValue, throughSequence.longLongValue)
++  );
++  if (taintGeneration) {
++    outbox[EXLocationCollectorOutboxTerminalFailure] = EXLocationCollectorJavaScriptDiscardMessage;
++  }
++  if (![self persistCollectorOutbox:outbox task:task generation:generation]) {
++    completion([self collectorError:@"Location collector acknowledgement could not be persisted"]);
++    return;
++  }
++  if (taintGeneration) {
++    _collectorTerminalFailure = [self collectorError:EXLocationCollectorJavaScriptDiscardMessage];
++    [self failStopCollectorSource];
++  }
++  [self maybeCompleteCollectorDrain];
++  completion(nil);
++}
++
++- (nullable NSDictionary *)collectorOutboxForTask:(id<EXTaskInterface>)task
++                                        generation:(NSNumber *)generation
++{
++  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
++  id stored = [defaults objectForKey:[EXLocationTaskConsumer outboxKeyForAppId:task.appId
++                                                                      taskName:task.name
++                                                                    generation:generation]];
++  if (stored == nil) {
++    return @{
++      EXLocationCollectorOutboxSequence: @0,
++      EXLocationCollectorOutboxPending: @{},
++      EXLocationCollectorOutboxAcknowledgedThrough: @0,
++    };
++  }
++  if (![stored isKindOfClass:[NSDictionary class]]) {
++    return nil;
++  }
++  NSDictionary *outbox = stored;
++  NSNumber *sequence = outbox[EXLocationCollectorOutboxSequence];
++  NSDictionary *pending = outbox[EXLocationCollectorOutboxPending];
++  NSNumber *acknowledgedThrough = outbox[EXLocationCollectorOutboxAcknowledgedThrough];
++  id terminalFailure = outbox[EXLocationCollectorOutboxTerminalFailure];
++  if (![sequence isKindOfClass:[NSNumber class]] ||
++      sequence.longLongValue < 0 ||
++      sequence.longLongValue > EXLocationCollectorMaxSafeInteger ||
++      ![pending isKindOfClass:[NSDictionary class]] ||
++      !EXLocationCollectorIsSafeInteger(acknowledgedThrough, YES) ||
++      acknowledgedThrough.longLongValue > sequence.longLongValue ||
++      (terminalFailure != nil &&
++       (![terminalFailure isKindOfClass:[NSString class]] || [terminalFailure length] == 0))) {
++    return nil;
++  }
++  if (pending.count > EXLocationCollectorMaxPendingBatches) {
++    return nil;
++  }
++  NSUInteger pendingEncodedBytes = 0;
++  long long maximumAccountedSequence = acknowledgedThrough.longLongValue;
++  NSMutableArray<NSArray<NSNumber *> *> *pendingSequenceRanges = [NSMutableArray new];
++  for (id batchId in pending) {
++    id batchValue = pending[batchId];
++    NSUUID *canonicalBatchId = [batchId isKindOfClass:[NSString class]]
++      ? [[NSUUID alloc] initWithUUIDString:batchId]
++      : nil;
++    if (![batchId isKindOfClass:[NSString class]] ||
++        canonicalBatchId == nil ||
++        ![canonicalBatchId.UUIDString.lowercaseString isEqualToString:batchId] ||
++        ![batchValue isKindOfClass:[NSDictionary class]]) {
++      return nil;
++    }
++    NSDictionary *batch = batchValue;
++    id batchGeneration = batch[@"collectorGeneration"];
++    id throughSequence = batch[@"collectorThroughSequence"];
++    NSArray *locations = batch[@"locations"];
++    if (![batch[@"collectorBatchId"] isEqual:batchId] ||
++        ![batchGeneration isEqual:generation] ||
++        !EXLocationCollectorIsSafeInteger(throughSequence, NO) ||
++        [throughSequence longLongValue] > sequence.longLongValue ||
++        ![locations isKindOfClass:[NSArray class]] ||
++        locations.count == 0 ||
++        locations.count > EXLocationCollectorMaxSamplesPerBatch) {
++      return nil;
++    }
++    long long firstSequence = [throughSequence longLongValue] - (long long)locations.count + 1;
++    if (firstSequence < 1) {
++      return nil;
++    }
++    [pendingSequenceRanges addObject:@[@(firstSequence), throughSequence]];
++    maximumAccountedSequence = MAX(maximumAccountedSequence, [throughSequence longLongValue]);
++    for (NSUInteger index = 0; index < locations.count; index++) {
++      id locationValue = locations[index];
++      if (![locationValue isKindOfClass:[NSDictionary class]]) {
++        return nil;
++      }
++      NSDictionary *location = locationValue;
++      id nativeSequence = location[@"nativeSequence"];
++      id coordsValue = location[@"coords"];
++      id timestamp = location[@"timestamp"];
++      if (!EXLocationCollectorIsSafeInteger(nativeSequence, NO) ||
++          [nativeSequence longLongValue] != firstSequence + (long long)index ||
++          ![coordsValue isKindOfClass:[NSDictionary class]] ||
++          !EXLocationCollectorIsFiniteNumber(timestamp) ||
++          [timestamp doubleValue] < 0) {
++        return nil;
++      }
++      NSDictionary *coords = coordsValue;
++      id latitude = coords[@"latitude"];
++      id longitude = coords[@"longitude"];
++      if (!EXLocationCollectorIsFiniteNumber(latitude) ||
++          [latitude doubleValue] < -90.0 || [latitude doubleValue] > 90.0 ||
++          !EXLocationCollectorIsFiniteNumber(longitude) ||
++          [longitude doubleValue] < -180.0 || [longitude doubleValue] > 180.0) {
++        return nil;
++      }
++    }
++    NSError *encodingError = nil;
++    NSData *encoded = [NSPropertyListSerialization dataWithPropertyList:batchValue
++                                                                 format:NSPropertyListBinaryFormat_v1_0
++                                                                options:0
++                                                                  error:&encodingError];
++    if (encoded == nil || encodingError != nil ||
++        encoded.length > EXLocationCollectorMaxEncodedBatchBytes ||
++        encoded.length > EXLocationCollectorMaxPendingEncodedBytes - pendingEncodedBytes) {
++      return nil;
++    }
++    pendingEncodedBytes += encoded.length;
++  }
++  NSArray<NSArray<NSNumber *> *> *orderedRanges = [pendingSequenceRanges sortedArrayUsingComparator:^NSComparisonResult(
++    NSArray<NSNumber *> *left,
++    NSArray<NSNumber *> *right
++  ) {
++    return [left[0] compare:right[0]];
++  }];
++  for (NSUInteger index = 1; index < orderedRanges.count; index++) {
++    if ([orderedRanges[index][0] longLongValue] <= [orderedRanges[index - 1][1] longLongValue]) {
++      return nil;
++    }
++  }
++  if (maximumAccountedSequence != sequence.longLongValue) {
++    return nil;
++  }
++  return outbox;
++}
++
++- (BOOL)persistCollectorOutbox:(NSDictionary *)outbox
++                           task:(id<EXTaskInterface>)task
++                     generation:(NSNumber *)generation
++{
++  if (![NSPropertyListSerialization propertyList:outbox isValidForFormat:NSPropertyListBinaryFormat_v1_0]) {
++    return NO;
++  }
++  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
++  [defaults setObject:outbox forKey:[EXLocationTaskConsumer outboxKeyForAppId:task.appId
++                                                                      taskName:task.name
++                                                                    generation:generation]];
++  return [defaults synchronize];
++}
++
++- (BOOL)persistTerminalFailureMessage:(NSString *)message
++                           usingOutbox:(NSDictionary *)outbox
++                                  task:(id<EXTaskInterface>)task
++                            generation:(NSNumber *)generation
++{
++  NSMutableDictionary *terminalOutbox = [outbox mutableCopy];
++  terminalOutbox[EXLocationCollectorOutboxTerminalFailure] = message;
++  if (![self persistCollectorOutbox:terminalOutbox task:task generation:generation]) {
++    return NO;
++  }
++  _collectorTerminalFailure = [self collectorError:message];
++  return YES;
++}
++
++- (BOOL)armDiscardOnlyRecoveryForTask:(id<EXTaskInterface>)task
++                           generation:(NSNumber *)generation
++                              message:(NSString *)message
++{
++  NSMutableDictionary *state = [[EXLocationTaskConsumer collectorStateForTaskName:task.name] mutableCopy];
++  if (![state[EXLocationCollectorStateActive] isEqualToNumber:generation]) {
++    return NO;
++  }
++  // Commit a state-level taint before deleting or replacing any malformed
++  // outbox bytes. The exact-generation outbox is removed only with the final
++  // discard-only proof after Core Location is stopped.
++  state[EXLocationCollectorStateRecoveryTainted] = @YES;
++  if (![EXLocationTaskConsumer persistCollectorState:state taskName:task.name]) {
++    return NO;
++  }
++
++  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
++  id rawOutbox = [defaults objectForKey:[EXLocationTaskConsumer outboxKeyForAppId:task.appId
++                                                                          taskName:task.name
++                                                                        generation:generation]];
++  id rawSequence = [rawOutbox isKindOfClass:[NSDictionary class]]
++    ? ((NSDictionary *)rawOutbox)[EXLocationCollectorOutboxSequence]
++    : nil;
++  _collectorSequence = EXLocationCollectorIsSafeInteger(rawSequence, YES)
++    ? [rawSequence longLongValue]
++    : 0;
++  _collectorTerminalFailure = [self collectorError:message];
++  _collectorDiscardCorruptOutbox = YES;
++  _collectorAcceptingEvents = NO;
++  return YES;
++}
++
++- (BOOL)cleanupOutboxAfterProof
++{
++  if (_task == nil || _collectorGeneration == nil) {
++    return NO;
++  }
++  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
++  [defaults removeObjectForKey:[EXLocationTaskConsumer outboxKeyForAppId:_task.appId
++                                                                 taskName:_task.name
++                                                               generation:_collectorGeneration]];
++  return [defaults synchronize];
++}
++
+++ (NSDictionary *)collectorStateForTaskName:(NSString *)taskName
++{
++  id stored = [[NSUserDefaults standardUserDefaults] objectForKey:[self stateKeyForTaskName:taskName]];
++  return [stored isKindOfClass:[NSDictionary class]] ? stored : @{};
++}
++
+++ (BOOL)persistCollectorState:(NSDictionary *)state taskName:(NSString *)taskName
++{
++  if (![NSPropertyListSerialization propertyList:state isValidForFormat:NSPropertyListBinaryFormat_v1_0]) {
++    return NO;
++  }
++  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
++  [defaults setObject:state forKey:[self stateKeyForTaskName:taskName]];
++  return [defaults synchronize];
++}
++
+++ (NSString *)stateKeyForTaskName:(NSString *)taskName
++{
++  return [NSString stringWithFormat:@"%@.state:%@", EXLocationCollectorPreferences, taskName];
++}
++
+++ (NSString *)outboxKeyForAppId:(NSString *)appId
++                        taskName:(NSString *)taskName
++                      generation:(NSNumber *)generation
++{
++  return [NSString stringWithFormat:@"%@.outbox:%@:%@:%@", EXLocationCollectorPreferences, appId, taskName, generation];
++}
++
++- (nullable NSNumber *)validGeneration:(nullable id)value
++{
++  if (value == nil || [value isEqual:[NSNull null]]) {
++    return nil;
++  }
++  if (![value isKindOfClass:[NSNumber class]]) {
++    @throw [NSException exceptionWithName:@"E_LOCATION_COLLECTOR_GENERATION"
++                                   reason:@"Location collector generation must be numeric"
++                                 userInfo:nil];
++  }
++  NSNumber *number = (NSNumber *)value;
++  double generation = number.doubleValue;
++  long long exact = number.longLongValue;
++  if (!isfinite(generation) || generation < 1 || generation > EXLocationCollectorMaxSafeInteger || generation != (double)exact) {
++    @throw [NSException exceptionWithName:@"E_LOCATION_COLLECTOR_GENERATION"
++                                   reason:@"Location collector generation must be a positive safe integer"
++                                 userInfo:nil];
++  }
++  return @(exact);
++}
++
+++ (NSString *)sequenceKeyForAppId:(NSString *)appId
++                         taskName:(NSString *)taskName
++                       generation:(NSNumber *)generation
++{
++  return [NSString stringWithFormat:@"%@.sequence:%@:%@:%@", EXLocationCollectorPreferences, appId, taskName, generation];
++}
++
+++ (NSString *)drainProofKeyForAppId:(NSString *)appId
++                           taskName:(NSString *)taskName
++                         generation:(NSNumber *)generation
++{
++  return [NSString stringWithFormat:@"%@.drain:%@:%@:%@", EXLocationCollectorPreferences, appId, taskName, generation];
++}
++
+++ (NSError *)staticCollectorError:(NSString *)message
++{
++  return [NSError errorWithDomain:@"ExpoLocationCollectorDrain"
++                             code:1
++                         userInfo:@{ NSLocalizedDescriptionKey: message }];
++}
++
++- (NSError *)collectorError:(NSString *)message
++{
++  return [EXLocationTaskConsumer staticCollectorError:message];
++}
++
+ - (double)numberToDouble:(NSNumber *)number defaultValue:(double)defaultValue
+ {
+   return [number isEqual:[NSNull null]] || number == nil ? defaultValue : [number doubleValue];

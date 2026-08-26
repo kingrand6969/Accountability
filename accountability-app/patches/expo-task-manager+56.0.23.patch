@@ -1,0 +1,408 @@
+diff --git a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/TaskService.java b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/TaskService.java
+index 44cd804..6b66e9f 100644
+--- a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/TaskService.java
++++ b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/TaskService.java
+@@ -10,0 +11 @@ import android.os.Handler;
++import android.os.Looper;
+@@ -60,0 +62,2 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
++  private static final String GENERATION_TASK_OPTION = "collectorGeneration";
++  private static final int GENERATION_TASK_EXECUTION_TIMEOUT_MS = 60000;
+@@ -77,0 +81 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
++  private static final Map<String, TaskInterface> sEventTasks = new HashMap<>();
+@@ -118 +122,6 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-    mTasksAndEventsRepository.persistTasksForAppScopeKey(getSharedPreferences(), appScopeKey);
++    if (!mTasksAndEventsRepository.persistTasksForAppScopeKey(getSharedPreferences(), appScopeKey)) {
++      throw new TaskRegisteringFailedException(
++        consumerClass,
++        new IllegalStateException("Task registration could not be durably persisted")
++      );
++    }
+@@ -213 +222,5 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-    Log.i(TAG, "Finished task '" + taskName + "' with eventId '" + eventId + "'.");
++    // Consume completion identities exactly once. A duplicated JS completion
++    // must never invoke a native task callback twice.
++    if (eventId == null || appEvents == null || !appEvents.remove(eventId)) {
++      return;
++    }
+@@ -215,2 +228 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-    if (appEvents != null) {
+-      appEvents.remove(eventId);
++    Log.i(TAG, "Finished task '" + taskName + "' with eventId '" + eventId + "'.");
+@@ -218,3 +230,3 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-      if (appEvents.isEmpty()) {
+-        sEvents.remove(appScopeKey);
+-        maybeFinishHeadlessTask(appScopeKey);
++    if (appEvents.isEmpty()) {
++      sEvents.remove(appScopeKey);
++      maybeFinishHeadlessTask(appScopeKey);
+@@ -222,8 +234,7 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-        // Invalidate app record but after 2 seconds delay so we can still take batched events.
+-        Handler handler = new Handler();
+-        handler.postDelayed(() -> {
+-          if (!sEvents.containsKey(appScopeKey)) {
+-            invalidateAppRecord(appScopeKey);
+-          }
+-        }, 2000);
+-      }
++      // Invalidate app record but after 2 seconds delay so we can still take batched events.
++      Handler handler = new Handler();
++      handler.postDelayed(() -> {
++        if (!sEvents.containsKey(appScopeKey)) {
++          invalidateAppRecord(appScopeKey);
++        }
++      }, 2000);
+@@ -233 +244,2 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-    TaskExecutionCallback taskCallback = sTaskCallbacks.get(eventId);
++    TaskExecutionCallback taskCallback = sTaskCallbacks.remove(eventId);
++    sEventTasks.remove(eventId);
+@@ -385 +397,8 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-      // it should never happen, just to suppress warnings :)
++      boolean generationFailed = failGenerationTaskExecution(
++        task,
++        null,
++        "Generation task execution metadata is missing"
++      );
++      if (callback != null && (!isGenerationTask(task) || generationFailed)) {
++        callback.onFinished(null);
++      }
+@@ -393,0 +413 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
++    sEventTasks.put(eventId, task);
+@@ -412,0 +433 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
++    scheduleGenerationTaskWatchdog(task, appScopeKey, eventId);
+@@ -432,5 +453 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
+-          sEvents.remove(appScopeKey);
+-          mTasksAndEventsRepository.removeEvents(appScopeKey);
+-
+-          // Host unreachable? Unregister all tasks for that app.
+-          unregisterAllTasksForAppScopeKey(appScopeKey);
++          failAllEventsForAppLoad(appScopeKey);
+@@ -441,0 +459,111 @@ public class TaskService implements SingletonModule, TaskServiceInterface {
++  private boolean isGenerationTask(TaskInterface task) {
++    return task != null && task.getOptions() != null && task.getOptions().containsKey(GENERATION_TASK_OPTION);
++  }
++
++  private boolean notifyGenerationTaskFailure(TaskInterface task, String message) {
++    if (!isGenerationTask(task)) {
++      return false;
++    }
++    try {
++      task.getConsumer()
++        .getClass()
++        .getMethod("didFailToLoadTaskApp", String.class)
++        .invoke(task.getConsumer(), message);
++      return true;
++    } catch (Exception exception) {
++      Log.e(TAG, "Generation task could not be fail-stopped; preserving its durable registration", exception);
++      return false;
++    }
++  }
++
++  private boolean failGenerationTaskExecution(TaskInterface task, @Nullable String eventId, String message) {
++    if (!isGenerationTask(task)) {
++      return false;
++    }
++    if (eventId != null) {
++      List<String> appEvents = sEvents.get(task.getAppScopeKey());
++      if (appEvents == null || !appEvents.contains(eventId)) {
++        return false;
++      }
++    }
++    if (!notifyGenerationTaskFailure(task, message)) {
++      return false;
++    }
++    if (eventId != null) {
++      finishFailedEvent(task.getAppScopeKey(), eventId);
++    }
++    return true;
++  }
++
++  private void scheduleGenerationTaskWatchdog(TaskInterface task, String appScopeKey, String eventId) {
++    if (!isGenerationTask(task)) {
++      return;
++    }
++    new Handler(Looper.getMainLooper()).postDelayed(
++      () -> failGenerationTaskExecution(
++        task,
++        eventId,
++        "Generation task completion timed out before durable JavaScript acknowledgement"
++      ),
++      GENERATION_TASK_EXECUTION_TIMEOUT_MS
++    );
++  }
++
++  private void finishFailedEvent(String appScopeKey, String eventId) {
++    List<String> appEvents = sEvents.get(appScopeKey);
++    if (appEvents == null || !appEvents.remove(eventId)) {
++      return;
++    }
++    TaskExecutionCallback callback = sTaskCallbacks.remove(eventId);
++    sEventTasks.remove(eventId);
++    if (appEvents.isEmpty()) {
++      sEvents.remove(appScopeKey);
++      maybeFinishHeadlessTask(appScopeKey);
++    }
++    if (callback != null) {
++      callback.onFinished(null);
++    }
++  }
++
++  private void failAllEventsForAppLoad(String appScopeKey) {
++    List<String> registeredEventIds = sEvents.get(appScopeKey);
++    List<String> eventIds = registeredEventIds == null
++      ? new ArrayList<>()
++      : new ArrayList<>(registeredEventIds);
++    for (Map.Entry<String, TaskInterface> entry : new ArrayList<>(sEventTasks.entrySet())) {
++      if (appScopeKey.equals(entry.getValue().getAppScopeKey()) && !eventIds.contains(entry.getKey())) {
++        eventIds.add(entry.getKey());
++      }
++    }
++
++    for (String eventId : eventIds) {
++      TaskInterface eventTask = sEventTasks.get(eventId);
++      if (isGenerationTask(eventTask)) {
++        failGenerationTaskExecution(
++          eventTask,
++          eventId,
++          "Headless app loader failed before durable JavaScript acknowledgement"
++        );
++      } else {
++        finishFailedEvent(appScopeKey, eventId);
++      }
++    }
++    mTasksAndEventsRepository.removeEvents(appScopeKey);
++
++    Map<String, TaskInterface> appTasks = mTasksAndEventsRepository.getTasks(appScopeKey);
++    boolean hasGenerationTask = false;
++    if (appTasks != null) {
++      for (TaskInterface appTask : appTasks.values()) {
++        if (isGenerationTask(appTask)) {
++          hasGenerationTask = true;
++          break;
++        }
++      }
++    }
++    if (!hasGenerationTask) {
++      unregisterAllTasksForAppScopeKey(appScopeKey);
++    } else {
++      Log.w(TAG, "Preserving durably registered generation task after app-loader failure");
++    }
++  }
++
+diff --git a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksAndEventsRepository.java b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksAndEventsRepository.java
+index 185a391..64c7929 100644
+--- a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksAndEventsRepository.java
++++ b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksAndEventsRepository.java
+@@ -68 +68 @@ public interface TasksAndEventsRepository {
+-  void persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey);
++  boolean persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey);
+diff --git a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksPersistence.java b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksPersistence.java
+index a872533..8a89879 100644
+--- a/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksPersistence.java
++++ b/node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/repository/TasksPersistence.java
+@@ -27 +27 @@ public class TasksPersistence {
+-  public void persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey, Map<String, TaskInterface> appRow) {
++  public boolean persistTasksForAppScopeKey(SharedPreferences preferences, String appScopeKey, Map<String, TaskInterface> appRow) {
+@@ -30 +30 @@ public class TasksPersistence {
+-      return;
++      return false;
+@@ -33,2 +33 @@ public class TasksPersistence {
+-      preferences.edit().remove(appScopeKey).apply();
+-      return;
++      return preferences.edit().remove(appScopeKey).commit();
+@@ -50 +49 @@ public class TasksPersistence {
+-    preferences
++    return preferences
+@@ -53 +52 @@ public class TasksPersistence {
+-          .apply();
++          .commit();
+diff --git a/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m b/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m
+index d9d23aa..3f7aa42 100644
+--- a/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m
++++ b/node_modules/expo-task-manager/ios/EXTaskManager/EXTaskService.m
+@@ -13,0 +14,3 @@
++static NSString * const EXGenerationTaskOption = @"collectorGeneration";
++static NSTimeInterval const EXGenerationTaskExecutionTimeout = 60.0;
++
+@@ -37,0 +41,13 @@
++// Exact event-to-task binding used by fail-stop/watchdog recovery.
++@property (nonatomic, strong) NSMutableDictionary<NSString *, id<EXTaskInterface>> *eventTasks;
++
++- (BOOL)_addTaskToConfig:(nonnull id<EXTaskInterface>)task;
++- (BOOL)_saveConfigWithDictionary:(nonnull NSDictionary *)dict;
++- (BOOL)_isGenerationTask:(nullable id<EXTaskInterface>)task;
++- (BOOL)_failGenerationTask:(nonnull id<EXTaskInterface>)task
++                    eventId:(nullable NSString *)eventId
++                    message:(nonnull NSString *)message;
++- (void)_scheduleGenerationTaskWatchdog:(nonnull id<EXTaskInterface>)task
++                                eventId:(nonnull NSString *)eventId;
++- (void)_failAllEventsForAppLoad:(nonnull NSString *)appId;
++
+@@ -62,0 +79 @@
++    _eventTasks = [NSMutableDictionary new];
+@@ -113 +130,4 @@
+-  [self _addTaskToConfig:task];
++  if (![self _addTaskToConfig:task]) {
++    NSString *reason = @"Task registration could not be durably persisted";
++    @throw [NSException exceptionWithName:@"E_TASK_PERSISTENCE" reason:reason userInfo:nil];
++  }
+@@ -216,0 +237,9 @@
++  NSMutableArray *appEvents = _events[appId];
++
++  // Ignore missing or duplicated completion identities before notifying the
++  // consumer. This makes didFinish an exact-once native acknowledgement.
++  if (eventId == nil || appEvents == nil || ![appEvents containsObject:eventId]) {
++    return;
++  }
++  [appEvents removeObject:eventId];
++  [_eventTasks removeObjectForKey:eventId];
+@@ -233,4 +262,2 @@
+-  NSMutableArray *appEvents = _events[appId];
+-
+-  if (appEvents) {
+-    [appEvents removeObject:eventId];
++  if (appEvents.count == 0) {
++    [self->_events removeObjectForKey:appId];
+@@ -238,10 +265,6 @@
+-    if (appEvents.count == 0) {
+-      [self->_events removeObjectForKey:appId];
+-
+-      // Invalidate app record but after 1 seconds delay so we can still take batched events.
+-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+-        if (!self->_events[appId]) {
+-          [self _invalidateAppWithId:appId];
+-        }
+-      });
+-    }
++    // Invalidate app record but after 1 seconds delay so we can still take batched events.
++    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
++      if (!self->_events[appId]) {
++        [self _invalidateAppWithId:appId];
++      }
++    });
+@@ -301,0 +325,2 @@
++  [_eventTasks setObject:task forKey:executionInfo[@"eventId"]];
++  [self _scheduleGenerationTaskWatchdog:task eventId:executionInfo[@"eventId"]];
+@@ -414 +439 @@
+-- (void)_addTaskToConfig:(nonnull id<EXTaskInterface>)task
++- (BOOL)_addTaskToConfig:(nonnull id<EXTaskInterface>)task
+@@ -427 +452 @@
+-  [self _saveConfigWithDictionary:dict];
++  return [self _saveConfigWithDictionary:dict];
+@@ -465 +490 @@
+-- (void)_saveConfigWithDictionary:(nonnull NSDictionary *)dict
++- (BOOL)_saveConfigWithDictionary:(nonnull NSDictionary *)dict
+@@ -470 +495 @@
+-  [userDefaults synchronize];
++  return [userDefaults synchronize];
+@@ -546,0 +572,103 @@
++- (BOOL)_isGenerationTask:(id<EXTaskInterface>)task
++{
++  return task != nil && task.options[EXGenerationTaskOption] != nil;
++}
++
++- (BOOL)_notifyGenerationTaskFailure:(id<EXTaskInterface>)task message:(NSString *)message
++{
++  if (![self _isGenerationTask:task]) {
++    return NO;
++  }
++  SEL selector = NSSelectorFromString(@"didFailToLoadTaskApp:");
++  if (![task.consumer respondsToSelector:selector]) {
++    NSLog(@"EXTaskService: Generation task cannot be fail-stopped; preserving its durable registration.");
++    return NO;
++  }
++  typedef void (*GenerationFailureImplementation)(id, SEL, NSString *);
++  GenerationFailureImplementation implementation = (GenerationFailureImplementation)[task.consumer methodForSelector:selector];
++  implementation(task.consumer, selector, message);
++  return YES;
++}
++
++- (BOOL)_failGenerationTask:(id<EXTaskInterface>)task
++                    eventId:(NSString *)eventId
++                    message:(NSString *)message
++{
++  NSMutableArray<NSString *> *appEvents = _events[task.appId];
++  if (eventId != nil && (appEvents == nil || ![appEvents containsObject:eventId])) {
++    return NO;
++  }
++  if (![self _notifyGenerationTaskFailure:task message:message]) {
++    return NO;
++  }
++  if (eventId != nil) {
++    [appEvents removeObject:eventId];
++    [_eventTasks removeObjectForKey:eventId];
++    if ([task.consumer respondsToSelector:@selector(didFinish)]) {
++      [task.consumer didFinish];
++    }
++    for (EXTaskExecutionRequest *request in [_requests copy]) {
++      if ([request isIncludingTask:task]) {
++        [request task:task didFinishWithResult:@(UIBackgroundFetchResultFailed)];
++      }
++    }
++    if (appEvents.count == 0) {
++      [_events removeObjectForKey:task.appId];
++    }
++  }
++  return YES;
++}
++
++- (void)_scheduleGenerationTaskWatchdog:(id<EXTaskInterface>)task eventId:(NSString *)eventId
++{
++  if (![self _isGenerationTask:task]) {
++    return;
++  }
++  dispatch_after(
++    dispatch_time(DISPATCH_TIME_NOW, (int64_t)(EXGenerationTaskExecutionTimeout * NSEC_PER_SEC)),
++    dispatch_get_main_queue(),
++    ^{
++      [self _failGenerationTask:task
++                        eventId:eventId
++                        message:@"Generation task completion timed out before durable JavaScript acknowledgement"];
++    }
++  );
++}
++
++- (void)_failAllEventsForAppLoad:(NSString *)appId
++{
++  NSArray<NSString *> *eventIds = [_events[appId] copy] ?: @[];
++  for (NSString *eventId in eventIds) {
++    id<EXTaskInterface> task = _eventTasks[eventId];
++    if ([self _isGenerationTask:task]) {
++      [self _failGenerationTask:task
++                        eventId:eventId
++                        message:@"Headless app loader failed before durable JavaScript acknowledgement"];
++    } else {
++      NSMutableArray *appEvents = _events[appId];
++      [appEvents removeObject:eventId];
++      [_eventTasks removeObjectForKey:eventId];
++      if ([task.consumer respondsToSelector:@selector(didFinish)]) {
++        [task.consumer didFinish];
++      }
++    }
++  }
++  if (_events[appId].count == 0) {
++    [_events removeObjectForKey:appId];
++  }
++  [_eventsQueues removeObjectForKey:appId];
++
++  BOOL hasGenerationTask = NO;
++  for (id<EXTaskInterface> task in [self _getTasksForAppId:appId].allValues) {
++    if ([self _isGenerationTask:task]) {
++      hasGenerationTask = YES;
++      break;
++    }
++  }
++  if (!hasGenerationTask) {
++    [self unregisterAllTasksForAppId:appId];
++  } else {
++    NSLog(@"EXTaskService: Preserving durably registered generation task after app-loader failure.");
++  }
++}
++
+@@ -560,2 +688 @@
+-        [self->_events removeObjectForKey:appId];
+-        [self->_eventsQueues removeObjectForKey:appId];
++        [self _failAllEventsForAppLoad:appId];
+@@ -563,3 +689,0 @@
+-
+-        // Host unreachable? Unregister all tasks for that app.
+-        [self unregisterAllTasksForAppId:appId];
