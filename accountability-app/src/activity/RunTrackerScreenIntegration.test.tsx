@@ -76,8 +76,8 @@ const mockReadTrackPoints = jest.fn<() => Promise<Pt[]>>();
 const mockReadTrackRecording = jest.fn<
   (ownerId?: string | null) => Promise<(TrackRecordingIdentity & { points: Pt[] }) | null>
 >();
-const mockClaimLegacyTrackRecording = jest.fn<
-  (ownerId: string, type: ActivityType) => Promise<TrackRecordingRecovery>
+const mockDiscardLegacyUnprovableTrackRecording = jest.fn<
+  (discardToken: string) => Promise<'discarded' | 'stale'>
 >();
 const mockClaimFinalizedEnqueueFor = jest.fn<
   (
@@ -216,8 +216,8 @@ jest.mock('./locationTask', () => ({
   ) => mockAcknowledgeFinalizedTrackRecordingFor(identity, snapshotId),
   beginTrackRecording: (...args: [string, ActivityType]) =>
     mockBeginTrackRecording(...args),
-  claimLegacyTrackRecording: (...args: [string, ActivityType]) =>
-    mockClaimLegacyTrackRecording(...args),
+  discardLegacyUnprovableTrackRecording: (discardToken: string) =>
+    mockDiscardLegacyUnprovableTrackRecording(discardToken),
   claimFinalizedEnqueueFor: (
     identity: TrackRecordingIdentity,
     snapshotId: string,
@@ -387,7 +387,7 @@ beforeEach(() => {
     mockPauseTrackLocationTaskFor,
     mockReadTrackPoints,
     mockReadTrackRecording,
-    mockClaimLegacyTrackRecording,
+    mockDiscardLegacyUnprovableTrackRecording,
     mockClaimFinalizedEnqueueFor,
     mockClearTrackRecording,
     mockDiscardTrackRecordingFor,
@@ -407,7 +407,7 @@ beforeEach(() => {
   mockPauseTrackLocationTaskFor.mockResolvedValue('paused');
   mockReadTrackPoints.mockResolvedValue([]);
   mockReadTrackRecording.mockResolvedValue(null);
-  mockClaimLegacyTrackRecording.mockResolvedValue({ kind: 'none' });
+  mockDiscardLegacyUnprovableTrackRecording.mockResolvedValue('discarded');
   mockClaimFinalizedEnqueueFor.mockResolvedValue({ kind: 'claimed' });
   mockClearTrackRecording.mockResolvedValue(undefined);
   mockDiscardTrackRecordingFor.mockResolvedValue('discarded');
@@ -743,6 +743,89 @@ describe('Run tracker Open Map route integration', () => {
     expect(mockEnsureTrackLocationTaskFor).not.toHaveBeenCalled();
     expect(mockStartTrackLocationTaskFor).not.toHaveBeenCalled();
     expect(renderer.root.findByProps({ testID: 'mock-run-share-sheet' })).toBeTruthy();
+  });
+
+  test('keeps an unprovable legacy recording private and offers exact discard only', async () => {
+    const identity = {
+      activityId: 'activity-legacy',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      kind: 'closing',
+      identity,
+      finishId: 'finish-activity-legacy',
+      type: 'run',
+      durationS: 123,
+      quarantineReason: 'legacy_unprovable',
+    });
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: 'Discard older recording' }),
+    ).toBeTruthy();
+    expect(
+      renderer.root.findAllByProps({ accessibilityLabel: 'Retry finish' }),
+    ).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'run-private-map-placeholder' })).toBeTruthy();
+    expect(textOf(renderer)).toContain('Older recording cannot be finished');
+    expect(mockFinalizeTrackRecordingFor).not.toHaveBeenCalled();
+    expect(mockEnsureTrackLocationTaskFor).not.toHaveBeenCalled();
+    expect(mockStartTrackLocationTaskFor).not.toHaveBeenCalled();
+
+    act(() =>
+      renderer.root
+        .findByProps({ accessibilityLabel: 'Discard older recording' })
+        .props.onPress(),
+    );
+    expect(alert).toHaveBeenCalledWith(
+      'Discard older recording?',
+      expect.stringContaining('cannot be safely finished'),
+      expect.any(Array),
+    );
+    pressLatestAlertButton(alert, 'Discard permanently');
+    await flush();
+
+    expect(mockDiscardTrackRecordingFor).toHaveBeenCalledWith(identity);
+    expect(mockFinalizeTrackRecordingFor).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+  });
+
+  test('keeps legacy quarantine discard-only when exact cleanup fails', async () => {
+    const identity = {
+      activityId: 'activity-legacy',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      kind: 'closing',
+      identity,
+      finishId: 'finish-activity-legacy',
+      type: 'run',
+      durationS: 123,
+      quarantineReason: 'legacy_unprovable',
+    });
+    mockDiscardTrackRecordingFor.mockRejectedValueOnce(new Error('cleanup failed'));
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    act(() =>
+      renderer.root
+        .findByProps({ accessibilityLabel: 'Discard older recording' })
+        .props.onPress(),
+    );
+    pressLatestAlertButton(alert, 'Discard permanently');
+    await flush();
+
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: 'Discard older recording' }),
+    ).toBeTruthy();
+    expect(
+      renderer.root.findAllByProps({ accessibilityLabel: 'Retry resume' }),
+    ).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'run-private-map-placeholder' })).toBeTruthy();
+    expect(mockFinalizeTrackRecordingFor).not.toHaveBeenCalled();
   });
 
   test('resets only after deep finalization confirms a too-short cleanup', async () => {
@@ -1326,6 +1409,40 @@ describe('Run tracker Open Map route integration', () => {
     expect(renderer.root.findAllByProps({ testID: 'mock-run-share-sheet' })).toHaveLength(0);
   });
 
+  test('turns an unprovable legacy Stop into discard-only recovery', async () => {
+    const identity = {
+      activityId: 'activity-a',
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    };
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      ...identity,
+      kind: 'active',
+      points: OWNER_A_POINTS,
+      type: 'run',
+    });
+    mockFinalizeTrackRecordingFor.mockResolvedValueOnce({
+      kind: 'closing',
+      finishId: 'finish-activity-a',
+      reason: 'legacy_unprovable',
+    });
+    const renderer = await renderRoute();
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' }).props.onPress());
+    await flush();
+
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: 'Discard older recording' }),
+    ).toBeTruthy();
+    expect(
+      renderer.root.findAllByProps({ accessibilityLabel: 'Retry finish' }),
+    ).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'run-private-map-placeholder' })).toBeTruthy();
+    expect(mockEnqueueActivity).not.toHaveBeenCalled();
+    expect(mockAcknowledgeFinalizedTrackRecordingFor).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByProps({ testID: 'mock-run-share-sheet' })).toHaveLength(0);
+  });
+
   test('does not enqueue when deep finalization discovers a stale recording', async () => {
     const identity = { activityId: 'activity-a', ownerId: OWNER_A, startedAt: STARTED_AT };
     mockRecoverTrackRecording
@@ -1487,95 +1604,84 @@ describe('Run tracker Open Map route integration', () => {
     expect(renderer.root.findByProps({ accessibilityLabel: 'Distance 0.00 kilometres' })).toBeTruthy();
   });
 
-  test('rejects a stale legacy-claim result after the owner generation changes', async () => {
-    mockRecoverTrackRecording.mockResolvedValueOnce({ kind: 'legacy_unclaimed' });
+  test('keeps a stale ownerless-legacy discard result out of a newer owner generation', async () => {
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      kind: 'legacy_unprovable',
+      discardToken: 'legacy-token-a',
+    });
+    const discard = deferred<'discarded'>();
+    mockDiscardLegacyUnprovableTrackRecording.mockReturnValueOnce(discard.promise);
+    const alert = jest.spyOn(Alert, 'alert');
     const renderer = await renderRoute();
-    const claim = deferred<TrackRecordingRecovery>();
-    mockClaimLegacyTrackRecording.mockReturnValueOnce(claim.promise);
+
     act(() => {
-      void renderer.root.findByProps({
-        accessibilityLabel: 'Restore to this account',
+      renderer.root.findByProps({
+        accessibilityLabel: 'Discard older recording',
       }).props.onPress();
+      pressLatestAlertButton(alert, 'Discard permanently');
     });
     mockRecoverTrackRecording
       .mockResolvedValueOnce({ kind: 'none' })
       .mockResolvedValueOnce({ kind: 'none' });
     await switchOwner(renderer, OWNER_B);
     await switchOwner(renderer, OWNER_A);
-    claim.resolve({
-      activityId: 'stale-a',
-      kind: 'active',
-      ownerId: OWNER_A,
-      points: OWNER_A_POINTS,
-      startedAt: STARTED_AT,
-      type: 'ride',
-    });
+    discard.resolve('discarded');
     await flush();
 
-    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Ride' }).some(
-      (node) => node.props.accessibilityState?.selected,
-    )).toBe(false);
-    expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
+    expect(mockDiscardLegacyUnprovableTrackRecording)
+      .toHaveBeenCalledWith('legacy-token-a');
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Discard older recording' }))
+      .toHaveLength(0);
   });
 
-  test('reconciles a claimed legacy recording lease before showing tracking UI', async () => {
-    const identity = {
-      activityId: 'claimed-a',
-      ownerId: OWNER_A,
-      startedAt: STARTED_AT,
-    };
-    mockRecoverTrackRecording.mockResolvedValueOnce({ kind: 'legacy_unclaimed' });
-    mockClaimLegacyTrackRecording.mockResolvedValueOnce({
-      ...identity,
-      kind: 'active',
-      points: OWNER_A_POINTS,
-      type: 'walk',
+  test('permanently discards ownerless legacy GPS without offering account restore', async () => {
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      kind: 'legacy_unprovable',
+      discardToken: 'legacy-token-a',
     });
-    mockEnsureTrackLocationTaskFor.mockResolvedValueOnce('paused');
-    const renderer = await renderRoute();
-
-    await act(async () => {
-      await renderer.root.findByProps({
-        accessibilityLabel: 'Restore to this account',
-      }).props.onPress();
-    });
-
-    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
-    expect(renderer.root.findByProps({ accessibilityLabel: 'Retry resume' })).toBeTruthy();
-    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
-  });
-
-  test('pauses a claimed legacy A lease when its owner changes while resume is pending', async () => {
-    const identity = {
-      activityId: 'claimed-a',
-      ownerId: OWNER_A,
-      startedAt: STARTED_AT,
-    };
-    const leaseResume = deferred<'running'>();
-    mockRecoverTrackRecording.mockResolvedValueOnce({ kind: 'legacy_unclaimed' });
-    mockClaimLegacyTrackRecording.mockResolvedValueOnce({
-      ...identity,
-      kind: 'active',
-      points: OWNER_A_POINTS,
-      type: 'walk',
-    });
-    mockEnsureTrackLocationTaskFor.mockReturnValueOnce(leaseResume.promise);
+    const alert = jest.spyOn(Alert, 'alert');
     const renderer = await renderRoute();
 
     act(() => {
-      void renderer.root.findByProps({
-        accessibilityLabel: 'Restore to this account',
+      renderer.root.findByProps({
+        accessibilityLabel: 'Discard older recording',
       }).props.onPress();
+      pressLatestAlertButton(alert, 'Discard permanently');
     });
     await flush();
-    expect(mockEnsureTrackLocationTaskFor).toHaveBeenCalledWith(identity);
 
-    await switchOwner(renderer, OWNER_B);
-    expect(mockPauseTrackLocationTaskFor).toHaveBeenCalledWith(identity);
-    leaseResume.resolve('running');
+    expect(mockDiscardLegacyUnprovableTrackRecording)
+      .toHaveBeenCalledWith('legacy-token-a');
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Restore to this account' }))
+      .toHaveLength(0);
+  });
+
+  test('keeps ownerless legacy GPS private and retryable when exact discard fails', async () => {
+    mockRecoverTrackRecording.mockResolvedValueOnce({
+      kind: 'legacy_unprovable',
+      discardToken: 'legacy-token-a',
+    });
+    mockDiscardLegacyUnprovableTrackRecording.mockRejectedValueOnce(
+      new Error('cleanup failed'),
+    );
+    const alert = jest.spyOn(Alert, 'alert');
+    const renderer = await renderRoute();
+
+    act(() => {
+      renderer.root.findByProps({
+        accessibilityLabel: 'Discard older recording',
+      }).props.onPress();
+      pressLatestAlertButton(alert, 'Discard permanently');
+    });
     await flush();
-    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Stop & Save' })).toHaveLength(0);
-    expect(textOf(renderer)).not.toContain(formatKm(totalDistanceMeters(OWNER_A_POINTS)));
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Discard older recording' }))
+      .toBeTruthy();
+    expect(textOf(renderer)).toContain('Older recording cannot be finished');
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Restore to this account' }))
+      .toHaveLength(0);
   });
 
   test('rejects a stale retry-resume result after A to B to A', async () => {
@@ -2097,9 +2203,14 @@ describe('Run tracker Open Map route integration', () => {
     { state: 'owner_mismatch', copy: 'Recording saved safely', allowedAction: null },
     { state: 'storage_error', copy: 'Saved activity could not be checked', allowedAction: null },
     {
-      state: 'legacy_unclaimed',
-      copy: 'Unsaved activity from an older version found',
-      allowedAction: 'Restore to this account',
+      state: 'legacy_unprovable',
+      copy: 'Older recording cannot be finished',
+      allowedAction: 'Discard older recording',
+    },
+    {
+      state: 'tracking_incomplete',
+      copy: 'Run tracking is incomplete',
+      allowedAction: 'Discard incomplete activity',
     },
     { state: 'tracking_paused', copy: 'Tracking paused', allowedAction: 'Retry resume' },
   ])(
@@ -2126,9 +2237,27 @@ describe('Run tracker Open Map route integration', () => {
           kind: 'owner_mismatch',
           ownerId: OWNER_A,
         });
+      } else if (state === 'tracking_incomplete') {
+        mockRecoverTrackRecording.mockResolvedValueOnce({
+          kind: 'closing',
+          identity: {
+            activityId: 'activity-a',
+            ownerId: OWNER_A,
+            startedAt: STARTED_AT,
+          },
+          finishId: 'finish-incomplete',
+          type: 'run',
+          durationS: 60,
+          quarantineReason: 'tracking_incomplete',
+        });
+      } else if (state === 'legacy_unprovable') {
+        mockRecoverTrackRecording.mockResolvedValueOnce({
+          kind: 'legacy_unprovable',
+          discardToken: 'legacy-token-a',
+        });
       } else {
         mockRecoverTrackRecording.mockResolvedValueOnce({
-          kind: state as 'needs_owner' | 'legacy_unclaimed',
+          kind: state as 'needs_owner',
         });
       }
 

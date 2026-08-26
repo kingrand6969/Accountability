@@ -25,6 +25,8 @@ import { PostMenuHost } from '../feed/PostMenu';
 import { ModerationGate } from '../moderation/ModerationGate';
 import { cleanupAbandonedRunMedia } from '../activity/runMediaCache';
 import { ActivitySyncProvider } from '../activity/ActivitySyncProvider';
+import { LocationCollectorBootGate } from '../activity/LocationCollectorBootGate';
+import { LocationCollectorOwnerGate } from '../activity/LocationCollectorOwnerGate';
 import '../notifications/handler';
 import '../activity/locationTask';
 import {
@@ -316,17 +318,21 @@ export default function RootLayout() {
 
   return (
     <AppThemeProvider>
-      <AuthProvider>
-        <ActivitySyncProvider>
-          <ProProvider>
-            <RootNavigator />
-            <ModerationGate />
-            <ToastHost />
-            <ConfirmHost />
-            <PostMenuHost />
-          </ProProvider>
-        </ActivitySyncProvider>
-      </AuthProvider>
+      <LocationCollectorBootGate>
+        <AuthProvider>
+          <LocationCollectorOwnerGate>
+            <ActivitySyncProvider>
+              <ProProvider>
+                <RootNavigator />
+                <ModerationGate />
+                <ToastHost />
+                <ConfirmHost />
+                <PostMenuHost />
+              </ProProvider>
+            </ActivitySyncProvider>
+          </LocationCollectorOwnerGate>
+        </AuthProvider>
+      </LocationCollectorBootGate>
     </AppThemeProvider>
   );
 }

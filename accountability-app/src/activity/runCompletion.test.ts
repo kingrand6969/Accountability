@@ -158,6 +158,7 @@ function memoryStorage(
     removeItem: async (key) => {
       values.delete(key);
     },
+    getAllKeys: async () => [...values.keys()],
   };
 }
 
@@ -550,7 +551,7 @@ describe('location recording persistence', () => {
     );
   });
 
-  it('keeps a session-era legacy recording unclaimed and redacted', async () => {
+  it('keeps a session-era legacy recording unprovable and redacted', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:session': 'legacy-session',
@@ -566,13 +567,14 @@ describe('location recording persistence', () => {
     const before = new Map(storage.values);
 
     await expect(store.recover(OWNER_A, 'ride')).resolves.toEqual({
-      kind: 'legacy_unclaimed',
+      kind: 'legacy_unprovable',
+      discardToken: expect.any(String),
     });
     expect(storage.values).toEqual(before);
     expect(createId).not.toHaveBeenCalled();
   });
 
-  it('restores the pre-session point-array format', async () => {
+  it('keeps the pre-session point-array format unprovable and redacted', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:points': JSON.stringify(route),
@@ -587,13 +589,14 @@ describe('location recording persistence', () => {
     const before = new Map(storage.values);
 
     await expect(store.recover(OWNER_A, 'run')).resolves.toEqual({
-      kind: 'legacy_unclaimed',
+      kind: 'legacy_unprovable',
+      discardToken: expect.any(String),
     });
     expect(storage.values).toEqual(before);
     expect(storage.values.get('activity:session')).toBeUndefined();
   });
 
-  it('claims legacy GPS only after an explicit action and reuses one stable ID', async () => {
+  it('never claims legacy GPS and discards only with one exact stable token', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:points': JSON.stringify(route),
@@ -609,26 +612,24 @@ describe('location recording persistence', () => {
     const first = await store.claimLegacy(OWNER_A, 'walk');
     const second = await store.claimLegacy(OWNER_A, 'run');
 
-    expect(first).toMatchObject({
-      kind: 'active',
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'walk',
-      points: route,
+    expect(first).toEqual({
+      kind: 'legacy_unprovable',
+      discardToken: expect.any(String),
     });
-    expect(second).toMatchObject({
-      kind: 'active',
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'walk',
-      points: route,
-    });
-    expect(createId).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(storage.values.get('activity:points')!)).toMatchObject({
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'walk',
-    });
+    expect(second).toEqual(first);
+    expect(createId).not.toHaveBeenCalled();
+    expect(JSON.parse(storage.values.get('activity:points')!)).toEqual(route);
+
+    if (first.kind !== 'legacy_unprovable') {
+      throw new Error('Expected an unprovable legacy recording');
+    }
+    await expect(
+      store.discardLegacyUnprovable(first.discardToken),
+    ).resolves.toBe('discarded');
+    expect(storage.values.get('activity:points')).toBeUndefined();
+    await expect(
+      store.discardLegacyUnprovable(first.discardToken),
+    ).resolves.toBe('stale');
   });
 
   it('redacts owner-mismatched recovery and still prevents Start overwrite', async () => {

@@ -84,7 +84,7 @@ async function flush() {
 function textOf(renderer: TestRenderer.ReactTestRenderer) {
   return renderer.root.findAllByType(Text).flatMap((node) =>
     Array.isArray(node.props.children) ? node.props.children : [node.props.children],
-  ).filter((value): value is string | number => typeof value === 'string' || typeof value === 'number').join(' ');
+  ).filter((value): value is string | number => typeof value === 'string' || typeof value === 'number').join(' ').replace(/\s+/g, ' ');
 }
 
 const mounted: TestRenderer.ReactTestRenderer[] = [];

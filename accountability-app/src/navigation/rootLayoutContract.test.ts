@@ -8,7 +8,9 @@ const onboardingSource = fs.readFileSync(path.join(__dirname, '../app/onboarding
 describe('root layout contract', () => {
   test('keeps the approved provider and host order', () => {
     const orderedMarkers = [
+      '<LocationCollectorBootGate>',
       '<AuthProvider>',
+      '<LocationCollectorOwnerGate>',
       '<ActivitySyncProvider>',
       '<ProProvider>',
       '<RootNavigator />',
@@ -18,7 +20,9 @@ describe('root layout contract', () => {
       '<PostMenuHost />',
       '</ProProvider>',
       '</ActivitySyncProvider>',
+      '</LocationCollectorOwnerGate>',
       '</AuthProvider>',
+      '</LocationCollectorBootGate>',
     ];
 
     let previousIndex = -1;

@@ -77,6 +77,20 @@ jest.mock('../activity/ActivitySyncProvider', () => {
       ReactModule.createElement(ReactModule.Fragment, null, children),
   };
 });
+jest.mock('../activity/LocationCollectorBootGate', () => {
+  const ReactModule = require('react') as typeof React;
+  return {
+    LocationCollectorBootGate: ({ children }: { children?: React.ReactNode }) =>
+      ReactModule.createElement(ReactModule.Fragment, null, children),
+  };
+});
+jest.mock('../activity/LocationCollectorOwnerGate', () => {
+  const ReactModule = require('react') as typeof React;
+  return {
+    LocationCollectorOwnerGate: ({ children }: { children?: React.ReactNode }) =>
+      ReactModule.createElement(ReactModule.Fragment, null, children),
+  };
+});
 jest.mock('../pro/ProProvider', () => {
   const ReactModule = require('react') as typeof React;
   return {

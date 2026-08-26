@@ -43,7 +43,7 @@ import {
   acknowledgeFinalizedTrackRecordingFor,
   beginTrackRecording,
   claimFinalizedEnqueueFor,
-  claimLegacyTrackRecording,
+  discardLegacyUnprovableTrackRecording,
   discardTrackRecordingFor,
   ensureTrackLocationTaskFor,
   finalizeTrackRecordingFor,
@@ -128,10 +128,11 @@ export default function ActivityTrack() {
   const [recoveryNotice, setRecoveryNotice] = useState<
     | 'needs_owner'
     | 'owner_mismatch'
-    | 'legacy_unclaimed'
     | 'storage_error'
     | 'tracking_paused'
     | 'finishing'
+    | 'legacy_unprovable'
+    | 'tracking_incomplete'
     | null
   >(null);
   const [recoveryReadState, setRecoveryReadState] =
@@ -165,6 +166,7 @@ export default function ActivityTrack() {
     useState<string | null>(session?.user.id ?? null);
   const authOwnerRef = useRef<string | null>(session?.user.id ?? null);
   const completionGuardRef = useRef<OwnerCommandScope | null>(null);
+  const legacyDiscardTokenRef = useRef<string | null>(null);
   const mapRef = useRef<OsmMapHandle>(null);
   const liveViewportAuthorityRef = useRef<string | null>(null);
   const completionControllerRef =
@@ -445,16 +447,19 @@ export default function ActivityTrack() {
     (recovery: TrackRecordingRecovery) => {
       getCompletionController().reset('recovery');
       setRecoveryReadState('ready');
-      if (recovery.kind === 'legacy_unclaimed') {
+      legacyDiscardTokenRef.current = null;
+      if (recovery.kind === 'legacy_unprovable') {
         invalidateTimer();
         recordingRef.current = null;
+        legacyDiscardTokenRef.current = recovery.discardToken;
         setDetailOwnerId(null);
         setTracking(false);
         commitPending(null);
         setDistance(0);
         setElapsed(0);
         setLivePoints([]);
-        setRecoveryNotice('legacy_unclaimed');
+        setRecoveryReadState('error');
+        setRecoveryNotice('legacy_unprovable');
         return;
       }
       if (
@@ -529,7 +534,12 @@ export default function ActivityTrack() {
         setLivePoints([]);
         setType(recovery.type);
         setRecoveryReadState('error');
-        setRecoveryNotice('finishing');
+        setRecoveryNotice(
+          recovery.quarantineReason === 'legacy_unprovable' ||
+          recovery.quarantineReason === 'tracking_incomplete'
+            ? recovery.quarantineReason
+            : 'finishing',
+        );
         return;
       }
 
@@ -608,45 +618,27 @@ export default function ActivityTrack() {
     session?.user.id,
   ]);
 
-  async function onClaimLegacy() {
-    const ownerId = session?.user.id;
-    if (!ownerId) {
-      Alert.alert(
-        'Sign in required',
-        'Sign in before restoring this activity.',
-      );
-      return;
-    }
-    const command = captureCommand(ownerId);
+  async function discardOwnerlessLegacyRecording(
+    discardToken: string,
+    command: OwnerCommandScope,
+  ) {
+    if (!isCommandCurrent(command)) return;
     setSaving(true);
-    setRecoveryReadState('checking');
     try {
-      const claimed = await claimLegacyTrackRecording(ownerId, type);
+      const status = await discardLegacyUnprovableTrackRecording(discardToken);
       if (!isCommandCurrent(command)) return;
-      if (claimed.kind === 'active') {
-        const taskStatus = await ensureRecordingLease({
-          activityId: claimed.activityId,
-          ownerId: claimed.ownerId,
-          startedAt: claimed.startedAt,
-        });
-        if (!isCommandCurrent(command)) return;
-        if (taskStatus === 'stale') {
-          requestAuthoritativeRecovery();
-          return;
-        }
-        if (taskStatus === 'paused') {
-          restorePausedRecovery(claimed);
-          return;
-        }
+      if (status === 'stale') {
+        requestAuthoritativeRecovery();
+        return;
       }
-      restoreRecovery(claimed);
+      clearOwnerDetailState();
     } catch {
       if (!isCommandCurrent(command)) return;
       setRecoveryReadState('error');
-      setRecoveryNotice('storage_error');
+      setRecoveryNotice('legacy_unprovable');
       Alert.alert(
-        'Could not restore activity',
-        'The activity remains safely stored on this phone. Try again.',
+        'Could not discard recording',
+        'The older recording remains private on this phone. Try again.',
       );
     } finally {
       if (isCommandCurrent(command)) {
@@ -756,8 +748,8 @@ export default function ActivityTrack() {
             'Recording already saved',
             existing.kind === 'owner_mismatch'
               ? 'Sign in as the recording owner to recover it.'
-              : existing.kind === 'legacy_unclaimed'
-                ? 'Use Restore to this account before starting.'
+              : existing.kind === 'legacy_unprovable'
+                ? 'For your privacy, discard the unverifiable older recording before starting.'
               : 'Your saved recording has been restored.',
           );
           return;
@@ -935,7 +927,12 @@ export default function ActivityTrack() {
         if (isCommandCurrent(command)) {
           setTracking(false);
           setRecoveryReadState('error');
-          setRecoveryNotice('finishing');
+          setRecoveryNotice(
+            result.reason === 'legacy_unprovable' ||
+            result.reason === 'tracking_incomplete'
+              ? result.reason
+              : 'finishing',
+          );
         }
         return;
       }
@@ -995,6 +992,7 @@ export default function ActivityTrack() {
     mapRef.current?.clearRoute();
     liveViewportAuthorityRef.current = null;
     recordingRef.current = null;
+    legacyDiscardTokenRef.current = null;
     finishSummaryRef.current = null;
     startedAtRef.current = '';
     startMsRef.current = 0;
@@ -1012,6 +1010,10 @@ export default function ActivityTrack() {
   async function discardActivity(
     identity: TrackRecordingIdentity,
     command: OwnerCommandScope,
+    failureNotice:
+      | 'tracking_paused'
+      | 'legacy_unprovable'
+      | 'tracking_incomplete' = 'tracking_paused',
   ) {
     if (!isCommandCurrent(command) || identity.ownerId !== command.ownerId) return;
     const currentPending = pendingRef.current;
@@ -1058,7 +1060,7 @@ export default function ActivityTrack() {
       if (wasActiveRecording) {
         setTracking(false);
         setRecoveryReadState('error');
-        setRecoveryNotice('tracking_paused');
+        setRecoveryNotice(failureNotice);
       }
       Alert.alert(
         'Could not discard activity',
@@ -1071,6 +1073,58 @@ export default function ActivityTrack() {
         requestAuthoritativeRecovery();
       }
     }
+  }
+
+  function confirmDiscardLegacyRecording() {
+    const discardToken = legacyDiscardTokenRef.current;
+    if (discardToken) {
+      const command = captureCommand(authoritativeOwnerId);
+      Alert.alert(
+        'Discard older recording?',
+        'This older recording cannot be linked safely to an account. Discarding permanently removes its stored route from this phone.',
+        [
+          { text: 'Keep private', style: 'cancel' },
+          {
+            text: 'Discard permanently',
+            style: 'destructive',
+            onPress: () => {
+              if (!isCommandCurrent(command)) return;
+              void discardOwnerlessLegacyRecording(discardToken, command);
+            },
+          },
+        ],
+      );
+      return;
+    }
+    const identity = recordingRef.current;
+    if (!identity || identity.ownerId !== authoritativeOwnerId) return;
+    const command = captureCommand(identity.ownerId);
+    const trackingIncomplete = recoveryNotice === 'tracking_incomplete';
+    Alert.alert(
+      trackingIncomplete
+        ? 'Discard incomplete activity?'
+        : 'Discard older recording?',
+      trackingIncomplete
+        ? 'Some GPS data could not be saved reliably. This activity cannot be posted. Discarding permanently removes its stored route from this phone.'
+        : 'This older recording cannot be safely finished. Discarding permanently removes its stored route from this phone.',
+      [
+        { text: 'Keep private', style: 'cancel' },
+        {
+          text: 'Discard permanently',
+          style: 'destructive',
+          onPress: () => {
+            if (!isCommandCurrent(command)) return;
+            void discardActivity(
+              identity,
+              command,
+              trackingIncomplete
+                ? 'tracking_incomplete'
+                : 'legacy_unprovable',
+            );
+          },
+        },
+      ],
+    );
   }
 
   const rawDistance = pending ? pending.recording.activity.distance_m : distance;
@@ -1324,8 +1378,10 @@ export default function ActivityTrack() {
   }
 
   const recoveryTitle =
-    recoveryNotice === 'legacy_unclaimed'
-      ? 'Unsaved activity from an older version found'
+    recoveryNotice === 'tracking_incomplete'
+      ? 'Run tracking is incomplete'
+      : recoveryNotice === 'legacy_unprovable'
+      ? 'Older recording cannot be finished'
       : recoveryNotice === 'storage_error'
         ? 'Saved activity could not be checked'
         : recoveryNotice === 'tracking_paused'
@@ -1336,11 +1392,13 @@ export default function ActivityTrack() {
             ? 'Recording saved safely'
             : 'Checking saved activity';
   const recoveryDetail =
-    recoveryNotice === 'owner_mismatch'
+    recoveryNotice === 'tracking_incomplete'
+      ? 'Some GPS data could not be saved reliably. This activity stays private and can only be discarded.'
+      : recoveryNotice === 'legacy_unprovable'
+      ? 'Its tracking history cannot be verified. For your privacy, discard it before starting a new activity.'
+      : recoveryNotice === 'owner_mismatch'
       ? 'Sign in as the recording owner to recover it.'
-      : recoveryNotice === 'legacy_unclaimed'
-        ? 'Restore it explicitly before viewing its details.'
-        : recoveryNotice === 'storage_error'
+      : recoveryNotice === 'storage_error'
           ? 'Details stay hidden until storage is available.'
           : recoveryNotice === 'tracking_paused'
             ? 'Your route is safe. Resume tracking to continue.'
@@ -1473,25 +1531,6 @@ export default function ActivityTrack() {
                   <Text style={styles.recoveryNoticeTitle}>{recoveryTitle}</Text>
                   <Text style={styles.recoveryNoticeDetail}>{recoveryDetail}</Text>
                 </View>
-                {recoveryNotice === 'legacy_unclaimed' ? (
-                  <Pressable
-                    style={[
-                      styles.restoreLegacyBtn,
-                      (!session?.user.id || saving) && styles.actionDisabled,
-                    ]}
-                    onPress={onClaimLegacy}
-                    disabled={!session?.user.id || saving}
-                    accessibilityRole="button"
-                    accessibilityLabel="Restore to this account"
-                    accessibilityState={{
-                      disabled: !session?.user.id || saving,
-                    }}
-                  >
-                    <Text style={styles.restoreLegacyText}>
-                      Restore to this account
-                    </Text>
-                  </Pressable>
-                ) : null}
                 {recoveryNotice === 'tracking_paused' ? (
                   <Pressable
                     style={[
@@ -1520,6 +1559,30 @@ export default function ActivityTrack() {
                     accessibilityState={{ disabled: stopping }}
                   >
                     <Text style={styles.restoreLegacyText}>Retry finish</Text>
+                  </Pressable>
+                ) : null}
+                {recoveryNotice === 'legacy_unprovable' ||
+                recoveryNotice === 'tracking_incomplete' ? (
+                  <Pressable
+                    style={[
+                      styles.restoreLegacyBtn,
+                      saving && styles.actionDisabled,
+                    ]}
+                    onPress={confirmDiscardLegacyRecording}
+                    disabled={saving}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      recoveryNotice === 'tracking_incomplete'
+                        ? 'Discard incomplete activity'
+                        : 'Discard older recording'
+                    }
+                    accessibilityState={{ disabled: saving }}
+                  >
+                    <Text style={styles.restoreLegacyText}>
+                      {recoveryNotice === 'tracking_incomplete'
+                        ? 'Discard incomplete activity'
+                        : 'Discard older recording'}
+                    </Text>
                   </Pressable>
                 ) : null}
               </View>
