@@ -12,12 +12,10 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { FoodItem, FoodScan } from './api';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
@@ -41,9 +39,9 @@ export function FoodScanSheet({
   onCancel: () => void;
   onSave: (items: FoodItem[]) => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => foodScanPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => foodScanPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [items, setItems] = useState<FoodItem[]>(scan?.items ?? []);
   const [dropped, setDropped] = useState<Set<number>>(new Set());
 
@@ -191,23 +189,23 @@ export function FoodScanSheet({
   );
 }
 
-function foodScanPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function foodScanPalette(theme: AppThemeColors) {
   return {
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    success: mode === 'light' ? legacyColors.success : theme.status.success,
-    scrim: mode === 'light' ? 'rgba(15,23,42,0.45)' : theme.interaction.scrim,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
+    scrim: theme.interaction.scrim,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = foodScanPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = foodScanPalette(theme);
   return StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: palette.scrim, justifyContent: 'flex-end' },
   sheet: {

@@ -8,6 +8,7 @@ const bodySource = source('../app/body.tsx');
 const librarySource = source('../app/gym.tsx');
 const planSource = source('../app/gym-plan.tsx');
 const detailSource = source('../app/exercise/[id].tsx');
+const titleModalSource = source('WorkoutTitleModal.tsx');
 
 describe('Body and workout permanent dark appearance contract', () => {
   test.each([
@@ -15,6 +16,7 @@ describe('Body and workout permanent dark appearance contract', () => {
     ['exercise library', librarySource],
     ['plan builder', planSource],
     ['exercise detail', detailSource],
+    ['workout title modal', titleModalSource],
   ])('%s consumes semantic dark colors without a live light branch', (_name, screenSource) => {
     expect(screenSource).toContain('useAppTheme');
     expect(screenSource).toContain('const { colors: theme } = useAppTheme()');
@@ -22,6 +24,28 @@ describe('Body and workout permanent dark appearance contract', () => {
     expect(screenSource).not.toContain("mode === 'light'");
     expect(screenSource).not.toContain('legacyColors');
     expect(screenSource).not.toContain('const styles = StyleSheet.create({');
+  });
+
+  test('workout title modal uses permanent dark semantic sheet chrome', () => {
+    expect(titleModalSource).toContain('background: theme.surface.canvas');
+    expect(titleModalSource).toContain('card: theme.surface.card');
+    expect(titleModalSource).toContain('field: theme.surface.raised');
+    expect(titleModalSource).toContain('ink: theme.ink.primary');
+    expect(titleModalSource).toContain('border: theme.border.subtle');
+    expect(titleModalSource).toContain('scrim: theme.interaction.scrim');
+    expect(titleModalSource).toContain('backgroundColor: palette.scrim');
+    expect(titleModalSource).toContain('borderWidth: 1');
+    expect(titleModalSource).toContain('backgroundColor: palette.field');
+  });
+
+  test('selected muscle filters use one semantic action treatment while unselected dots keep identity', () => {
+    expect(librarySource).not.toContain('active && tint ? { backgroundColor: tint } : null');
+    expect(librarySource).not.toContain('active && tint ? { color: palette.ink } : null');
+    expect(librarySource).toContain('active && (star ? styles.chipStarActive : styles.chipActive)');
+    expect(librarySource).toContain('chipActive: { backgroundColor: palette.action }');
+    expect(librarySource).toContain('tint && !active ? (');
+    expect(librarySource).toContain('styles.chipDot, { backgroundColor: tint }');
+    expect(librarySource).toContain('chipTextActive: { color: palette.onAction');
   });
 
   test('Body uses the approved dark editorial surfaces', () => {
@@ -61,6 +85,13 @@ describe('Body and workout permanent dark appearance contract', () => {
     expect(detailSource).toContain('checklist: [{ text: ex.name, done: false }]');
   });
 
+  test('workout naming keeps validation, trimming and save behavior', () => {
+    expect(titleModalSource).toContain('const canSave = title.trim().length > 0 && !saving');
+    expect(titleModalSource).toContain('onSubmitEditing={() => canSave && onSave(title.trim())}');
+    expect(titleModalSource).toContain('onPress={() => onSave(title.trim())}');
+    expect(titleModalSource).toContain('disabled={!canSave}');
+  });
+
   test('direct workout controls retain at least a 48dp target', () => {
     expect(bodySource).toMatch(/iconButton:\s*\{[^}]*width: spacing\.touch,[^}]*height: spacing\.touch/s);
     expect(librarySource).toMatch(/chip:\s*\{[^}]*minHeight: spacing\.touch/s);
@@ -70,5 +101,7 @@ describe('Body and workout permanent dark appearance contract', () => {
     expect(planSource).toMatch(/toggleBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
     expect(planSource).toMatch(/checkBox:\s*\{[^}]*width: spacing\.touch,[^}]*height: spacing\.touch/s);
     expect(detailSource).toMatch(/starBtn:\s*\{[^}]*minWidth: spacing\.touch,[^}]*minHeight: spacing\.touch/s);
+    expect(titleModalSource).toMatch(/closeButton:\s*\{[^}]*width: spacing\.touch,[^}]*height: spacing\.touch/s);
+    expect(titleModalSource).toMatch(/input:\s*\{[^}]*minHeight: 48/s);
   });
 });

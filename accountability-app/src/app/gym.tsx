@@ -473,7 +473,6 @@ function FilterChip({
         styles.chip,
         small && styles.chipSmall,
         active && (star ? styles.chipStarActive : styles.chipActive),
-        active && tint ? { backgroundColor: tint } : null,
         pressed && styles.pressed,
       ]}
       onPress={onPress}
@@ -490,7 +489,6 @@ function FilterChip({
           styles.chipText,
           small && styles.chipTextSmall,
           active && styles.chipTextActive,
-          active && tint ? { color: palette.ink } : null,
         ]}
       >
         {label}

@@ -81,13 +81,13 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
   const muted = palette.ink.secondary;
   const content = (
     <>
-      <LinearGradient
-        colors={usePhoto
-          ? ['rgba(11,13,11,0.48)', 'rgba(11,13,11,0.08)', 'rgba(11,13,11,0.78)']
-          : ['rgba(11,13,11,0.08)', 'rgba(11,13,11,0.24)', 'rgba(11,13,11,0.88)']}
-        locations={[0, 0.52, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+      {usePhoto ? (
+        <LinearGradient
+          colors={['rgba(11,13,11,0.48)', 'rgba(11,13,11,0.08)', 'rgba(11,13,11,0.78)']}
+          locations={[0, 0.52, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       {usePhoto ? (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <RouteTrace
@@ -300,17 +300,17 @@ function Privacy({ data }: { data: LayoutData }) {
 function CenterStack(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <View testID="center-stack-performance" style={styles.centerStackPerformance}>
+      <View testID="center-stack-performance" style={[styles.centerStackPerformance, styles.contrastPlate]}>
         <Distance data={data} align="center" size="small" />
         <View style={styles.stackMini}>
           <Stat value={data.pace} label="PACE" data={data} align="center" compact />
           <Stat value={data.duration} label="TIME" data={data} align="center" compact />
         </View>
       </View>
-      <View testID="center-stack-identity" style={styles.bottomLeftIdentity}>
+      <View testID="center-stack-identity" style={[styles.bottomLeftIdentity, styles.contrastPlate]}>
         <Header {...data} />
       </View>
-      <View testID="center-stack-privacy" style={styles.bottomRightPrivacy}>
+      <View testID="center-stack-privacy" style={[styles.bottomRightPrivacy, styles.contrastPlate]}>
         <Privacy data={data} />
       </View>
     </View>
@@ -320,15 +320,15 @@ function CenterStack(data: LayoutData) {
 function RightRail(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <View testID="right-rail-identity" style={styles.topLeftIdentity}>
+      <View testID="right-rail-identity" style={[styles.topLeftIdentity, styles.contrastPlate]}>
         <Header {...data} titleLines={2} />
       </View>
-      <View testID="right-rail-performance" style={styles.rightRailPerformance}>
+      <View testID="right-rail-performance" style={[styles.rightRailPerformance, styles.contrastPlate]}>
         <Distance data={data} align="right" size="small" />
         <Stat value={data.pace} label="PACE" data={data} align="right" compact />
         <Stat value={data.duration} label="TIME" data={data} align="right" compact />
       </View>
-      <View testID="right-rail-privacy" style={styles.bottomRightPrivacy}>
+      <View testID="right-rail-privacy" style={[styles.bottomRightPrivacy, styles.contrastPlate]}>
         <Privacy data={data} />
       </View>
     </View>
@@ -338,16 +338,16 @@ function RightRail(data: LayoutData) {
 function DataHorizon(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <View testID="data-horizon-performance" style={styles.dataHorizonPerformance}>
+      <View testID="data-horizon-performance" style={[styles.dataHorizonPerformance, styles.contrastPlate]}>
         <Stat value={data.distance} label="KM" data={data} compact />
         <Stat value={data.pace} label="PACE /KM" data={data} compact />
         <Stat value={data.duration} label="TIME" data={data} compact />
         <Stat value={data.calories} label="KCAL" data={data} compact />
       </View>
-      <View testID="data-horizon-identity" style={styles.bottomLeftIdentity}>
+      <View testID="data-horizon-identity" style={[styles.bottomLeftIdentity, styles.contrastPlate]}>
         <Header {...data} />
       </View>
-      <View testID="data-horizon-privacy" style={styles.bottomRightPrivacy}>
+      <View testID="data-horizon-privacy" style={[styles.bottomRightPrivacy, styles.contrastPlate]}>
         <Privacy data={data} />
       </View>
     </View>
@@ -357,17 +357,17 @@ function DataHorizon(data: LayoutData) {
 function EditorialStack(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <View testID="editorial-stack-performance" style={styles.editorialStackPerformance}>
+      <View testID="editorial-stack-performance" style={[styles.editorialStackPerformance, styles.contrastPlate]}>
         <Distance data={data} align="center" size="medium" />
         <View style={styles.editorialMini}>
           <Stat value={data.pace} label="PACE" data={data} align="center" compact />
           <Stat value={data.duration} label="TIME" data={data} align="center" compact />
         </View>
       </View>
-      <View testID="editorial-stack-identity" style={styles.bottomLeftIdentity}>
+      <View testID="editorial-stack-identity" style={[styles.bottomLeftIdentity, styles.contrastPlate]}>
         <Header {...data} />
       </View>
-      <View testID="editorial-stack-privacy" style={styles.bottomRightPrivacy}>
+      <View testID="editorial-stack-privacy" style={[styles.bottomRightPrivacy, styles.contrastPlate]}>
         <Privacy data={data} />
       </View>
     </View>
@@ -377,10 +377,10 @@ function EditorialStack(data: LayoutData) {
 function MapFocus(data: LayoutData) {
   return (
     <View style={styles.full}>
-      <View testID="map-focus-identity" style={styles.topLeftIdentity}>
+      <View testID="map-focus-identity" style={[styles.topLeftIdentity, styles.contrastPlate]}>
         <Header {...data} />
       </View>
-      <View testID="map-focus-performance" style={styles.mapFocusBottom}>
+      <View testID="map-focus-performance" style={[styles.mapFocusBottom, styles.contrastPlate]}>
         <View style={styles.distancePrivacy}><Distance data={data} /><Privacy data={data} /></View>
         <StatRow data={data} />
       </View>
@@ -392,6 +392,7 @@ const styles = StyleSheet.create({
   card: { overflow: 'hidden', borderRadius: 24, backgroundColor: palette.surface.canvas },
   content: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   full: { flex: 1, padding: '6%' },
+  contrastPlate: { backgroundColor: 'rgba(11,13,11,0.86)', borderRadius: 10 },
   header: { alignSelf: 'stretch', maxWidth: '74%' },
   title: { fontSize: 25, lineHeight: 29, letterSpacing: -0.7 },
   timestamp: { marginTop: 5, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1.15 },

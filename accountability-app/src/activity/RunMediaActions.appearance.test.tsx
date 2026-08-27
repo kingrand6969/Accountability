@@ -52,11 +52,23 @@ describe('completed Run sharing actions', () => {
     await act(async () => myDay.props.onPress());
     expect(onMyDay).toHaveBeenCalledTimes(1);
     expect(onDestination).not.toHaveBeenCalled();
+    const completedMyDay = renderer.root.findByProps({ accessibilityLabel: 'Add to My Day' });
+    expect(StyleSheet.flatten(completedMyDay.props.style({ pressed: false }))).toMatchObject({
+      minHeight: 48,
+      backgroundColor: '#181C18',
+      borderColor: '#87E38D',
+    });
+    expect(StyleSheet.flatten(renderer.root.findByProps({ children: 'Added to My Day' }).props.style)).toMatchObject({
+      color: '#87E38D',
+    });
+    expect(renderer.root.findByProps({ name: 'checkmark-circle' }).props.color).toBe('#87E38D');
+    expect(JSON.stringify(completedMyDay.props.style({ pressed: false }))).not.toContain('#B9FF3D');
 
     const saveImage = renderer.root.findByProps({ accessibilityLabel: 'Save image' });
     await act(async () => saveImage.props.onPress());
     expect(onDestination).toHaveBeenCalledWith('phone');
-    expect(renderer.root.findByProps({ children: 'Image saved' })).toBeTruthy();
+    const imageSaved = renderer.root.findByProps({ children: 'Image saved' });
+    expect(StyleSheet.flatten(imageSaved.props.style)).toMatchObject({ color: '#87E38D' });
     act(() => renderer.unmount());
   });
 

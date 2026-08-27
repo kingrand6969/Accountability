@@ -6,11 +6,13 @@ const source = (file: string) => readFileSync(path.resolve(__dirname, file), 'ut
 
 const dietSource = source('../app/diet.tsx');
 const searchSource = source('../app/food-search.tsx');
+const scanSheetSource = source('../scan/FoodScanSheet.tsx');
 
 describe('Nutrition permanent dark appearance contract', () => {
   test.each([
     ['diet tracker', dietSource],
     ['food search', searchSource],
+    ['food scan review', scanSheetSource],
   ])('%s consumes semantic dark colors without a live light branch', (_name, screenSource) => {
     expect(screenSource).toContain('useAppTheme');
     expect(screenSource).toContain('const { colors: theme } = useAppTheme()');
@@ -18,6 +20,18 @@ describe('Nutrition permanent dark appearance contract', () => {
     expect(screenSource).not.toContain("mode === 'light'");
     expect(screenSource).not.toContain('legacyColors');
     expect(screenSource).not.toContain('const styles = StyleSheet.create({');
+  });
+
+  test('food scan review uses permanent dark semantic sheet chrome', () => {
+    expect(scanSheetSource).toContain('card: theme.surface.card');
+    expect(scanSheetSource).toContain('field: theme.surface.raised');
+    expect(scanSheetSource).toContain('ink: theme.ink.primary');
+    expect(scanSheetSource).toContain('border: theme.border.subtle');
+    expect(scanSheetSource).toContain('action: theme.ink.action');
+    expect(scanSheetSource).toContain('onAction: theme.ink.inverse');
+    expect(scanSheetSource).toContain('scrim: theme.interaction.scrim');
+    expect(scanSheetSource).toContain('backgroundColor: palette.scrim');
+    expect(scanSheetSource).toContain('backgroundColor: palette.field');
   });
 
   test.each([
@@ -62,5 +76,15 @@ describe('Nutrition permanent dark appearance contract', () => {
     expect(dietSource).toMatch(/fab:\s*\{[^}]*minHeight: spacing\.touch/s);
     expect(searchSource).toMatch(/searchBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
     expect(searchSource).toMatch(/result:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(scanSheetSource).toContain('hitSlop={13}');
+    expect(scanSheetSource).toContain('hitSlop={11}');
+    expect(scanSheetSource).toMatch(/save:\s*\{[^}]*minHeight: 52/s);
+  });
+
+  test('food scan keeps portion correction, item selection and save behavior', () => {
+    expect(scanSheetSource).toContain('const k = grams / base');
+    expect(scanSheetSource).toContain('const kept = items.filter((_, i) => !dropped.has(i))');
+    expect(scanSheetSource).toContain('onPress={() => onSave(kept)}');
+    expect(scanSheetSource).toContain('disabled={kept.length === 0 || saving}');
   });
 });

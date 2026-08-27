@@ -1,7 +1,8 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { describe, expect, jest, test } from '@jest/globals';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { RunCard } from './RunCard';
 import type { RunShareLayout } from './runShareAppearance';
 
@@ -54,6 +55,28 @@ function textOf(renderer: TestRenderer.ReactTestRenderer) {
   return renderer.root.findAllByType(Text).map((node) => node.props.children).flat(Infinity).join(' ');
 }
 
+function rgb(hex: string): readonly [number, number, number] {
+  return [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)) as unknown as readonly [number, number, number];
+}
+
+function compositeOverWhite(color: readonly [number, number, number], alpha: number) {
+  return color.map((channel) => channel * alpha + 255 * (1 - alpha)) as unknown as readonly [number, number, number];
+}
+
+function luminance(color: readonly [number, number, number]) {
+  const linear = color.map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrast(foreground: readonly [number, number, number], background: readonly [number, number, number]) {
+  const lighter = Math.max(luminance(foreground), luminance(background));
+  const darker = Math.min(luminance(foreground), luminance(background));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 describe('RunCard approved layouts', () => {
   test.each<readonly [RunShareLayout, string]>([
     ['center-stack', 'Center Stack'],
@@ -91,6 +114,32 @@ describe('RunCard approved layouts', () => {
       showLatestMarker: false,
       tiles: 'osm',
     }));
+    act(() => renderer.unmount());
+  });
+
+  test.each<RunShareLayout>([
+    'center-stack',
+    'right-rail',
+    'data-horizon',
+    'editorial-stack',
+    'map-focus',
+  ])('%s keeps natural OSM tiles and protects every text overlay from a worst-case light map', (layout) => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(card(layout)); });
+
+    expect(renderer.root.findAllByType(LinearGradient)).toHaveLength(0);
+    const overlayIds = [`${layout}-identity`, `${layout}-performance`];
+    if (layout !== 'map-focus') overlayIds.push(`${layout}-privacy`);
+    for (const testID of overlayIds) {
+      expect(StyleSheet.flatten(renderer.root.findByProps({ testID }).props.style)).toMatchObject({
+        backgroundColor: 'rgba(11,13,11,0.86)',
+      });
+    }
+
+    const worstCaseLightMap = compositeOverWhite([11, 13, 11], 0.86);
+    expect(contrast(rgb('#F7F8F4'), worstCaseLightMap)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(rgb('#CED4CB'), worstCaseLightMap)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(rgb('#B9FF3D'), worstCaseLightMap)).toBeGreaterThanOrEqual(3);
     act(() => renderer.unmount());
   });
 

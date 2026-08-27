@@ -10,12 +10,10 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button } from '../ui/Button';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
@@ -36,9 +34,9 @@ export function WorkoutTitleModal({
   onCancel: () => void;
   onSave: (title: string) => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => modalPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => modalPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [title, setTitle] = useState('');
   const canSave = title.trim().length > 0 && !saving;
 
@@ -91,24 +89,22 @@ export function WorkoutTitleModal({
   );
 }
 
-function modalPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function modalPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light'
-      ? legacyColors.surfaceAlt
-      : theme.surface.raised,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    scrim: mode === 'light' ? 'rgba(15,23,42,0.45)' : theme.interaction.scrim,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    scrim: theme.interaction.scrim,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = modalPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = modalPalette(theme);
   return StyleSheet.create({
   backdrop: {
     flex: 1,
@@ -118,7 +114,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   },
   sheet: {
     backgroundColor: palette.card,
-    borderWidth: mode === 'light' ? 0 : 1,
+    borderWidth: 1,
     borderColor: palette.border,
     borderRadius: radius.lg,
     padding: spacing.lg,

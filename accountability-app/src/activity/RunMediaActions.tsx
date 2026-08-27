@@ -204,7 +204,7 @@ export function RunMediaActions({
                   <Ionicons
                     name={state.status === 'success' ? 'checkmark-circle' : action.icon}
                     size={18}
-                    color={state.status === 'success' ? palette.ink.action : palette.ink.primary}
+                    color={state.status === 'success' ? palette.status.success : palette.ink.primary}
                   />
                 )}
                 <Text
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   successAction: {
-    borderColor: palette.border.action,
+    borderColor: palette.status.success,
   },
   actionText: {
     color: palette.ink.primary,
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   successText: {
-    color: palette.ink.action,
+    color: palette.status.success,
   },
   error: {
     color: palette.status.danger,
