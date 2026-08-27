@@ -69,7 +69,7 @@ import {
   type RecordingRecoveryReadState,
 } from '../../activity/runCompletion';
 import { getMyProfile } from '../../profiles/api';
-import { font } from '../../ui/theme';
+import { font, themeColors } from '../../ui/theme';
 import { hapticImpact } from '../../ui/haptics';
 import { contentMaxWidth } from '../../ui/responsive';
 import { useAuth } from '../../auth/AuthProvider';
@@ -80,8 +80,9 @@ import {
   runCardTitle,
 } from '../../activity/runShareAppearance';
 
-const LIME = '#c6f24e';
-const BG = '#101319';
+const palette = themeColors('dark');
+const LIME = palette.ink.action;
+const BG = palette.surface.canvas;
 
 const TYPE_LABEL: Record<ActivityType, string> = {
   run: 'Run',
@@ -1853,7 +1854,7 @@ export default function ActivityTrack() {
             route={mapRoute}
             markers={idleMarkers}
             interactive
-            tiles="dark"
+            tiles="osm"
             showZoomControl={false}
             fitPadding={{
               top: insets.top + 88,
@@ -1916,7 +1917,7 @@ export default function ActivityTrack() {
                 { left: sideInset, top: insets.top + 8 },
               ]}
             >
-              <Ionicons name="chevron-back" size={23} color="#f7f8f4" />
+              <Ionicons name="chevron-back" size={23} color={palette.ink.primary} />
             </Pressable>
             <View
               style={[
@@ -1936,7 +1937,7 @@ export default function ActivityTrack() {
                   />
                 ) : (
                   <View style={[styles.avatar, styles.avatarFallback]}>
-                    <Ionicons name="person" size={14} color="#cbd5e1" />
+                    <Ionicons name="person" size={14} color={palette.ink.secondary} />
                   </View>
                 )}
                 <View style={styles.recoveryHeadingCopy}>
@@ -2033,7 +2034,7 @@ export default function ActivityTrack() {
                 disabled
                 style={styles.recoveryRequiredAction}
               >
-                <Ionicons name="lock-closed" size={18} color="#101319" />
+                <Ionicons name="lock-closed" size={18} color={palette.ink.inverse} />
                 <Text style={styles.recoveryRequiredText}>
                   Recovery required
                 </Text>
@@ -2080,9 +2081,9 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(18,21,18,0.82)',
+    backgroundColor: palette.surface.card,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: palette.border.subtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2091,9 +2092,9 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 16,
     borderRadius: 24,
-    backgroundColor: 'rgba(11,13,11,0.88)',
+    backgroundColor: palette.surface.canvas,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: palette.border.subtle,
   },
   titleRow: {
     flexDirection: 'row',
@@ -2106,16 +2107,16 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: palette.border.strong,
   },
   avatarFallback: {
-    backgroundColor: 'rgba(30,36,48,0.9)',
+    backgroundColor: palette.surface.raised,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  runTitle: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
+  runTitle: { color: palette.ink.primary, fontFamily: font.bold, fontSize: 16 },
   runWhen: {
-    color: '#9da59d',
+    color: palette.ink.muted,
     fontFamily: font.regular,
     fontSize: 12,
     marginTop: 2,
@@ -2129,18 +2130,18 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: 'rgba(198,242,78,0.1)',
+    backgroundColor: palette.surface.muted,
     borderWidth: 1,
-    borderColor: 'rgba(198,242,78,0.3)',
+    borderColor: palette.border.action,
   },
   recoveryNoticeCopy: { flex: 1 },
   recoveryNoticeTitle: {
-    color: '#fff',
+    color: palette.ink.primary,
     fontFamily: font.bold,
     fontSize: 13,
   },
   recoveryNoticeDetail: {
-    color: '#cbd5e1',
+    color: palette.ink.secondary,
     fontFamily: font.medium,
     fontSize: 11,
     marginTop: 2,
@@ -2154,7 +2155,7 @@ const styles = StyleSheet.create({
     backgroundColor: LIME,
   },
   restoreLegacyText: {
-    color: '#101319',
+    color: palette.ink.inverse,
     fontFamily: font.bold,
     fontSize: 11,
     textAlign: 'center',
@@ -2170,7 +2171,7 @@ const styles = StyleSheet.create({
     opacity: 0.58,
   },
   recoveryRequiredText: {
-    color: '#101319',
+    color: palette.ink.inverse,
     fontFamily: font.bold,
     fontSize: 15,
   },

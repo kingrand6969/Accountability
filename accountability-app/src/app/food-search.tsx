@@ -16,19 +16,17 @@ import { scaleNutrient, scaleMacro } from '../diet/compute';
 import { addFoodLog, todayString } from '../diet/api';
 import { Button } from '../ui/Button';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function FoodSearch() {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => foodSearchPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => foodSearchPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<FoodHit[]>([]);
@@ -219,24 +217,24 @@ export default function FoodSearch() {
   );
 }
 
-function foodSearchPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function foodSearchPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
-    selected: mode === 'light' ? legacyColors.successSoft : theme.status.successSoft,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    success: mode === 'light' ? legacyColors.success : theme.status.success,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    selected: theme.status.successSoft,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = foodSearchPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = foodSearchPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   container: { padding: spacing.lg, gap: 10, paddingBottom: 48 },

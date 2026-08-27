@@ -24,20 +24,18 @@ import { Button } from '../../ui/Button';
 import { EmptyState } from '../../ui/EmptyState';
 import { showToast } from '../../ui/Toast';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 
 /** Frame matches the image's real aspect ratio, so it fills the width with no
  *  white bars and no cropping — same on phone and tablet. */
 function DemoImage({ uri, label }: { uri: string; label: string }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [ratio, setRatio] = useState(4 / 3);
   useEffect(() => {
     let ok = true;
@@ -63,9 +61,9 @@ function DemoImage({ uri, label }: { uri: string; label: string }) {
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => detailPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => detailPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [ex, setEx] = useState<LibraryExercise | null>(null);
   const [fav, setFav] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -199,25 +197,23 @@ export default function ExerciseDetail() {
   );
 }
 
-function detailPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function detailPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light'
-      ? legacyColors.surface
-      : theme.surface.raised,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    accent: mode === 'light' ? legacyColors.accent : theme.status.attention,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    accent: theme.status.attention,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = detailPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = detailPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   center: {

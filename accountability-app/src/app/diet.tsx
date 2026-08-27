@@ -27,19 +27,17 @@ import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function Diet() {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => dietPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => dietPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { isPro, loading: proLoading } = useIsPro();
   const [logs, setLogs] = useState<FoodLog[]>([]);
@@ -321,26 +319,26 @@ function Macro({
   );
 }
 
-function dietPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function dietPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    success: mode === 'light' ? legacyColors.success : theme.status.success,
-    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
-    pro: mode === 'light' ? legacyColors.pro : theme.ink.action,
-    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
+    danger: theme.status.danger,
+    pro: theme.ink.action,
+    proSoft: theme.surface.muted,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = dietPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = dietPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   center: {
@@ -431,7 +429,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     gap: 7,
     borderWidth: 1,
     borderColor: palette.border,
-    shadowColor: '#000',
+    shadowColor: palette.background,
     shadowOpacity: 0.12,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
@@ -448,7 +446,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    shadowColor: '#000',
+    shadowColor: palette.background,
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },

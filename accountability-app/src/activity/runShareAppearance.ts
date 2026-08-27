@@ -6,7 +6,7 @@ export type RunShareLayout =
   | 'map-focus';
 
 export type RunShareFont = 'momentum' | 'classic' | 'strong' | 'street';
-export type RunCardTheme = 'day' | 'night';
+export type RunCardTheme = 'dark' | 'day' | 'night';
 
 export type RunShareAppearance = Readonly<{
   layout: RunShareLayout;
@@ -32,8 +32,8 @@ export const RUN_SHARE_FONTS = [
   { id: 'street', label: 'Street' },
 ] as const satisfies readonly { id: RunShareFont; label: string }[];
 
-export function runCardThemeForLocalHour(hour: number): RunCardTheme {
-  return Number.isFinite(hour) && hour >= 6 && hour <= 18 ? 'day' : 'night';
+export function runCardThemeForLocalHour(_hour: number): RunCardTheme {
+  return 'dark';
 }
 
 export function createDefaultRunShareAppearance(

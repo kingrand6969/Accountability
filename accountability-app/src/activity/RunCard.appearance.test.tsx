@@ -40,7 +40,7 @@ function card(layout: RunShareLayout, overrides: Record<string, unknown> = {}) {
       mediaFit="cover"
       layout={layout}
       font="momentum"
-      theme="night"
+      theme="dark"
       title="Sunday Run"
       completedAt="2026-08-23T10:18:00.000Z"
       showTimestamp
@@ -89,7 +89,7 @@ describe('RunCard approved layouts', () => {
       route: points.map((point) => ({ lat: point.lat, lng: point.lon })),
       markers: [],
       showLatestMarker: false,
-      tiles: 'dark',
+      tiles: 'osm',
     }));
     act(() => renderer.unmount());
   });

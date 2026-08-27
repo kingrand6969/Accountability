@@ -10,6 +10,13 @@ import {
   runCardTitle,
   routeEndpointVisibilityIntent,
 } from './runShareAppearance';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+const shareSheetSource = readFileSync(
+  path.resolve(__dirname, 'RunShareSheet.tsx'),
+  'utf8',
+);
 
 describe('approved Run share appearance', () => {
   test('offers the five approved layouts in the approved order', () => {
@@ -32,22 +39,39 @@ describe('approved Run share appearance', () => {
     expect(RUN_SHARE_FONTS.some((font) => String(font.label) === 'Smooth')).toBe(false);
   });
 
-  test('defaults to Map Focus, Momentum, timestamp visible and privacy on', () => {
+  test.each([5, 10, 18, 23])(
+    'defaults to permanent dark chrome at local hour %i while retaining layout and privacy defaults',
+    (localHour) => {
     expect(createDefaultRunShareAppearance('2026-08-23T10:18:00.000Z', 10)).toEqual({
       layout: 'map-focus',
       font: 'momentum',
       showTimestamp: true,
       showEndpoints: false,
-      theme: 'day',
+      theme: 'dark',
       completedAt: '2026-08-23T10:18:00.000Z',
     });
+      expect(createDefaultRunShareAppearance(
+        '2026-08-23T10:18:00.000Z',
+        localHour,
+      ).theme).toBe('dark');
+    },
+  );
+
+  test('does not select light share chrome from the recorded completion hour', () => {
+    expect(runCardThemeForLocalHour(10)).toBe('dark');
+    expect(runCardThemeForLocalHour(18)).toBe('dark');
+    expect(runCardThemeForLocalHour(19)).toBe('dark');
+    expect(runCardThemeForLocalHour(5)).toBe('dark');
   });
 
-  test('selects day and night from the recorded local completion hour', () => {
-    expect(runCardThemeForLocalHour(10)).toBe('day');
-    expect(runCardThemeForLocalHour(18)).toBe('day');
-    expect(runCardThemeForLocalHour(19)).toBe('night');
-    expect(runCardThemeForLocalHour(5)).toBe('night');
+  test('share editor chrome uses the permanent semantic dark palette', () => {
+    expect(shareSheetSource).toContain("const palette = themeColors('dark')");
+    expect(shareSheetSource).toContain('backgroundColor: palette.surface.canvas');
+    expect(shareSheetSource).toContain('backgroundColor: palette.surface.card');
+    expect(shareSheetSource).toContain('borderColor: palette.border.subtle');
+    expect(shareSheetSource).toContain('color: palette.ink.primary');
+    expect(shareSheetSource).toContain('color: palette.ink.muted');
+    expect(shareSheetSource).not.toContain("theme === 'day'");
   });
 
   test('formats the saved run timestamp without changing the duration metric', () => {

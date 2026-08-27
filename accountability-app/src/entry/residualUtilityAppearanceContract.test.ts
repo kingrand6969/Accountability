@@ -13,13 +13,21 @@ describe('residual utility manual appearance contract', () => {
   test.each([
     ['achievement sharing', achievementSource],
     ['Create hub', createHubSource],
-    ['activity uploads', uploadSource],
     ['moderation gate', moderationSource],
   ])('%s follows the live Light/Dark appearance', (_name, componentSource) => {
     expect(componentSource).toContain('useAppTheme');
     expect(componentSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
     expect(componentSource).toContain('function createStyles(theme: AppThemeColors, mode: AppThemeMode)');
     expect(componentSource).not.toContain('const styles = StyleSheet.create({');
+  });
+
+  test('activity uploads uses the permanent semantic dark appearance', () => {
+    expect(uploadSource).toContain('useAppTheme');
+    expect(uploadSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(uploadSource).toContain('function createStyles(theme: AppThemeColors)');
+    expect(uploadSource).not.toContain("mode === 'light'");
+    expect(uploadSource).not.toContain('legacyColors');
+    expect(uploadSource).not.toContain('const styles = StyleSheet.create({');
   });
 
   test('achievement prompt preserves its Light modal and uses a Dark-native action set', () => {
@@ -49,12 +57,10 @@ describe('residual utility manual appearance contract', () => {
   });
 
   test('upload states keep privacy-safe behavior and receive readable Dark surfaces', () => {
-    expect(uploadSource).toContain(
-      "row: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.raised",
-    );
-    expect(uploadSource).toContain(
-      "aggregate: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.card",
-    );
+    expect(uploadSource).toContain('row: theme.surface.raised');
+    expect(uploadSource).toContain('aggregate: theme.surface.card');
+    expect(uploadSource).toContain('danger: theme.status.danger');
+    expect(uploadSource).toContain('action: theme.ink.action');
     expect(uploadSource).toContain('activityUploadsPreview(queued)');
     expect(uploadSource).toContain('if (retryingRef.current) return');
     expect(uploadSource).toContain('hitSlop={2}');

@@ -7,10 +7,10 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { font } from '../ui/theme';
+import { font, themeColors } from '../ui/theme';
 import type { RunMediaDestination } from './saveRunMedia';
 
-const LIME = '#c6f24e';
+const palette = themeColors('dark');
 
 type DestinationState = {
   status: 'idle' | 'working' | 'success' | 'error';
@@ -166,7 +166,7 @@ export function RunMediaActions({
         accessibilityState={{ disabled: disabled || working || !!feedReason }}
       >
         <Text style={styles.feedActionText}>Continue to Feed</Text>
-        <Ionicons name="arrow-forward" size={19} color="#B9FF3D" />
+        <Ionicons name="arrow-forward" size={19} color={palette.ink.action} />
       </Pressable>
       {feedReason ? <Text style={styles.disabledReason}>{feedReason}</Text> : null}
       <View style={styles.grid}>
@@ -199,12 +199,12 @@ export function RunMediaActions({
                 }}
               >
                 {state.status === 'working' ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={palette.ink.primary} />
                 ) : (
                   <Ionicons
                     name={state.status === 'success' ? 'checkmark-circle' : action.icon}
                     size={18}
-                    color={state.status === 'success' ? LIME : '#fff'}
+                    color={state.status === 'success' ? palette.ink.action : palette.ink.primary}
                   />
                 )}
                 <Text
@@ -249,7 +249,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: palette.border.subtle,
+    backgroundColor: palette.surface.raised,
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -261,40 +262,40 @@ const styles = StyleSheet.create({
     minHeight: 56,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#30372F',
-    backgroundColor: '#111411',
+    borderColor: palette.border.subtle,
+    backgroundColor: palette.surface.card,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
-    shadowColor: '#111411',
+    shadowColor: palette.surface.canvas,
     shadowOpacity: 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
     elevation: 4,
   },
   successAction: {
-    borderColor: 'rgba(198,242,78,0.55)',
+    borderColor: palette.border.action,
   },
   actionText: {
-    color: '#fff',
+    color: palette.ink.primary,
     fontFamily: font.bold,
     fontSize: 13,
     textAlign: 'center',
   },
   feedActionText: {
-    color: '#B9FF3D',
+    color: palette.ink.action,
     fontFamily: font.extrabold,
     fontSize: 14,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   successText: {
-    color: LIME,
+    color: palette.ink.action,
   },
   error: {
-    color: '#fca5a5',
+    color: palette.status.danger,
     fontFamily: font.medium,
     fontSize: 11,
     lineHeight: 15,
@@ -302,7 +303,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   disabledReason: {
-    color: '#94a3b8',
+    color: palette.ink.muted,
     fontFamily: font.medium,
     fontSize: 11,
     lineHeight: 15,

@@ -458,15 +458,23 @@ describe('Run tracker Open Map route integration', () => {
       expect.objectContaining({
         interactive: true,
         showZoomControl: false,
-        tiles: 'dark',
+        tiles: 'osm',
       }),
     );
+    expect(StyleSheet.flatten(mockMapProps?.style as never)).toMatchObject({
+      backgroundColor: '#0B0D0B',
+    });
     expect(renderer.root.findByProps({ testID: 'run-open-map-chrome' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Distance 0.00 kilometres' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:00' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Pace unavailable' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Estimated calories 0' })).toBeTruthy();
-    expect(renderer.root.findByProps({ accessibilityLabel: 'Start Run' })).toBeTruthy();
+    const start = renderer.root.findByProps({ accessibilityLabel: 'Start Run' });
+    const startStyle = StyleSheet.flatten(start.props.style({ pressed: false }));
+    expect(startStyle).toMatchObject({
+      backgroundColor: '#B9FF3D',
+    });
+    expect(startStyle.minHeight).toBeGreaterThanOrEqual(58);
 
     act(() => renderer.root.findByProps({ accessibilityLabel: 'Back' }).props.onPress());
     expect(mockNavigateBackSafely).toHaveBeenCalledWith(mockRouter);
@@ -505,6 +513,12 @@ describe('Run tracker Open Map route integration', () => {
     expect(renderer.root.findByProps({ accessibilityLabel: 'Recording. GPS active' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Pause Walk' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+    expect(StyleSheet.flatten(
+      renderer.root.findByProps({ accessibilityLabel: 'Pause Walk' }).props.style({ pressed: false }),
+    )).toMatchObject({
+      backgroundColor: 'rgba(11,13,11,0.88)',
+      borderColor: '#B9FF3D',
+    });
   });
 
   test('labels the pause control for a Ride recording', async () => {
@@ -553,6 +567,12 @@ describe('Run tracker Open Map route integration', () => {
     expect(renderer.root.findByProps({ accessibilityLabel: 'Elapsed time 00:12' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Resume Run' })).toBeTruthy();
     expect(renderer.root.findByProps({ accessibilityLabel: 'Stop & Save' })).toBeTruthy();
+    expect(StyleSheet.flatten(
+      renderer.root.findByProps({ accessibilityLabel: 'Resume Run' }).props.style({ pressed: false }),
+    )).toMatchObject({
+      backgroundColor: 'rgba(11,13,11,0.88)',
+      borderColor: '#B9FF3D',
+    });
   });
 
   test('resumes a durably paused recording through its existing owner-bound identity', async () => {

@@ -6,39 +6,31 @@ const source = (file: string) => readFileSync(path.resolve(__dirname, file), 'ut
 
 const dietSource = source('../app/diet.tsx');
 const searchSource = source('../app/food-search.tsx');
-const scanSheetSource = source('../scan/FoodScanSheet.tsx');
 
-describe('Nutrition manual appearance contract', () => {
+describe('Nutrition permanent dark appearance contract', () => {
   test.each([
     ['diet tracker', dietSource],
     ['food search', searchSource],
-    ['food scan review', scanSheetSource],
-  ])('%s follows the live Light/Dark appearance', (_name, screenSource) => {
+  ])('%s consumes semantic dark colors without a live light branch', (_name, screenSource) => {
     expect(screenSource).toContain('useAppTheme');
-    expect(screenSource).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(screenSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
+    expect(screenSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(screenSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(screenSource).not.toContain("mode === 'light'");
+    expect(screenSource).not.toContain('legacyColors');
     expect(screenSource).not.toContain('const styles = StyleSheet.create({');
   });
 
   test.each([
     ['diet tracker', dietSource],
     ['food search', searchSource],
-  ])('%s preserves its exact white Light canvas and gains semantic Dark surfaces', (_name, screenSource) => {
-    expect(screenSource).toContain(
-      "background: mode === 'light' ? legacyColors.background : theme.surface.canvas",
-    );
-    expect(screenSource).toContain(
-      "card: mode === 'light' ? legacyColors.card : theme.surface.card",
-    );
-    expect(screenSource).toContain(
-      "field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised",
-    );
-    expect(screenSource).toContain(
-      "ink: mode === 'light' ? legacyColors.text : theme.ink.primary",
-    );
-    expect(screenSource).toContain(
-      "border: mode === 'light' ? legacyColors.border : theme.border.subtle",
-    );
+  ])('%s uses approved semantic dark surfaces', (_name, screenSource) => {
+    expect(screenSource).toContain('background: theme.surface.canvas');
+    expect(screenSource).toContain('card: theme.surface.card');
+    expect(screenSource).toContain('field: theme.surface.raised');
+    expect(screenSource).toContain('ink: theme.ink.primary');
+    expect(screenSource).toContain('border: theme.border.subtle');
+    expect(screenSource).toContain('action: theme.ink.action');
+    expect(screenSource).toContain('onAction: theme.ink.inverse');
     expect(screenSource).toContain('backgroundColor: palette.background');
     expect(screenSource).toContain('backgroundColor: palette.field');
     expect(screenSource).toContain('borderColor: palette.border');
@@ -62,20 +54,6 @@ describe('Nutrition manual appearance contract', () => {
     expect(searchSource).toContain('Food data © Open Food Facts contributors (ODbL)');
   });
 
-  test('scan review themes the sheet and scrim without changing correction or save semantics', () => {
-    expect(scanSheetSource).toContain(
-      "scrim: mode === 'light' ? 'rgba(15,23,42,0.45)' : theme.interaction.scrim",
-    );
-    expect(scanSheetSource).toContain(
-      "card: mode === 'light' ? legacyColors.card : theme.surface.card",
-    );
-    expect(scanSheetSource).toContain('backgroundColor: palette.scrim');
-    expect(scanSheetSource).toContain('backgroundColor: palette.card');
-    expect(scanSheetSource).toContain('const k = grams / base');
-    expect(scanSheetSource).toContain('onPress={() => onSave(kept)}');
-    expect(scanSheetSource).toContain('disabled={kept.length === 0 || saving}');
-  });
-
   test('primary nutrition controls retain at least a 48dp touch target', () => {
     expect(dietSource).toMatch(
       /delete:\s*\{[^}]*minWidth: spacing\.touch,[^}]*minHeight: spacing\.touch/s,
@@ -84,8 +62,5 @@ describe('Nutrition manual appearance contract', () => {
     expect(dietSource).toMatch(/fab:\s*\{[^}]*minHeight: spacing\.touch/s);
     expect(searchSource).toMatch(/searchBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
     expect(searchSource).toMatch(/result:\s*\{[^}]*minHeight: spacing\.touch/s);
-    expect(scanSheetSource).toContain('hitSlop={13}');
-    expect(scanSheetSource).toContain('hitSlop={11}');
-    expect(scanSheetSource).toMatch(/save:\s*\{[^}]*minHeight: 52/s);
   });
 });

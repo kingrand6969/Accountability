@@ -24,22 +24,20 @@ import { useIsPro } from '../pro/ProProvider';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   contentMax,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function GymPlan() {
   const router = useRouter();
   const { isPro, loading: proLoading } = useIsPro();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => planPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => planPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [focus, setFocus] = useState<Set<MuscleGroup>>(new Set());
   const [equip, setEquip] = useState<'any' | 'gym' | 'body'>('any');
   const [heightCm, setHeightCm] = useState('');
@@ -205,7 +203,7 @@ export default function GymPlan() {
               style={({ pressed }) => [styles.chip, on && styles.chipOn, pressed && styles.pressed]}
               accessibilityState={{ selected: on }}
             >
-              {on ? <Ionicons name="checkmark" size={15} color="#fff" /> : null}
+              {on ? <Ionicons name="checkmark" size={15} color={palette.onAction} /> : null}
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{g.label}</Text>
             </Pressable>
           );
@@ -287,7 +285,7 @@ export default function GymPlan() {
         onPress={generate}
         loading={generating}
         disabled={focus.size === 0}
-        icon={<Ionicons name="sparkles" size={17} color="#fff" />}
+        icon={<Ionicons name="sparkles" size={17} color={palette.onAction} />}
         style={styles.generate}
       />
       {focus.size === 0 ? (
@@ -322,7 +320,7 @@ export default function GymPlan() {
                   accessibilityState={{ checked: isKept }}
                   accessibilityLabel={`Keep ${item.exercise.name} when regenerating`}
                 >
-                  {isKept ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+                  {isKept ? <Ionicons name="checkmark" size={16} color={palette.onAction} /> : null}
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [styles.exBody, pressed && styles.pressed]}
@@ -364,30 +362,29 @@ export default function GymPlan() {
   );
 }
 
-function planPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function planPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light'
-      ? legacyColors.surfaceAlt
-      : theme.surface.raised,
-    surface: mode === 'light' ? legacyColors.surface : theme.surface.muted,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
-    success: mode === 'light' ? legacyColors.success : theme.status.success,
-    successSoft: mode === 'light' ? legacyColors.successSoft : theme.status.successSoft,
-    pro: mode === 'light' ? legacyColors.pro : '#B9FF3D',
-    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    surface: theme.surface.muted,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    actionSoft: theme.surface.muted,
+    success: theme.status.success,
+    successSoft: theme.status.successSoft,
+    pro: theme.ink.action,
+    proSoft: theme.surface.muted,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = planPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = planPalette(theme);
   return StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.background },
   upsell: {
@@ -465,7 +462,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   },
   chipOn: { backgroundColor: palette.action },
   chipText: { color: palette.action, fontFamily: font.semibold, fontSize: 14 },
-  chipTextOn: { color: '#fff' },
+  chipTextOn: { color: palette.onAction },
   toggle: {
     flexDirection: 'row',
     backgroundColor: palette.surface,

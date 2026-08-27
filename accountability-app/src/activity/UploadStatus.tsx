@@ -9,12 +9,10 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import type {
@@ -57,14 +55,6 @@ const STATUS_COPY: Record<UploadStatus, UploadStatusCopy> = {
     detail: 'This activity is still safely saved on this phone',
     icon: 'alert-circle-outline',
   },
-};
-
-const STATUS_COLOR: Record<UploadStatus, string> = {
-  saved: legacyColors.primary,
-  uploading: legacyColors.primary,
-  waiting_network: '#92400e',
-  needs_sign_in: '#6d28d9',
-  needs_attention: '#b91c1c',
 };
 
 export function uploadStatusCopy(status: UploadStatus): UploadStatusCopy {
@@ -223,11 +213,11 @@ export function ActivityUploadBadge({
   onPress,
   style,
 }: ActivityUploadBadgeProps) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const copy = uploadStatusCopy(status);
-  const statusColor = themedStatusColor(status, theme, mode);
-  const iconColor = dark ? '#e2f78e' : statusColor;
+  const statusColor = themedStatusColor(status, theme);
+  const iconColor = statusColor;
   const content = (
     <>
       <Ionicons name={copy.icon} size={17} color={iconColor} />
@@ -297,9 +287,9 @@ export function ActivityUploadsPanel({
   status,
   onRetryNow,
 }: ActivityUploadsPanelProps) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const palette = useMemo(() => createPalette(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => createPalette(theme), [theme]);
   const [retrying, setRetrying] = useState(false);
   const retryingRef = useRef(false);
   const retryCopy = retryButtonCopy(retrying);
@@ -481,9 +471,9 @@ function AggregateNotice({
   title: string;
   detail: string;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const palette = useMemo(() => createPalette(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => createPalette(theme), [theme]);
   return (
     <View style={styles.aggregateNotice}>
       <Ionicons name={icon} size={19} color={palette.inkSecondary} />
@@ -498,39 +488,37 @@ function AggregateNotice({
 function themedStatusColor(
   status: UploadStatus,
   theme: AppThemeColors,
-  mode: AppThemeMode,
 ): string {
-  if (mode === 'light') return STATUS_COLOR[status];
   if (status === 'waiting_network') return theme.status.attention;
   if (status === 'needs_attention') return theme.status.danger;
   return theme.ink.action;
 }
 
-function createPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function createPalette(theme: AppThemeColors) {
   return {
-    ink: mode === 'light' ? legacyColors.ink : theme.ink.primary,
-    inkSoft: mode === 'light' ? legacyColors.inkSoft : theme.ink.secondary,
-    inkPrimary: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    inkSecondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    inkMuted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.raised,
-    actionBorder: mode === 'light' ? '#E8F4D7' : theme.border.action,
-    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
-    dangerSoft: mode === 'light' ? legacyColors.dangerSoft : theme.status.dangerSoft,
-    dangerBorder: mode === 'light' ? '#fecaca' : theme.border.danger,
-    row: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.raised,
-    rowBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
-    aggregate: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.card,
-    aggregateBorder: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
-    badge: mode === 'light' ? 'rgba(255,255,255,0.82)' : theme.surface.card,
-    badgeBorder: mode === 'light' ? 'rgba(17,20,17,0.14)' : theme.border.subtle,
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.secondary,
+    inkPrimary: theme.ink.primary,
+    inkSecondary: theme.ink.secondary,
+    inkMuted: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    actionSoft: theme.surface.raised,
+    actionBorder: theme.border.action,
+    danger: theme.status.danger,
+    dangerSoft: theme.status.dangerSoft,
+    dangerBorder: theme.border.danger,
+    row: theme.surface.raised,
+    rowBorder: theme.border.subtle,
+    aggregate: theme.surface.card,
+    aggregateBorder: theme.border.subtle,
+    badge: theme.surface.card,
+    badgeBorder: theme.border.subtle,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = createPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = createPalette(theme);
   return StyleSheet.create({
   badge: {
     minHeight: 30,
@@ -549,11 +537,11 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     borderColor: palette.badgeBorder,
   },
   badgeDark: {
-    backgroundColor: 'rgba(15,23,42,0.9)',
-    borderColor: 'rgba(226,247,142,0.42)',
+    backgroundColor: theme.surface.raised,
+    borderColor: theme.border.strong,
   },
   badgeText: { fontFamily: font.bold, fontSize: 12 },
-  badgeTextDark: { color: '#f8fafc' },
+  badgeTextDark: { color: theme.ink.primary },
   pressed: { opacity: 0.76 },
   disabled: { opacity: 0.6 },
   panel: { padding: spacing.lg, gap: spacing.md },

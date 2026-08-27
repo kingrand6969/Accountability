@@ -30,12 +30,10 @@ import { WorkoutTitleModal } from '../gym/WorkoutTitleModal';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { useLayout } from '../ui/responsive';
@@ -59,9 +57,9 @@ function tintForMuscle(raw: string | undefined): string {
 export default function Gym() {
   const router = useRouter();
   const { width, cols, gridMaxWidth: gridMax } = useLayout();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => gymPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => gymPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   // On wide/stretched screens, wrap the filter chips so every option is visible
   // (no more cut-off scroller); phones keep the compact horizontal scroll.
   const wide = width >= 520;
@@ -212,19 +210,19 @@ export default function Gym() {
           accessibilityLabel="Create a plan for me"
         >
           <LinearGradient
-            colors={['#9EDB2B', '#6F9F00']}
+            colors={[palette.action, palette.action]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.planCta}
           >
             <View style={styles.planIcon}>
-              <Ionicons name="sparkles" size={17} color="#fff" />
+              <Ionicons name="sparkles" size={17} color={palette.action} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.planTitle}>Create a plan for me</Text>
               <Text style={styles.planSub}>Pick your focus — we build the workout</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#EEF7E4" />
+            <Ionicons name="chevron-forward" size={18} color={palette.onAction} />
           </LinearGradient>
         </Pressable>
 
@@ -492,7 +490,7 @@ function FilterChip({
           styles.chipText,
           small && styles.chipTextSmall,
           active && styles.chipTextActive,
-          active && tint ? { color: '#fff' } : null,
+          active && tint ? { color: palette.ink } : null,
         ]}
       >
         {label}
@@ -501,35 +499,33 @@ function FilterChip({
   );
 }
 
-function gymPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function gymPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light'
-      ? legacyColors.surface
-      : theme.surface.raised,
-    quietField: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.muted,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    success: mode === 'light' ? legacyColors.success : theme.status.success,
-    successSoft: mode === 'light' ? legacyColors.successSoft : theme.status.successSoft,
-    accent: mode === 'light' ? legacyColors.accent : theme.status.attention,
-    safetyBackground: mode === 'light' ? '#fffbeb' : '#2A2110',
-    safetyBorder: mode === 'light' ? '#fde68a' : '#7C5B19',
-    safetyInk: mode === 'light' ? '#78350f' : '#FDE68A',
-    safetyIcon: mode === 'light' ? '#b45309' : '#FBBF24',
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    quietField: theme.surface.muted,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
+    successSoft: theme.status.successSoft,
+    accent: theme.status.attention,
+    safetyBackground: theme.surface.muted,
+    safetyBorder: theme.border.strong,
+    safetyInk: theme.ink.secondary,
+    safetyIcon: theme.status.attention,
   };
 }
 
 type GymPalette = ReturnType<typeof gymPalette>;
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = gymPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = gymPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   pressed: { opacity: 0.7 },
@@ -568,12 +564,12 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: palette.onAction,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  planTitle: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
-  planSub: { fontFamily: font.regular, fontSize: 12.5, color: '#EEF7E4', marginTop: 1 },
+  planTitle: { fontFamily: font.bold, fontSize: 15, color: palette.onAction },
+  planSub: { fontFamily: font.regular, fontSize: 12.5, color: palette.onAction, marginTop: 1 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -656,7 +652,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     borderRadius: radius.pill,
     paddingVertical: 16,
     minHeight: 52,
-    shadowColor: '#0f172a',
+    shadowColor: palette.background,
     shadowOpacity: 0.25,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },

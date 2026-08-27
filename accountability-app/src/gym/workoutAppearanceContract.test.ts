@@ -8,28 +8,28 @@ const bodySource = source('../app/body.tsx');
 const librarySource = source('../app/gym.tsx');
 const planSource = source('../app/gym-plan.tsx');
 const detailSource = source('../app/exercise/[id].tsx');
-const titleModalSource = source('WorkoutTitleModal.tsx');
 
-describe('Body and workout manual appearance contract', () => {
+describe('Body and workout permanent dark appearance contract', () => {
   test.each([
     ['Body', bodySource],
     ['exercise library', librarySource],
     ['plan builder', planSource],
     ['exercise detail', detailSource],
-    ['workout title modal', titleModalSource],
-  ])('%s follows the live Light/Dark appearance', (_name, screenSource) => {
+  ])('%s consumes semantic dark colors without a live light branch', (_name, screenSource) => {
     expect(screenSource).toContain('useAppTheme');
-    expect(screenSource).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(screenSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
+    expect(screenSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(screenSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(screenSource).not.toContain("mode === 'light'");
+    expect(screenSource).not.toContain('legacyColors');
     expect(screenSource).not.toContain('const styles = StyleSheet.create({');
   });
 
-  test('Body retains its editorial Light canvas while replacing light-only cards in Dark mode', () => {
-    expect(bodySource).toContain("canvas: mode === 'light' ? legacyColors.cream : theme.surface.canvas");
-    expect(bodySource).toContain("card: mode === 'light' ? '#FFFFFF' : theme.surface.card");
-    expect(bodySource).toContain("ink: mode === 'light' ? legacyColors.navy : theme.ink.primary");
-    expect(bodySource).toContain("muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted");
-    expect(bodySource).toContain("border: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle");
+  test('Body uses the approved dark editorial surfaces', () => {
+    expect(bodySource).toContain('canvas: theme.surface.canvas');
+    expect(bodySource).toContain('card: theme.surface.card');
+    expect(bodySource).toContain('ink: theme.ink.primary');
+    expect(bodySource).toContain('muted: theme.ink.muted');
+    expect(bodySource).toContain('border: theme.border.subtle');
     expect(bodySource).toContain('backgroundColor: palette.canvas');
     expect(bodySource).toContain('backgroundColor: palette.card');
     expect(bodySource).toContain('color: palette.ink');
@@ -39,24 +39,13 @@ describe('Body and workout manual appearance contract', () => {
     ['exercise library', librarySource],
     ['plan builder', planSource],
     ['exercise detail', detailSource],
-    ['workout title modal', titleModalSource],
-  ])('%s keeps its white Light presentation and gains readable Dark surfaces', (_name, screenSource) => {
-    expect(screenSource).toContain("background: mode === 'light' ? legacyColors.background : theme.surface.canvas");
-    expect(screenSource).toContain("card: mode === 'light' ? legacyColors.card : theme.surface.card");
-    expect(screenSource).toContain("field: mode === 'light'");
-    expect(screenSource).toContain('theme.surface.raised');
-    expect(screenSource).toContain("ink: mode === 'light' ? legacyColors.text : theme.ink.primary");
-    expect(screenSource).toContain("border: mode === 'light' ? legacyColors.border : theme.border.subtle");
-  });
-
-  test('the workout title modal themes its keyboard field and modal scrim without changing validation', () => {
-    expect(titleModalSource).toContain('backgroundColor: palette.scrim');
-    expect(titleModalSource).toContain('backgroundColor: palette.field');
-    expect(titleModalSource).toContain('placeholderTextColor={palette.placeholder}');
-    expect(titleModalSource).toContain("const canSave = title.trim().length > 0 && !saving");
-    expect(titleModalSource).toContain('onSubmitEditing={() => canSave && onSave(title.trim())}');
-    expect(titleModalSource).toContain('width: spacing.touch');
-    expect(titleModalSource).toContain('height: spacing.touch');
+  ])('%s uses approved semantic dark surfaces', (_name, screenSource) => {
+    expect(screenSource).toContain('background: theme.surface.canvas');
+    expect(screenSource).toContain('card: theme.surface.card');
+    expect(screenSource).toContain('field: theme.surface.raised');
+    expect(screenSource).toContain('ink: theme.ink.primary');
+    expect(screenSource).toContain('border: theme.border.subtle');
+    expect(screenSource).toContain('action: theme.ink.action');
   });
 
   test('workout navigation, selection and logging behavior stays intact', () => {

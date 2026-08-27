@@ -27,9 +27,9 @@ describe('completed Run sharing actions', () => {
     expect(StyleSheet.flatten(feed.props.style({ pressed: false }))).toMatchObject({
       minHeight: 56,
       borderRadius: 999,
-      backgroundColor: '#111411',
+      backgroundColor: '#121512',
       borderWidth: 1,
-      borderColor: '#30372F',
+      borderColor: '#272D27',
     });
     expect(StyleSheet.flatten(feed.props.style({ pressed: true }))).toMatchObject({
       opacity: 0.75,
@@ -39,6 +39,12 @@ describe('completed Run sharing actions', () => {
       textTransform: 'uppercase',
     });
     expect(renderer.root.findByProps({ name: 'arrow-forward' }).props.color).toBe('#B9FF3D');
+    const utility = renderer.root.findByProps({ accessibilityLabel: 'Add to My Day' });
+    expect(StyleSheet.flatten(utility.props.style({ pressed: false }))).toMatchObject({
+      minHeight: 48,
+      backgroundColor: '#181C18',
+      borderColor: '#272D27',
+    });
     act(() => feed.props.onPress());
     expect(onContinueToFeed).toHaveBeenCalledTimes(1);
 

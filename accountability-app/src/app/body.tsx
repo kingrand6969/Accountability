@@ -16,11 +16,9 @@ import { getInsights, type Insights } from '../insights/api';
 import { listItemsForDay } from '../timeline/api';
 import type { TimelineItem } from '../timeline/types';
 import {
-  colors as legacyColors,
   font,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { EditorialBackdrop } from '../journey/EditorialBackdrop';
@@ -37,9 +35,9 @@ const ACTIONS = [
 export default function BodyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => bodyPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => bodyPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [insights, setInsights] = useState<Insights | null>(null);
   const [workouts, setWorkouts] = useState<TimelineItem[]>([]);
   const [exercise, setExercise] = useState<LibraryExercise | null>(null);
@@ -123,7 +121,7 @@ export default function BodyScreen() {
               accessibilityLabel={`Start today's workout, ${workoutTitle}`}
             >
               <LinearGradient
-                    colors={['#111411', '#263223']}
+                colors={[palette.card, palette.actionSoft]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -170,7 +168,7 @@ export default function BodyScreen() {
 
             <View style={styles.recentCard}>
               <View style={styles.recentThumb}>
-                <Ionicons name={workouts[0]?.type === 'activity' ? 'walk' : 'barbell'} size={24} color="#FFFFFF" />
+                <Ionicons name={workouts[0]?.type === 'activity' ? 'walk' : 'barbell'} size={24} color={palette.ink} />
               </View>
               <View style={styles.flex}>
                 <Text style={styles.recentTitle}>{workouts[0]?.title ?? 'Your next session starts here'}</Text>
@@ -205,25 +203,25 @@ export default function BodyScreen() {
   );
 }
 
-function bodyPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function bodyPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? legacyColors.cream : theme.surface.canvas,
-    card: mode === 'light' ? '#FFFFFF' : theme.surface.card,
-    glassCard: mode === 'light' ? 'rgba(255,255,255,0.78)' : theme.surface.card,
-    quietCard: mode === 'light' ? 'rgba(255,255,255,0.75)' : theme.surface.card,
-    ink: mode === 'light' ? legacyColors.navy : theme.ink.primary,
-    softInk: mode === 'light' ? legacyColors.inkSoft : theme.ink.secondary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    border: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
-    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
-    dangerBorder: mode === 'light' ? '#F3B4B4' : theme.border.danger,
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    glassCard: theme.surface.card,
+    quietCard: theme.surface.card,
+    ink: theme.ink.primary,
+    softInk: theme.ink.secondary,
+    muted: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    actionSoft: theme.surface.muted,
+    danger: theme.status.danger,
+    dangerBorder: theme.border.danger,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = bodyPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = bodyPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.canvas },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: spacing.lg, paddingBottom: 80 },
@@ -232,7 +230,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   breadcrumb: { flex: 1, color: palette.softInk, fontFamily: font.medium, fontSize: 12 },
   title: { color: palette.ink, fontFamily: 'Georgia', fontSize: 34, lineHeight: 39, marginTop: 4 },
   momentumRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, marginBottom: 12 },
-  momentumDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: '#78A92B' },
+  momentumDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: palette.action },
   momentumText: { color: palette.softInk, fontFamily: font.medium, fontSize: 12 },
   loader: { marginTop: 80 },
   errorCard: { minHeight: 82, marginTop: 24, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.dangerBorder, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -240,11 +238,11 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   hero: { height: 226, borderRadius: 16, overflow: 'hidden', justifyContent: 'flex-end' },
   pressed: { opacity: 0.7 },
   heroCopy: { padding: 16, width: '78%' },
-  heroKicker: { color: '#DDE8D7', fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1.1 },
-  heroTitle: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 26, lineHeight: 30, marginTop: 3 },
-  heroMeta: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 11.5, marginTop: 2 },
+  heroKicker: { color: palette.softInk, fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1.1 },
+  heroTitle: { color: palette.ink, fontFamily: 'Georgia', fontSize: 26, lineHeight: 30, marginTop: 3 },
+  heroMeta: { color: palette.softInk, fontFamily: font.medium, fontSize: 11.5, marginTop: 2 },
   startButton: { alignSelf: 'flex-start', minHeight: spacing.touch, marginTop: 12, borderRadius: 9, backgroundColor: palette.action, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
-  startText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 12.5 },
+  startText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 12.5 },
   actions: { gap: 8, marginTop: 12 },
   action: { minHeight: 64, borderRadius: 14, backgroundColor: palette.glassCard, borderWidth: 1, borderColor: palette.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 10 },
   actionIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: palette.actionSoft, alignItems: 'center', justifyContent: 'center' },
@@ -256,7 +254,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   sectionAction: { minHeight: spacing.touch, justifyContent: 'center', paddingHorizontal: 4 },
   sectionActionText: { color: palette.action, fontFamily: font.bold, fontSize: 11 },
   recentCard: { minHeight: 72, borderRadius: 14, backgroundColor: palette.quietCard, borderWidth: 1, borderColor: palette.border, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  recentThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#263223', alignItems: 'center', justifyContent: 'center' },
+  recentThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: theme.surface.raised, alignItems: 'center', justifyContent: 'center' },
   recentTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 12.5 },
   recentMeta: { color: palette.muted, fontFamily: font.regular, fontSize: 10.5, marginTop: 3 },
   shareCard: { minHeight: 62, marginTop: 10, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1.5, borderColor: palette.action, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },

@@ -34,7 +34,7 @@ import {
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { promptCrossShare } from '../feed/crossShare';
 import { recordRunSelfie } from '../achievements/api';
-import { font } from '../ui/theme';
+import { font, themeColors } from '../ui/theme';
 import {
   RUN_SHARE_FORMATS,
   runShareExportSize,
@@ -105,7 +105,8 @@ import {
   requestPhonePhotoPermission,
 } from '../media/phoneMediaLibrary';
 
-const LIME = '#c6f24e';
+const palette = themeColors('dark');
+const LIME = palette.ink.action;
 
 export function runCardBackgroundButtonPlacement(layout: RunShareLayout) {
   switch (layout) {
@@ -1138,7 +1139,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           accessibilityHint="Choose the route map, take a photo, take a selfie, or choose from your gallery"
           accessibilityState={{ disabled: busy }}
         >
-          <Ionicons name="camera-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="camera-outline" size={22} color={palette.ink.primary} />
         </Pressable>
       </View>
 
@@ -1194,7 +1195,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           accessibilityState={{ checked: mediaFit === 'contain', disabled: busy }}
           accessibilityLabel="Fit the whole photo inside the selected orientation"
         >
-          <Ionicons name={mediaFit === 'cover' ? 'crop-outline' : 'scan-outline'} size={15} color="#cbd5e1" />
+          <Ionicons name={mediaFit === 'cover' ? 'crop-outline' : 'scan-outline'} size={15} color={palette.ink.secondary} />
           <Text style={styles.fitText}>{mediaFit === 'cover' ? 'Crop to fill' : 'Fit whole photo'}</Text>
         </Pressable>
       ) : null}
@@ -1207,13 +1208,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         accessibilityState={{ checked: showTimestamp, disabled: busy }}
         accessibilityLabel="Show recorded date and time"
       >
-        <Ionicons name="time-outline" size={17} color={showTimestamp ? LIME : '#94a3b8'} />
+        <Ionicons name="time-outline" size={17} color={showTimestamp ? LIME : palette.ink.muted} />
         <View style={styles.preferenceCopy}>
           <Text style={styles.preferenceTitle}>Show recorded date & time</Text>
           <Text style={styles.preferenceDetail}>Run duration always stays visible</Text>
         </View>
         <View style={[styles.checkbox, showTimestamp && styles.checkboxActive]}>
-          {showTimestamp ? <Ionicons name="checkmark" size={15} color="#101319" /> : null}
+          {showTimestamp ? <Ionicons name="checkmark" size={15} color={palette.ink.inverse} /> : null}
         </View>
       </Pressable>
 
@@ -1229,7 +1230,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         <Ionicons
           name={showEnds ? 'eye-outline' : 'shield-checkmark'}
           size={17}
-          color={showEnds ? '#FF966F' : LIME}
+          color={showEnds ? palette.status.attention : LIME}
         />
         <View style={styles.preferenceCopy}>
           <Text style={styles.preferenceTitle}>Hide start & finish points</Text>
@@ -1238,7 +1239,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           </Text>
         </View>
         <View style={[styles.checkbox, !showEnds && styles.checkboxActive]}>
-          {!showEnds ? <Ionicons name="checkmark" size={15} color="#101319" /> : null}
+          {!showEnds ? <Ionicons name="checkmark" size={15} color={palette.ink.inverse} /> : null}
         </View>
       </Pressable>
 
@@ -1266,7 +1267,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
                 accessibilityRole="button"
                 accessibilityLabel="Close background choices"
               >
-                <Ionicons name="close" size={21} color="#D8E2EA" />
+                <Ionicons name="close" size={21} color={palette.ink.secondary} />
               </Pressable>
             </View>
             <View style={styles.modeRow}>
@@ -1414,7 +1415,7 @@ function ModeBtn({
       accessibilityRole="button"
       accessibilityState={{ selected: active, disabled }}
     >
-      <Ionicons name={icon} size={18} color={active ? '#101319' : '#cbd5e1'} />
+      <Ionicons name={icon} size={18} color={active ? palette.ink.inverse : palette.ink.secondary} />
       <Text style={[styles.modeText, active && styles.modeTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -1435,7 +1436,7 @@ function PlatformBeautyCamera(props: BeautyCameraProps) {
 const styles = StyleSheet.create({
   beautyOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#0b0e14',
+    backgroundColor: palette.surface.canvas,
     paddingTop: 42,
     zIndex: 30,
   },
@@ -1453,7 +1454,7 @@ const styles = StyleSheet.create({
     minWidth: 72,
   },
   beautyCancelText: {
-    color: '#e2e8f0',
+    color: palette.ink.secondary,
     fontFamily: font.bold,
     fontSize: 14,
   },
@@ -1465,7 +1466,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#0b0e14',
+    backgroundColor: palette.surface.canvas,
   },
   overlayContent: {
     flexGrow: 1,
@@ -1478,14 +1479,14 @@ const styles = StyleSheet.create({
   },
   ownerBoundary: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#0b0e14',
+    backgroundColor: palette.surface.canvas,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
     paddingHorizontal: 28,
   },
   ownerBoundaryText: {
-    color: '#fff',
+    color: palette.ink.primary,
     fontFamily: font.bold,
     fontSize: 16,
     textAlign: 'center',
@@ -1500,7 +1501,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   ownerBoundaryCloseText: {
-    color: '#101319',
+    color: palette.ink.inverse,
     fontFamily: font.extrabold,
     fontSize: 15,
   },
@@ -1512,7 +1513,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
   },
-  headerTitle: { color: '#fff', fontFamily: font.extrabold, fontSize: 18 },
+  headerTitle: { color: palette.ink.primary, fontFamily: font.extrabold, fontSize: 18 },
   savedStatus: {
     minHeight: 44,
     flexDirection: 'row',
@@ -1523,11 +1524,13 @@ const styles = StyleSheet.create({
     maxWidth: 560,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(198,242,78,0.1)',
+    backgroundColor: palette.surface.muted,
+    borderWidth: 1,
+    borderColor: palette.border.subtle,
   },
-  savedTitle: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
-  savedDetail: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11 },
-  skip: { color: '#94a3b8', fontFamily: font.bold, fontSize: 15 },
+  savedTitle: { color: palette.ink.primary, fontFamily: font.bold, fontSize: 13 },
+  savedDetail: { color: palette.ink.muted, fontFamily: font.medium, fontSize: 11 },
+  skip: { color: palette.ink.muted, fontFamily: font.bold, fontSize: 15 },
   skipBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   preview: { position: 'relative', justifyContent: 'center' },
   changeBackgroundButton: {
@@ -1537,9 +1540,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(8,20,28,0.82)',
+    backgroundColor: palette.surface.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.58)',
+    borderColor: palette.border.strong,
   },
   appearanceRow: {
     minHeight: 48,
@@ -1558,16 +1561,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(30,36,48,0.9)',
+    backgroundColor: palette.surface.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: palette.border.subtle,
   },
-  formatChipActive: { borderColor: LIME, backgroundColor: 'rgba(198,242,78,0.14)' },
-  formatLabel: { color: '#e2e8f0', fontFamily: font.bold, fontSize: 12 },
-  formatRatio: { color: '#94a3b8', fontFamily: font.medium, fontSize: 10 },
+  formatChipActive: { borderColor: LIME, backgroundColor: palette.surface.muted },
+  formatLabel: { color: palette.ink.secondary, fontFamily: font.bold, fontSize: 12 },
+  formatRatio: { color: palette.ink.muted, fontFamily: font.medium, fontSize: 10 },
   formatLabelActive: { color: LIME },
   fitControl: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  fitText: { color: '#cbd5e1', fontFamily: font.semibold, fontSize: 12 },
+  fitText: { color: palette.ink.secondary, fontFamily: font.semibold, fontSize: 12 },
   preferenceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1577,19 +1580,19 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     borderRadius: 13,
-    backgroundColor: '#13212B',
+    backgroundColor: palette.surface.card,
     borderWidth: 1,
-    borderColor: '#2E414F',
+    borderColor: palette.border.subtle,
   },
   preferenceCopy: { flex: 1, minWidth: 0, paddingVertical: 8 },
-  preferenceTitle: { color: '#F7FAFC', fontFamily: font.bold, fontSize: 12 },
-  preferenceDetail: { marginTop: 2, color: '#92A5B2', fontFamily: font.medium, fontSize: 10 },
+  preferenceTitle: { color: palette.ink.primary, fontFamily: font.bold, fontSize: 12 },
+  preferenceDetail: { marginTop: 2, color: palette.ink.muted, fontFamily: font.medium, fontSize: 10 },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#5C6D78',
+    borderColor: palette.border.strong,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1606,14 +1609,14 @@ const styles = StyleSheet.create({
   backgroundBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.68)',
+    backgroundColor: palette.interaction.scrim,
     padding: 16,
   },
   backgroundSheet: {
     borderRadius: 23,
-    backgroundColor: '#101D27',
+    backgroundColor: palette.surface.card,
     borderWidth: 1,
-    borderColor: '#304553',
+    borderColor: palette.border.subtle,
     padding: 16,
     gap: 16,
   },
@@ -1624,16 +1627,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  backgroundTitle: { color: '#FFFFFF', fontFamily: font.extrabold, fontSize: 18 },
-  backgroundHint: { marginTop: 3, color: '#91A4B0', fontFamily: font.medium, fontSize: 11 },
-  backgroundClose: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: '#1B2A35' },
+  backgroundTitle: { color: palette.ink.primary, fontFamily: font.extrabold, fontSize: 18 },
+  backgroundHint: { marginTop: 3, color: palette.ink.muted, fontFamily: font.medium, fontSize: 11 },
+  backgroundClose: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: palette.surface.raised },
   modeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(30,36,48,0.9)',
+    backgroundColor: palette.surface.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: palette.border.subtle,
     borderRadius: 999,
     paddingVertical: 11,
     paddingHorizontal: 16,
@@ -1642,8 +1645,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   modeBtnActive: { backgroundColor: LIME, borderColor: LIME },
-  modeText: { color: '#cbd5e1', fontFamily: font.bold, fontSize: 13.5 },
-  modeTextActive: { color: '#101319' },
+  modeText: { color: palette.ink.secondary, fontFamily: font.bold, fontSize: 13.5 },
+  modeTextActive: { color: palette.ink.inverse },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1656,7 +1659,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
   },
-  primaryText: { color: '#101319', fontFamily: font.extrabold, fontSize: 16 },
+  primaryText: { color: palette.ink.inverse, fontFamily: font.extrabold, fontSize: 16 },
   secondary: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1666,8 +1669,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: palette.border.strong,
+    backgroundColor: palette.surface.card,
   },
-  secondaryText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  secondaryText: { color: palette.ink.primary, fontFamily: font.bold, fontSize: 15 },
   dim: { opacity: 0.6 },
 });

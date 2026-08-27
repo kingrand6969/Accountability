@@ -11,8 +11,10 @@ import {
   type RunShareFont,
   type RunShareLayout,
 } from './runShareAppearance';
+import { themeColors } from '../ui/theme';
 
-const ROUTE = '#C8FF45';
+const palette = themeColors('dark');
+const ROUTE = palette.ink.action;
 
 const fontFamilies: Record<RunShareFont, string> = {
   momentum: 'SpaceGrotesk_700Bold',
@@ -52,7 +54,6 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
     mediaFit = 'cover',
     layout = 'map-focus',
     font = 'momentum',
-    theme = 'night',
     title = 'Run complete',
     completedAt,
     showTimestamp = true,
@@ -76,17 +77,14 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
         { ...route[route.length - 1], color: '#B9FF3D' },
       ]
     : [];
-  const light = theme === 'day';
-  const ink = light && !usePhoto ? '#111411' : '#FFFFFF';
-  const muted = light && !usePhoto ? '#52616B' : 'rgba(255,255,255,0.72)';
+  const ink = palette.ink.primary;
+  const muted = palette.ink.secondary;
   const content = (
     <>
       <LinearGradient
         colors={usePhoto
-          ? ['rgba(4,12,18,0.48)', 'rgba(4,12,18,0.08)', 'rgba(4,12,18,0.78)']
-          : light
-            ? ['rgba(247,250,246,0.12)', 'rgba(247,250,246,0.42)', 'rgba(247,250,246,0.86)']
-            : ['rgba(3,10,15,0.08)', 'rgba(3,10,15,0.24)', 'rgba(3,10,15,0.88)']}
+          ? ['rgba(11,13,11,0.48)', 'rgba(11,13,11,0.08)', 'rgba(11,13,11,0.78)']
+          : ['rgba(11,13,11,0.08)', 'rgba(11,13,11,0.24)', 'rgba(11,13,11,0.88)']}
         locations={[0, 0.52, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -130,7 +128,7 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
     <View
       ref={ref}
       collapsable={false}
-      style={[styles.card, { width, height }, light && styles.cardLight]}
+      style={[styles.card, { width, height }]}
     >
       {usePhoto ? (
         <ImageBackground
@@ -148,7 +146,7 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
             interactive={false}
             showLatestMarker={false}
             fitPadding={fitPadding}
-            tiles={light ? 'osm' : 'dark'}
+            tiles="osm"
             style={StyleSheet.absoluteFill}
           />
           {content}
@@ -391,8 +389,7 @@ function MapFocus(data: LayoutData) {
 }
 
 const styles = StyleSheet.create({
-  card: { overflow: 'hidden', borderRadius: 24, backgroundColor: '#07121A' },
-  cardLight: { backgroundColor: '#EFF2EB' },
+  card: { overflow: 'hidden', borderRadius: 24, backgroundColor: palette.surface.canvas },
   content: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   full: { flex: 1, padding: '6%' },
   header: { alignSelf: 'stretch', maxWidth: '74%' },
@@ -430,7 +427,7 @@ const styles = StyleSheet.create({
   privacyPill: { minHeight: 28, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 6 },
   check: { width: 17, height: 17, borderRadius: 5, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.65)' },
   checkActive: { backgroundColor: ROUTE, borderColor: ROUTE },
-  checkText: { color: '#07121A', fontFamily: 'Inter_800ExtraBold', fontSize: 11, lineHeight: 13 },
+  checkText: { color: palette.ink.inverse, fontFamily: 'Inter_800ExtraBold', fontSize: 11, lineHeight: 13 },
   privacyText: { fontFamily: 'Inter_700Bold', fontSize: 6, letterSpacing: 0.55 },
   rightRailPerformance: {
     position: 'absolute',
