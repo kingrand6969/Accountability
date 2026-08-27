@@ -2,12 +2,27 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { themeColors } from '../ui/theme';
+
 const source = (file: string) => readFileSync(path.resolve(__dirname, file), 'utf8');
 
 const editProfileSource = source('../app/edit-profile.tsx');
 const helpSource = source('../app/help.tsx');
 const legalSource = source('../app/legal/[doc].tsx');
 const booksSource = source('../app/books.tsx');
+
+function contrastRatio(foreground: string, background: string) {
+  const luminance = (hex: string) => {
+    const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+    const linear = channels.map((channel) => channel <= 0.03928
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4);
+    return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+  };
+  const lighter = Math.max(luminance(foreground), luminance(background));
+  const darker = Math.min(luminance(foreground), luminance(background));
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 describe('Account and support manual appearance contract', () => {
   test('edit profile uses permanent dark semantic chrome', () => {
@@ -20,6 +35,42 @@ describe('Account and support manual appearance contract', () => {
     expect(editProfileSource).toContain('border: theme.border.subtle');
     expect(editProfileSource).toContain('danger: theme.status.danger');
     expect(editProfileSource).not.toContain("mode === 'light'");
+  });
+
+  test('Pro membership and upgrade states use distinct readable foreground roles', () => {
+    const theme = themeColors('dark');
+    const activePro = {
+      surface: theme.surface.muted,
+      text: theme.ink.action,
+      icon: theme.ink.action,
+      border: theme.border.action,
+    };
+    const upgrade = {
+      surface: theme.surface.raised,
+      text: theme.ink.primary,
+      icon: theme.ink.secondary,
+      border: theme.border.strong,
+    };
+
+    for (const state of [activePro, upgrade]) {
+      expect(contrastRatio(state.text, state.surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(state.icon, state.surface)).toBeGreaterThanOrEqual(3);
+    }
+    expect(contrastRatio(activePro.border, activePro.surface)).toBeGreaterThanOrEqual(3);
+
+    expect(editProfileSource).toContain('profileProAppearance(theme, isPro)');
+    expect(editProfileSource).toContain('surface: theme.surface.muted');
+    expect(editProfileSource).toContain('text: theme.ink.action');
+    expect(editProfileSource).toContain('icon: theme.ink.action');
+    expect(editProfileSource).toContain('border: theme.border.action');
+    expect(editProfileSource).toContain('surface: theme.surface.raised');
+    expect(editProfileSource).toContain('text: theme.ink.primary');
+    expect(editProfileSource).toContain('icon: theme.ink.secondary');
+    expect(editProfileSource).toContain('border: theme.border.strong');
+    expect(editProfileSource).toContain('color={proAppearance.icon}');
+    expect(editProfileSource).toContain('{ color: proAppearance.text }');
+    expect(editProfileSource).toContain('backgroundColor: proAppearance.surface');
+    expect(editProfileSource).toContain('borderColor: proAppearance.border');
   });
 
   test.each([

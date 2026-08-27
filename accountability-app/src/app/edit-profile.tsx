@@ -107,6 +107,7 @@ export default function Profile() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session } = useAuth();
   const { isPro } = useIsPro();
+  const proAppearance = useMemo(() => profileProAppearance(theme, isPro), [isPro, theme]);
   const router = useRouter();
   const insets = useSafeAreaInsets(); // cover runs under the status bar
 
@@ -475,21 +476,25 @@ export default function Profile() {
       <Pressable
         style={({ pressed }) => [
           styles.linkRow,
-          isPro ? styles.proRowActive : styles.proRow,
+          styles.proRow,
+          {
+            backgroundColor: proAppearance.surface,
+            borderColor: proAppearance.border,
+          },
           pressed && styles.pressed,
         ]}
         onPress={() => router.push('/paywall')}
       >
         <View style={styles.linkLeft}>
-          <Ionicons name="star" size={17} color={isPro ? palette.pro : palette.onPro} />
-          <Text style={[styles.linkText, { color: isPro ? palette.pro : palette.onPro }]}>
+          <Ionicons name="star" size={17} color={proAppearance.icon} />
+          <Text style={[styles.linkText, { color: proAppearance.text }]}>
             {isPro ? 'AccountAbility Pro' : 'Upgrade to Pro'}
           </Text>
         </View>
         <Ionicons
           name="chevron-forward"
           size={18}
-          color={isPro ? palette.pro : palette.onPro}
+          color={proAppearance.icon}
         />
       </Pressable>
 
@@ -641,11 +646,24 @@ function profilePalette(theme: AppThemeColors) {
     onAction: theme.ink.inverse,
     danger: theme.status.danger,
     attention: theme.status.attention,
-    pro: theme.border.strong,
-    proSoft: theme.surface.muted,
-    onPro: theme.ink.primary,
     scrim: theme.interaction.scrim,
   };
+}
+
+function profileProAppearance(theme: AppThemeColors, isPro: boolean) {
+  return isPro
+    ? {
+      surface: theme.surface.muted,
+      text: theme.ink.action,
+      icon: theme.ink.action,
+      border: theme.border.action,
+    }
+    : {
+      surface: theme.surface.raised,
+      text: theme.ink.primary,
+      icon: theme.ink.secondary,
+      border: theme.border.strong,
+    };
 }
 
 function createStyles(theme: AppThemeColors) {
@@ -734,12 +752,7 @@ function createStyles(theme: AppThemeColors) {
   },
   linkLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   linkText: { fontSize: 15, fontFamily: font.bold },
-  proRow: { backgroundColor: palette.pro },
-  proRowActive: {
-    backgroundColor: palette.proSoft,
-    borderWidth: 1,
-    borderColor: palette.pro,
-  },
+  proRow: { borderWidth: 1 },
   buddyRow: {
     backgroundColor: palette.card,
     borderWidth: 1,
