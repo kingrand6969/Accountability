@@ -66,6 +66,9 @@ import { runFeedCriticalLoad } from '../../feed/feedLoadCoordinator';
 import { reconcileFeedPostsPublished } from '../../feed/feedPublishSignal';
 import { DIRECT_POST_HREF, type DirectPostHref } from '../../entry/createFlow';
 import { userFacingErrorMessage } from '../../ui/userFacingError';
+import { listDiscoveryCandidates, sendRequest, type Candidate } from '../../buddy/api';
+import { rankFeedBuddySuggestions } from '../../feed/feedBuddySuggestions';
+import { authorLabel } from '../../feed/format';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type CreateItem = {
@@ -175,8 +178,12 @@ export default function Feed() {
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [visiblePostIds, setVisiblePostIds] = useState<string[]>([]);
   const [visibilityGeneration, setVisibilityGeneration] = useState('');
+  const [buddySuggestions, setBuddySuggestions] = useState<Candidate[]>([]);
+  const [suggestionOwnerId, setSuggestionOwnerId] = useState<string | null>(null);
+  const [buddyRequestsInFlight, setBuddyRequestsInFlight] = useState<Set<string>>(new Set());
   const likesInFlight = useRef<Set<string>>(new Set());
   const loadGeneration = useRef(0);
+  const suggestionGeneration = useRef(0);
   const storyPickerQueue = useMemo(() => createStoryPickerQueue(myId), [myId]);
   const feedListRef = useRef<FlatList<FeedRow>>(null);
   const feedOffset = useRef(0);
@@ -250,6 +257,35 @@ export default function Feed() {
     return () => {
       alive = false;
       profileGeneration.current += 1;
+    };
+  }, [myId]);
+
+  useEffect(() => {
+    const generation = ++suggestionGeneration.current;
+    const requestedOwner = myId;
+    setBuddySuggestions([]);
+    setSuggestionOwnerId(null);
+    setBuddyRequestsInFlight(new Set());
+    if (!requestedOwner) {
+      return () => {
+        suggestionGeneration.current += 1;
+      };
+    }
+    void Promise.resolve().then(async () => {
+      try {
+        const { candidates, viewerArea } = await listDiscoveryCandidates();
+        if (
+          generation !== suggestionGeneration.current
+          || currentUserIdRef.current !== requestedOwner
+        ) return;
+        setBuddySuggestions(rankFeedBuddySuggestions(candidates, viewerArea));
+        setSuggestionOwnerId(requestedOwner);
+      } catch {
+        // Buddy suggestions are an optional Feed enhancement.
+      }
+    });
+    return () => {
+      suggestionGeneration.current += 1;
     };
   }, [myId]);
 
@@ -548,6 +584,43 @@ export default function Feed() {
       Alert.alert('Could not update like', userFacingErrorMessage(error, 'update'));
     } finally {
       likesInFlight.current.delete(post.id);
+    }
+  }
+
+  async function addSuggestedBuddy(candidate: Candidate) {
+    const requestedOwner = myId;
+    if (
+      !requestedOwner
+      || suggestionOwnerId !== requestedOwner
+      || buddyRequestsInFlight.has(candidate.id)
+    ) return;
+    setBuddyRequestsInFlight((current) => new Set(current).add(candidate.id));
+    try {
+      await sendRequest(candidate.id, requestedOwner);
+      if (
+        currentUserIdRef.current !== requestedOwner
+        || suggestionOwnerId !== requestedOwner
+      ) return;
+      setBuddySuggestions((current) => current.filter((item) => item.id !== candidate.id));
+      showToast(`Request sent to ${authorLabel(candidate.display_name)}`);
+    } catch (error) {
+      if (
+        currentUserIdRef.current === requestedOwner
+        && suggestionOwnerId === requestedOwner
+      ) {
+        Alert.alert('Could not send', userFacingErrorMessage(error, 'update'));
+      }
+    } finally {
+      if (
+        currentUserIdRef.current === requestedOwner
+        && suggestionOwnerId === requestedOwner
+      ) {
+        setBuddyRequestsInFlight((current) => {
+          const next = new Set(current);
+          next.delete(candidate.id);
+          return next;
+        });
+      }
     }
   }
 
