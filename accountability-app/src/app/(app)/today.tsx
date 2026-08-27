@@ -30,7 +30,6 @@ import {
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 import JourneyJournal from '../../journey/JournalScreen';
 
@@ -66,9 +65,9 @@ function TodayLegacy() {
 
 function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => todayPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => todayPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -270,24 +269,24 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
   );
 }
 
-function todayPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function todayPalette(theme: AppThemeColors) {
   return {
-    ink: mode === 'light' ? '#111411' : theme.ink.primary,
-    inkSoft: mode === 'light' ? 'rgba(17,20,17,0.72)' : theme.ink.muted,
-    action: mode === 'light' ? '#446B00' : theme.ink.action,
-    toggle: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
-    glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
-    selected: mode === 'light' ? '#fff' : theme.surface.raised,
-    sunSoft: mode === 'light' ? 'rgba(83,99,78,0.12)' : theme.surface.muted,
-    quickSurface: mode === 'light' ? 'rgba(255,255,255,0.6)' : theme.surface.card,
-    quickBorder: mode === 'light' ? 'rgba(255,255,255,0.85)' : theme.border.subtle,
-    fabShadow: mode === 'light' ? '#3D5D37' : theme.surface.canvas,
-    onAction: mode === 'light' ? '#fff' : theme.ink.inverse,
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.muted,
+    action: theme.ink.action,
+    toggle: theme.surface.card,
+    glassBorder: theme.border.subtle,
+    selected: theme.surface.raised,
+    sunSoft: theme.surface.muted,
+    quickSurface: theme.surface.card,
+    quickBorder: theme.border.subtle,
+    fabShadow: theme.surface.canvas,
+    onAction: theme.ink.inverse,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = todayPalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = todayPalette(theme);
 
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },

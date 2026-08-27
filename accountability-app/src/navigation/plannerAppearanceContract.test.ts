@@ -7,15 +7,16 @@ const timePickerSource = readFileSync(require.resolve('../ui/TimePicker'), 'utf8
 const detailSource = readFileSync(require.resolve('../app/item/[id]'), 'utf8');
 
 describe('Planner create and detail appearance contract', () => {
-  test('the schedule composer follows the live manual appearance without changing its Light palette', () => {
+  test('the schedule composer uses permanent dark semantic controls', () => {
     expect(addSource).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
-    expect(addSource).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(addSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(addSource).toContain("mode === 'light' ? legacyColors.text : theme.ink.primary");
+    expect(addSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(addSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(addSource).toContain('text: theme.ink.primary');
     expect(addSource).toContain('backgroundColor: palette.background');
     expect(addSource).toContain('borderColor: palette.border');
     expect(addSource).toContain('backgroundColor: palette.field');
     expect(addSource).toContain('backgroundColor: palette.scrim');
+    expect(addSource).not.toContain("mode === 'light'");
   });
 
   test('the month calendar defaults to permanent dark roles while retaining its date semantics and touch geometry', () => {
@@ -47,11 +48,11 @@ describe('Planner create and detail appearance contract', () => {
     expect(timePickerSource).toContain("keyboardType=\"number-pad\"");
   });
 
-  test('scheduled-item detail keeps checklist behavior while using readable Light and Dark surfaces', () => {
+  test('scheduled-item detail keeps checklist behavior on permanent dark surfaces', () => {
     expect(detailSource).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
-    expect(detailSource).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(detailSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(detailSource).toContain("mode === 'light' ? legacyColors.background : theme.surface.canvas");
+    expect(detailSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(detailSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(detailSource).toContain('background: theme.surface.canvas');
     expect(detailSource).toContain('backgroundColor: palette.background');
     expect(detailSource).toContain('backgroundColor: palette.card');
     expect(detailSource).toContain('backgroundColor: palette.field');
@@ -59,5 +60,6 @@ describe('Planner create and detail appearance contract', () => {
     expect(detailSource).toContain('accessibilityRole="checkbox"');
     expect(detailSource).toContain('hitSlop={11}');
     expect(detailSource).toContain('minHeight: spacing.touch');
+    expect(detailSource).not.toContain("mode === 'light'");
   });
 });

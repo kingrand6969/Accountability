@@ -13,7 +13,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listItemsForDay } from '../timeline/api';
 import type { TimelineItem } from '../timeline/types';
-import { font, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { JourneyTabs } from './JourneyTabs';
 import {
@@ -30,11 +30,11 @@ const PILLARS = [
   { key: 'people', label: 'People', icon: 'people-outline' as const },
 ] as const;
 
-function pillarDefinitions(theme: AppThemeColors, mode: AppThemeMode) {
+function pillarDefinitions(theme: AppThemeColors) {
   const accents = [
-    mode === 'dark' ? theme.status.success : '#13753D',
+    theme.status.success,
     theme.ink.action,
-    mode === 'dark' ? theme.status.attention : '#8A5B00',
+    theme.status.attention,
   ] as const;
   return PILLARS.map((pillar, index) => ({ ...pillar, color: accents[index] }));
 }
@@ -42,9 +42,9 @@ function pillarDefinitions(theme: AppThemeColors, mode: AppThemeMode) {
 export default function MomentumScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const pillars = useMemo(() => pillarDefinitions(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const pillars = useMemo(() => pillarDefinitions(theme), [theme]);
   const { fontScale } = useWindowDimensions();
   const largeText = fontScale >= 1.75;
   const [items, setItems] = useState<TimelineItem[]>([]);
@@ -244,7 +244,7 @@ export default function MomentumScreen() {
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.surface.canvas, overflow: 'hidden' },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 120, width: '100%', maxWidth: 720, alignSelf: 'center' },
   brandRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -280,26 +280,26 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
     marginBottom: spacing.md,
     borderRadius: 18,
     padding: spacing.lg,
-    backgroundColor: mode === 'dark' ? theme.surface.raised : '#111411',
+    backgroundColor: theme.surface.raised,
     borderWidth: 1,
-    borderColor: mode === 'dark' ? theme.border.strong : '#111411',
+    borderColor: theme.border.strong,
   },
   momentumHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md, marginBottom: spacing.md },
   momentumCopy: { flex: 1, minWidth: 0 },
-  panelKicker: { color: mode === 'dark' ? theme.ink.action : '#C6E991', fontFamily: font.bold, fontSize: 10, letterSpacing: 1.2 },
-  panelHint: { color: mode === 'dark' ? theme.ink.secondary : '#EAF2E5', fontFamily: font.medium, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  panelKicker: { color: theme.ink.action, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.2 },
+  panelHint: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 12, lineHeight: 17, marginTop: 3 },
   scoreRow: { flexDirection: 'row', alignItems: 'baseline' },
-  score: { color: mode === 'dark' ? theme.ink.primary : '#FFFFFF', fontFamily: font.display, fontSize: 48, lineHeight: 50 },
-  scoreUnit: { color: mode === 'dark' ? theme.ink.muted : '#AFC8EA', fontFamily: font.bold, fontSize: 12, marginLeft: 3 },
-  pillarList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: mode === 'dark' ? theme.border.strong : 'rgba(255,255,255,0.18)' },
-  pillarRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: mode === 'dark' ? theme.border.strong : 'rgba(255,255,255,0.14)' },
+  score: { color: theme.ink.primary, fontFamily: font.display, fontSize: 48, lineHeight: 50 },
+  scoreUnit: { color: theme.ink.muted, fontFamily: font.bold, fontSize: 12, marginLeft: 3 },
+  pillarList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border.strong },
+  pillarRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border.strong },
   panelPressed: { opacity: 0.78 },
   pillarIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   pillarContent: { flex: 1, minWidth: 0 },
   pillarLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  pillarName: { color: mode === 'dark' ? theme.ink.primary : '#FFFFFF', fontFamily: font.semibold, fontSize: 13 },
-  pillarValue: { color: mode === 'dark' ? theme.ink.secondary : '#EAF2E5', fontFamily: font.semibold, fontSize: 11.5 },
-  pillarTrack: { height: 4, marginTop: 7, borderRadius: 2, overflow: 'hidden', backgroundColor: mode === 'dark' ? theme.border.strong : 'rgba(255,255,255,0.18)' },
+  pillarName: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 13 },
+  pillarValue: { color: theme.ink.secondary, fontFamily: font.semibold, fontSize: 11.5 },
+  pillarTrack: { height: 4, marginTop: 7, borderRadius: 2, overflow: 'hidden', backgroundColor: theme.border.strong },
   pillarProgress: { height: '100%', borderRadius: 2 },
   nextCard: {
     minHeight: 60,

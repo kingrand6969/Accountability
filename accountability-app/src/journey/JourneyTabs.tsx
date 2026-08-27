@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { font, themeColors, type AppThemeColors } from '../ui/theme';
+import { font, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 export type JourneySection = 'momentum' | 'progress' | 'path' | 'journal';
@@ -15,15 +15,13 @@ const TABS: { key: JourneySection; label: string; route: '/activity' | '/journey
 
 export function JourneyTabs({
   active,
-  dark = false,
 }: {
   active: JourneySection;
   dark?: boolean;
 }) {
   const router = useRouter();
   const { fontScale } = useWindowDimensions();
-  const { colors: activeTheme } = useAppTheme();
-  const theme = useMemo(() => dark ? themeColors('dark') : activeTheme, [activeTheme, dark]);
+  const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.row} accessibilityRole="tablist">

@@ -8,10 +8,11 @@ describe('Journey Momentum appearance contract', () => {
   test('themes the exported athlete surface and every async state without changing its routes', () => {
     const momentum = source('MomentumScreen.tsx');
 
-    expect(momentum).toContain('const { colors: theme, mode } = useAppTheme();');
-    expect(momentum).toContain('const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);');
-    expect(momentum).toContain('pillarDefinitions(theme, mode)');
-    expect(momentum).toContain("mode === 'dark' ? theme.status.success : '#13753D'");
+    expect(momentum).toContain('const { colors: theme } = useAppTheme();');
+    expect(momentum).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
+    expect(momentum).toContain('pillarDefinitions(theme)');
+    expect(momentum).toContain('theme.status.success');
+    expect(momentum).toContain('theme.status.attention');
     expect(momentum).toContain('<JourneyTabs active="momentum" />');
     expect(momentum).toContain('<ActivityIndicator color={theme.ink.action}');
     expect(momentum).toContain('color={theme.status.danger}');
@@ -26,13 +27,14 @@ describe('Journey Momentum appearance contract', () => {
     expect(momentum).not.toContain("backgroundColor: '#031A38'");
     expect(momentum).not.toContain("backgroundColor: 'rgba(8,43,78");
     expect(momentum).not.toContain('color="#FFFFFF"');
+    expect(momentum).not.toContain("mode === 'light'");
+    expect(momentum).not.toContain("mode === 'dark'");
   });
 
-  test('themes Journey tabs while preserving the explicit dark legacy fallback and tab behavior', () => {
+  test('themes Journey tabs permanently dark while preserving tab behavior', () => {
     const tabs = source('JourneyTabs.tsx');
 
-    expect(tabs).toContain('const { colors: activeTheme } = useAppTheme();');
-    expect(tabs).toContain("dark ? themeColors('dark') : activeTheme");
+    expect(tabs).toContain('const { colors: theme } = useAppTheme();');
     expect(tabs).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
     expect(tabs).toContain('borderBottomColor: theme.border.subtle');
     expect(tabs).toContain('color: theme.ink.muted');
@@ -41,13 +43,13 @@ describe('Journey Momentum appearance contract', () => {
     expect(tabs).toContain('router.replace(tab.route as never)');
     expect(tabs).not.toContain('styles.rowDark');
     expect(tabs).not.toContain("color: '#FFFFFF'");
+    expect(tabs).not.toContain('themeColors(');
   });
 
   test('themes the directly-used Cheers card with no white island in Dark mode', () => {
     const encouragement = source('JourneyEncouragementBar.tsx');
 
-    expect(encouragement).toContain('const { colors: activeTheme } = useAppTheme();');
-    expect(encouragement).toContain("dark ? themeColors('dark') : activeTheme");
+    expect(encouragement).toContain('const { colors: theme } = useAppTheme();');
     expect(encouragement).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
     expect(encouragement).toContain('backgroundColor: theme.surface.card');
     expect(encouragement).toContain('borderColor: theme.border.subtle');
@@ -58,5 +60,6 @@ describe('Journey Momentum appearance contract', () => {
     expect(encouragement).toContain('color={theme.ink.action}');
     expect(encouragement).not.toContain("borderColor: '#FFFFFF'");
     expect(encouragement).not.toContain('styles.barDark');
+    expect(encouragement).not.toContain('themeColors(');
   });
 });

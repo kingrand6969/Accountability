@@ -15,13 +15,11 @@ import { getItem, updateItemChecklist } from '../../timeline/api';
 import { typeMeta, formatTime } from '../../timeline/format';
 import { EmptyState } from '../../ui/EmptyState';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   contentMax,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import type { ChecklistItem, TimelineItem } from '../../timeline/types';
@@ -36,9 +34,9 @@ export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { session } = useAuth();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => detailPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => detailPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [item, setItem] = useState<TimelineItem | null>(null);
   const [list, setList] = useState<ChecklistItem[]>([]);
   const [newText, setNewText] = useState('');
@@ -223,23 +221,23 @@ export default function ItemDetail() {
   );
 }
 
-function detailPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function detailPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.muted,
-    text: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    success: mode === 'light' ? legacyColors.success : theme.status.success,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.muted,
+    text: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = detailPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = detailPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.background },

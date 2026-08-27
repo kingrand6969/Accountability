@@ -29,7 +29,6 @@ import {
   font,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 import JourneyMomentum from '../../journey/MomentumScreen';
 
@@ -80,9 +79,9 @@ function weekDayDate(index: number): string {
 function TrackLegacy() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => activityPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => activityPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const {
     queued,
     issueCount,
@@ -238,7 +237,7 @@ function TrackLegacy() {
                   endColor="#B9FF3D"
                 />
               </View>
-              <Ionicons name="flame" size={20} color="#d97706" />
+              <Ionicons name="flame" size={20} color={theme.status.attention} />
               <Text style={styles.dialScore}>{score ?? '–'}</Text>
               <Text style={styles.dialLabel}>consistency level</Text>
             </Pressable>
@@ -347,28 +346,28 @@ function TrackLegacy() {
   );
 }
 
-function activityPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function activityPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas,
-    ink: mode === 'light' ? '#111411' : theme.ink.primary,
-    inkSoft: mode === 'light' ? 'rgba(17,20,17,0.70)' : theme.ink.muted,
-    action: mode === 'light' ? '#B9FF3D' : theme.ink.action,
-    avatar: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
-    glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
-    navBorder: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
-    ringTrack: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
-    day: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.muted,
-    dayActive: mode === 'light' ? 'rgba(185,255,61,0.20)' : theme.surface.raised,
-    dayActiveBorder: mode === 'light' ? 'rgba(111,159,0,0.46)' : theme.border.action,
-    calendar: mode === 'light' ? 'rgba(185,255,61,0.14)' : theme.surface.muted,
-    row: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
-    rowBorder: mode === 'light' ? 'rgba(255,255,255,0.65)' : theme.border.subtle,
-    onAction: mode === 'light' ? '#111411' : theme.ink.inverse,
+    canvas: theme.surface.canvas,
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.muted,
+    action: theme.ink.action,
+    avatar: theme.surface.card,
+    glassBorder: theme.border.subtle,
+    navBorder: theme.border.subtle,
+    ringTrack: theme.border.subtle,
+    day: theme.surface.muted,
+    dayActive: theme.surface.raised,
+    dayActiveBorder: theme.border.action,
+    calendar: theme.surface.muted,
+    row: theme.surface.card,
+    rowBorder: theme.border.subtle,
+    onAction: theme.ink.inverse,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = activityPalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = activityPalette(theme);
 
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.canvas },

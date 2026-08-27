@@ -33,12 +33,10 @@ import { reminderTriggerDate } from '../notifications/trigger';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { resolveAddRouteSeed, type AddRouteSeed } from '../navigation/scheduleRouteState';
@@ -104,9 +102,9 @@ export default function Add() {
 function AddForm({ seed }: { seed: AddRouteSeed }) {
   const router = useRouter();
   const { isPro } = useIsPro();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => plannerPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => plannerPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [type, setType] = useState<TimelineType | null>(seed.type);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
@@ -251,7 +249,6 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
         value={date}
         onChange={openForDate}
         theme={theme}
-        mode={mode}
       />
 
       {/* details popup — opens after a date is chosen */}
@@ -298,7 +295,6 @@ function AddForm({ seed }: { seed: AddRouteSeed }) {
                 value={time}
                 onChange={setTime}
                 theme={theme}
-                mode={mode}
               />
 
               <Text style={styles.label}>Note (optional)</Text>
@@ -412,27 +408,27 @@ function formatDateLabel(dateStr: string): string {
   });
 }
 
-function plannerPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function plannerPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.muted,
-    quickSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
-    text: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    textSecondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    textMuted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    pro: mode === 'light' ? legacyColors.pro : theme.ink.action,
-    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
-    scrim: mode === 'light' ? 'rgba(15,23,42,0.5)' : theme.interaction.scrim,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.muted,
+    quickSoft: theme.surface.muted,
+    text: theme.ink.primary,
+    textSecondary: theme.ink.secondary,
+    textMuted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    pro: theme.ink.action,
+    proSoft: theme.surface.muted,
+    scrim: theme.interaction.scrim,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = plannerPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = plannerPalette(theme);
   return StyleSheet.create({
   container: {
     padding: spacing.xl,

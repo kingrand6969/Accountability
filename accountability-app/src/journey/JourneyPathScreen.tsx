@@ -4,13 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { getMetrics } from '../achievements/api';
 import type { Metrics } from '../achievements/catalog';
-import {
-  colors as legacyColors,
-  font,
-  spacing,
-  type AppThemeColors,
-  type AppThemeMode,
-} from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { JourneyTabs } from './JourneyTabs';
 import { listJourneyHistory, pillarActiveDays } from './data';
@@ -40,9 +34,9 @@ const MILESTONES = [
 
 export default function JourneyPathScreen() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => pathPalette(theme, mode), [mode, theme]);
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => pathPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [metrics, setMetrics] = useState<Metrics>(ZERO);
   const [historyItems, setHistoryItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,36 +193,36 @@ export default function JourneyPathScreen() {
   );
 }
 
-function pathPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function pathPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? legacyColors.cream : theme.surface.canvas,
-    ink: mode === 'light' ? legacyColors.navy : theme.ink.primary,
-    inkSoft: mode === 'light' ? legacyColors.inkSoft : theme.ink.secondary,
-    mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    border: mode === 'light' ? 'rgba(17,20,17,0.13)' : theme.border.subtle,
-    filterSurface: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
-    errorSurface: mode === 'light' ? '#FFFFFF' : theme.status.dangerSoft,
-    errorBorder: mode === 'light' ? '#F3B4B4' : theme.border.danger,
-    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
-    pathRail: mode === 'light' ? 'rgba(106,104,97,0.25)' : theme.border.strong,
-    medalSurface: mode === 'light' ? '#D8D2C4' : theme.surface.muted,
-    medalBorder: mode === 'light' ? '#EBE5D8' : theme.border.strong,
-    medalInk: mode === 'light' ? '#766E61' : theme.ink.secondary,
-    medalReached: mode === 'light' ? '#87725A' : theme.surface.raised,
-    medalReachedBorder: mode === 'light' ? '#C9B697' : theme.border.strong,
-    medalReachedInk: mode === 'light' ? '#FFFFFF' : theme.ink.primary,
-    currentBorder: mode === 'light' ? '#CDEAA1' : theme.border.action,
-    currentSurface: mode === 'light' ? '#FFFFFF' : theme.surface.raised,
-    currentBorderSoft: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
-    progressSurface: mode === 'light' ? 'rgba(255,255,255,0.72)' : theme.surface.card,
-    progressBorder: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle,
+    canvas: theme.surface.canvas,
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.secondary,
+    mutedInk: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    border: theme.border.subtle,
+    filterSurface: theme.surface.card,
+    errorSurface: theme.status.dangerSoft,
+    errorBorder: theme.border.danger,
+    danger: theme.status.danger,
+    pathRail: theme.border.strong,
+    medalSurface: theme.surface.muted,
+    medalBorder: theme.border.strong,
+    medalInk: theme.ink.secondary,
+    medalReached: theme.surface.raised,
+    medalReachedBorder: theme.border.strong,
+    medalReachedInk: theme.ink.primary,
+    currentBorder: theme.border.action,
+    currentSurface: theme.surface.raised,
+    currentBorderSoft: theme.border.subtle,
+    progressSurface: theme.surface.card,
+    progressBorder: theme.border.subtle,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = pathPalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = pathPalette(theme);
 
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.canvas },
@@ -238,18 +232,18 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     marginTop: spacing.lg,
     borderRadius: 18,
     padding: spacing.lg,
-    backgroundColor: mode === 'light' ? legacyColors.navy : theme.surface.raised,
+    backgroundColor: theme.surface.raised,
     borderWidth: 1,
-    borderColor: mode === 'light' ? legacyColors.navy : theme.border.strong,
+    borderColor: theme.border.strong,
   },
   summaryRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
   summaryNext: { alignItems: 'flex-end', flexShrink: 1 },
-  summaryKicker: { color: mode === 'light' ? '#68834B' : theme.ink.action, fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1 },
-  summaryDay: { color: mode === 'light' ? '#FFFFFF' : theme.ink.primary, fontFamily: font.display, fontSize: 42, lineHeight: 46, marginTop: 2 },
-  summaryLandmark: { color: mode === 'light' ? '#FFFFFF' : theme.ink.primary, fontFamily: font.bold, fontSize: 18, lineHeight: 23, marginTop: 5, textAlign: 'right' },
-  summaryTrack: { height: 6, marginTop: spacing.md, overflow: 'hidden', borderRadius: 3, backgroundColor: mode === 'light' ? 'rgba(255,255,255,0.20)' : theme.border.strong },
-  summaryProgress: { height: '100%', borderRadius: 3, backgroundColor: mode === 'light' ? '#7FAF1C' : theme.ink.action },
-  summaryRemaining: { color: mode === 'light' ? '#EAF2E5' : theme.ink.secondary, fontFamily: font.medium, fontSize: 11.5, marginTop: spacing.sm },
+  summaryKicker: { color: theme.ink.action, fontFamily: font.bold, fontSize: 9.5, letterSpacing: 1 },
+  summaryDay: { color: theme.ink.primary, fontFamily: font.display, fontSize: 42, lineHeight: 46, marginTop: 2 },
+  summaryLandmark: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18, lineHeight: 23, marginTop: 5, textAlign: 'right' },
+  summaryTrack: { height: 6, marginTop: spacing.md, overflow: 'hidden', borderRadius: 3, backgroundColor: theme.border.strong },
+  summaryProgress: { height: '100%', borderRadius: 3, backgroundColor: theme.ink.action },
+  summaryRemaining: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 11.5, marginTop: spacing.sm },
   segmentedFilters: { flexDirection: 'row', gap: spacing.xs, marginVertical: spacing.md, padding: spacing.xs, borderRadius: 14, backgroundColor: palette.filterSurface, borderWidth: 1, borderColor: palette.border },
   filter: { flex: 1, minWidth: 0, minHeight: 48, paddingHorizontal: spacing.xs, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   filterSelected: { backgroundColor: palette.action, borderColor: palette.action },

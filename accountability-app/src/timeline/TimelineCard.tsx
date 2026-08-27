@@ -4,14 +4,7 @@ import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { typeMeta, formatTime } from './format';
 import type { TimelineItem } from './types';
-import {
-  colors as legacyColors,
-  font,
-  radius,
-  spacing,
-  type AppThemeColors,
-  type AppThemeMode,
-} from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -24,8 +17,8 @@ export function TimelineCard({
   onDelete: (item: TimelineItem) => void;
 }) {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => timelinePalette(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => timelinePalette(theme), [theme]);
   const styles = useMemo(() => createStyles(palette), [palette]);
   const meta = typeMeta(item.type);
   const checklist = item.checklist ?? [];
@@ -84,16 +77,16 @@ export function TimelineCard({
   );
 }
 
-function timelinePalette(theme: AppThemeColors, mode: AppThemeMode) {
+function timelinePalette(theme: AppThemeColors) {
   return {
-    surface: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.card,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    quietInk: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    badgeSurface: mode === 'light' ? legacyColors.surface : theme.surface.raised,
-    iconBadgeAlpha: mode === 'light' ? '18' : '2E',
+    surface: theme.surface.card,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    ink: theme.ink.primary,
+    mutedInk: theme.ink.muted,
+    quietInk: theme.ink.muted,
+    badgeSurface: theme.surface.raised,
+    iconBadgeAlpha: '2E',
   } as const;
 }
 

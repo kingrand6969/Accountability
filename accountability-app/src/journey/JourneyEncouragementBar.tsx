@@ -4,20 +4,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Avatar } from '../feed/Avatar';
 import { authorLabel } from '../feed/format';
 import type { JourneyEncouragement } from './encouragement';
-import { font, spacing, themeColors, type AppThemeColors } from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 export function JourneyEncouragementBar({
   value,
-  dark = false,
   onPress,
 }: {
   value: JourneyEncouragement | null;
   dark?: boolean;
   onPress(): void;
 }) {
-  const { colors: activeTheme } = useAppTheme();
-  const theme = useMemo(() => dark ? themeColors('dark') : activeTheme, [activeTheme, dark]);
+  const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const first = value?.people[0];
   const copy = value

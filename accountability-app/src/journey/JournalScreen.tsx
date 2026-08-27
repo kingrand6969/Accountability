@@ -15,13 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listItemsForDay } from '../timeline/api';
 import { toLocalDateString } from '../timeline/datetime';
 import type { TimelineItem } from '../timeline/types';
-import {
-  colors as legacyColors,
-  font,
-  spacing,
-  type AppThemeColors,
-  type AppThemeMode,
-} from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { EditorialBackdrop } from './EditorialBackdrop';
 import { JourneyTabs } from './JourneyTabs';
@@ -53,8 +47,8 @@ function journalTitle(day: Date, count: number) {
 
 export default function JournalScreen() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ date?: string; filter?: string }>();
   const requestGeneration = useRef(0);
@@ -257,12 +251,12 @@ export default function JournalScreen() {
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.surface.canvas },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: spacing.lg, paddingBottom: 120 },
   dateRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   navButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  date: { color: mode === 'light' ? legacyColors.inkSoft : theme.ink.muted, fontFamily: font.medium, fontSize: 12 },
+  date: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12 },
   hero: { marginTop: 14, height: 254, borderRadius: 18, overflow: 'hidden' },
   heroImage: { flex: 1, justifyContent: 'flex-end' },
   heroImageStyle: { borderRadius: 18 },
@@ -271,18 +265,18 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
   heroTitle: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 35, lineHeight: 37, maxWidth: 300 },
   handwriting: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 15, fontStyle: 'italic', marginTop: 7 },
   filters: { paddingVertical: 12, gap: 8 },
-  filter: { minHeight: 44, borderRadius: 22, paddingHorizontal: 16, justifyContent: 'center', borderWidth: 1, borderColor: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle, backgroundColor: mode === 'light' ? 'rgba(255,255,255,0.58)' : theme.surface.card },
+  filter: { minHeight: 44, borderRadius: 22, paddingHorizontal: 16, justifyContent: 'center', borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card },
   filterActive: { backgroundColor: theme.ink.action, borderColor: theme.border.action },
   filterText: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 12 },
   filterTextActive: { color: theme.ink.inverse },
   pressed: { opacity: 0.68 },
   loader: { marginVertical: 48 },
-  errorCard: { minHeight: 72, borderRadius: 14, backgroundColor: mode === 'light' ? '#FFFFFF' : theme.status.dangerSoft, borderWidth: 1, borderColor: mode === 'light' ? '#F3B4B4' : theme.border.danger, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  errorCard: { minHeight: 72, borderRadius: 14, backgroundColor: theme.status.dangerSoft, borderWidth: 1, borderColor: theme.border.danger, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   errorText: { flex: 1, color: theme.status.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
-  recordCard: { minHeight: 226, borderRadius: 16, backgroundColor: mode === 'light' ? 'rgba(255,255,255,0.86)' : theme.surface.card, borderWidth: 1, borderColor: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle, flexDirection: 'row', padding: 14 },
+  recordCard: { minHeight: 226, borderRadius: 16, backgroundColor: theme.surface.card, borderWidth: 1, borderColor: theme.border.subtle, flexDirection: 'row', padding: 14 },
   column: { flex: 1 },
   columnHeading: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 9.5, letterSpacing: 0.9, marginBottom: 8 },
-  divider: { width: 1, backgroundColor: mode === 'light' ? 'rgba(17,20,17,0.10)' : theme.border.subtle, marginHorizontal: 10 },
+  divider: { width: 1, backgroundColor: theme.border.subtle, marginHorizontal: 10 },
   promiseRow: { minHeight: 42, flexDirection: 'row', gap: 7, alignItems: 'flex-start' },
   checkbox: { width: 17, height: 17, borderRadius: 4, backgroundColor: theme.ink.action, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   checkboxOpen: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: theme.ink.muted },
@@ -290,16 +284,16 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
   itemTitle: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 11.5 },
   itemMeta: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 8.5, textTransform: 'capitalize', marginTop: 2 },
   proofRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  proofIcon: { width: 25, height: 25, borderRadius: 13, backgroundColor: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
+  proofIcon: { width: 25, height: 25, borderRadius: 13, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
   proofText: { flex: 1, color: theme.ink.primary, fontFamily: font.medium, fontSize: 10.5 },
   emptyText: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 11, lineHeight: 16 },
   proofSummary: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
   handwritingSmall: { flex: 1, color: theme.ink.action, fontFamily: font.medium, fontStyle: 'italic', fontSize: 12.5 },
   proofCount: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5 },
-  encouragement: { minHeight: 72, borderRadius: 15, padding: 10, backgroundColor: mode === 'light' ? '#F0E9DC' : theme.surface.card, borderWidth: 1, borderColor: mode === 'light' ? 'rgba(99,79,46,0.14)' : theme.border.subtle, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  encouragementIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
+  encouragement: { minHeight: 72, borderRadius: 15, padding: 10, backgroundColor: theme.surface.card, borderWidth: 1, borderColor: theme.border.subtle, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  encouragementIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
   encourageTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 11.5 },
-  encourageMeta: { color: mode === 'light' ? legacyColors.inkSoft : theme.ink.muted, fontFamily: font.regular, fontSize: 9.5, lineHeight: 13, marginTop: 2 },
+  encourageMeta: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 9.5, lineHeight: 13, marginTop: 2 },
   addButton: { minHeight: 52, marginTop: 12, borderRadius: 12, backgroundColor: theme.ink.action, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   addText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
 });

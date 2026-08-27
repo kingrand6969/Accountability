@@ -36,13 +36,11 @@ import { ChipSelector } from '../profiles/ChipSelector';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import {
-  colors as legacyColors,
   font,
   radius,
   shadow,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
@@ -104,9 +102,9 @@ function Section({
 }
 
 export default function Profile() {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => profilePalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => profilePalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { session } = useAuth();
   const { isPro } = useIsPro();
   const router = useRouter();
@@ -428,10 +426,10 @@ export default function Profile() {
           accessibilityLabel="Change cover photo"
         >
           {uploadingCover ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <ActivityIndicator color={palette.ink} size="small" />
           ) : (
             <>
-              <Ionicons name="camera" size={14} color="#fff" />
+              <Ionicons name="camera" size={14} color={palette.ink} />
               <Text style={styles.coverBtnText}>{coverUrl ? 'Edit cover' : 'Add cover'}</Text>
             </>
           )}
@@ -457,11 +455,11 @@ export default function Profile() {
           )}
           {uploading ? (
             <View style={styles.avatarOverlay}>
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={palette.ink} />
             </View>
           ) : (
             <View style={styles.avatarEdit}>
-              <Ionicons name="camera" size={13} color="#fff" />
+              <Ionicons name="camera" size={13} color={palette.onAction} />
             </View>
           )}
         </Pressable>
@@ -629,28 +627,29 @@ export default function Profile() {
   );
 }
 
-function profilePalette(theme: AppThemeColors, mode: AppThemeMode) {
+function profilePalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
-    attention: mode === 'light' ? legacyColors.accent : theme.status.attention,
-    pro: mode === 'light' ? legacyColors.pro : theme.ink.action,
-    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
-    onPro: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    danger: theme.status.danger,
+    attention: theme.status.attention,
+    pro: theme.border.strong,
+    proSoft: theme.surface.muted,
+    onPro: theme.ink.primary,
+    scrim: theme.interaction.scrim,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = profilePalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = profilePalette(theme);
   return StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.background },
   container: {
@@ -673,13 +672,13 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(15,23,42,0.55)',
+    backgroundColor: palette.scrim,
     borderRadius: radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 12,
     minHeight: 32,
   },
-  coverBtnText: { color: '#fff', fontFamily: font.semibold, fontSize: 12 },
+  coverBtnText: { color: palette.ink, fontFamily: font.semibold, fontSize: 12 },
   // avatar sits almost fully on the cover — its bottom edge (camera badge)
   // lines up with the cover's bottom edge
   avatarBlock: { alignItems: 'center', gap: 4, marginTop: -96, marginBottom: spacing.xs },
@@ -697,7 +696,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: { color: '#fff', fontSize: 40, fontFamily: font.bold },
+  avatarInitial: { color: palette.onAction, fontSize: 40, fontFamily: font.bold },
   avatarOverlay: {
     position: 'absolute',
     top: 0,
@@ -707,7 +706,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     borderRadius: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: palette.scrim,
   },
   avatarEdit: {
     position: 'absolute',
@@ -718,7 +717,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     borderRadius: 14,
     backgroundColor: palette.action,
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: palette.background,
     alignItems: 'center',
     justifyContent: 'center',
   },

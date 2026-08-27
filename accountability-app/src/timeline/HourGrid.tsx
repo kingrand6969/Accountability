@@ -3,13 +3,7 @@ import { ScrollView, StyleSheet, Pressable, Text, View } from 'react-native';
 import { TimelineCard } from './TimelineCard';
 import { formatHourLabel } from './format';
 import type { TimelineItem } from './types';
-import {
-  colors as legacyColors,
-  font,
-  spacing,
-  type AppThemeColors,
-  type AppThemeMode,
-} from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -23,8 +17,8 @@ export function HourGrid({
   onPressHour: (hour: number) => void;
   onDelete: (item: TimelineItem) => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const byHour: Record<number, TimelineItem[]> = {};
   for (const item of items) {
     const h = new Date(item.starts_at).getHours();
@@ -62,13 +56,13 @@ export function HourGrid({
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   content: { padding: spacing.md, paddingBottom: 120 },
   row: { flexDirection: 'row', gap: 10, minHeight: 48, paddingVertical: 4 },
   pressed: { opacity: 0.7 },
   hour: {
     width: 56,
-    color: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    color: theme.ink.muted,
     fontSize: 13,
     fontFamily: font.semibold,
     paddingTop: 6,
@@ -76,7 +70,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
   body: { flex: 1, justifyContent: 'center' },
   emptyLine: {
     height: 1,
-    backgroundColor: mode === 'light' ? legacyColors.surface : theme.border.subtle,
+    backgroundColor: theme.border.subtle,
     marginVertical: 16,
   },
   items: { gap: spacing.sm },

@@ -19,12 +19,10 @@ import { ProgressRing } from '../ui/ProgressRing';
 import { contentMaxWidth } from '../ui/responsive';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
-  colors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -38,9 +36,9 @@ const PERIODS: { value: Period; label: string }[] = [
 export default function InsightsScreen() {
   const router = useRouter();
   const { isPro } = useIsPro();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => progressPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => progressPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -93,7 +91,7 @@ export default function InsightsScreen() {
                 {p.label}
               </Text>
               {p.value === 'month' && !isPro ? (
-                <Ionicons name="star" size={11} color={colors.pro} />
+                <Ionicons name="star" size={11} color={theme.ink.secondary} />
               ) : null}
             </Pressable>
           ))}
@@ -103,7 +101,7 @@ export default function InsightsScreen() {
           <GlassCard blurTarget={bgRef}>
             <View style={styles.proGate}>
               <View style={styles.proIcon}>
-                <Ionicons name="stats-chart" size={34} color={colors.pro} />
+                <Ionicons name="stats-chart" size={34} color={theme.ink.secondary} />
               </View>
               <Text style={styles.proTitle}>Monthly insights are Pro</Text>
               <Text style={styles.proText}>
@@ -262,8 +260,8 @@ function StatTile({
   value: string;
   label: string;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <View style={styles.tile}>
@@ -278,29 +276,29 @@ function StatTile({
   );
 }
 
-function progressPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function progressPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? '#E8ECE4' : theme.surface.canvas,
-    ink: mode === 'light' ? '#111411' : theme.ink.primary,
-    inkSoft: mode === 'light' ? 'rgba(17,20,17,0.72)' : theme.ink.muted,
-    toggle: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.card,
-    glassBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
-    selected: mode === 'light' ? '#fff' : theme.surface.raised,
-    tile: mode === 'light' ? 'rgba(255,255,255,0.62)' : theme.surface.card,
-    tileBorder: mode === 'light' ? 'rgba(255,255,255,0.65)' : theme.border.subtle,
-    chartTrack: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.muted,
-    chartBar: mode === 'light' ? '#6F9F00' : theme.ink.action,
-    chartEmpty: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
-    ringTrack: mode === 'light' ? 'rgba(17,20,17,0.12)' : theme.border.subtle,
-    proSoft: mode === 'light' ? colors.proSoft : theme.surface.muted,
-    daySuccessSoft: mode === 'light' ? 'rgba(4,120,87,0.12)' : theme.status.successSoft,
-    dayIdleSoft: mode === 'light' ? 'rgba(17,20,17,0.08)' : theme.surface.muted,
-    daySuccess: mode === 'light' ? '#047857' : theme.status.success,
+    canvas: theme.surface.canvas,
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.muted,
+    toggle: theme.surface.card,
+    glassBorder: theme.border.subtle,
+    selected: theme.surface.raised,
+    tile: theme.surface.card,
+    tileBorder: theme.border.subtle,
+    chartTrack: theme.surface.muted,
+    chartBar: theme.ink.action,
+    chartEmpty: theme.border.subtle,
+    ringTrack: theme.border.subtle,
+    proSoft: theme.surface.muted,
+    daySuccessSoft: theme.status.successSoft,
+    dayIdleSoft: theme.surface.muted,
+    daySuccess: theme.status.success,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = progressPalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = progressPalette(theme);
 
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.canvas },
@@ -428,7 +426,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     paddingHorizontal: spacing.md,
   },
   proBtn: {
-    backgroundColor: colors.pro,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.md,
     paddingVertical: 14,
     paddingHorizontal: 28,
@@ -436,6 +434,6 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     justifyContent: 'center',
     marginTop: spacing.xs,
   },
-  proBtnText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  proBtnText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   });
 };

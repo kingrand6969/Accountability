@@ -10,8 +10,19 @@ const legalSource = source('../app/legal/[doc].tsx');
 const booksSource = source('../app/books.tsx');
 
 describe('Account and support manual appearance contract', () => {
+  test('edit profile uses permanent dark semantic chrome', () => {
+    expect(editProfileSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(editProfileSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(editProfileSource).toContain('background: theme.surface.canvas');
+    expect(editProfileSource).toContain('card: theme.surface.card');
+    expect(editProfileSource).toContain('field: theme.surface.raised');
+    expect(editProfileSource).toContain('ink: theme.ink.primary');
+    expect(editProfileSource).toContain('border: theme.border.subtle');
+    expect(editProfileSource).toContain('danger: theme.status.danger');
+    expect(editProfileSource).not.toContain("mode === 'light'");
+  });
+
   test.each([
-    ['edit profile', editProfileSource],
     ['help', helpSource],
     ['legal reader', legalSource],
     ['books', booksSource],
@@ -23,7 +34,6 @@ describe('Account and support manual appearance contract', () => {
   });
 
   test.each([
-    ['edit profile', editProfileSource],
     ['help', helpSource],
     ['books', booksSource],
   ])('%s keeps its exact Light surfaces and gains semantic Dark equivalents', (_name, screenSource) => {
