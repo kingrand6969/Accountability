@@ -69,6 +69,8 @@ import { userFacingErrorMessage } from '../../ui/userFacingError';
 import { listDiscoveryCandidates, sendRequest, type Candidate } from '../../buddy/api';
 import { rankFeedBuddySuggestions } from '../../feed/feedBuddySuggestions';
 import { authorLabel } from '../../feed/format';
+import { FeedBuddyRail } from '../../feed/FeedBuddyRail';
+import { buildQuietFeedRows, type QuietFeedRow } from '../../feed/quietFeedRows';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type CreateItem = {
@@ -77,9 +79,7 @@ type CreateItem = {
   title: string;
   sub: string;
 } & ({ kind: 'story' } | { kind: 'route'; route: string | DirectPostHref });
-type FeedRow =
-  | { kind: 'post'; post: UnifiedFeedPost; generation: string }
-  | { kind: 'ad'; id: string; generation: string };
+type FeedRow = QuietFeedRow<UnifiedFeedPost>;
 
 const AD_EVERY = 5;
 const FEED_SESSION_KEY = 'feed-session-v1';
@@ -200,8 +200,9 @@ export default function Feed() {
   const [viewabilityConfig] = useState({ itemVisiblePercentThreshold: 65, minimumViewTime: 180 });
   const [onViewableItemsChanged] = useState(() => ({ viewableItems }: { viewableItems: ViewToken<FeedRow>[] }) => {
     const ids = viewableItems.flatMap(({ item }) => item?.kind === 'post' ? [item.post.id] : []);
+    const firstPost = viewableItems.find(({ item }) => item?.kind === 'post')?.item;
     setVisiblePostIds((current) => current.join('|') === ids.join('|') ? current : ids);
-    setVisibilityGeneration(viewableItems[0]?.item?.generation ?? '');
+    setVisibilityGeneration(firstPost?.kind === 'post' ? firstPost.generation : '');
   });
   // Latest-value refs prevent stale owner work during the render-to-effect gap and keep load stable.
   // eslint-disable-next-line react-hooks/refs
@@ -632,16 +633,19 @@ export default function Feed() {
     () => (feedRowsBelongToView(dataOwnerId, myId) ? posts : []),
     [dataOwnerId, myId, posts],
   );
-  const feedData = useMemo<FeedRow[]>(() => {
-    const rows: FeedRow[] = [];
-    visiblePosts.forEach((post, index) => {
-      rows.push({ kind: 'post', post, generation: feedGeneration });
-      if (adsReady && !isPro && !proLoading && (index + 1) % AD_EVERY === 0) {
-        rows.push({ kind: 'ad', id: `ad-${post.id}`, generation: feedGeneration });
-      }
-    });
-    return rows;
-  }, [adsReady, feedGeneration, isPro, proLoading, visiblePosts]);
+  const suggestionsVisible = suggestionOwnerId === myId && buddySuggestions.length > 0;
+  const feedData = useMemo(
+    () => buildQuietFeedRows({
+      posts: visiblePosts,
+      showBuddyRail: suggestionsVisible,
+      showAds: adsReady && !isPro && !proLoading,
+      generation: feedGeneration,
+      adEvery: AD_EVERY,
+    }),
+    // suggestion length deliberately triggers rail insertion/removal; candidate details render from current state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [adsReady, buddySuggestions.length, feedGeneration, isPro, proLoading, suggestionsVisible, visiblePosts],
+  );
   const viewState = deriveFeedViewState({
     loading,
     loadingMore,
@@ -832,6 +836,17 @@ export default function Feed() {
               )
             )}
             renderItem={({ item: row }) => {
+              if (row.kind === 'buddies') {
+                return (
+                  <FeedBuddyRail
+                    candidates={buddySuggestions}
+                    busyIds={buddyRequestsInFlight}
+                    onOpen={(candidate) => router.push({ pathname: '/buddy-card/[id]', params: { id: candidate.id } } as never)}
+                    onAdd={(candidate) => void addSuggestedBuddy(candidate)}
+                    onSeeAll={() => router.push('/discover' as never)}
+                  />
+                );
+              }
               if (row.kind === 'ad') return <View style={styles.adWrap}><AdCard /></View>;
               const item = row.post;
               return (
