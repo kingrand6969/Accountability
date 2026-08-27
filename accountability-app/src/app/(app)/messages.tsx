@@ -306,7 +306,7 @@ export default function Messages() {
                 title="No messages yet"
                 subtitle="Match with an accountability buddy, then say hi — your chats show up here."
                 actionTitle="Find buddies"
-                onAction={() => router.push('/buddy' as never)}
+                onAction={() => router.push('/discover' as never)}
               />
             )
           }

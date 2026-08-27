@@ -23,6 +23,14 @@ describe('communication surfaces appearance contract', () => {
     expect(messages).not.toContain('const styles = StyleSheet.create({');
   });
 
+  test('Messages keeps Find buddies inside the unified Discover experience', () => {
+    const messages = source('src/app/(app)/messages.tsx');
+
+    expect(messages).toContain('actionTitle="Find buddies"');
+    expect(messages).toContain("onAction={() => router.push('/discover' as never)}");
+    expect(messages).not.toContain("router.push('/buddy' as never)");
+  });
+
   test('Notifications themes loading, refresh, unread rows, copy, and badges without changing routing', () => {
     const notifications = source('src/app/(app)/notifications.tsx');
 

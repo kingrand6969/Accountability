@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 
 const shell = readFileSync(require.resolve('../app/buddy-card/[id]'), 'utf8');
+const editor = readFileSync(require.resolve('../app/buddy-card-edit'), 'utf8');
 const publicFace = readFileSync(require.resolve('./PublicBuddyCardFace'), 'utf8');
 
 function publicFaceInvocation(source: string) {
@@ -54,6 +55,23 @@ describe('Buddy Card supporting shell appearance contract', () => {
     expect(invocation).not.toContain('mode=');
     expect(invocation).not.toContain('scheme=');
     expect(invocation).not.toContain('palette=');
+  });
+
+  test('themes the editor shell semantically while preserving swatches and shareable artwork', () => {
+    expect(editor).toContain('const { colors: theme } = useAppTheme();');
+    expect(editor).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
+    expect(editor).toContain('function createStyles(theme: AppThemeColors)');
+    expect(editor).toContain('backgroundColor: theme.surface.canvas');
+    expect(editor).toContain('backgroundColor: theme.surface.card');
+    expect(editor).toContain('backgroundColor: theme.surface.raised');
+    expect(editor).toContain('borderColor: theme.border.subtle');
+    expect(editor).toContain('color: theme.ink.primary');
+    expect(editor).toContain('color: theme.ink.muted');
+    expect(editor).toContain('borderColor: theme.ink.action');
+    expect(editor).toContain('true: theme.ink.action');
+    expect(editor).toContain('resolveBuddyCardPalette(optionKey, scheme)');
+    expect(editor).toContain('backgroundColor: editorPalette.canvas');
+    expect(editor).toContain('<PublicBuddyCardFace');
   });
 
   test('retains privacy, account-generation, navigation and action boundaries', () => {

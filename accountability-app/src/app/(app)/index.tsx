@@ -88,10 +88,10 @@ const FEED_SESSION_KEY = 'feed-session-v1';
 function createItems(theme: AppThemeColors): CreateItem[] {
   return [
     { icon: 'create-outline', tint: theme.ink.action, title: 'Post', sub: 'Share a win or an update', kind: 'route', route: DIRECT_POST_HREF },
-    { icon: 'add-circle-outline', tint: '#db2777', title: 'My Day', sub: 'Share a photo for 24 hours', kind: 'story' },
-    { icon: 'flame-outline', tint: '#f59e0b', title: 'Win card', sub: 'Share your streak as an image', kind: 'route', route: '/win-card' },
+    { icon: 'add-circle-outline', tint: theme.ink.action, title: 'My Day', sub: 'Share a photo for 24 hours', kind: 'story' },
+    { icon: 'flame-outline', tint: theme.status.attention, title: 'Win card', sub: 'Share your streak as an image', kind: 'route', route: '/win-card' },
     { icon: 'people-outline', tint: theme.status.success, title: 'Group', sub: 'Start a community', kind: 'route', route: '/group-new' },
-    { icon: 'storefront-outline', tint: '#0d9488', title: 'Page', sub: 'For your gym, coaching or brand', kind: 'route', route: '/page-new' },
+    { icon: 'storefront-outline', tint: theme.ink.secondary, title: 'Page', sub: 'For your gym, coaching or brand', kind: 'route', route: '/page-new' },
   ];
 }
 const FEED_SKELETON_ROWS = [0, 1] as const;

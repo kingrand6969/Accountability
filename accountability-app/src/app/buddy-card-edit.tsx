@@ -53,7 +53,7 @@ import { getMyProfile } from '../profiles/api';
 import { Button } from '../ui/Button';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { showToast } from '../ui/Toast';
-import { font, radius, shadow, spacing } from '../ui/theme';
+import { font, radius, shadow, spacing, type AppThemeColors } from '../ui/theme';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
 import {
   presentationTraitName,
@@ -86,7 +86,9 @@ type MedalSnapshot = { id: string; tier: number };
 export default function BuddyCardEdit() {
   const router = useRouter();
   const navigation = useNavigation();
+  const { colors: theme } = useAppTheme();
   const { mode: scheme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const editorPalette = resolveBuddyCardPalette('polar_blue', scheme);
 
   const lifecycleRef = useRef(createBuddyCardEditorLoadLifecycle());
@@ -313,19 +315,19 @@ export default function BuddyCardEdit() {
 
   if (loading) {
     return (
-      <View style={[styles.centered, { backgroundColor: editorPalette.canvas }]}>
-        <ActivityIndicator color={editorPalette.accent} />
-        <Text style={[styles.statusText, { color: editorPalette.textMuted }]}>Loading your Buddy Card…</Text>
+      <View style={styles.centered}>
+        <ActivityIndicator color={theme.ink.action} />
+        <Text style={styles.statusText}>Loading your Buddy Card…</Text>
       </View>
     );
   }
 
   if (loadError) {
     return (
-      <View style={[styles.centered, { backgroundColor: editorPalette.canvas }]}>
-        <Ionicons name="alert-circle-outline" size={34} color={editorPalette.accent} />
-        <Text style={[styles.errorTitle, { color: editorPalette.text }]}>Could not load your Buddy Card</Text>
-        <Text style={[styles.statusText, { color: editorPalette.textMuted }]}>{loadError}</Text>
+      <View style={styles.centered}>
+        <Ionicons name="alert-circle-outline" size={34} color={theme.ink.action} />
+        <Text style={styles.errorTitle}>Could not load your Buddy Card</Text>
+        <Text style={styles.statusText}>{loadError}</Text>
         <Button title="Try again" onPress={() => setReloadKey((value) => value + 1)} />
       </View>
     );
@@ -333,12 +335,12 @@ export default function BuddyCardEdit() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: editorPalette.canvas }}
+      style={styles.screen}
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={[styles.sectionTitle, { color: editorPalette.textMuted }]}>Appearance</Text>
-      <Text style={[styles.traitHint, { color: editorPalette.textMuted }]}>Choose a clean color atmosphere. Rank and medal colors stay official.</Text>
+      <Text style={styles.sectionTitle}>Appearance</Text>
+      <Text style={styles.traitHint}>Choose a clean color atmosphere. Rank and medal colors stay official.</Text>
       <View accessibilityRole="radiogroup" style={styles.paletteList}>
         {BUDDY_CARD_PALETTE_KEYS.map((optionKey) => {
           const selected = paletteKey === optionKey;
@@ -372,16 +374,16 @@ export default function BuddyCardEdit() {
         })}
       </View>
 
-      <Text style={[styles.sectionTitle, { color: editorPalette.textMuted }]}>Featured medals</Text>
-      <Text style={[styles.traitHint, { color: editorPalette.textMuted }]}>You can feature up to four medals. Their order here is their order on your card.</Text>
+      <Text style={styles.sectionTitle}>Featured medals</Text>
+      <Text style={styles.traitHint}>You can feature up to four medals. Their order here is their order on your card.</Text>
       {featuredMedalIds.length >= MAX_FEATURED_MEDALS ? (
-        <Text accessibilityLiveRegion="polite" style={[styles.limitText, { color: editorPalette.accent }]}>Four medals selected. Remove one before choosing another.</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.limitText}>Four medals selected. Remove one before choosing another.</Text>
       ) : null}
       {selectionNotice ? (
-        <Text accessibilityLiveRegion="polite" style={[styles.limitText, { color: editorPalette.accent }]}>{selectionNotice}</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.limitText}>{selectionNotice}</Text>
       ) : null}
       {myMedalList.length === 0 ? (
-        <Text style={[styles.emptyText, { color: editorPalette.textMuted }]}>Earn your first medal to feature it here.</Text>
+        <Text style={styles.emptyText}>Earn your first medal to feature it here.</Text>
       ) : (
         <View style={styles.medalList}>
           {myMedalList.map((snapshot) => {
@@ -397,7 +399,7 @@ export default function BuddyCardEdit() {
                 key={snapshot.id}
                 style={[
                   styles.medalRow,
-                  { backgroundColor: editorPalette.surface, borderColor: selected ? editorPalette.accent : editorPalette.border },
+                  selected && styles.medalRowSelected,
                 ]}
               >
                 <Pressable
@@ -411,13 +413,13 @@ export default function BuddyCardEdit() {
                 >
                   <Medal state={state} size={48} animate={false} />
                   <View style={styles.medalCopy}>
-                    <Text style={[styles.medalTitle, { color: editorPalette.text }]}>{definition.title}</Text>
-                    <Text style={[styles.medalTier, { color: editorPalette.textMuted }]}>{state.tierName}{selected ? ` · Position ${selectedIndex + 1}` : ''}</Text>
+                    <Text style={styles.medalTitle}>{definition.title}</Text>
+                    <Text style={styles.medalTier}>{state.tierName}{selected ? ` · Position ${selectedIndex + 1}` : ''}</Text>
                   </View>
                   <Ionicons
                     name={selected ? 'checkmark-circle' : 'add-circle-outline'}
                     size={24}
-                    color={selected ? editorPalette.accent : editorPalette.textMuted}
+                    color={selected ? theme.ink.action : theme.ink.muted}
                   />
                 </Pressable>
                 {selected ? (
@@ -430,7 +432,7 @@ export default function BuddyCardEdit() {
                       accessibilityState={{ disabled: selectedIndex === 0 }}
                       style={[styles.orderButton, selectedIndex === 0 && styles.disabled]}
                     >
-                      <Ionicons name="chevron-up" size={20} color={editorPalette.accent} />
+                      <Ionicons name="chevron-up" size={20} color={theme.ink.action} />
                     </Pressable>
                     <Pressable
                       onPress={() => setFeaturedMedalIds(moveFeaturedMedal(featuredMedalIds, snapshot.id, 1, earnedIds))}
@@ -440,7 +442,7 @@ export default function BuddyCardEdit() {
                       accessibilityState={{ disabled: selectedIndex === featuredMedalIds.length - 1 }}
                       style={[styles.orderButton, selectedIndex === featuredMedalIds.length - 1 && styles.disabled]}
                     >
-                      <Ionicons name="chevron-down" size={20} color={editorPalette.accent} />
+                      <Ionicons name="chevron-down" size={20} color={theme.ink.action} />
                     </Pressable>
                   </View>
                 ) : null}
@@ -450,46 +452,46 @@ export default function BuddyCardEdit() {
         </View>
       )}
 
-      <Text style={[styles.sectionTitle, { color: editorPalette.textMuted }]}>Profile text</Text>
-      <Text style={[styles.label, { color: editorPalette.text }]}>Focus line</Text>
+      <Text style={styles.sectionTitle}>Profile text</Text>
+      <Text style={styles.label}>Focus line</Text>
       <TextInput
-        style={[styles.input, { color: editorPalette.text, backgroundColor: editorPalette.surface, borderColor: editorPalette.border }]}
+        style={styles.input}
         placeholder="e.g. Morning runs · 5K pace · looking for a jog partner"
-        placeholderTextColor={editorPalette.textMuted}
+        placeholderTextColor={theme.ink.muted}
         value={card.headline ?? ''}
         onChangeText={(headlineValue) => setCard((current) => ({ ...current, headline: headlineValue }))}
         maxLength={90}
       />
-      <Text style={[styles.label, { color: editorPalette.text }]}>About you</Text>
+      <Text style={styles.label}>About you</Text>
       <TextInput
-        style={[styles.input, styles.multiline, { color: editorPalette.text, backgroundColor: editorPalette.surface, borderColor: editorPalette.border }]}
+        style={[styles.input, styles.multiline]}
         placeholder="What are you working on? What kind of buddy do you want?"
-        placeholderTextColor={editorPalette.textMuted}
+        placeholderTextColor={theme.ink.muted}
         value={card.about ?? ''}
         onChangeText={(aboutValue) => setCard((current) => ({ ...current, about: aboutValue }))}
         multiline
         maxLength={400}
       />
 
-      <Text style={[styles.sectionTitle, { color: editorPalette.textMuted }]}>What non-buddies may see</Text>
-      <Text style={[styles.traitHint, { color: editorPalette.textMuted }]}>Every item below is off until you choose to share it.</Text>
-      <PrivacyToggle label="Show my focus line" value={card.show_headline === true} onChange={(value) => setCard((current) => ({ ...current, show_headline: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show my selected accountability traits" value={card.show_traits === true} onChange={(value) => setCard((current) => ({ ...current, show_traits: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show my area" value={card.show_area === true} onChange={(value) => setCard((current) => ({ ...current, show_area: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show my About text" value={card.show_bio === true} onChange={(value) => setCard((current) => ({ ...current, show_bio: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show my activity time" value={card.show_last_active === true} onChange={(value) => setCard((current) => ({ ...current, show_last_active: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show my momentum rank" value={card.show_rank === true} onChange={(value) => setCard((current) => ({ ...current, show_rank: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show my earned medals" value={card.show_medals === true} onChange={(value) => setCard((current) => ({ ...current, show_medals: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show consistency" value={card.show_consistency === true} onChange={(value) => setCard((current) => ({ ...current, show_consistency: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show points" value={card.show_points === true} onChange={(value) => setCard((current) => ({ ...current, show_points: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show distance" value={card.show_distance === true} onChange={(value) => setCard((current) => ({ ...current, show_distance: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Show challenge wins" value={card.show_challenge_wins === true} onChange={(value) => setCard((current) => ({ ...current, show_challenge_wins: value }))} palette={editorPalette} />
-      <PrivacyToggle label="Share country ranking" value={card.show_country_rank === true} onChange={(value) => setCard((current) => setBuddyCardRankingConsent(current, 'show_country_rank', value))} palette={editorPalette} />
-      <PrivacyToggle label="Share city ranking" value={card.show_city_rank === true} onChange={(value) => setCard((current) => setBuddyCardRankingConsent(current, 'show_city_rank', value))} palette={editorPalette} />
-      <PrivacyToggle label="Show selected public posts" value={card.show_posts === true} onChange={(value) => setCard((current) => ({ ...current, show_posts: value }))} palette={editorPalette} />
+      <Text style={styles.sectionTitle}>What non-buddies may see</Text>
+      <Text style={styles.traitHint}>Every item below is off until you choose to share it.</Text>
+      <PrivacyToggle label="Show my focus line" value={card.show_headline === true} onChange={(value) => setCard((current) => ({ ...current, show_headline: value }))} />
+      <PrivacyToggle label="Show my selected accountability traits" value={card.show_traits === true} onChange={(value) => setCard((current) => ({ ...current, show_traits: value }))} />
+      <PrivacyToggle label="Show my area" value={card.show_area === true} onChange={(value) => setCard((current) => ({ ...current, show_area: value }))} />
+      <PrivacyToggle label="Show my About text" value={card.show_bio === true} onChange={(value) => setCard((current) => ({ ...current, show_bio: value }))} />
+      <PrivacyToggle label="Show my activity time" value={card.show_last_active === true} onChange={(value) => setCard((current) => ({ ...current, show_last_active: value }))} />
+      <PrivacyToggle label="Show my momentum rank" value={card.show_rank === true} onChange={(value) => setCard((current) => ({ ...current, show_rank: value }))} />
+      <PrivacyToggle label="Show my earned medals" value={card.show_medals === true} onChange={(value) => setCard((current) => ({ ...current, show_medals: value }))} />
+      <PrivacyToggle label="Show consistency" value={card.show_consistency === true} onChange={(value) => setCard((current) => ({ ...current, show_consistency: value }))} />
+      <PrivacyToggle label="Show points" value={card.show_points === true} onChange={(value) => setCard((current) => ({ ...current, show_points: value }))} />
+      <PrivacyToggle label="Show distance" value={card.show_distance === true} onChange={(value) => setCard((current) => ({ ...current, show_distance: value }))} />
+      <PrivacyToggle label="Show challenge wins" value={card.show_challenge_wins === true} onChange={(value) => setCard((current) => ({ ...current, show_challenge_wins: value }))} />
+      <PrivacyToggle label="Share country ranking" value={card.show_country_rank === true} onChange={(value) => setCard((current) => setBuddyCardRankingConsent(current, 'show_country_rank', value))} />
+      <PrivacyToggle label="Share city ranking" value={card.show_city_rank === true} onChange={(value) => setCard((current) => setBuddyCardRankingConsent(current, 'show_city_rank', value))} />
+      <PrivacyToggle label="Show selected public posts" value={card.show_posts === true} onChange={(value) => setCard((current) => ({ ...current, show_posts: value }))} />
 
-      <Text style={[styles.label, { color: editorPalette.text }]}>Your accountability style</Text>
-      <Text style={[styles.traitHint, { color: editorPalette.textMuted }]}>Choose up to three traits visitors should know.</Text>
+      <Text style={styles.label}>Your accountability style</Text>
+      <Text style={styles.traitHint}>Choose up to three traits visitors should know.</Text>
       <View style={styles.traitGrid}>
         {TRAITS.map((trait) => {
           const selected = traitOptionSelected(card.traits, trait);
@@ -510,19 +512,19 @@ export default function BuddyCardEdit() {
               accessibilityState={{ checked: selected, disabled: !selected && full }}
               style={({ pressed }) => [
                 styles.trait,
-                { backgroundColor: selected ? editorPalette.surfaceTint : editorPalette.surface, borderColor: selected ? editorPalette.accent : editorPalette.border },
+                selected && styles.traitSelected,
                 !selected && full && styles.disabled,
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={[styles.traitText, { color: selected ? editorPalette.accent : editorPalette.text }]}>{trait}</Text>
+              <Text style={[styles.traitText, selected && styles.traitTextSelected]}>{trait}</Text>
             </Pressable>
           );
         })}
       </View>
-      <Text style={[styles.hint, { color: editorPalette.textMuted }]}>Non-buddies only see enabled items. Posts must also be individually marked “Show on Buddy Card”.</Text>
+      <Text style={styles.hint}>Non-buddies only see enabled items. Posts must also be individually marked “Show on Buddy Card”.</Text>
 
-      <Text style={[styles.sectionTitle, { color: editorPalette.textMuted }]}>Live preview</Text>
+      <Text style={styles.sectionTitle}>Live preview</Text>
       <View style={[styles.card, { backgroundColor: editorPalette.canvas, borderColor: editorPalette.border }]}>
         <PublicBuddyCardFace
           name={myName}
@@ -554,16 +556,17 @@ function PrivacyToggle({
   label,
   value,
   onChange,
-  palette,
 }: {
   label: string;
   value: boolean;
   onChange: (value: boolean) => void;
-  palette: ReturnType<typeof resolveBuddyCardPalette>;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createPrivacyToggleStyles(theme), [theme]);
+
   return (
-    <View style={[styles.toggleRow, { borderBottomColor: palette.border }]}>
-      <Text style={[styles.toggleLabel, { color: palette.text }]}>{label}</Text>
+    <View style={styles.toggleRow}>
+      <Text style={styles.toggleLabel}>{label}</Text>
       <Switch
         style={styles.toggleSwitch}
         value={value}
@@ -571,50 +574,61 @@ function PrivacyToggle({
         accessibilityRole="switch"
         accessibilityLabel={label}
         accessibilityState={{ checked: value }}
-        trackColor={{ false: palette.border, true: palette.accentSecondary }}
-        thumbColor={value ? palette.accent : palette.surface}
+        trackColor={{ false: theme.border.strong, true: theme.ink.action }}
+        thumbColor={value ? theme.ink.inverse : theme.surface.raised}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
-  statusText: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
-  errorTitle: { fontFamily: font.bold, fontSize: 18, textAlign: 'center' },
-  container: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 48 },
-  sectionTitle: { fontSize: 12, fontFamily: font.bold, textTransform: 'uppercase', letterSpacing: 1, marginTop: spacing.lg },
+function createPrivacyToggleStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
+    toggleRow: { minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border.subtle, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    toggleLabel: { flex: 1, fontFamily: font.semibold, fontSize: 13.5, color: theme.ink.primary, paddingVertical: spacing.sm },
+    toggleSwitch: { minWidth: 48, minHeight: 48, alignSelf: 'center' },
+  });
+}
+
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md, backgroundColor: theme.surface.canvas },
+  statusText: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center', color: theme.ink.muted },
+  errorTitle: { fontFamily: font.bold, fontSize: 18, textAlign: 'center', color: theme.ink.primary },
+  container: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 48, backgroundColor: theme.surface.canvas },
+  sectionTitle: { fontSize: 12, fontFamily: font.bold, color: theme.ink.muted, textTransform: 'uppercase', letterSpacing: 1, marginTop: spacing.lg },
   paletteList: { gap: 10, marginTop: 4 },
   paletteOption: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   swatches: { flexDirection: 'row' },
   swatch: { width: 22, height: 32, borderRadius: 8, marginRight: -5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)' },
   paletteName: { flex: 1, fontFamily: font.semibold, fontSize: 14 },
-  traitHint: { fontFamily: font.regular, fontSize: 12.5, lineHeight: 18 },
-  limitText: { fontFamily: font.semibold, fontSize: 12.5, lineHeight: 18 },
-  emptyText: { fontFamily: font.regular, fontSize: 13, paddingVertical: spacing.md },
+  traitHint: { fontFamily: font.regular, fontSize: 12.5, lineHeight: 18, color: theme.ink.muted },
+  limitText: { fontFamily: font.semibold, fontSize: 12.5, lineHeight: 18, color: theme.ink.action },
+  emptyText: { fontFamily: font.regular, fontSize: 13, paddingVertical: spacing.md, color: theme.ink.muted },
   medalList: { gap: 10, marginTop: 4 },
-  medalRow: { borderWidth: 1, borderRadius: radius.md, overflow: 'hidden', flexDirection: 'row', alignItems: 'stretch' },
+  medalRow: { borderWidth: 1, borderColor: theme.border.subtle, borderRadius: radius.md, backgroundColor: theme.surface.card, overflow: 'hidden', flexDirection: 'row', alignItems: 'stretch' },
+  medalRowSelected: { borderColor: theme.ink.action },
   medalSelect: { minHeight: 64, flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
   medalCopy: { flex: 1 },
-  medalTitle: { fontFamily: font.semibold, fontSize: 14 },
-  medalTier: { fontFamily: font.regular, fontSize: 12, marginTop: 2 },
-  orderActions: { flexDirection: 'row', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: 'rgba(100,116,139,0.28)' },
+  medalTitle: { fontFamily: font.semibold, fontSize: 14, color: theme.ink.primary },
+  medalTier: { fontFamily: font.regular, fontSize: 12, marginTop: 2, color: theme.ink.muted },
+  orderActions: { flexDirection: 'row', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.border.subtle },
   orderButton: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 13.5, fontFamily: font.semibold, marginTop: spacing.sm },
-  input: { borderWidth: 1, borderRadius: radius.sm, padding: spacing.md, fontSize: 15, fontFamily: font.regular },
+  label: { fontSize: 13.5, fontFamily: font.semibold, color: theme.ink.primary, marginTop: spacing.sm },
+  input: { borderWidth: 1, borderColor: theme.border.subtle, borderRadius: radius.sm, backgroundColor: theme.surface.raised, color: theme.ink.primary, padding: spacing.md, fontSize: 15, fontFamily: font.regular },
   multiline: { minHeight: 90, textAlignVertical: 'top' },
-  toggleRow: { minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  toggleLabel: { flex: 1, fontFamily: font.semibold, fontSize: 13.5, paddingVertical: spacing.sm },
-  toggleSwitch: { minWidth: 48, minHeight: 48, alignSelf: 'center' },
   traitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4 },
-  trait: { minHeight: 48, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
-  traitText: { fontFamily: font.semibold, fontSize: 12.5 },
+  trait: { minHeight: 48, borderRadius: radius.pill, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.raised, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  traitSelected: { backgroundColor: theme.surface.muted, borderColor: theme.ink.action },
+  traitText: { fontFamily: font.semibold, fontSize: 12.5, color: theme.ink.primary },
+  traitTextSelected: { color: theme.ink.action },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.72 },
-  hint: { fontFamily: font.regular, fontSize: 12.5, lineHeight: 18, marginTop: 4 },
+  hint: { fontFamily: font.regular, fontSize: 12.5, lineHeight: 18, color: theme.ink.muted, marginTop: 4 },
   card: { borderWidth: 1, borderRadius: radius.xl, padding: spacing.md, ...shadow.card },
   aboutBox: { alignSelf: 'stretch', borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
   aboutTitle: { fontFamily: font.bold, fontSize: 13.5, marginBottom: 4 },
   aboutText: { fontFamily: font.regular, fontSize: 13.5, lineHeight: 20 },
   save: { marginTop: spacing.lg },
 });
+}

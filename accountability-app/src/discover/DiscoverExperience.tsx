@@ -120,6 +120,7 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
   const [filter, setFilter] = useState<Filter>('for-you');
+  const [showAllPeople, setShowAllPeople] = useState(scope === 'people');
   const [people, setPeople] = useState<Candidate[]>([]);
   const [cards, setCards] = useState<Map<string, BuddyCardView | null>>(new Map());
   const [groups, setGroups] = useState<Group[]>([]);
@@ -253,7 +254,7 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
     );
   }
 
-  const recommended = [...people]
+  const sortedPeople = [...people]
     .sort(
       (a, b) =>
         (fixture
@@ -261,8 +262,8 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
             Number(a.id === fixture.personId)
           : 0) ||
         Number(!!b.avatar_url) - Number(!!a.avatar_url),
-    )
-    .slice(0, 4);
+    );
+  const visiblePeople = showAllPeople ? sortedPeople : sortedPeople.slice(0, 4);
   const recommendedGroups = [...groups].sort(
     (a, b) =>
       fixture
@@ -369,10 +370,10 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
             appearance={appearance}
             title="People you may connect with"
             action="Browse all"
-            onPress={() => router.push('/buddy' as never)}
+            onPress={() => setShowAllPeople(true)}
             largeText={layout.stackCards}
           />
-          {recommended.map((person) => (
+          {visiblePeople.map((person) => (
             <PersonCard
               appearance={appearance}
               key={person.id}
@@ -738,6 +739,7 @@ function discoverPalette(theme: AppThemeColors) {
   return {
     canvas: theme.surface.canvas,
     card: theme.surface.card,
+    raisedSurface: theme.surface.raised,
     mutedSurface: theme.surface.muted,
     border: theme.border.subtle,
     primarySoft: theme.surface.raised,
@@ -747,6 +749,7 @@ function discoverPalette(theme: AppThemeColors) {
     textFaint: theme.ink.muted,
     action: theme.ink.action,
     onAction: theme.ink.inverse,
+    scrim: theme.interaction.scrim,
     warningSurface: theme.status.dangerSoft,
     warningText: theme.status.attention,
     disabledOpacity: theme.interaction.disabledOpacity,
@@ -804,28 +807,28 @@ const createStyles = (palette: DiscoverPalette) => StyleSheet.create({
   sectionActionLargeText: { height: 'auto', minHeight: 48, alignSelf: 'flex-end' },
   sectionActionText: { color: palette.action, fontFamily: font.bold, fontSize: 12 },
   personCard: { borderRadius: radius.md, backgroundColor: palette.card, overflow: 'hidden', borderWidth: 1, borderColor: palette.border },
-  personHero: { height: DISCOVER_GEOMETRY.personHero, backgroundColor: '#0b2047' },
+  personHero: { height: DISCOVER_GEOMETRY.personHero, backgroundColor: palette.raisedSurface },
   personHeroLargeText: { height: 'auto', minHeight: DISCOVER_GEOMETRY.personHero },
   personImage: { flex: 1, justifyContent: 'flex-end' },
   personImageLargeText: { flex: 0, minHeight: 160 },
   personImageRadius: { borderRadius: 0 },
   personFallback: { alignItems: 'center', justifyContent: 'center' },
-  personScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,18,45,.36)' },
+  personScrim: { ...StyleSheet.absoluteFill, backgroundColor: palette.scrim },
   personCopy: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: 5 },
   personCopyLargeText: { position: 'relative', left: 0, right: 0, bottom: 0, padding: spacing.md, backgroundColor: palette.mutedSurface },
-  personName: { color: '#fff', fontFamily: font.serif, fontSize: 20, lineHeight: 21 },
-  personMeta: { color: '#e2e8f0', fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
-  areaBadge: { alignSelf: 'flex-start', minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,.92)', paddingHorizontal: 9, marginTop: spacing.sm },
-  areaBadgeText: { color: '#123b79', fontFamily: font.bold, fontSize: 10 },
+  personName: { color: palette.text, fontFamily: font.serif, fontSize: 20, lineHeight: 21 },
+  personMeta: { color: palette.textSecondary, fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
+  areaBadge: { alignSelf: 'flex-start', minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.pill, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, marginTop: spacing.sm },
+  areaBadgeText: { color: palette.text, fontFamily: font.bold, fontSize: 10 },
   realTraits: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 },
-  realTrait: { height: 18, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,.92)', paddingHorizontal: 6 },
+  realTrait: { height: 18, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.mutedSurface, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 6 },
   realTraitLargeText: { height: 'auto', minHeight: 32, paddingVertical: spacing.xs },
-  realTraitText: { color: '#123b79', fontFamily: font.bold, fontSize: 8 },
+  realTraitText: { color: palette.textSecondary, fontFamily: font.bold, fontSize: 8 },
   levelBand: { marginTop: 3, gap: 2 },
   levelLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   levelLabelsLargeText: { flexDirection: 'column', gap: spacing.xs },
-  levelText: { color: '#fff', fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
-  progressTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,.35)', overflow: 'hidden' },
+  levelText: { color: palette.textSecondary, fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
+  progressTrack: { height: 4, borderRadius: 2, backgroundColor: palette.border, overflow: 'hidden' },
   progressFill: { width: '87%', height: 4, borderRadius: 2, backgroundColor: palette.action },
   connect: { height: DISCOVER_GEOMETRY.connect, margin: DISCOVER_GEOMETRY.personCardSpacing / 2, borderRadius: radius.sm, backgroundColor: palette.action, alignItems: 'center', justifyContent: 'center' },
   connectLargeText: { height: 'auto', minHeight: 48, paddingVertical: spacing.sm },

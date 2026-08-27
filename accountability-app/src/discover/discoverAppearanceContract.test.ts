@@ -4,6 +4,13 @@ import { describe, expect, test } from '@jest/globals';
 
 const source = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf8');
 
+function styleBlock(componentSource: string, styleName: string): string {
+  const match = componentSource.match(
+    new RegExp(`(?:^|\\n)\\s*${styleName}:\\s*\\{([\\s\\S]*?)\\}`),
+  );
+  return match?.[1] ?? '';
+}
+
 describe('Discover and connection appearance contract', () => {
   test('Discover hub uses the permanent semantic dark palette without a Light fallback', () => {
     const hub = source('src/discover/DiscoverHub.tsx');
@@ -43,6 +50,33 @@ describe('Discover and connection appearance contract', () => {
     expect(discover).toContain('hitSlop={DISCOVER_TOUCH_INSET.small}');
     expect(discover).not.toContain('const styles = StyleSheet.create({');
     expect(discover).not.toContain("mode === 'light'");
+  });
+
+  test('Browse all expands people inside Discover and never opens the parallel legacy Buddy flow', () => {
+    const discover = source('src/discover/DiscoverExperience.tsx');
+
+    expect(discover).toContain('const [showAllPeople, setShowAllPeople] = useState(scope === \'people\');');
+    expect(discover).toContain('const visiblePeople = showAllPeople ? sortedPeople : sortedPeople.slice(0, 4);');
+    expect(discover).toContain('onPress={() => setShowAllPeople(true)}');
+    expect(discover).not.toContain("router.push('/buddy' as never)");
+  });
+
+  test('candidate fallback and overlay chrome use semantic dark roles without recoloring media', () => {
+    const discover = source('src/discover/DiscoverExperience.tsx');
+
+    expect(discover).toContain('raisedSurface: theme.surface.raised');
+    expect(discover).toContain('scrim: theme.interaction.scrim');
+    expect(styleBlock(discover, 'personHero')).toContain('backgroundColor: palette.raisedSurface');
+    expect(styleBlock(discover, 'personScrim')).toContain('backgroundColor: palette.scrim');
+    expect(styleBlock(discover, 'personName')).toContain('color: palette.text');
+    expect(styleBlock(discover, 'personMeta')).toContain('color: palette.textSecondary');
+    expect(styleBlock(discover, 'areaBadge')).toContain('backgroundColor: palette.card');
+    expect(styleBlock(discover, 'areaBadgeText')).toContain('color: palette.text');
+    expect(styleBlock(discover, 'realTrait')).toContain('backgroundColor: palette.mutedSurface');
+    expect(styleBlock(discover, 'realTraitText')).toContain('color: palette.textSecondary');
+    expect(styleBlock(discover, 'levelText')).toContain('color: palette.textSecondary');
+    expect(styleBlock(discover, 'progressTrack')).toContain('backgroundColor: palette.border');
+    expect(discover).toContain('<ImageBackground');
   });
 
   test('global search themes its input, history, results, and icons without weakening account isolation', () => {

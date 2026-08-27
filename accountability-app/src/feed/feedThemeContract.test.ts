@@ -39,6 +39,15 @@ describe('Feed manual appearance contract', () => {
     expect(feedSource).not.toContain("mode === 'light'");
   });
 
+  test('uses semantic action and status roles for every Create-sheet icon tint', () => {
+    expect(feedSource).toContain("tint: theme.ink.action, title: 'Post'");
+    expect(feedSource).toContain("tint: theme.ink.action, title: 'My Day'");
+    expect(feedSource).toContain("tint: theme.status.attention, title: 'Win card'");
+    expect(feedSource).toContain("tint: theme.status.success, title: 'Group'");
+    expect(feedSource).toContain("tint: theme.ink.secondary, title: 'Page'");
+    expect(feedSource).not.toMatch(/tint: '#(?:db2777|f59e0b|0d9488)'/i);
+  });
+
   test('keeps dark status icons readable with a canvas-colored Feed safe-area header', () => {
     expect(brandHeaderSource).toContain('useAppTheme');
     expect(brandHeaderSource).toContain('createStyles(theme)');
