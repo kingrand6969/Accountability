@@ -91,14 +91,12 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain('<Text style={styles.suggested}>Suggested for you</Text>');
   });
 
-  test('opens every Feed text-post entry directly in the editor and preserves other handoffs', () => {
+  test('preserves the remaining Feed post-entry paths and other handoffs', () => {
     expect(DIRECT_POST_HREF).toEqual({ pathname: '/compose', params: { text: '' } });
     expect(feedSource).toContain("from '../../entry/createFlow'");
-    expect(feedSource.match(/router\.push\(DIRECT_POST_HREF as never\)/g)).toHaveLength(3);
+    expect(feedSource).toContain('onCreate={() => setCreateOpen(true)}');
     expect(feedSource).toContain('route: DIRECT_POST_HREF');
-    expect(feedSource).not.toContain("router.push('/compose' as never)");
-    expect(feedSource).toContain("router.push('/compose?photo=1' as never)");
-    expect(feedSource).toContain("router.push('/win-card' as never)");
+    expect(feedSource).toContain('router.push(DIRECT_POST_HREF as never)');
     expect(feedSource).toContain('<StoryRail');
     expect(feedSource).toContain('ref={attachStoryRail}');
     expect(feedSource).toContain("pathname: '/post/[id]'");
