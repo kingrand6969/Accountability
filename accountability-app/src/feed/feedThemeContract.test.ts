@@ -6,15 +6,22 @@ const proofCardSource = readFileSync(require.resolve('./FeedProofCard'), 'utf8')
 const brandHeaderSource = readFileSync(require.resolve('./SocialBrandHeader'), 'utf8');
 const storyRailSource = readFileSync(require.resolve('../stories/StoryRail'), 'utf8');
 
+function styleBlock(componentSource: string, styleName: string): string {
+  const match = componentSource.match(
+    new RegExp(`(?:^|\\n)\\s*${styleName}:\\s*\\{([\\s\\S]*?)\\n\\s*\\},`),
+  );
+  return match?.[1] ?? '';
+}
+
 describe('Feed manual appearance contract', () => {
   test.each([
-    ['Feed', feedSource],
-    ['post card', proofCardSource],
-    ['My Day rail', storyRailSource],
-  ])('%s resolves presentation colors from the active app theme', (_name, source) => {
+    ['Feed', feedSource, 'theme.surface.card'],
+    ['post', proofCardSource, 'theme.surface.canvas'],
+    ['My Day rail', storyRailSource, 'theme.surface.card'],
+  ])('%s resolves presentation colors from the active app theme', (_name, source, surfaceToken) => {
     expect(source).toContain('useAppTheme');
     expect(source).toContain('createStyles(theme)');
-    expect(source).toContain('theme.surface.card');
+    expect(source).toContain(surfaceToken);
     expect(source).toContain('theme.ink.muted');
     expect(source).toContain('theme.border.subtle');
     expect(source).not.toMatch(
@@ -38,6 +45,24 @@ describe('Feed manual appearance contract', () => {
     expect(brandHeaderSource).not.toContain('borderBottomWidth');
     expect(brandHeaderSource).toContain('color={theme.ink.action}');
     expect(brandHeaderSource).toContain('color: theme.ink.primary');
+  });
+
+  test('uses the theme canvas for flat posts and a muted pre-image fallback', () => {
+    expect(styleBlock(proofCardSource, 'card')).toContain(
+      'backgroundColor: theme.surface.canvas',
+    );
+    expect(styleBlock(proofCardSource, 'authorHeader')).toContain(
+      'backgroundColor: theme.surface.canvas',
+    );
+    expect(styleBlock(proofCardSource, 'actions')).toContain(
+      'backgroundColor: theme.surface.canvas',
+    );
+    expect(styleBlock(proofCardSource, 'media')).toContain(
+      'backgroundColor: theme.surface.muted',
+    );
+    expect(styleBlock(proofCardSource, 'media')).not.toContain(
+      'backgroundColor: theme.surface.inverse',
+    );
   });
 
   test('uses accessible semantic action and status roles on every Feed surface', () => {

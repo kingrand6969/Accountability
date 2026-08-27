@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SaveToMemories } from '../memories/SaveToMemories';
-import { font, radius, shadow, spacing, type AppThemeColors } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { Avatar } from './Avatar';
 import { authorLabel, taggedLabel, timeAgo } from './format';
@@ -293,14 +293,8 @@ type ProofCardStyles = ReturnType<typeof createStyles>;
 
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   card: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    borderRadius: radius.lg,
     overflow: 'hidden',
-    backgroundColor: theme.surface.card,
-    borderWidth: 1,
-    borderColor: theme.border.subtle,
-    ...shadow.card,
+    backgroundColor: theme.surface.canvas,
   },
   suggestedRow: {
     minHeight: 28,
@@ -317,12 +311,12 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     fontSize: 11.5,
   },
   authorHeader: {
-    minHeight: 60,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingLeft: spacing.md,
-    backgroundColor: theme.surface.card,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: theme.surface.canvas,
   },
   authorCopy: { flex: 1 },
   author: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 14 },
@@ -370,7 +364,11 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   attending: { backgroundColor: theme.ink.muted },
   attendText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 12 },
-  media: { minHeight: 220, backgroundColor: '#111411', overflow: 'hidden' },
+  media: {
+    minHeight: 220,
+    backgroundColor: theme.surface.muted,
+    overflow: 'hidden',
+  },
   topScrim: {
     position: 'absolute',
     left: 0,
@@ -383,10 +381,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 2,
-    backgroundColor: theme.surface.card,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.border.subtle,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: theme.surface.canvas,
   },
   action: {
     flex: 1,
@@ -395,8 +392,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    borderRadius: radius.sm,
+    gap: spacing.xs,
   },
   cheerIcon: { width: 27, height: 23, position: 'relative' },
   cheerLeft: { position: 'absolute', left: 0, top: 0 },
@@ -415,9 +411,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   supporterAvatars: { flexDirection: 'row', alignItems: 'center', paddingLeft: 2 },
   supporterAvatar: {
     borderWidth: 2,
-    borderColor: theme.surface.card,
+    borderColor: theme.surface.canvas,
     borderRadius: 15,
-    backgroundColor: theme.surface.card,
+    backgroundColor: theme.surface.canvas,
   },
   supporterOverlap: { marginLeft: -8 },
   supporterText: { flex: 1, color: theme.ink.muted, fontFamily: font.semibold, fontSize: 11.5 },

@@ -113,6 +113,27 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('<FeedProofCard');
   });
 
+  test('renders flat Quiet Social posts with one divider owned by the Feed list', () => {
+    const cardStyle = styleBlock(proofCardSource, 'card');
+    expect(cardStyle).toContain('backgroundColor: theme.surface.canvas');
+    expect(cardStyle).not.toContain('marginHorizontal');
+    expect(cardStyle).not.toContain('marginBottom');
+    expect(cardStyle).not.toContain('borderWidth');
+    expect(cardStyle).not.toContain('borderRadius');
+    expect(cardStyle).not.toContain('shadow.card');
+
+    const actionRowStyle = styleBlock(proofCardSource, 'actions');
+    expect(actionRowStyle).not.toContain('borderTopWidth');
+    expect(feedSource.match(/ItemSeparatorComponent/g)).toHaveLength(1);
+    expect(feedSource).toContain('ItemSeparatorComponent={() => <View style={styles.feedDivider} />}');
+    expect(feedSource).toContain('StyleSheet.hairlineWidth');
+
+    const dividerStyle = styleBlock(feedSource, 'feedDivider');
+    expect(dividerStyle).toContain('height: StyleSheet.hairlineWidth');
+    expect(dividerStyle).toContain('marginHorizontal: spacing.lg');
+    expect(dividerStyle).toContain('backgroundColor: theme.border.subtle');
+  });
+
   test('renders the exact compact social header without a segmented selector', () => {
     expect(brandHeaderSource).toContain('<BrandMark');
     expect(brandHeaderSource).toContain('BRAND_WORDMARK');
@@ -149,6 +170,22 @@ describe('Group 3 social Feed contract', () => {
     expect(metricSource).toContain('formatDuration(duration)');
     expect(metricSource).not.toContain('formatDurationLong');
     expect(proofCardSource).not.toContain("'I showed up today.'");
+  });
+
+  test('keeps truthful run data in one compact metric row without vertical rules', () => {
+    expect(metricSource).toContain('<RouteTrace');
+    expect(metricSource).toContain('formatKm(distance)');
+    expect(metricSource).toContain('formatDuration(duration)');
+    expect(metricSource).toContain('formatPace(distance, duration)');
+    expect(metricSource.match(/<LinearGradient/g)).toHaveLength(1);
+    expect(metricSource).not.toContain('styles.rule');
+    expect(styleBlock(metricSource, 'stats')).toContain("alignItems: 'flex-end'");
+    expect(styleBlock(metricSource, 'stats')).toContain('gap: spacing.lg');
+    expect(styleBlock(metricSource, 'metric')).toContain('minWidth: 68');
+    expect(styleBlock(metricSource, 'value')).toContain("color: '#FFFFFF'");
+    expect(styleBlock(metricSource, 'value')).toContain('lineHeight: 23');
+    expect(styleBlock(metricSource, 'label')).toContain('marginTop: 2');
+    expect(styleBlock(metricSource, 'label')).toContain("color: 'rgba(255,255,255,.72)'");
   });
 
   test('uses icon-only Feed actions with visible counts and an icon-only memory affordance', () => {

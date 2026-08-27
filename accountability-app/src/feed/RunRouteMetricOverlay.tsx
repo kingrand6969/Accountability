@@ -27,7 +27,7 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
   const traceWidth = Math.min(126, Math.max(92, width * 0.27));
   return (
     <View style={styles.overlay} pointerEvents="none">
-      <LinearGradient colors={['transparent', 'rgba(2,8,20,.92)']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['transparent', 'rgba(2,8,20,.88)']} style={StyleSheet.absoluteFill} />
       {points.length > 1 ? (
         <RouteTrace
           points={points}
@@ -41,9 +41,7 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
       ) : null}
       <View style={styles.stats}>
         <Metric value={formatKm(distance)} label="km" />
-        <View style={styles.rule} />
         <Metric value={formatDuration(duration)} label="time" />
-        <View style={styles.rule} />
         <Metric value={formatPace(distance, duration)} label="pace /km" />
       </View>
     </View>
@@ -70,9 +68,24 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   route: { position: 'absolute', right: spacing.sm, top: 5 },
-  stats: { flexDirection: 'row', alignItems: 'center' },
-  metric: { flex: 1 },
-  value: { color: '#fff', fontFamily: font.extrabold, fontSize: 20, lineHeight: 24 },
-  label: { color: 'rgba(255,255,255,.84)', fontFamily: font.medium, fontSize: 9.5 },
-  rule: { width: StyleSheet.hairlineWidth, height: 34, backgroundColor: 'rgba(255,255,255,.42)', marginHorizontal: 6 },
+  stats: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.lg,
+  },
+  metric: {
+    minWidth: 68,
+  },
+  value: {
+    color: '#FFFFFF',
+    fontFamily: font.extrabold,
+    fontSize: 20,
+    lineHeight: 23,
+  },
+  label: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,.72)',
+    fontFamily: font.medium,
+    fontSize: 9,
+  },
 });

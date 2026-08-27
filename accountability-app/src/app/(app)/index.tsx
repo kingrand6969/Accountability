@@ -744,6 +744,7 @@ export default function Feed() {
             }}
             scrollEventThrottle={16}
             ListHeaderComponent={feedHeader}
+            ItemSeparatorComponent={() => <View style={styles.feedDivider} />}
             keyExtractor={(row) => (row.kind === 'post' ? row.post.id : row.id)}
             contentContainerStyle={feedData.length === 0 ? styles.emptyWrap : styles.list}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.ink.action} />}
@@ -872,6 +873,11 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   offlineText: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 12 },
   pressed: { opacity: 0.7 },
   list: { paddingTop: spacing.sm, paddingBottom: 110, ...contentMax },
+  feedDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.lg,
+    backgroundColor: theme.border.subtle,
+  },
   emptyWrap: { paddingBottom: 110, ...contentMax },
   skeletonList: { paddingTop: spacing.sm },
   skeletonCard: {
