@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import { useAppTheme } from './AppThemeProvider';
 import { font, radius, spacing, type AppThemeColors } from './theme';
+import { withAlpha } from './surfaces';
 
 type Options = {
   title: string;
@@ -125,7 +126,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: theme.surface.card,
+    backgroundColor: withAlpha(theme.surface.card, 0.88),
   },
   iconWrap: {
     width: 52,

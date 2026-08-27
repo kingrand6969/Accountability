@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useAppTheme } from './AppThemeProvider';
 import type { AppThemeColors } from './theme';
+import { withAlpha } from './surfaces';
 
 /**
  * Real glassmorphism needs saturated shapes BEHIND the glass — blurring a flat
@@ -97,12 +98,12 @@ export function GlassCard({
   children,
   style,
   blurTarget,
-  plateOpacity = 0.45,
+  plateOpacity = 0.82,
 }: {
   children: ReactNode;
   style?: ViewStyle;
   blurTarget?: React.RefObject<View | null>;
-  /** 0.45 keeps ~4.5:1 ink contrast while letting the blobs glow through */
+  /** Clamped to 0..1. The 0.82 default preserves text contrast while revealing blur. */
   plateOpacity?: number;
 }) {
   const { colors: theme } = useAppTheme();
@@ -136,7 +137,7 @@ export function GlassCard({
           <View
             style={[
               StyleSheet.absoluteFill,
-              { backgroundColor: theme.surface.card, opacity: Math.max(plateOpacity, 0.82) },
+              { backgroundColor: withAlpha(theme.surface.card, plateOpacity) },
             ]}
           />
           {/* diagonal sheen — the frosted-glass highlight */}

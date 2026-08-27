@@ -16,6 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppThemeProvider } from './AppThemeProvider';
 import { AppLaunchState } from './AppLaunchState';
 import { AuthField } from './AuthField';
+import { AuthShell } from './AuthShell';
 import { ConfirmHost, confirmDialog } from './ConfirmDialog';
 import { GlassBackdrop, GlassCard } from './Glass';
 import { MonthCalendar } from './MonthCalendar';
@@ -45,6 +46,17 @@ function flat(style: unknown): Record<string, unknown> {
 
 function staticStyle(node: TestRenderer.ReactTestInstance): Record<string, unknown> {
   return typeof node.props.style === 'function' ? {} : flat(node.props.style);
+}
+
+function colorAlpha(color: unknown): number {
+  if (typeof color !== 'string') return 1;
+  if (/^#[\dA-Fa-f]{8}$/.test(color)) return Number.parseInt(color.slice(7), 16) / 255;
+  const rgba = color.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*(\d*\.?\d+)\)$/);
+  return rgba ? Number(rgba[1]) : 1;
+}
+
+function isCharcoalWithAlpha(color: unknown, charcoal: string): boolean {
+  return typeof color === 'string' && color.slice(0, 7).toUpperCase() === charcoal.toUpperCase();
 }
 
 describe('shared controls follow the active app appearance', () => {
@@ -107,6 +119,25 @@ describe('shared controls follow the active app appearance', () => {
     expect(staticStyle(field()).borderColor).toBe(dark.border.subtle);
   });
 
+  test('AuthShell glass keeps a translucent charcoal plate over its dark blur', () => {
+    const dark = themeColors('dark');
+    const renderer = render(
+      createElement(
+        AuthShell,
+        { glass: true } as Parameters<typeof AuthShell>[0],
+        createElement(Text, null, 'Sign in'),
+      ),
+    );
+    const plates = renderer.root.findAll((node) => {
+      const color = staticStyle(node).backgroundColor;
+      return isCharcoalWithAlpha(color, dark.surface.card) && colorAlpha(color) < 1;
+    });
+
+    expect(renderer.root.findAll((node) => node.props.tint === 'dark')).not.toHaveLength(0);
+    expect(plates).not.toHaveLength(0);
+    expect(colorAlpha(staticStyle(plates[0]).backgroundColor)).toBeGreaterThan(0);
+  });
+
   test('ConfirmDialog renders a dark modal and preserves confirmation behavior', () => {
     const dark = themeColors('dark');
     const onConfirm = jest.fn();
@@ -125,8 +156,12 @@ describe('shared controls follow the active app appearance', () => {
     expect(renderer.root.findByType(Modal).props.visible).toBe(true);
     expect(renderer.root.findAll((node) => staticStyle(node).backgroundColor === dark.interaction.scrim))
       .not.toHaveLength(0);
-    expect(renderer.root.findAll((node) => staticStyle(node).backgroundColor === dark.surface.card))
-      .not.toHaveLength(0);
+    const plates = renderer.root.findAll((node) => {
+      const color = staticStyle(node).backgroundColor;
+      return isCharcoalWithAlpha(color, dark.surface.card) && colorAlpha(color) < 1;
+    });
+    expect(plates).not.toHaveLength(0);
+    expect(colorAlpha(staticStyle(plates[0]).backgroundColor)).toBeGreaterThan(0);
     expect(renderer.root.findAll((node) => staticStyle(node).borderColor === dark.border.strong))
       .not.toHaveLength(0);
     expect(renderer.root.findAll((node) => node.props.tint === 'dark')).not.toHaveLength(0);
@@ -146,7 +181,7 @@ describe('shared controls follow the active app appearance', () => {
     expect(renderer.root.findByType(Modal).props.visible).toBe(false);
   });
 
-  test('Glass renders the dark backdrop, semantic rim, card plate, and dark blur tint', () => {
+  test('Glass renders the dark backdrop, semantic rim, translucent card plate, and dark blur tint', () => {
     const dark = themeColors('dark');
     const backdrop = render(createElement(GlassBackdrop));
     expect(backdrop.root.findAll((node) =>
@@ -166,8 +201,30 @@ describe('shared controls follow the active app appearance', () => {
       ].join(','),
     )).not.toHaveLength(0);
     expect(card.root.findAll((node) => node.props.tint === 'dark')).not.toHaveLength(0);
-    expect(card.root.findAll((node) => staticStyle(node).backgroundColor === dark.surface.card))
-      .not.toHaveLength(0);
+    const defaultPlate = card.root.findAll((node) => {
+      const color = staticStyle(node).backgroundColor;
+      return isCharcoalWithAlpha(color, dark.surface.card) && colorAlpha(color) < 1;
+    })[0];
+    expect(defaultPlate).toBeDefined();
+    expect(colorAlpha(staticStyle(defaultPlate).backgroundColor)).toBeCloseTo(0.82, 2);
+  });
+
+  test.each([0, 0.45])('GlassCard honors plateOpacity %s', (plateOpacity) => {
+    const dark = themeColors('dark');
+    const renderer = render(
+      createElement(
+        GlassCard,
+        { plateOpacity } as Parameters<typeof GlassCard>[0],
+        createElement(Text, null, 'Glass content'),
+      ),
+    );
+    const plate = renderer.root.findAll((node) => {
+      const color = staticStyle(node).backgroundColor;
+      return isCharcoalWithAlpha(color, dark.surface.card);
+    })[0];
+
+    expect(plate).toBeDefined();
+    expect(colorAlpha(staticStyle(plate).backgroundColor)).toBeCloseTo(plateOpacity, 2);
   });
 
   test('MonthCalendar defaults to dark card, border, action, and ink roles', () => {
@@ -227,7 +284,11 @@ describe('shared controls follow the active app appearance', () => {
       .not.toHaveLength(0);
     expect(renderer.root.findAll((node) => staticStyle(node).borderColor === dark.border.strong))
       .not.toHaveLength(0);
-    expect(renderer.root.findAll((node) => staticStyle(node).backgroundColor === dark.surface.card))
-      .not.toHaveLength(0);
+    const plates = renderer.root.findAll((node) => {
+      const color = staticStyle(node).backgroundColor;
+      return isCharcoalWithAlpha(color, dark.surface.card) && colorAlpha(color) < 1;
+    });
+    expect(plates).not.toHaveLength(0);
+    expect(colorAlpha(staticStyle(plates[0]).backgroundColor)).toBeGreaterThan(0);
   });
 });

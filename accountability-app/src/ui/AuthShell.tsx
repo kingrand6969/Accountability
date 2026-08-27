@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { font, spacing, type AppThemeColors } from './theme';
 import { BrandMark } from './BrandMark';
 import { useAppTheme } from './AppThemeProvider';
+import { withAlpha } from './surfaces';
 
 type Props = {
   children: ReactNode;
@@ -187,6 +188,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   glassTint: {
     padding: spacing.xl,
     gap: spacing.md,
-    backgroundColor: theme.surface.card,
+    backgroundColor: withAlpha(theme.surface.card, 0.88),
   },
 });

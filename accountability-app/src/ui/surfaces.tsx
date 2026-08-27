@@ -22,6 +22,15 @@ import {
   type,
 } from './theme';
 
+/** Applies a clamped 0..1 alpha channel to the app's six-digit hex tokens. */
+export function withAlpha(color: string, opacity: number): string {
+  const match = color.match(/^#[\dA-Fa-f]{6}(?:[\dA-Fa-f]{2})?$/);
+  if (!match) return color;
+  const clamped = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1;
+  const alpha = Math.round(clamped * 255).toString(16).padStart(2, '0');
+  return `${color.slice(0, 7)}${alpha}`;
+}
+
 type EditorialHeadingProps = TextProps & {
   children?: ReactNode;
   style?: StyleProp<TextStyle>;

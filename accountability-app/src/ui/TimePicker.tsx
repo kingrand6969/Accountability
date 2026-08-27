@@ -18,6 +18,7 @@ import {
   type AppThemeColors,
   type AppThemeMode,
 } from './theme';
+import { withAlpha } from './surfaces';
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -218,7 +219,7 @@ function timePickerPalette(theme: AppThemeColors, _mode: AppThemeMode) {
     selectedSoft: theme.surface.muted,
     scrim: theme.interaction.scrim,
     menuBorder: theme.border.strong,
-    menuGlass: theme.surface.card,
+    menuGlass: withAlpha(theme.surface.card, 0.88),
   };
 }
 

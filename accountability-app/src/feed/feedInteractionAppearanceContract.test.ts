@@ -29,7 +29,7 @@ describe('Feed interaction appearance contract', () => {
     expect(sources.confirm).toContain('useMemo(() => createStyles(theme), [theme])');
     expect(sources.confirm).toContain('tint="dark"');
     expect(sources.confirm).toContain('backgroundColor: theme.interaction.scrim');
-    expect(sources.confirm).toContain('backgroundColor: theme.surface.card');
+    expect(sources.confirm).toContain('backgroundColor: withAlpha(theme.surface.card, 0.88)');
     expect(sources.confirm).toContain('borderColor: theme.border.strong');
     expect(sources.confirm).not.toContain("mode === 'dark'");
     expect(sources.confirm).not.toContain('darkStyles');
