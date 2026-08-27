@@ -16,6 +16,7 @@ describe('Run and Flex Share Studio integration', () => {
     expect(run).toContain('unavailableReason={feedShare.reason}');
     expect(run).toMatch(/shareStudioCaptureSize\.current = runShareExportSize\([\s\S]*?reviewed\.format,[\s\S]*?reviewed\.presentation\.originalRatio/);
     expect(run).toContain('<ShareStudio');
+    expect(run).toContain('presentation="feed-composer"');
     expect(run).toMatch(/operationId:\s*draft!\.operationId/);
     expect(run).toMatch(/showPublicly:\s*draft!\.showPublicly/);
     expect(run).toMatch(/await onDestination\('feed', draft\);[\s\S]*?await draft\.media\.release\(\)\.catch/);

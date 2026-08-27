@@ -1329,6 +1329,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       <ShareStudio
         visible={shareStudioVisible}
         expectedOwnerId={run.ownerId!}
+        presentation="feed-composer"
         context={{
           title: run.title,
           date: new Date(run.completedAt).toLocaleDateString(),

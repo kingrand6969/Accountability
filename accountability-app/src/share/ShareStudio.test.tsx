@@ -84,6 +84,31 @@ async function flush() {
 }
 
 describe('ShareStudio', () => {
+  test('uses a feed composer handoff without restarting media editing', async () => {
+    const { renderer, choosePhoto, onContinue } = renderStudio({
+      presentation: 'feed-composer',
+      renderDestinationPreview: () => <Text>Final Run artwork</Text>,
+    });
+
+    expect(renderer.root.findByProps({ children: 'New post' })).toBeTruthy();
+    expect(renderer.root.findAllByProps({ children: 'Add to your card' })).toHaveLength(0);
+    for (const label of ['Card only', 'Take selfie', 'Choose photo']) {
+      expect(renderer.root.findAllByProps({ accessibilityLabel: label })).toHaveLength(0);
+    }
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Add a caption' })).toBeTruthy();
+    expect(renderer.root.findByProps({ testID: 'buddy-card-visibility-switch' })).toBeTruthy();
+
+    const post = renderer.root.findByProps({ testID: 'share-studio-primary-action' });
+    expect(post.props.accessibilityHint).toBe('Publishes this post to the selected audience');
+    await act(async () => {
+      post.props.onPress();
+    });
+
+    expect(choosePhoto).not.toHaveBeenCalled();
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    expect(onContinue.mock.calls[0][0].media).toEqual({ kind: 'card' });
+  });
+
   test('gates Post on the exact destination fingerprint readiness and shows an actionable image error', async () => {
     const fingerprint = (state: { media: ShareStudioResult['media'] }) => state.media.kind === 'card' ? 'card-fingerprint' : state.media.uri;
     const { renderer, onContinue } = renderStudio({

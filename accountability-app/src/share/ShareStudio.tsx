@@ -49,6 +49,7 @@ type Props = Readonly<{
   visible: boolean;
   expectedOwnerId: string;
   context: ShareStudioContext;
+  presentation?: 'studio' | 'feed-composer';
   defaultCaption?: string;
   onContinue: (result: ShareStudioResult) => void | Promise<void>;
   onCancel: () => void;
@@ -91,27 +92,44 @@ export function resolveShareMediaCapabilities(
 export function ShareStudio(props: Props) {
   if (!props.visible) return null;
   if (props.unavailableReason) {
-    return <UnavailableShareStudio reason={props.unavailableReason} onCancel={props.onCancel} />;
+    return (
+      <UnavailableShareStudio
+        reason={props.unavailableReason}
+        onCancel={props.onCancel}
+        presentation={props.presentation}
+      />
+    );
   }
   return <ShareStudioSession key={props.expectedOwnerId} {...props} />;
 }
 
-function UnavailableShareStudio({ reason, onCancel }: Readonly<{ reason: string; onCancel: () => void }>) {
+function UnavailableShareStudio({
+  reason,
+  onCancel,
+  presentation = 'studio',
+}: Readonly<{
+  reason: string;
+  onCancel: () => void;
+  presentation?: 'studio' | 'feed-composer';
+}>) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createShareStudioStyles(theme), [theme]);
+  const feedComposer = presentation === 'feed-composer';
   return (
     <Modal visible animationType="slide" onRequestClose={onCancel} transparent={false}>
       <View style={styles.screen}>
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back from Share Studio"
+            accessibilityLabel={feedComposer ? 'Back from new post' : 'Back from Share Studio'}
             onPress={onCancel}
             style={styles.headerAction}
           >
             <Ionicons name="chevron-back" size={25} color={theme.ink.primary} />
           </Pressable>
-          <Text accessibilityRole="header" style={styles.headerTitle}>Share Studio</Text>
+          <Text accessibilityRole="header" style={styles.headerTitle}>
+            {feedComposer ? 'New post' : 'Share Studio'}
+          </Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.content}>
@@ -128,6 +146,7 @@ function ShareStudioSession({
   visible,
   expectedOwnerId,
   context,
+  presentation = 'studio',
   defaultCaption = '',
   onContinue,
   onCancel,
@@ -145,9 +164,12 @@ function ShareStudioSession({
     () => resolveShareMediaCapabilities(Platform.OS, mediaCapabilities),
     [mediaCapabilities],
   );
+  const feedComposer = presentation === 'feed-composer';
   const availableMediaOptions = useMemo(
-    () => mediaOptions.filter((option) => capabilities[option.id]),
-    [capabilities],
+    () => mediaOptions.filter((option) => (
+      feedComposer ? option.id === 'card' : capabilities[option.id]
+    )),
+    [capabilities, feedComposer],
   );
   const [choice, setChoice] = useState<MediaChoice>(availableMediaOptions[0].id);
   const [photo, setPhoto] = useState<CapturedProgressPhoto | null>(null);
@@ -306,8 +328,10 @@ function ShareStudioSession({
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back from Share Studio"
-            accessibilityHint="Closes Share Studio without continuing"
+            accessibilityLabel={feedComposer ? 'Back from new post' : 'Back from Share Studio'}
+            accessibilityHint={feedComposer
+              ? 'Returns to the Run artwork editor without posting'
+              : 'Closes Share Studio without continuing'}
             accessibilityState={{ disabled: continuing }}
             disabled={continuing}
             onPress={cancel}
@@ -315,7 +339,9 @@ function ShareStudioSession({
           >
             <Ionicons name="chevron-back" size={25} color={theme.ink.primary} />
           </Pressable>
-          <Text accessibilityRole="header" style={styles.headerTitle}>Share Studio</Text>
+          <Text accessibilityRole="header" style={styles.headerTitle}>
+            {feedComposer ? 'New post' : 'Share Studio'}
+          </Text>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -356,7 +382,7 @@ function ShareStudioSession({
             </View>
           </View>}
 
-          <View style={styles.section}>
+          {!feedComposer ? <View style={styles.section}>
             <Text style={styles.sectionTitle}>Add to your card</Text>
             <Text style={styles.sectionCopy}>Choose how this share looks. A selected photo is used only for this share.</Text>
             <View accessibilityRole="radiogroup" style={styles.mediaOptions}>
@@ -384,7 +410,7 @@ function ShareStudioSession({
             </View>
             {picking ? <View style={styles.statusRow}><ActivityIndicator color={theme.ink.action} /><Text style={styles.statusText}>Opening photos…</Text></View> : null}
             {photo && choice !== 'card' ? <Text style={styles.privateNote}>Your original stays private. Only this derived share photo continues.</Text> : null}
-          </View>
+          </View> : null}
 
           <View style={styles.section}>
             <View style={styles.captionHeading}>
@@ -444,7 +470,9 @@ function ShareStudioSession({
             testID="share-studio-primary-action"
             accessibilityRole="button"
             accessibilityLabel={visibilityCopy.postAction}
-            accessibilityHint="Returns this share draft for review or publishing"
+            accessibilityHint={feedComposer
+              ? 'Publishes this post to the selected audience'
+              : 'Returns this share draft for review or publishing'}
             accessibilityState={{ disabled: picking || continuing || !mediaReady, busy: continuing }}
             disabled={picking || continuing || !mediaReady}
             onPress={() => void proceed()}
