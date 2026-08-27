@@ -182,6 +182,7 @@ export default function Feed() {
   const [suggestionOwnerId, setSuggestionOwnerId] = useState<string | null>(null);
   const [buddyRequestsInFlight, setBuddyRequestsInFlight] = useState<Set<string>>(new Set());
   const likesInFlight = useRef<Set<string>>(new Set());
+  const buddyRequestsInFlightRef = useRef<Set<string>>(new Set());
   const loadGeneration = useRef(0);
   const suggestionGeneration = useRef(0);
   const storyPickerQueue = useMemo(() => createStoryPickerQueue(myId), [myId]);
@@ -263,12 +264,15 @@ export default function Feed() {
   useEffect(() => {
     const generation = ++suggestionGeneration.current;
     const requestedOwner = myId;
+    const inFlightRequests = buddyRequestsInFlightRef.current;
     setBuddySuggestions([]);
     setSuggestionOwnerId(null);
     setBuddyRequestsInFlight(new Set());
+    inFlightRequests.clear();
     if (!requestedOwner) {
       return () => {
         suggestionGeneration.current += 1;
+        inFlightRequests.clear();
       };
     }
     void Promise.resolve().then(async () => {
@@ -286,6 +290,7 @@ export default function Feed() {
     });
     return () => {
       suggestionGeneration.current += 1;
+      inFlightRequests.clear();
     };
   }, [myId]);
 
@@ -589,37 +594,31 @@ export default function Feed() {
 
   async function addSuggestedBuddy(candidate: Candidate) {
     const requestedOwner = myId;
+    const requestedGeneration = suggestionGeneration.current;
     if (
       !requestedOwner
       || suggestionOwnerId !== requestedOwner
-      || buddyRequestsInFlight.has(candidate.id)
+      || buddyRequestsInFlightRef.current.has(candidate.id)
     ) return;
-    setBuddyRequestsInFlight((current) => new Set(current).add(candidate.id));
+    buddyRequestsInFlightRef.current.add(candidate.id);
+    setBuddyRequestsInFlight(new Set(buddyRequestsInFlightRef.current));
+    const isCurrentSuggestionRequest = () =>
+      suggestionGeneration.current === requestedGeneration
+      && currentUserIdRef.current === requestedOwner
+      && suggestionOwnerId === requestedOwner;
     try {
       await sendRequest(candidate.id, requestedOwner);
-      if (
-        currentUserIdRef.current !== requestedOwner
-        || suggestionOwnerId !== requestedOwner
-      ) return;
+      if (!isCurrentSuggestionRequest()) return;
       setBuddySuggestions((current) => current.filter((item) => item.id !== candidate.id));
       showToast(`Request sent to ${authorLabel(candidate.display_name)}`);
     } catch (error) {
-      if (
-        currentUserIdRef.current === requestedOwner
-        && suggestionOwnerId === requestedOwner
-      ) {
+      if (isCurrentSuggestionRequest()) {
         Alert.alert('Could not send', userFacingErrorMessage(error, 'update'));
       }
     } finally {
-      if (
-        currentUserIdRef.current === requestedOwner
-        && suggestionOwnerId === requestedOwner
-      ) {
-        setBuddyRequestsInFlight((current) => {
-          const next = new Set(current);
-          next.delete(candidate.id);
-          return next;
-        });
+      if (isCurrentSuggestionRequest()) {
+        buddyRequestsInFlightRef.current.delete(candidate.id);
+        setBuddyRequestsInFlight(new Set(buddyRequestsInFlightRef.current));
       }
     }
   }
