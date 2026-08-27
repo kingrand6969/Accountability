@@ -74,7 +74,7 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
         {
           minHeight: contentHeight + Math.max(insets.bottom, 4),
           paddingBottom: Math.max(insets.bottom, 4),
-          backgroundColor: theme.surface.card,
+          backgroundColor: theme.surface.raised,
           borderTopColor: theme.border.subtle,
         },
       ]}
@@ -115,13 +115,13 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
                 {(options.title ?? route.name) === 'Journey' ? (
                   <BrandMark
                     size={27}
-                    color={isFocused ? theme.ink.primary : theme.ink.muted}
+                    color={isFocused ? theme.ink.action : theme.ink.muted}
                     accessibilityLabel="Journey"
                   />
                 ) : (
                   options.tabBarIcon?.({
                     focused: isFocused,
-                    color: isFocused ? theme.ink.primary : theme.ink.muted,
+                    color: isFocused ? theme.ink.action : theme.ink.muted,
                     size: 24,
                   })
                 )}
@@ -130,7 +130,7 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
                   style={[
                     styles.label,
                     { color: theme.ink.muted },
-                    isFocused && { color: theme.ink.primary },
+                    isFocused && { color: theme.ink.action },
                   ]}
                   numberOfLines={2}
                 >
@@ -141,7 +141,7 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
                     testID={`tab-indicator-${options.title ?? route.name}`}
                     style={{
                       ...styles.indicator,
-                      backgroundColor: theme.ink.primary,
+                      backgroundColor: theme.ink.action,
                     }}
                   />
                 ) : null}

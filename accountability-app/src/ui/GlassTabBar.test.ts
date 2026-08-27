@@ -10,10 +10,10 @@ import {
   TAB_BAR_SAFE_AREA_ALLOWANCE,
 } from './floatingTabBar';
 import * as floatingTabBar from './floatingTabBar';
-import { colors, spacing, themeColors, type AppThemeMode } from './theme';
+import { spacing, themeColors, type AppThemeMode } from './theme';
 import { hapticSelect } from './haptics';
 
-let mockThemeMode: AppThemeMode = 'light';
+let mockThemeMode: AppThemeMode = 'dark';
 
 jest.mock('./AppThemeProvider', () => ({
   useAppTheme: () => {
@@ -144,7 +144,7 @@ function pressableByLabel(
 
 describe('GlassTabBar contract', () => {
   beforeEach(() => {
-    mockThemeMode = 'light';
+    mockThemeMode = 'dark';
     jest.restoreAllMocks();
     jest.clearAllMocks();
   });
@@ -164,7 +164,8 @@ describe('GlassTabBar contract', () => {
     );
   });
 
-  it('uses quiet ink and a restrained indicator for the selected destination', () => {
+  it('uses action ink and a restrained indicator for the selected destination', () => {
+    const dark = themeColors('dark');
     const { renderer } = renderTabBar({ focusedIndex: 1 });
     const journey = pressableByLabel(renderer, 'Journey');
 
@@ -173,21 +174,20 @@ describe('GlassTabBar contract', () => {
     expect(
       renderer.root.findByProps({ testID: 'tab-label-Journey' }).props.style,
     ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ color: colors.navy })]),
+      expect.arrayContaining([expect.objectContaining({ color: dark.ink.action })]),
     );
     expect(
       renderer.root.findByProps({ testID: 'tab-indicator-Journey' }).props.style,
     ).toEqual(
       expect.objectContaining({
-        backgroundColor: colors.navy,
+        backgroundColor: dark.ink.action,
         position: 'absolute',
         bottom: 3,
       }),
     );
   });
 
-  it('uses the selected dark appearance for the surface, border, ink, and indicator', () => {
-    mockThemeMode = 'dark';
+  it('renders the permanent dark surface, border, ink, and indicator roles', () => {
     const dark = themeColors('dark');
     const { renderer } = renderTabBar({ focusedIndex: 0 });
 
@@ -196,7 +196,7 @@ describe('GlassTabBar contract', () => {
         props: expect.objectContaining({
           style: expect.arrayContaining([
             expect.objectContaining({
-              backgroundColor: dark.surface.card,
+              backgroundColor: dark.surface.raised,
               borderTopColor: dark.border.subtle,
             }),
           ]),
@@ -206,10 +206,10 @@ describe('GlassTabBar contract', () => {
     expect(
       renderer.root.findByProps({ testID: 'tab-label-Feed' }).props.style,
     ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ color: dark.ink.primary })]),
+      expect.arrayContaining([expect.objectContaining({ color: dark.ink.action })]),
     );
     expect(renderer.root.findByProps({ testID: 'icon-Feed' }).props.style).toEqual(
-      expect.objectContaining({ color: dark.ink.primary }),
+      expect.objectContaining({ color: dark.ink.action }),
     );
     expect(
       renderer.root.findByProps({ testID: 'tab-label-Messages' }).props.style,
@@ -218,17 +218,21 @@ describe('GlassTabBar contract', () => {
     );
     expect(
       renderer.root.findByProps({ testID: 'tab-indicator-Feed' }).props.style,
-    ).toEqual(expect.objectContaining({ backgroundColor: dark.ink.primary }));
+    ).toEqual(expect.objectContaining({ backgroundColor: dark.ink.action }));
+    expect(renderer.root.findByProps({ testID: 'icon-Messages' }).props.style).toEqual(
+      expect.objectContaining({ color: dark.ink.muted }),
+    );
   });
 
   it('renders Journey with the approved mark and no filled or elevated holder', () => {
+    const dark = themeColors('dark');
     const { renderer } = renderTabBar({ focusedIndex: 1 });
     const journey = pressableByLabel(renderer, 'Journey');
     const mark = renderer.root.findByProps({ testID: 'approved-brand-mark' });
     const idleStyles = journey.props.style({ pressed: false });
 
     expect(mark.props.accessibilityLabel).toBe('Journey');
-    expect(mark.props.color).toBe(colors.navy);
+    expect(mark.props.color).toBe(dark.ink.action);
     expect(idleStyles).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -357,7 +361,7 @@ describe('GlassTabBar contract', () => {
   it('keeps the underlying native tab bar aligned with the selected appearance', () => {
     const dark = themeColors('dark');
     const style = floatingTabBar.floatingTabBarStyle(320, 16, 1, {
-      backgroundColor: dark.surface.card,
+      backgroundColor: dark.surface.raised,
       borderTopColor: dark.border.subtle,
     });
 
@@ -365,7 +369,7 @@ describe('GlassTabBar contract', () => {
       expect.objectContaining({
         width: 320,
         height: 84,
-        backgroundColor: dark.surface.card,
+        backgroundColor: dark.surface.raised,
         borderTopColor: dark.border.subtle,
       }),
     );
