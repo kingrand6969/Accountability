@@ -13,11 +13,12 @@ jest.mock('../ui/AppThemeProvider', () => ({
 jest.mock('./Avatar', () => {
   const mockReact = jest.requireActual<typeof import('react')>('react');
   const { View: MockView } = jest.requireActual<typeof import('react-native')>('react-native');
+  const Avatar = jest.fn(({ name }: { name: string | null }) => mockReact.createElement(
+    MockView,
+    { testID: 'feed-buddy-avatar', accessibilityLabel: name ?? 'unknown' },
+  ));
   return {
-    Avatar: ({ name }: { name: string | null }) => mockReact.createElement(
-      MockView,
-      { testID: 'feed-buddy-avatar', accessibilityLabel: name ?? 'unknown' },
-    ),
+    Avatar,
   };
 });
 
@@ -61,6 +62,16 @@ describe('FeedBuddyRail', () => {
 
     expect(renderer.root.findAll((node) => node.type === View && node.props.testID === 'feed-buddy-avatar')).toHaveLength(4);
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Emery' })).toHaveLength(0);
+  });
+
+  test('passes the fallback member name to Avatar for an unnamed candidate', () => {
+    renderRail({ candidates: [{ id: 'buddy-empty', display_name: null, avatar_url: null, area: null }] });
+    const { Avatar } = jest.requireMock('./Avatar') as { Avatar: jest.Mock };
+
+    expect(Avatar).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'AccountAbility member', size: 44 }),
+      undefined,
+    );
   });
 
   test('opens, adds, and reveals suggestions through their accessible actions', () => {

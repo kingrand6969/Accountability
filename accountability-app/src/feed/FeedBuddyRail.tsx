@@ -48,7 +48,7 @@ export function FeedBuddyRail({ candidates, busyIds, onOpen, onAdd, onSeeAll }: 
                 accessibilityRole="button"
                 accessibilityLabel={`Open Buddy Card for ${name}`}
               >
-                <Avatar url={candidate.avatar_url} name={candidate.display_name} size={44} />
+                <Avatar url={candidate.avatar_url} name={name} size={44} />
               </Pressable>
               <Text style={styles.name} numberOfLines={1}>{name}</Text>
               <Text style={styles.context} numberOfLines={1}>{context}</Text>
