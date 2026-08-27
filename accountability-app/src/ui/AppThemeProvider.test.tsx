@@ -3,11 +3,8 @@ import { Appearance, Platform, Pressable, Text } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import {
-  APP_THEME_STORAGE_KEY,
-  AppThemeProvider,
-  useAppTheme,
-} from './AppThemeProvider';
+
+import { AppThemeProvider, useAppTheme } from './AppThemeProvider';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -24,24 +21,16 @@ function setPlatformOS(os: typeof Platform.OS) {
   Object.defineProperty(Platform, 'OS', { configurable: true, value: os });
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-function Probe() {
+function ThemeConsumer() {
   const { colors, mode, setMode } = useAppTheme();
   return (
-    <Pressable accessibilityLabel="Choose dark" onPress={() => setMode('dark')}>
-      <Text>{`${mode}:${colors.surface.canvas}`}</Text>
+    <Pressable accessibilityLabel="Choose light" onPress={() => setMode('light')}>
+      <Text>{`${mode}:${colors.surface.canvas}:${colors.ink.action}`}</Text>
     </Pressable>
   );
 }
 
-function value(renderer: TestRenderer.ReactTestRenderer) {
+function renderedValue(renderer: TestRenderer.ReactTestRenderer) {
   return renderer.root.findByType(Text).props.children;
 }
 
@@ -49,38 +38,80 @@ describe('AppThemeProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setPlatformOS(originalPlatformOS === 'web' ? 'ios' : originalPlatformOS);
-    mockedStorage.setItem.mockResolvedValue(undefined);
   });
 
-  test('keeps manual theme context working on web without calling the native appearance setter', () => {
-    setPlatformOS('web');
-    mockedStorage.getItem.mockReturnValueOnce(deferred<string | null>().promise);
+  test('provides the approved dark theme immediately', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
 
-    expect(() => {
-      act(() => {
-        renderer = TestRenderer.create(
-          <AppThemeProvider>
-            <Probe />
-          </AppThemeProvider>,
-        );
-      });
-    }).not.toThrow();
+    act(() => {
+      renderer = TestRenderer.create(
+        <AppThemeProvider>
+          <ThemeConsumer />
+        </AppThemeProvider>,
+      );
+    });
 
-    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
-
-    expect(value(renderer)).toBe('dark:#0B0D0B');
-    expect(setColorSchemeSpy).not.toHaveBeenCalled();
+    expect(renderedValue(renderer)).toBe('dark:#0B0D0B:#B9FF3D');
     act(() => renderer.unmount());
   });
 
-  test('keeps rendering natively when the appearance setter is unavailable', () => {
+  test('keeps the dark theme when a consumer requests light mode', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = TestRenderer.create(
+        <AppThemeProvider>
+          <ThemeConsumer />
+        </AppThemeProvider>,
+      );
+    });
+
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose light' }).props.onPress());
+
+    expect(renderedValue(renderer)).toBe('dark:#0B0D0B:#B9FF3D');
+    act(() => renderer.unmount());
+  });
+
+  test('does not read or write a stored appearance preference', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = TestRenderer.create(
+        <AppThemeProvider>
+          <ThemeConsumer />
+        </AppThemeProvider>,
+      );
+    });
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose light' }).props.onPress());
+
+    expect(mockedStorage.getItem).not.toHaveBeenCalled();
+    expect(mockedStorage.setItem).not.toHaveBeenCalled();
+    act(() => renderer.unmount());
+  });
+
+  test('synchronizes the native appearance to dark once when supported', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = TestRenderer.create(
+        <AppThemeProvider>
+          <ThemeConsumer />
+        </AppThemeProvider>,
+      );
+    });
+    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose light' }).props.onPress());
+
+    expect(setColorSchemeSpy).toHaveBeenCalledTimes(1);
+    expect(setColorSchemeSpy).toHaveBeenCalledWith('dark');
+    act(() => renderer.unmount());
+  });
+
+  test('keeps rendering when native appearance synchronization is unavailable', () => {
     const setter = Appearance.setColorScheme;
     Object.defineProperty(Appearance, 'setColorScheme', {
       configurable: true,
       value: undefined,
     });
-    mockedStorage.getItem.mockReturnValueOnce(deferred<string | null>().promise);
     let renderer!: TestRenderer.ReactTestRenderer;
 
     try {
@@ -88,12 +119,12 @@ describe('AppThemeProvider', () => {
         act(() => {
           renderer = TestRenderer.create(
             <AppThemeProvider>
-              <Probe />
+              <ThemeConsumer />
             </AppThemeProvider>,
           );
         });
       }).not.toThrow();
-      expect(value(renderer)).toBe('light:#F4F5F1');
+      expect(renderedValue(renderer)).toBe('dark:#0B0D0B:#B9FF3D');
       act(() => renderer.unmount());
     } finally {
       Object.defineProperty(Appearance, 'setColorScheme', {
@@ -101,103 +132,5 @@ describe('AppThemeProvider', () => {
         value: setter,
       });
     }
-  });
-
-  test('renders immediately in the approved light mode while storage is still loading', () => {
-    const pending = deferred<string | null>();
-    mockedStorage.getItem.mockReturnValueOnce(pending.promise);
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    act(() => {
-      renderer = TestRenderer.create(
-        <AppThemeProvider>
-          <Probe />
-        </AppThemeProvider>,
-      );
-    });
-
-    expect(value(renderer)).toBe('light:#F4F5F1');
-    expect(mockedStorage.getItem).toHaveBeenCalledWith(APP_THEME_STORAGE_KEY);
-    expect(setColorSchemeSpy).toHaveBeenCalledWith('light');
-    act(() => renderer.unmount());
-  });
-
-  test('synchronizes the native appearance after hydrating a saved dark preference', async () => {
-    mockedStorage.getItem.mockResolvedValueOnce('dark');
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <AppThemeProvider>
-          <Probe />
-        </AppThemeProvider>,
-      );
-    });
-
-    expect(value(renderer)).toBe('dark:#0B0D0B');
-    expect(setColorSchemeSpy.mock.calls).toEqual([['light'], ['dark']]);
-    await act(async () => renderer.unmount());
-  });
-
-  test.each([
-    ['dark', 'dark:#0B0D0B'],
-    ['light', 'light:#F4F5F1'],
-    ['system', 'light:#F4F5F1'],
-    [null, 'light:#F4F5F1'],
-  ])('hydrates %p as %s without a blocking state', async (stored, expected) => {
-    mockedStorage.getItem.mockResolvedValueOnce(stored);
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <AppThemeProvider>
-          <Probe />
-        </AppThemeProvider>,
-      );
-    });
-
-    expect(value(renderer)).toBe(expected);
-    await act(async () => renderer.unmount());
-  });
-
-  test('applies and persists a manual selection immediately', async () => {
-    mockedStorage.getItem.mockResolvedValueOnce(null);
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    await act(async () => {
-      renderer = TestRenderer.create(
-        <AppThemeProvider>
-          <Probe />
-        </AppThemeProvider>,
-      );
-    });
-
-    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
-
-    expect(value(renderer)).toBe('dark:#0B0D0B');
-    expect(mockedStorage.setItem).toHaveBeenCalledWith(APP_THEME_STORAGE_KEY, 'dark');
-    expect(setColorSchemeSpy).toHaveBeenLastCalledWith('dark');
-    await act(async () => renderer.unmount());
-  });
-
-  test('does not let late hydration override a manual selection or its native appearance', async () => {
-    const pending = deferred<string | null>();
-    mockedStorage.getItem.mockReturnValueOnce(pending.promise);
-    let renderer!: TestRenderer.ReactTestRenderer;
-
-    act(() => {
-      renderer = TestRenderer.create(
-        <AppThemeProvider>
-          <Probe />
-        </AppThemeProvider>,
-      );
-    });
-
-    act(() => renderer.root.findByProps({ accessibilityLabel: 'Choose dark' }).props.onPress());
-    await act(async () => pending.resolve('light'));
-
-    expect(value(renderer)).toBe('dark:#0B0D0B');
-    expect(setColorSchemeSpy.mock.calls).toEqual([['light'], ['dark']]);
-    await act(async () => renderer.unmount());
   });
 });

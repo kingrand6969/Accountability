@@ -31,10 +31,10 @@ function contrastRatio(foreground: string, background: string) {
 }
 
 describe('AccountAbility semantic theme contract', () => {
-  it('locks the approved brand and semantic color roles', () => {
+  it('locks the approved brand and permanent dark semantic color roles', () => {
     expect(colors.primary).toBe('#B9FF3D');
-    expect(colors.navy).toBe('#111411');
-    expect(colors.cream).toBe('#F4F5F1');
+    expect(colors.navy).toBe('#F7F8F4');
+    expect(colors.cream).toBe('#0B0D0B');
     expect(semanticColors.surface.canvas).toBe(colors.cream);
     expect(semanticColors.surface.card).toBe(colors.card);
     expect(semanticColors.ink.primary).toBe(colors.navy);
@@ -59,22 +59,15 @@ describe('AccountAbility semantic theme contract', () => {
     expect(motion.reduced.duration).toBe(0);
   });
 
-  it('provides complete approved light and dark semantic palettes', () => {
+  it('returns the approved dark semantic palette for either mode', () => {
     const light = themeColors('light');
     const dark = themeColors('dark');
 
-    expect(light.surface.canvas).toBe('#F4F5F1');
-    expect(light.ink.primary).toBe('#111411');
-    expect(light.ink.action).toBe('#446B00');
     expect(dark.surface.canvas).toBe('#0B0D0B');
     expect(dark.surface.card).toBe('#121512');
     expect(dark.ink.primary).toBe('#F7F8F4');
     expect(dark.ink.action).toBe('#B9FF3D');
-    expect(light.interaction.touchTarget).toBe(48);
-    expect(dark.interaction.touchTarget).toBe(48);
-    expect(light.interaction.disabledOpacity).toBeGreaterThan(0);
-    expect(light.interaction.disabledOpacity).toBeLessThan(1);
-    expect(dark.interaction.skeleton).not.toBe(light.interaction.skeleton);
+    expect(light).toEqual(dark);
   });
 
   it('keeps primary actions readable in both appearances', () => {
@@ -86,12 +79,12 @@ describe('AccountAbility semantic theme contract', () => {
     expect(contrastRatio(dark.ink.inverse, dark.ink.action)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('defaults invalid and legacy appearance values to the approved light mode', () => {
-    expect(resolveAppThemeMode('light')).toBe('light');
+  it('resolves every appearance value to dark mode', () => {
+    expect(resolveAppThemeMode('light')).toBe('dark');
     expect(resolveAppThemeMode('dark')).toBe('dark');
-    expect(resolveAppThemeMode('system')).toBe('light');
-    expect(resolveAppThemeMode(null)).toBe('light');
-    expect(resolveAppThemeMode({ mode: 'dark' })).toBe('light');
+    expect(resolveAppThemeMode('system')).toBe('dark');
+    expect(resolveAppThemeMode(null)).toBe('dark');
+    expect(resolveAppThemeMode({ mode: 'dark' })).toBe('dark');
   });
 
   it('uses only approved typography families for semantic roles', () => {
@@ -107,8 +100,8 @@ describe('AccountAbility semantic theme contract', () => {
   it('keeps every compatibility token while mapping it into the new brand', () => {
     expect(colors).toMatchObject({
       primary: '#B9FF3D',
-      primaryDark: '#446B00',
-      primarySoft: '#EEFFD1',
+      primaryDark: '#B9FF3D',
+      primarySoft: '#202520',
       success: '#2E7D32',
       successSoft: '#EAF6E9',
       danger: '#dc2626',
@@ -117,19 +110,19 @@ describe('AccountAbility semantic theme contract', () => {
       cheer: '#5F8F00',
       pro: '#53634E',
       proSoft: '#EEF1EC',
-      ink: '#111411',
-      inkSoft: 'rgba(17,20,17,0.72)',
-      inkFaint: 'rgba(17,20,17,0.12)',
-      text: '#111411',
-      textSecondary: '#3F4741',
-      textMuted: '#626B64',
-      textFaint: '#7E887F',
-      border: '#D9DED7',
-      surface: '#ECEFEA',
-      surfaceAlt: '#F7F8F5',
-      card: '#ffffff',
-      background: '#ffffff',
-      onPrimary: '#111411',
+      ink: '#F7F8F4',
+      inkSoft: '#CED4CB',
+      inkFaint: '#9DA59D',
+      text: '#F7F8F4',
+      textSecondary: '#CED4CB',
+      textMuted: '#9DA59D',
+      textFaint: '#9DA59D',
+      border: '#272D27',
+      surface: '#181C18',
+      surfaceAlt: '#202520',
+      card: '#121512',
+      background: '#0B0D0B',
+      onPrimary: '#0B0D0B',
     });
     expect(spacing).toMatchObject({
       xs: 4,
@@ -186,7 +179,7 @@ describe('AccountAbility semantic theme contract', () => {
       alignSelf: 'center',
     });
     expect(shadow.card).toEqual({
-      shadowColor: '#111411',
+      shadowColor: '#0B0D0B',
       shadowOpacity: 0.06,
       shadowRadius: 12,
       shadowOffset: { width: 0, height: 4 },

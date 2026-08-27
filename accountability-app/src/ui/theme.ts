@@ -8,12 +8,12 @@ import { font, typography } from './typography';
 export { font } from './typography';
 
 export const colors = {
-  // Brand — warm monochrome surfaces with one unmistakable neon signal.
+  // Permanent dark foundation with one unmistakable neon signal.
   primary: '#B9FF3D',
-  primaryDark: '#446B00',
-  primarySoft: '#EEFFD1',
-  navy: '#111411',
-  cream: '#F4F5F1',
+  primaryDark: '#B9FF3D',
+  primarySoft: '#202520',
+  navy: '#F7F8F4',
+  cream: '#0B0D0B',
   success: '#2E7D32',
   successSoft: '#EAF6E9',
   danger: '#dc2626',
@@ -23,22 +23,22 @@ export const colors = {
   pro: '#53634E',
   proSoft: '#EEF1EC',
 
-  // glass ink — text on warm translucent surfaces
-  ink: '#111411',
-  inkSoft: 'rgba(17,20,17,0.72)',
-  inkFaint: 'rgba(17,20,17,0.12)',
+  // Compatibility ink tokens.
+  ink: '#F7F8F4',
+  inkSoft: '#CED4CB',
+  inkFaint: '#9DA59D',
 
-  // warm neutral foundation
-  text: '#111411',
-  textSecondary: '#3F4741',
-  textMuted: '#626B64',
-  textFaint: '#7E887F',
-  border: '#D9DED7',
-  surface: '#ECEFEA',
-  surfaceAlt: '#F7F8F5',
-  card: '#ffffff',
-  background: '#ffffff',
-  onPrimary: '#111411',
+  // Dark neutral foundation.
+  text: '#F7F8F4',
+  textSecondary: '#CED4CB',
+  textMuted: '#9DA59D',
+  textFaint: '#9DA59D',
+  border: '#272D27',
+  surface: '#181C18',
+  surfaceAlt: '#202520',
+  card: '#121512',
+  background: '#0B0D0B',
+  onPrimary: '#0B0D0B',
 } as const;
 
 export const spacing = {
@@ -64,27 +64,27 @@ export const radius = {
 } as const;
 
 /**
- * Semantic roles for new foundation primitives. Existing flat color names
- * remain stable so current feature screens keep their established behavior.
+ * Semantic roles for the permanent dark foundation. Existing flat color names
+ * remain available so current feature screens keep compiling.
  */
 export const semanticColors = {
   surface: {
     canvas: colors.cream,
     card: colors.card,
-    raised: colors.background,
+    raised: colors.surface,
     muted: colors.surfaceAlt,
     inverse: colors.navy,
   },
   ink: {
-    primary: colors.navy,
+    primary: colors.text,
     secondary: colors.textSecondary,
     muted: colors.textMuted,
-    inverse: '#FFFFFF',
-    action: colors.primaryDark,
+    inverse: colors.onPrimary,
+    action: colors.primary,
   },
   border: {
     subtle: colors.border,
-    strong: colors.inkFaint,
+    strong: '#465046',
     action: colors.primary,
     danger: colors.danger,
   },
@@ -99,35 +99,8 @@ export const semanticColors = {
 
 export type AppThemeMode = 'light' | 'dark';
 
-const lightInteraction = {
-  pressedOverlay: 'rgba(17,20,17,0.08)',
-  disabledOpacity: 0.48,
-  skeleton: '#E4E8E1',
-  scrim: 'rgba(17,20,17,0.48)',
-  touchTarget: spacing.touch,
-} as const;
-
-const darkSemanticColors = {
-  surface: {
-    canvas: '#0B0D0B',
-    card: '#121512',
-    raised: '#181C18',
-    muted: '#202520',
-    inverse: '#F4F5F1',
-  },
-  ink: {
-    primary: '#F7F8F4',
-    secondary: '#CED4CB',
-    muted: '#9DA59D',
-    inverse: '#0B0D0B',
-    action: '#B9FF3D',
-  },
-  border: {
-    subtle: '#272D27',
-    strong: '#465046',
-    action: '#B9FF3D',
-    danger: '#F87171',
-  },
+const darkSemanticTheme = {
+  ...semanticColors,
   status: {
     success: '#87E38D',
     successSoft: '#17351C',
@@ -144,20 +117,15 @@ const darkSemanticColors = {
   },
 } as const;
 
-const lightSemanticTheme = {
-  ...semanticColors,
-  interaction: lightInteraction,
-} as const;
+export type AppThemeColors = typeof darkSemanticTheme;
 
-export type AppThemeColors = typeof lightSemanticTheme | typeof darkSemanticColors;
-
-/** Manual appearance only: AccountAbility intentionally offers Light or Dark. */
-export function resolveAppThemeMode(value: unknown): AppThemeMode {
-  return value === 'dark' ? 'dark' : 'light';
+/** AccountAbility intentionally uses one permanent dark appearance. */
+export function resolveAppThemeMode(_value: unknown): AppThemeMode {
+  return 'dark';
 }
 
-export function themeColors(mode: AppThemeMode): AppThemeColors {
-  return mode === 'dark' ? darkSemanticColors : lightSemanticTheme;
+export function themeColors(_mode: AppThemeMode): AppThemeColors {
+  return darkSemanticTheme;
 }
 
 export const category = {
@@ -211,7 +179,7 @@ export const contentMax = {
 
 export const shadow = {
   card: {
-    shadowColor: '#111411',
+    shadowColor: '#0B0D0B',
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
