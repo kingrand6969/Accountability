@@ -22,13 +22,11 @@ import { PRO_PRICING } from '../pro/monetization';
 import { Button } from '../ui/Button';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
-  colors,
   font,
   radius,
   shadow,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 
 const BENEFITS = [
@@ -42,9 +40,9 @@ const BENEFITS = [
 
 export default function Paywall() {
   const { isPro, refresh } = useIsPro();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => paywallPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => paywallPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [plan, setPlan] = useState<ProPlan>('yearly');
   const [availability, setAvailability] = useState<BillingAvailability | null>(null);
   const [busy, setBusy] = useState<'purchase' | 'restore' | null>(null);
@@ -125,10 +123,10 @@ export default function Paywall() {
           <View style={styles.heroIconWrap}>
             <BlurView
               intensity={24}
-              tint="light"
+              tint="dark"
               style={[StyleSheet.absoluteFill, { borderRadius: 36 }]}
             />
-            <Ionicons name="star" size={32} color="#fde68a" />
+            <Ionicons name="star" size={32} color={theme.ink.action} />
           </View>
           <Text style={styles.title}>AccountAbility Pro</Text>
           <Text style={styles.subtitle}>Get more out of every day.</Text>
@@ -230,8 +228,8 @@ function PlanCard({
   badge?: string;
   onPress: () => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <Pressable
@@ -268,9 +266,9 @@ function PaywallRestoreButton({
   busy: boolean;
   disabled: boolean;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const palette = useMemo(() => paywallPalette(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => paywallPalette(theme), [theme]);
   const [scale] = useState(() => new Animated.Value(1));
   const inactive = busy || disabled;
 
@@ -309,25 +307,25 @@ function PaywallRestoreButton({
   );
 }
 
-function paywallPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function paywallPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
-    surface: mode === 'light' ? colors.card : theme.surface.card,
-    border: mode === 'light' ? colors.border : theme.border.subtle,
-    ink: mode === 'light' ? colors.text : theme.ink.primary,
-    muted: mode === 'light' ? colors.textMuted : theme.ink.muted,
-    faint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    proAccent: mode === 'light' ? colors.pro : '#B9FF3D',
-    proSurface: mode === 'light' ? colors.proSoft : theme.surface.muted,
-    success: mode === 'light' ? colors.success : theme.status.success,
-    restoreSurface: mode === 'light' ? colors.surface : theme.surface.muted,
-    restoreText: mode === 'light' ? colors.text : theme.ink.primary,
-    cardShadow: mode === 'light' ? shadow.card.shadowColor : theme.surface.canvas,
+    canvas: theme.surface.canvas,
+    surface: theme.surface.card,
+    border: theme.border.subtle,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    faint: theme.ink.muted,
+    proAccent: theme.ink.action,
+    proSurface: theme.surface.muted,
+    success: theme.status.success,
+    restoreSurface: theme.surface.raised,
+    restoreText: theme.ink.primary,
+    cardShadow: theme.surface.canvas,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = paywallPalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = paywallPalette(theme);
 
   return StyleSheet.create({
   container: {
@@ -341,7 +339,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.xs,
-    shadowColor: colors.pro,
+    shadowColor: theme.ink.action,
     shadowOpacity: 0.35,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
@@ -354,13 +352,13 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     borderRadius: 36,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: theme.border.strong,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  title: { fontSize: 26, fontFamily: font.extrabold, color: '#fff' },
-  subtitle: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 15 },
+  title: { fontSize: 26, fontFamily: font.extrabold, color: theme.ink.primary },
+  subtitle: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 15 },
   card: {
     backgroundColor: palette.surface,
     borderWidth: 1,
@@ -391,16 +389,16 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
   bestBadge: {
     position: 'absolute',
     top: -10,
-    backgroundColor: colors.pro,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingVertical: 3,
     paddingHorizontal: 10,
   },
-  bestBadgeText: { color: '#fff', fontSize: 10, fontFamily: font.extrabold, letterSpacing: 0.6 },
+  bestBadgeText: { color: theme.ink.inverse, fontSize: 10, fontFamily: font.extrabold, letterSpacing: 0.6 },
   priceLabel: { fontFamily: font.bold, color: palette.ink },
   priceValue: { fontSize: 24, fontFamily: font.extrabold, color: palette.ink },
   priceNote: { color: palette.muted, fontFamily: font.medium, fontSize: 12 },
-  cta: { marginTop: spacing.sm, backgroundColor: colors.pro },
+  cta: { marginTop: spacing.sm },
   proActive: {
     flexDirection: 'row',
     justifyContent: 'center',

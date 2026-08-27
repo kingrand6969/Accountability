@@ -11,7 +11,6 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
@@ -54,8 +53,8 @@ function clampMin(s: string): number {
 export function TimePicker({
   value,
   onChange,
-  theme = themeColors('light'),
-  mode = 'light',
+  theme = themeColors('dark'),
+  mode = 'dark',
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -113,7 +112,7 @@ export function TimePicker({
       <Modal visible={open !== null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(null)}>
           <View style={styles.menu}>
-            <BlurView intensity={50} tint={mode} style={styles.menuBlur} />
+            <BlurView intensity={50} tint="dark" style={styles.menuBlur} />
             <View style={styles.menuGlass} />
             <ScrollView>
               {open === 'hour'
@@ -208,18 +207,18 @@ function MenuItem({
   );
 }
 
-function timePickerPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function timePickerPalette(theme: AppThemeColors, _mode: AppThemeMode) {
   return {
-    text: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.muted,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    selectedSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.muted,
-    scrim: mode === 'light' ? 'rgba(15,23,42,0.4)' : theme.interaction.scrim,
-    menuBorder: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.border.strong,
-    menuGlass: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.surface.card,
+    text: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    field: theme.surface.raised,
+    action: theme.ink.action,
+    selectedSoft: theme.surface.muted,
+    scrim: theme.interaction.scrim,
+    menuBorder: theme.border.strong,
+    menuGlass: theme.surface.card,
   };
 }
 

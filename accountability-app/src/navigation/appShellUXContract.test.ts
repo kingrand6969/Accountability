@@ -22,7 +22,8 @@ describe('app shell UX contract', () => {
     expect(loadingSurface).toContain("accessibilityRole={error ? 'alert' : 'progressbar'}");
     expect(loadingSurface).toContain('accessibilityRole="button"');
     expect(loadingSurface).toContain('minHeight: spacing.touch');
-    expect(loadingSurface).toContain('backgroundColor: colors.cream');
+    expect(loadingSurface).toContain('backgroundColor: theme.surface.canvas');
+    expect(loadingSurface).toContain('tintColor: theme.ink.primary');
     expect(loadingSurface).toContain('minHeight: 48');
   });
 

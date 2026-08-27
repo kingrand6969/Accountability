@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
@@ -7,12 +7,15 @@ import { recordConsent } from '../auth/consent';
 import { updateMyProfile } from '../profiles/api';
 import { AuthShell } from '../ui/AuthShell';
 import { Button } from '../ui/Button';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
 
 const RESEND_COOLDOWN_S = 45;
 
 export default function VerifyEmail() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { email, birthday } = useLocalSearchParams<{ email: string; birthday?: string }>();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -71,7 +74,7 @@ export default function VerifyEmail() {
         ref={inputRef}
         style={styles.codeInput}
         placeholder="••••••"
-        placeholderTextColor={colors.textFaint}
+        placeholderTextColor={theme.ink.muted}
         keyboardType="number-pad"
         autoComplete="one-time-code"
         textContentType="oneTimeCode"
@@ -103,25 +106,25 @@ export default function VerifyEmail() {
   );
 }
 
-const styles = StyleSheet.create({
-  title: { fontSize: 24, fontFamily: font.extrabold, color: colors.text },
-  sub: { fontSize: 14.5, fontFamily: font.regular, color: colors.textMuted, lineHeight: 21, marginBottom: spacing.sm },
-  email: { fontFamily: font.bold, color: colors.text },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  title: { fontSize: 24, fontFamily: font.extrabold, color: theme.ink.primary },
+  sub: { fontSize: 14.5, fontFamily: font.regular, color: theme.ink.muted, lineHeight: 21, marginBottom: spacing.sm },
+  email: { fontFamily: font.bold, color: theme.ink.primary },
   codeInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.md,
     paddingVertical: 16,
     fontSize: 30,
     fontFamily: font.bold,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: theme.ink.primary,
+    backgroundColor: theme.surface.raised,
     textAlign: 'center',
     letterSpacing: 12,
   },
   button: { marginTop: spacing.xs },
-  resend: { textAlign: 'center', fontSize: 14, fontFamily: font.regular, color: colors.textMuted, marginTop: spacing.sm },
-  resendMuted: { color: colors.textFaint, fontFamily: font.medium },
-  resendLink: { color: colors.primaryDark, fontFamily: font.semibold },
-  back: { textAlign: 'center', fontSize: 13, fontFamily: font.medium, color: colors.textFaint, marginTop: spacing.sm },
+  resend: { textAlign: 'center', fontSize: 14, fontFamily: font.regular, color: theme.ink.muted, marginTop: spacing.sm },
+  resendMuted: { color: theme.ink.muted, fontFamily: font.medium },
+  resendLink: { color: theme.ink.action, fontFamily: font.semibold },
+  back: { textAlign: 'center', fontSize: 13, fontFamily: font.medium, color: theme.ink.muted, marginTop: spacing.sm },
 });

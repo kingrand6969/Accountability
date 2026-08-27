@@ -4,14 +4,14 @@ import { BlurView, BlurTargetView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useAppTheme } from './AppThemeProvider';
-import type { AppThemeColors, AppThemeMode } from './theme';
+import type { AppThemeColors } from './theme';
 
 /**
  * Real glassmorphism needs saturated shapes BEHIND the glass — blurring a flat
  * gradient is invisible. GlassBackdrop paints a quiet base gradient plus soft
  * 3D "spheres" that cross the glass panels' edges; GlassCard is the frosted
  * panel itself (radius+clip+border on the BlurView, shadow on the wrapper,
- * white plate for text contrast — per platform quirks).
+ * dark plate for text contrast — per platform quirks).
  */
 
 /** A soft radial glow that fades fully to transparent at its edge — so it reads
@@ -48,20 +48,12 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
   { columnWidth = 600 }: { columnWidth?: number },
   ref: Ref<View>,
 ) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
-  const backdropColors = mode === 'light'
-    ? ['#F6F7F3', '#ECEFE8', '#DDE3DA'] as const
-    : [theme.surface.canvas, theme.surface.card, theme.surface.raised] as const;
-  const blobA = mode === 'light'
-    ? ['#EEF7E4', '#C9EAA0'] as const
-    : [theme.ink.action, theme.surface.raised] as const;
-  const blobB = mode === 'light'
-    ? ['#F2F0E8', '#D6DDCF'] as const
-    : [theme.status.attention, theme.surface.muted] as const;
-  const blobC = mode === 'light'
-    ? ['#EEF7E4', '#B9FF3D'] as const
-    : [theme.ink.action, theme.surface.muted] as const;
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const backdropColors = [theme.surface.canvas, theme.surface.card, theme.surface.raised] as const;
+  const blobA = [theme.ink.action, theme.surface.raised] as const;
+  const blobB = [theme.status.attention, theme.surface.muted] as const;
+  const blobC = [theme.ink.action, theme.surface.muted] as const;
 
   return (
     <BlurTargetView ref={ref as never} style={StyleSheet.absoluteFill}>
@@ -80,21 +72,21 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
           size={460}
           colors={blobA}
           style={{ top: -140, left: -160 }}
-          opacity={mode === 'light' ? 0.85 : 0.22}
+          opacity={0.22}
         />
         <Sphere
           id="blobB"
           size={380}
           colors={blobB}
           style={{ top: 220, right: -150 }}
-          opacity={mode === 'light' ? 0.7 : 0.12}
+          opacity={0.12}
         />
         <Sphere
           id="blobC"
           size={520}
           colors={blobC}
           style={{ top: 560, left: -190 }}
-          opacity={mode === 'light' ? 0.6 : 0.16}
+          opacity={0.16}
         />
       </View>
     </BlurTargetView>
@@ -113,14 +105,10 @@ export function GlassCard({
   /** 0.45 keeps ~4.5:1 ink contrast while letting the blobs glow through */
   plateOpacity?: number;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
-  const borderColors = mode === 'light'
-    ? ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.7)'] as const
-    : [theme.border.strong, theme.border.subtle, theme.ink.action] as const;
-  const sheenColors = mode === 'light'
-    ? ['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)'] as const
-    : ['rgba(185,255,61,0.14)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0)'] as const;
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const borderColors = [theme.border.strong, theme.border.subtle, theme.ink.action] as const;
+  const sheenColors = ['rgba(185,255,61,0.14)', 'rgba(185,255,61,0.03)', 'transparent'] as const;
 
   return (
     <View style={[styles.shadowWrap, style]}>
@@ -133,12 +121,12 @@ export function GlassCard({
         end={{ x: 1, y: 1 }}
         style={styles.borderGrad}
       >
-        {/* lower intensity = less white cast from the tint overlay (the fallback
+        {/* lower intensity = less cast from the tint overlay (the fallback
             path in Expo Go / web), so the backdrop colour glows through — the
-            actual glass effect. The white plate below guards text contrast. */}
+            actual glass effect. The dark plate below guards text contrast. */}
         <BlurView
           intensity={Platform.select({ ios: 40, android: 45, web: 35, default: 45 })}
-          tint={mode === 'light' ? 'light' : 'dark'}
+          tint="dark"
           blurMethod="dimezisBlurViewSdk31Plus"
           blurReductionFactor={2}
           blurTarget={(blurTarget as never) ?? undefined}
@@ -148,9 +136,7 @@ export function GlassCard({
           <View
             style={[
               StyleSheet.absoluteFill,
-              mode === 'light'
-                ? { backgroundColor: `rgba(255,255,255,${plateOpacity})` }
-                : { backgroundColor: theme.surface.card, opacity: Math.max(plateOpacity, 0.82) },
+              { backgroundColor: theme.surface.card, opacity: Math.max(plateOpacity, 0.82) },
             ]}
           />
           {/* diagonal sheen — the frosted-glass highlight */}
@@ -168,7 +154,7 @@ export function GlassCard({
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   blobColumn: {
     position: 'absolute',
     top: 0,
@@ -183,7 +169,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.c
     ...(Platform.OS === 'android'
       ? {} // elevation bleeds grey through translucent children — skip on Android
       : {
-          shadowColor: mode === 'light' ? '#263223' : theme.surface.canvas,
+          shadowColor: theme.surface.canvas,
           shadowOffset: { width: 0, height: 16 },
           shadowOpacity: 0.16,
           shadowRadius: 32,

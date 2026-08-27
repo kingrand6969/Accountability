@@ -66,6 +66,7 @@ export function Button({
             backgroundColor: v.backgroundColor,
             borderColor: v.borderColor,
             borderWidth: v.borderWidth,
+            borderRadius: variant === 'primary' ? radius.pill : radius.md,
           },
           pressed && !inactive && styles.pressed,
         ]}
@@ -116,11 +117,11 @@ export function buttonAppearance(
   if (variant === 'danger') return filled(theme.status.danger);
   if (variant === 'outline') {
     return {
-      backgroundColor: theme.surface.card,
-      borderColor: theme.border.action,
+      backgroundColor: 'transparent',
+      borderColor: theme.border.strong,
       borderWidth: 1,
-      textColor: theme.ink.action,
-      spinner: theme.ink.action,
+      textColor: theme.ink.primary,
+      spinner: theme.ink.primary,
     };
   }
   if (variant === 'ghost') {
@@ -132,7 +133,10 @@ export function buttonAppearance(
       spinner: theme.ink.primary,
     };
   }
-  return filled(theme.ink.action);
+  return {
+    ...filled(theme.ink.action),
+    borderColor: theme.border.action,
+  };
 }
 
 const styles = StyleSheet.create({

@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { toLocalDateString } from '../timeline/datetime';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
@@ -18,8 +17,8 @@ const WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 export function MonthCalendar({
   value,
   onChange,
-  theme = themeColors('light'),
-  mode = 'light',
+  theme = themeColors('dark'),
+  mode = 'dark',
 }: {
   value: string;
   onChange: (date: string) => void;
@@ -115,14 +114,14 @@ export function MonthCalendar({
   );
 }
 
-function calendarPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function calendarPalette(theme: AppThemeColors, _mode: AppThemeMode) {
   return {
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    text: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    faint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
+    card: theme.surface.card,
+    border: theme.border.subtle,
+    text: theme.ink.primary,
+    faint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
   };
 }
 

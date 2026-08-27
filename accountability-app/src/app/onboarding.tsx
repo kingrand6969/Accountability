@@ -197,7 +197,7 @@ function PromiseStep({ userId }: { userId: string | null }) {
               ]}
             >
               <View style={[styles.promiseIcon, { backgroundColor: promise.color }]}>
-                <Ionicons name={promise.icon} size={21} color="#FFFFFF" />
+                <Ionicons name={promise.icon} size={21} color={theme.ink.inverse} />
               </View>
               <View style={styles.promiseCopy}>
                 <Text style={styles.promiseGroup}>{promise.group}</Text>
@@ -240,7 +240,7 @@ function PromiseStep({ userId }: { userId: string | null }) {
 
 export default function Onboarding() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
+  const { colors: theme } = useAppTheme();
   const styles = createStyles(theme);
   const { width, fontScale } = useWindowDimensions();
   const { session } = useAuth();
@@ -328,7 +328,7 @@ export default function Onboarding() {
   if (step === 'promises') {
     return (
       <>
-        <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+        <StatusBar style="light" />
         <SafeAreaView style={styles.screen}>
           <PromiseStep key={userId ?? 'signed-out'} userId={userId} />
         </SafeAreaView>
@@ -338,7 +338,7 @@ export default function Onboarding() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.hero}>
         <BrandMark size={62} color={theme.ink.action} accessibilityLabel="AccountAbility" />

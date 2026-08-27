@@ -43,15 +43,18 @@ describe('sharing and upgrade appearance contract', () => {
 
   test('Paywall themes all non-hero surfaces and keeps purchase and restore semantics', () => {
     expect(paywallSource).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
-    expect(paywallSource).toContain('const { colors: theme, mode } = useAppTheme();');
-    expect(paywallSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(paywallSource).toContain("mode === 'light' ? colors.background : theme.surface.canvas");
+    expect(paywallSource).toContain('const { colors: theme } = useAppTheme();');
+    expect(paywallSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(paywallSource).toContain('canvas: theme.surface.canvas');
     expect(paywallSource).toContain("colors={['#263223', '#53634E', '#111411']}");
+    expect(paywallSource).toContain('tint="dark"');
     expect(paywallSource).toContain('await billingAdapter().purchase(plan)');
     expect(paywallSource).toContain('await billingAdapter().restore()');
     expect(paywallSource).toContain('<PaywallRestoreButton');
     expect(paywallSource).toContain('backgroundColor: palette.restoreSurface');
     expect(paywallSource).toContain('restorePressed: { opacity: 0.92 }');
     expect(paywallSource).toContain('minHeight: spacing.touch');
+    expect(paywallSource).not.toContain("mode === 'light'");
+    expect(paywallSource).not.toMatch(/tint=["']light["']/);
   });
 });

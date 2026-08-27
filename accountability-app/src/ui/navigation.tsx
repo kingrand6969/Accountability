@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -7,13 +8,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import {
-  colors,
-  radius,
-  semanticColors,
-  spacing,
-  type,
-} from './theme';
+import { radius, spacing, type, type AppThemeColors } from './theme';
+import { useAppTheme } from './AppThemeProvider';
 
 export type NavigationOption<Value extends string = string> = {
   value: Value;
@@ -41,6 +37,8 @@ export function SegmentedControl<Value extends string>({
   onChange,
   style,
 }: SegmentedControlProps<Value>) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View
       accessibilityRole="tablist"
@@ -93,6 +91,8 @@ export function QuietTopTabs<Value extends string>({
   onChange,
   style,
 }: QuietTopTabsProps<Value>) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View
       accessibilityRole="tablist"
@@ -138,14 +138,14 @@ export function QuietTopTabs<Value extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   segmentedTrack: {
     flexDirection: 'row',
-    borderColor: semanticColors.border.action,
+    borderColor: theme.border.subtle,
     borderWidth: 1,
     borderRadius: radius.pill,
     padding: 2,
-    backgroundColor: semanticColors.surface.card,
+    backgroundColor: theme.surface.card,
   },
   segment: {
     flex: 1,
@@ -156,20 +156,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   segmentSelected: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
   },
   segmentLabel: {
     ...type.label,
-    color: semanticColors.ink.action,
+    color: theme.ink.secondary,
     textAlign: 'center',
     flexShrink: 1,
   },
   segmentLabelSelected: {
-    color: colors.onPrimary,
+    color: theme.ink.inverse,
   },
   quietTabs: {
     flexDirection: 'row',
-    backgroundColor: semanticColors.surface.card,
+    backgroundColor: theme.surface.card,
   },
   quietTab: {
     flex: 1,
@@ -180,19 +180,19 @@ const styles = StyleSheet.create({
   },
   quietTabLabel: {
     ...type.label,
-    color: semanticColors.ink.muted,
+    color: theme.ink.muted,
     textAlign: 'center',
     flexShrink: 1,
   },
   quietTabLabelSelected: {
-    color: semanticColors.ink.primary,
+    color: theme.ink.primary,
   },
   quietIndicator: {
     width: 28,
     height: 2,
     marginTop: spacing.xs,
     borderRadius: radius.pill,
-    backgroundColor: colors.navy,
+    backgroundColor: theme.ink.action,
   },
   pressed: {
     opacity: 0.72,

@@ -1,5 +1,6 @@
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, font, spacing } from './theme';
+import { font, radius, spacing, type AppThemeColors } from './theme';
+import { useAppTheme } from './AppThemeProvider';
 
 const LOGO_MARK = require('../../assets/images/logo-mark.png');
 const WORDMARK = require('../../assets/images/wordmark.png');
@@ -12,6 +13,8 @@ type AppLaunchStateProps = Readonly<{
 }>;
 
 export function AppLaunchState({ message, error = false, actionLabel, onAction }: AppLaunchStateProps) {
+  const { colors: theme } = useAppTheme();
+  const styles = createStyles(theme);
   return (
     <View
       style={styles.screen}
@@ -24,7 +27,7 @@ export function AppLaunchState({ message, error = false, actionLabel, onAction }
         <Image source={WORDMARK} style={styles.wordmark} resizeMode="contain" />
       </View>
       <View style={[styles.status, error && styles.errorStatus]}>
-        {!error ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+        {!error ? <ActivityIndicator color={theme.ink.action} size="small" /> : null}
         <Text style={[styles.message, error && styles.errorMessage]}>{message}</Text>
         {error && actionLabel && onAction ? (
           <Pressable
@@ -41,13 +44,13 @@ export function AppLaunchState({ message, error = false, actionLabel, onAction }
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   screen: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xxl,
-    backgroundColor: colors.cream,
+    backgroundColor: theme.surface.canvas,
   },
   brand: {
     alignItems: 'center',
@@ -60,6 +63,7 @@ const styles = StyleSheet.create({
   wordmark: {
     width: 176,
     height: 42,
+    tintColor: theme.ink.primary,
   },
   status: {
     minHeight: 48,
@@ -74,13 +78,13 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   message: {
-    color: colors.textSecondary,
+    color: theme.ink.secondary,
     fontFamily: font.medium,
     fontSize: 14,
     lineHeight: 20,
   },
   errorMessage: {
-    color: colors.text,
+    color: theme.ink.primary,
     textAlign: 'center',
   },
   action: {
@@ -89,14 +93,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    backgroundColor: theme.ink.action,
   },
   actionPressed: {
     opacity: 0.82,
   },
   actionText: {
-    color: colors.onPrimary,
+    color: theme.ink.inverse,
     fontFamily: font.bold,
     fontSize: 15,
     lineHeight: 20,

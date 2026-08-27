@@ -20,6 +20,28 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe('shared Button manual appearance', () => {
+  test('dark primary and outline variants use the approved action roles', () => {
+    const theme = themeColors('dark');
+    const primary = buttonAppearance(theme, 'primary', false);
+    const outline = buttonAppearance(theme, 'outline', false);
+
+    expect(primary).toEqual(
+      expect.objectContaining({
+        backgroundColor: theme.ink.action,
+        borderColor: theme.border.action,
+        textColor: theme.ink.inverse,
+      }),
+    );
+    expect(outline).toEqual(
+      expect.objectContaining({
+        backgroundColor: 'transparent',
+        borderColor: theme.border.strong,
+        borderWidth: 1,
+        textColor: theme.ink.primary,
+      }),
+    );
+  });
+
   test.each(['light', 'dark'] satisfies AppThemeMode[])(
     '%s primary and outline labels retain readable contrast',
     (mode) => {
@@ -29,7 +51,7 @@ describe('shared Button manual appearance', () => {
 
       expect(primary.borderWidth).toBe(0);
       expect(contrast(primary.textColor, primary.backgroundColor)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(outline.textColor, outline.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(outline.textColor, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
     },
   );
 

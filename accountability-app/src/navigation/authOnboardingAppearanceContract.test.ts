@@ -20,10 +20,15 @@ describe('auth and onboarding appearance contract', () => {
     expect(authShell).toContain("import { SafeAreaView } from 'react-native-safe-area-context';");
     expect(authShell).not.toMatch(/SafeAreaView,[\s\S]*from 'react-native'/);
     expect(authShell).toContain('<StatusBar style="light" />');
-    expect(authShell).toContain('backgroundColor: AUTH_CANVAS');
+    expect(authShell).toContain("import { useAppTheme } from './AppThemeProvider';");
+    expect(authShell).toContain('backgroundColor: theme.surface.canvas');
+    expect(authShell).toContain('backgroundColor: theme.surface.card');
+    expect(authShell).toContain('tint="dark"');
+    expect(authShell).not.toContain('AUTH_CANVAS');
+    expect(authShell).not.toMatch(/backgroundColor:\s*['"]#(?:fff|FFFFFF|F4F5F1)['"]/);
   });
 
-  test('binds both onboarding steps and their safe areas to the manual appearance', () => {
+  test('binds both onboarding steps and their safe areas to permanent dark roles', () => {
     const onboarding = source('src/app/onboarding.tsx');
 
     expect(onboarding).toContain("import { StatusBar } from 'expo-status-bar';");
@@ -31,13 +36,31 @@ describe('auth and onboarding appearance contract', () => {
       "import { SafeAreaView } from 'react-native-safe-area-context';",
     );
     expect(onboarding).toContain("import { useAppTheme } from '../ui/AppThemeProvider';");
-    expect(onboarding).toContain('const { colors: theme, mode } = useAppTheme();');
+    expect(onboarding).toContain('const { colors: theme } = useAppTheme();');
     expect(onboarding).toContain('const styles = createStyles(theme);');
-    expect(onboarding).toContain("<StatusBar style={mode === 'dark' ? 'light' : 'dark'} />");
+    expect(onboarding).toContain('<StatusBar style="light" />');
     expect(onboarding).not.toContain('<StatusBar backgroundColor=');
     expect(onboarding).toContain('<SafeAreaView style={styles.screen}>');
     expect(onboarding).toContain('screen: { flex: 1, backgroundColor: theme.surface.canvas }');
     expect(onboarding).not.toContain('const styles = StyleSheet.create({');
     expect(onboarding).not.toContain('backgroundColor: colors.cream');
+    expect(onboarding).not.toContain("mode === 'light'");
+  });
+
+  test.each([
+    'src/app/sign-in.tsx',
+    'src/app/sign-up.tsx',
+    'src/app/forgot-password.tsx',
+    'src/app/verify-email.tsx',
+  ])('%s uses permanent dark semantic ink and surfaces without light islands', (file) => {
+    const entry = source(file);
+
+    expect(entry).toContain("import { useAppTheme } from '../ui/AppThemeProvider';");
+    expect(entry).toContain('const { colors: theme } = useAppTheme();');
+    expect(entry).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
+    expect(entry).not.toMatch(/import \{[^}]*\bcolors\b[^}]*\} from ['"]\.\.\/ui\/theme['"]/s);
+    expect(entry).not.toContain('colors.primaryDark');
+    expect(entry).not.toContain("mode === 'light'");
+    expect(entry).not.toMatch(/backgroundColor:\s*['"]#(?:fff|FFFFFF|fef2f2|F4F5F1)['"]/);
   });
 });

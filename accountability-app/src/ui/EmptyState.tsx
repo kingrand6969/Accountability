@@ -38,7 +38,12 @@ export function EmptyState({
 }
 
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({
-  wrap: { alignItems: 'center', padding: spacing.xxl, gap: 6 },
+  wrap: {
+    alignItems: 'center',
+    padding: spacing.xxl,
+    gap: 6,
+    backgroundColor: theme.surface.card,
+  },
   iconCircle: {
     width: 64,
     height: 64,

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import { useAppTheme } from './AppThemeProvider';
-import { colors, font, radius, spacing, themeColors } from './theme';
+import { font, radius, spacing, type AppThemeColors } from './theme';
 
 type Options = {
   title: string;
@@ -23,8 +23,8 @@ export function confirmDialog(opts: Options): void {
 
 /** Mount once near the root (root _layout). */
 export function ConfirmHost() {
-  const { mode } = useAppTheme();
-  const dark = mode === 'dark';
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [opts, setOpts] = useState<Options | null>(null);
 
   useEffect(() => {
@@ -48,44 +48,40 @@ export function ConfirmHost() {
   return (
     <Modal visible={!!opts} transparent animationType="fade" onRequestClose={close}>
       <Pressable style={styles.backdrop} onPress={close}>
-        <Pressable style={[styles.card, dark && darkStyles.card]} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
           <BlurView
             intensity={60}
-            tint={dark ? 'dark' : 'light'}
+            tint="dark"
             style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
           />
-          <View style={[styles.glass, dark && darkStyles.glass]} />
+          <View style={styles.glass} />
           <View style={[
             styles.iconWrap,
             destructive ? styles.iconDanger : styles.iconInfo,
-            dark && (destructive ? darkStyles.iconDanger : darkStyles.iconInfo),
           ]}>
             <Ionicons
               name={destructive ? 'trash-outline' : 'help-circle-outline'}
               size={22}
-              color={destructive
-                ? (dark ? theme.status.danger : colors.danger)
-                : (dark ? theme.ink.action : colors.primary)}
+              color={destructive ? theme.status.danger : theme.ink.action}
             />
           </View>
-          <Text style={[styles.title, dark && darkStyles.title]}>{opts?.title}</Text>
-          {opts?.message ? <Text style={[styles.message, dark && darkStyles.message]}>{opts.message}</Text> : null}
+          <Text style={styles.title}>{opts?.title}</Text>
+          {opts?.message ? <Text style={styles.message}>{opts.message}</Text> : null}
 
           <View style={styles.actions}>
             <Pressable
               onPress={close}
-              style={({ pressed }) => [styles.btn, styles.cancel, dark && darkStyles.cancel, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.btn, styles.cancel, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
             >
-              <Text style={[styles.cancelText, dark && darkStyles.cancelText]}>Cancel</Text>
+              <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
             <Pressable
               onPress={confirm}
               style={({ pressed }) => [
                 styles.btn,
                 destructive ? styles.confirmDanger : styles.confirmPrimary,
-                dark && (destructive ? darkStyles.confirmDanger : darkStyles.confirmPrimary),
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
@@ -94,7 +90,6 @@ export function ConfirmHost() {
               <Text style={[
                 styles.confirmText,
                 destructive ? styles.confirmDangerText : styles.confirmPrimaryText,
-                dark && darkStyles.confirmText,
               ]}>{opts?.confirmLabel ?? 'Confirm'}</Text>
             </Pressable>
           </View>
@@ -104,10 +99,10 @@ export function ConfirmHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.5)',
+    backgroundColor: theme.interaction.scrim,
     justifyContent: 'center',
     padding: spacing.xxl,
   },
@@ -115,7 +110,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: theme.border.strong,
     padding: spacing.xl,
     gap: spacing.sm,
     alignItems: 'center',
@@ -123,14 +118,14 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  // translucent tint over the blur keeps dark title/body text at 4.5:1
+  // dark plate over the blur keeps title and body text readable
   glass: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.66)',
+    backgroundColor: theme.surface.card,
   },
   iconWrap: {
     width: 52,
@@ -139,13 +134,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconDanger: { backgroundColor: colors.dangerSoft },
-  iconInfo: { backgroundColor: colors.primarySoft },
-  title: { fontFamily: font.extrabold, fontSize: 18, color: colors.text, textAlign: 'center' },
+  iconDanger: { backgroundColor: theme.status.dangerSoft },
+  iconInfo: { backgroundColor: theme.surface.muted },
+  title: { fontFamily: font.extrabold, fontSize: 18, color: theme.ink.primary, textAlign: 'center' },
   message: {
     fontFamily: font.regular,
     fontSize: 14.5,
-    color: colors.textMuted,
+    color: theme.ink.muted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -157,27 +152,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancel: { backgroundColor: colors.surface },
-  cancelText: { fontFamily: font.bold, fontSize: 15, color: colors.textSecondary },
-  confirmDanger: { backgroundColor: colors.danger },
-  confirmPrimary: { backgroundColor: colors.primary },
-  confirmText: { fontFamily: font.bold, fontSize: 15 },
-  confirmDangerText: { color: '#fff' },
-  confirmPrimaryText: { color: colors.onPrimary },
-  pressed: { opacity: 0.85 },
-});
-
-const theme = themeColors('dark');
-const darkStyles = StyleSheet.create({
-  card: { borderColor: theme.border.strong },
-  glass: { backgroundColor: theme.surface.card },
-  iconDanger: { backgroundColor: theme.status.dangerSoft },
-  iconInfo: { backgroundColor: theme.surface.muted },
-  title: { color: theme.ink.primary },
-  message: { color: theme.ink.muted },
   cancel: { backgroundColor: theme.surface.raised },
-  cancelText: { color: theme.ink.secondary },
+  cancelText: { fontFamily: font.bold, fontSize: 15, color: theme.ink.secondary },
   confirmDanger: { backgroundColor: theme.status.danger },
-  confirmPrimary: { backgroundColor: theme.border.action },
-  confirmText: { color: theme.ink.inverse },
+  confirmPrimary: { backgroundColor: theme.ink.action },
+  confirmText: { fontFamily: font.bold, fontSize: 15 },
+  confirmDangerText: { color: theme.ink.inverse },
+  confirmPrimaryText: { color: theme.ink.inverse },
+  pressed: { opacity: 0.85 },
 });

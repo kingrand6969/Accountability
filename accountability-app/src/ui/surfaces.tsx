@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 
 import {
-  colors,
   elevation,
   radius,
   semanticColors,
@@ -227,11 +226,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   primaryButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: semanticColors.ink.action,
+    borderRadius: radius.pill,
   },
   outlinedButton: {
-    backgroundColor: semanticColors.surface.card,
-    borderColor: semanticColors.border.action,
+    backgroundColor: 'transparent',
+    borderColor: semanticColors.border.strong,
     borderWidth: 1,
   },
   pressed: {
@@ -248,10 +248,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   primaryButtonLabel: {
-    color: colors.onPrimary,
+    color: semanticColors.ink.inverse,
   },
   outlinedButtonLabel: {
-    color: colors.primaryDark,
+    color: semanticColors.ink.primary,
   },
   iconButton: {
     borderRadius: radius.pill,
@@ -259,10 +259,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconButtonSelected: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: semanticColors.surface.muted,
   },
   creamCard: {
-    backgroundColor: semanticColors.surface.canvas,
+    backgroundColor: semanticColors.surface.card,
     borderRadius: radius.card,
     padding: spacing.lg,
     ...elevation.card,
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     minWidth: spacing.touch,
   },
   bottomSheet: {
-    backgroundColor: semanticColors.surface.canvas,
+    backgroundColor: semanticColors.surface.raised,
     borderTopLeftRadius: radius.sheet,
     borderTopRightRadius: radius.sheet,
     paddingHorizontal: spacing.xl,

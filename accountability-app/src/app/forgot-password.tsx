@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -7,9 +7,12 @@ import { validateEmail, validatePassword } from '../auth/validation';
 import { authErrorMessage } from '../auth/errors';
 import { AuthShell } from '../ui/AuthShell';
 import { Button } from '../ui/Button';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function ForgotPassword() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [step, setStep] = useState<'email' | 'reset'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -70,7 +73,7 @@ export default function ForgotPassword() {
           <TextInput
             style={styles.input}
             placeholder="Email"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={theme.ink.muted}
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
@@ -89,7 +92,7 @@ export default function ForgotPassword() {
           <TextInput
             style={styles.codeInput}
             placeholder="6-digit code"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={theme.ink.muted}
             keyboardType="number-pad"
             autoComplete="one-time-code"
             textContentType="oneTimeCode"
@@ -101,14 +104,14 @@ export default function ForgotPassword() {
             <TextInput
               style={styles.pwInput}
               placeholder="New password (8+ characters)"
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={theme.ink.muted}
               secureTextEntry={!showPw}
               autoComplete="new-password"
               value={password}
               onChangeText={setPassword}
             />
             <Pressable onPress={() => setShowPw((s) => !s)} hitSlop={8} style={styles.eye}>
-              <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
+              <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.ink.muted} />
             </Pressable>
           </View>
           <Button title="Update password" onPress={onReset} loading={busy} style={styles.button} />
@@ -121,45 +124,45 @@ export default function ForgotPassword() {
   );
 }
 
-const styles = StyleSheet.create({
-  title: { fontSize: 24, fontFamily: font.extrabold, color: colors.text },
-  sub: { fontSize: 14.5, fontFamily: font.regular, color: colors.textMuted, lineHeight: 21, marginBottom: spacing.xs },
-  email: { fontFamily: font.bold, color: colors.text },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  title: { fontSize: 24, fontFamily: font.extrabold, color: theme.ink.primary },
+  sub: { fontSize: 14.5, fontFamily: font.regular, color: theme.ink.muted, lineHeight: 21, marginBottom: spacing.xs },
+  email: { fontFamily: font.bold, color: theme.ink.primary },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: 14,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: theme.ink.primary,
+    backgroundColor: theme.surface.raised,
   },
   codeInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: 14,
     fontSize: 20,
     fontFamily: font.bold,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: theme.ink.primary,
+    backgroundColor: theme.surface.raised,
     textAlign: 'center',
     letterSpacing: 6,
   },
   pwWrap: { position: 'relative', justifyContent: 'center' },
   pwInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: 14,
     paddingRight: 48,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: theme.ink.primary,
+    backgroundColor: theme.surface.raised,
   },
   eye: { position: 'absolute', right: 8, height: 44, width: 40, alignItems: 'center', justifyContent: 'center' },
   button: { marginTop: spacing.xs },
-  back: { textAlign: 'center', fontSize: 14, fontFamily: font.medium, color: colors.primaryDark, marginTop: spacing.md },
+  back: { textAlign: 'center', fontSize: 14, fontFamily: font.medium, color: theme.ink.action, marginTop: spacing.md },
 });

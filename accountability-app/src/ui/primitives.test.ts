@@ -1,7 +1,8 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { createElement, type ComponentType, type ReactElement } from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Image, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import {
   CreamCard,
@@ -14,12 +15,24 @@ import {
   RoundedBottomSheetSurface,
 } from './surfaces';
 import { QuietTopTabs, SegmentedControl } from './navigation';
-import { colors, radius, semanticColors, spacing, type } from './theme';
+import { AuthShell } from './AuthShell';
+import { EmptyState } from './EmptyState';
+import { AppThemeProvider } from './AppThemeProvider';
+import { radius, semanticColors, spacing, themeColors, type } from './theme';
+
+jest.mock('@expo/vector-icons/Ionicons', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
+  function MockIonicons(props: Record<string, unknown>) {
+    return React.createElement(ReactNative.View, props);
+  }
+  return { __esModule: true, default: MockIonicons };
+});
 
 function render(element: ReactElement) {
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
-    renderer = TestRenderer.create(element);
+    renderer = TestRenderer.create(createElement(AppThemeProvider, null, element));
   });
   return renderer;
 }
@@ -85,6 +98,114 @@ function compositeOverWhite(rgba: string) {
 }
 
 describe('AccountAbility shared primitives', () => {
+  it('renders AuthShell and EmptyState on approved dark surfaces through the real provider', () => {
+    const dark = themeColors('dark');
+    const auth = render(
+      createElement(
+        AppThemeProvider,
+        null,
+        createElement(AuthShell, null, createElement(Text, null, 'Sign in')),
+      ),
+    );
+    const authRoot = auth.toJSON() as TestRenderer.ReactTestRendererJSON;
+    expect(StyleSheet.flatten(authRoot.props.style)).toEqual(
+      expect.objectContaining({ backgroundColor: dark.surface.canvas }),
+    );
+    expect(
+      auth.root
+        .findAllByType(View)
+        .map((node) => StyleSheet.flatten(node.props.style))
+        .filter(Boolean),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ backgroundColor: dark.surface.card }),
+      ]),
+    );
+
+    const empty = render(
+      createElement(
+        AppThemeProvider,
+        null,
+        createElement(EmptyState, {
+          icon: 'calendar-outline',
+          title: 'Nothing scheduled',
+          subtitle: 'Your plan is clear.',
+        }),
+      ),
+    );
+    const emptyRoot = empty.toJSON() as TestRenderer.ReactTestRendererJSON;
+    expect(StyleSheet.flatten(emptyRoot.props.style)).toEqual(
+      expect.objectContaining({ backgroundColor: dark.surface.card }),
+    );
+    expect(empty.root.findByType(Ionicons).props.color).toBe(dark.ink.muted);
+    const title = empty.root.findByProps({ children: 'Nothing scheduled' });
+    const subtitle = empty.root.findByProps({ children: 'Your plan is clear.' });
+    expect(StyleSheet.flatten(title.props.style).color).toBe(dark.ink.primary);
+    expect(StyleSheet.flatten(subtitle.props.style).color).toBe(dark.ink.muted);
+  });
+
+  it('renders navigation tracks, labels, and indicator with permanent dark roles', () => {
+    const dark = themeColors('dark');
+    const segmented = render(
+      createElement(
+        AppThemeProvider,
+        null,
+        createElement(SegmentedControl, {
+          accessibilityLabel: 'Feed view',
+          options: [
+            { value: 'buddies', label: 'Buddies' },
+            { value: 'discover', label: 'Discover' },
+          ],
+          value: 'buddies',
+          onChange: jest.fn(),
+        }),
+      ),
+    );
+    const segmentedRoot = segmented.toJSON() as TestRenderer.ReactTestRendererJSON;
+    expect(StyleSheet.flatten(segmentedRoot.props.style)).toEqual(
+      expect.objectContaining({
+        backgroundColor: dark.surface.card,
+        borderColor: dark.border.subtle,
+      }),
+    );
+    expect(StyleSheet.flatten(segmented.root.findAllByType(Text)[0].props.style).color).toBe(
+      dark.ink.inverse,
+    );
+    expect(StyleSheet.flatten(segmented.root.findAllByType(Text)[1].props.style).color).toBe(
+      dark.ink.secondary,
+    );
+
+    const tabs = render(
+      createElement(
+        AppThemeProvider,
+        null,
+        createElement(QuietTopTabs, {
+          accessibilityLabel: 'Finance sections',
+          tabs: [
+            { value: 'today', label: 'Today' },
+            { value: 'goals', label: 'Goals' },
+          ],
+          value: 'goals',
+          onChange: jest.fn(),
+        }),
+      ),
+    );
+    const tabsRoot = tabs.toJSON() as TestRenderer.ReactTestRendererJSON;
+    expect(StyleSheet.flatten(tabsRoot.props.style)).toEqual(
+      expect.objectContaining({ backgroundColor: dark.surface.card }),
+    );
+    expect(StyleSheet.flatten(tabs.root.findAllByType(Text)[0].props.style).color).toBe(
+      dark.ink.muted,
+    );
+    expect(StyleSheet.flatten(tabs.root.findAllByType(Text)[1].props.style).color).toBe(
+      dark.ink.primary,
+    );
+    expect(
+      StyleSheet.flatten(tabs.root.findByProps({ testID: 'quiet-tab-indicator-goals' }).props.style)
+        .backgroundColor,
+    ).toBe(dark.ink.action);
+  });
+
   it('uses the editorial semantic type role and permits Dynamic Type wrapping', () => {
     const renderer = render(
       createElement(
@@ -105,8 +226,8 @@ describe('AccountAbility shared primitives', () => {
   });
 
   const buttonCases: [string, ComponentType<any>, string, string][] = [
-    ['primary', PrimaryButton, colors.primary, colors.onPrimary],
-    ['outlined', OutlinedButton, semanticColors.surface.card, semanticColors.ink.action],
+    ['primary', PrimaryButton, semanticColors.ink.action, semanticColors.ink.inverse],
+    ['outlined', OutlinedButton, 'transparent', semanticColors.ink.primary],
   ];
 
   it.each(buttonCases)(
@@ -152,6 +273,11 @@ describe('AccountAbility shared primitives', () => {
       expect(label.props.style).toEqual(
         expect.arrayContaining([expect.objectContaining({ color: textColor })]),
       );
+      if (_name === 'primary') {
+        expect(idleStyles).toEqual(
+          expect.arrayContaining([expect.objectContaining({ borderRadius: radius.pill })]),
+        );
+      }
     },
   );
 
@@ -197,7 +323,7 @@ describe('AccountAbility shared primitives', () => {
     expect(card.props.style).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          backgroundColor: semanticColors.surface.canvas,
+          backgroundColor: semanticColors.surface.card,
           borderRadius: radius.card,
         }),
       ]),
@@ -216,7 +342,7 @@ describe('AccountAbility shared primitives', () => {
     expect(sheet.props.style).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          backgroundColor: semanticColors.surface.canvas,
+          backgroundColor: semanticColors.surface.raised,
           borderTopLeftRadius: radius.sheet,
           borderTopRightRadius: radius.sheet,
         }),
@@ -368,7 +494,7 @@ describe('AccountAbility shared primitives', () => {
     expect(
       renderer.root.findByProps({ testID: 'quiet-tab-indicator-goals' }).props
         .style,
-    ).toEqual(expect.objectContaining({ backgroundColor: colors.navy }));
+    ).toEqual(expect.objectContaining({ backgroundColor: semanticColors.ink.action }));
     expect(
       renderer.root.findAllByType(Text)[1].props.numberOfLines,
     ).toBeUndefined();

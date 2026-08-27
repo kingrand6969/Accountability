@@ -12,8 +12,9 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { font, spacing } from './theme';
+import { font, spacing, type AppThemeColors } from './theme';
 import { BrandMark } from './BrandMark';
+import { useAppTheme } from './AppThemeProvider';
 
 type Props = {
   children: ReactNode;
@@ -21,8 +22,6 @@ type Props = {
   glass?: boolean;
   presentation?: 'default' | 'welcome';
 };
-
-const AUTH_CANVAS = '#0B0D0B';
 
 /** Branded backdrop for the auth screens: gradient, wordmark, elevated form card. */
 export function AuthShell({
@@ -32,6 +31,8 @@ export function AuthShell({
   presentation = 'default',
 }: Props) {
   const welcome = presentation === 'welcome';
+  const { colors: theme } = useAppTheme();
+  const styles = createStyles(theme);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -67,7 +68,7 @@ export function AuthShell({
           <View style={[styles.brand, welcome && styles.welcomeBrand]}>
             <BrandMark
               size={welcome ? 112 : 76}
-              color="#FFFFFF"
+              color={theme.ink.primary}
               accessibilityLabel="AccountAbility logo"
             />
             <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>
@@ -77,7 +78,7 @@ export function AuthShell({
           </View>
           {glass ? (
             <View style={styles.glassFrame}>
-              <BlurView intensity={Platform.OS === 'web' ? 40 : 55} tint="light" style={styles.glass}>
+              <BlurView intensity={Platform.OS === 'web' ? 40 : 55} tint="dark" style={styles.glass}>
                 <View style={styles.glassTint}>{children}</View>
               </BlurView>
             </View>
@@ -91,8 +92,8 @@ export function AuthShell({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: AUTH_CANVAS },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   heroImage: {
     ...StyleSheet.absoluteFill,
     width: '100%',
@@ -137,18 +138,18 @@ const styles = StyleSheet.create({
   wordmark: {
     fontFamily: font.extrabold,
     fontSize: 29,
-    color: '#fff',
+    color: theme.ink.primary,
     letterSpacing: -1.1,
   },
-  ability: { color: '#B9FF3D' },
+  ability: { color: theme.ink.action },
   welcomeWordmark: { fontSize: 31 },
-  tagline: { fontFamily: font.medium, fontSize: 13.5, color: '#EAF2E5' },
+  tagline: { fontFamily: font.medium, fontSize: 13.5, color: theme.ink.secondary },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.surface.card,
     borderRadius: 28,
     padding: spacing.xl,
     gap: spacing.md,
-    shadowColor: '#000',
+    shadowColor: theme.surface.canvas,
     shadowOpacity: 0.25,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
@@ -161,7 +162,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   welcomeCard: {
-    backgroundColor: '#F4F5F1',
+    backgroundColor: theme.surface.card,
     borderRadius: 22,
     padding: spacing.lg,
     gap: spacing.sm,
@@ -175,8 +176,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.48)',
-    shadowColor: '#0f172a',
+    borderColor: theme.border.strong,
+    shadowColor: theme.surface.canvas,
     shadowOpacity: 0.28,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 14 },
@@ -186,6 +187,6 @@ const styles = StyleSheet.create({
   glassTint: {
     padding: spacing.xl,
     gap: spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.76)',
+    backgroundColor: theme.surface.card,
   },
 });
