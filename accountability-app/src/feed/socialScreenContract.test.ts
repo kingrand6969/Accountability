@@ -60,6 +60,19 @@ function sourceSection(
 }
 
 describe('Group 3 social Feed contract', () => {
+  test('renders offline and refresh failures as full-width semantic status bands', () => {
+    const offline = styleBlock(feedSource, 'offlineNotice');
+    const error = styleBlock(feedSource, 'inlineError');
+
+    expect(offline).toContain('backgroundColor: theme.surface.muted');
+    expect(offline).not.toContain('margin');
+    expect(offline).not.toContain('border');
+    expect(error).toContain('backgroundColor: theme.status.dangerSoft');
+    expect(error).not.toContain('margin');
+    expect(error).not.toContain('border');
+    expect(error).not.toContain('borderRadius');
+  });
+
   test('preserves cursor pagination and request-generation guards', () => {
     expect(feedSource).toContain('const loadGeneration = useRef(0)');
     expect(feedSource).toContain('const generation = ++loadGeneration.current');

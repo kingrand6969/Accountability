@@ -77,4 +77,12 @@ describe('Feed manual appearance contract', () => {
     expect(storyRailSource).toContain('borderColor: theme.ink.action');
     expect(storyRailSource).toContain('backgroundColor: theme.surface.canvas');
   });
+
+  test('uses the quiet canvas for Feed loading, empty, and ad states', () => {
+    expect(feedSource).toContain('backgroundColor: theme.surface.canvas');
+    expect(styleBlock(feedSource, 'skeletonCard')).not.toContain('borderRadius');
+    expect(styleBlock(feedSource, 'skeletonCard')).not.toContain('borderWidth');
+    expect(styleBlock(feedSource, 'emptyCard')).not.toContain('borderWidth');
+    expect(styleBlock(feedSource, 'adWrap')).not.toContain('borderRadius');
+  });
 });
