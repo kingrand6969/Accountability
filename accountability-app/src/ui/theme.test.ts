@@ -33,11 +33,12 @@ function contrastRatio(foreground: string, background: string) {
 describe('AccountAbility semantic theme contract', () => {
   it('locks the approved brand and permanent dark semantic color roles', () => {
     expect(colors.primary).toBe('#B9FF3D');
-    expect(colors.navy).toBe('#F7F8F4');
+    expect(colors.navy).toBe('#0B0D0B');
     expect(colors.cream).toBe('#0B0D0B');
     expect(semanticColors.surface.canvas).toBe(colors.cream);
     expect(semanticColors.surface.card).toBe(colors.card);
-    expect(semanticColors.ink.primary).toBe(colors.navy);
+    expect(semanticColors.surface.inverse).toBe('#0B0D0B');
+    expect(semanticColors.ink.primary).toBe(colors.text);
     expect(semanticColors.border.subtle).toBe(colors.border);
     expect(semanticColors.status.success).toBe(colors.success);
     expect(category).toEqual({
@@ -103,13 +104,13 @@ describe('AccountAbility semantic theme contract', () => {
       primaryDark: '#B9FF3D',
       primarySoft: '#202520',
       success: '#2E7D32',
-      successSoft: '#EAF6E9',
+      successSoft: '#202520',
       danger: '#dc2626',
-      dangerSoft: '#fef2f2',
+      dangerSoft: '#202520',
       accent: '#B9FF3D',
       cheer: '#5F8F00',
       pro: '#53634E',
-      proSoft: '#EEF1EC',
+      proSoft: '#202520',
       ink: '#F7F8F4',
       inkSoft: '#CED4CB',
       inkFaint: '#9DA59D',
