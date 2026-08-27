@@ -12,7 +12,6 @@ export function JourneyEncouragementBar({
   onPress,
 }: {
   value: JourneyEncouragement | null;
-  dark?: boolean;
   onPress(): void;
 }) {
   const { colors: theme } = useAppTheme();

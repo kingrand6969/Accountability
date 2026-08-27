@@ -17,7 +17,6 @@ export function JourneyTabs({
   active,
 }: {
   active: JourneySection;
-  dark?: boolean;
 }) {
   const router = useRouter();
   const { fontScale } = useWindowDimensions();

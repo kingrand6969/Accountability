@@ -3,6 +3,12 @@ import path from 'node:path';
 import { describe, expect, test } from '@jest/globals';
 
 const source = (file: string) => fs.readFileSync(path.join(__dirname, file), 'utf8');
+const task5JourneyCallers = [
+  source('MomentumScreen.tsx'),
+  source('JournalScreen.tsx'),
+  source('JourneyPathScreen.tsx'),
+  source('../app/journey-progress.tsx'),
+];
 
 describe('Journey Momentum appearance contract', () => {
   test('themes the exported athlete surface and every async state without changing its routes', () => {
@@ -44,6 +50,7 @@ describe('Journey Momentum appearance contract', () => {
     expect(tabs).not.toContain('styles.rowDark');
     expect(tabs).not.toContain("color: '#FFFFFF'");
     expect(tabs).not.toContain('themeColors(');
+    expect(tabs).not.toContain('dark?: boolean');
   });
 
   test('themes the directly-used Cheers card with no white island in Dark mode', () => {
@@ -61,5 +68,13 @@ describe('Journey Momentum appearance contract', () => {
     expect(encouragement).not.toContain("borderColor: '#FFFFFF'");
     expect(encouragement).not.toContain('styles.barDark');
     expect(encouragement).not.toContain('themeColors(');
+    expect(encouragement).not.toContain('dark?: boolean');
+  });
+
+  test('Journey callers do not pass obsolete app-theme overrides', () => {
+    for (const caller of task5JourneyCallers) {
+      expect(caller).not.toMatch(/<JourneyTabs\b[^>]*\bdark=/s);
+      expect(caller).not.toMatch(/<JourneyEncouragementBar\b[^>]*\bdark=/s);
+    }
   });
 });
