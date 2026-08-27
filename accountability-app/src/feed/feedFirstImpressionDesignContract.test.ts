@@ -13,11 +13,12 @@ describe('Feed first-impression design', () => {
     expect(header).not.toContain('accessibilityLabel="AccountAbility"');
   });
 
-  test('centres the composer prompt copy without stretching the Text node', () => {
-    expect(feed).toContain('promptCopy: {');
-    expect(feed).toContain('justifyContent: \'center\'');
-    expect(feed).toContain('promptText: { fontFamily: font.regular');
-    expect(feed).not.toContain('promptText: { flex: 1');
+  test('starts the Feed with My Day and no boxed composer', () => {
+    expect(feed).not.toContain('styles.promptWrap');
+    expect(feed).not.toContain('styles.composerDivider');
+    expect(feed).not.toContain('styles.quickShareDivider');
+    expect(feed).toContain('onCreate={() => setCreateOpen(true)}');
+    expect(feed).toMatch(/const feedHeader = \(\s*<>\s*\{myId \? \(\s*<StoryRail/);
   });
 
   test('keeps My Day and its add control separate on the circular story rail', () => {

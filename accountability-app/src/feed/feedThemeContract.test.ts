@@ -31,11 +31,11 @@ describe('Feed manual appearance contract', () => {
     expect(feedSource).toContain("photoPreview: { flex: 1, justifyContent: 'center', backgroundColor: '#000' }");
   });
 
-  test('keeps dark status icons readable by theming the Feed safe-area header', () => {
+  test('keeps dark status icons readable with a canvas-colored Feed safe-area header', () => {
     expect(brandHeaderSource).toContain('useAppTheme');
     expect(brandHeaderSource).toContain('createStyles(theme)');
-    expect(brandHeaderSource).toContain('backgroundColor: theme.surface.card');
-    expect(brandHeaderSource).toContain('borderBottomColor: theme.border.subtle');
+    expect(brandHeaderSource).toContain('backgroundColor: theme.surface.canvas');
+    expect(brandHeaderSource).not.toContain('borderBottomWidth');
     expect(brandHeaderSource).toContain('color={theme.ink.action}');
     expect(brandHeaderSource).toContain('color: theme.ink.primary');
   });
@@ -50,6 +50,6 @@ describe('Feed manual appearance contract', () => {
     expect(proofCardSource).toContain('backgroundColor: theme.status.successSoft');
     expect(proofCardSource).toContain('borderColor: theme.status.success');
     expect(storyRailSource).toContain('borderColor: theme.ink.action');
-    expect(storyRailSource).toContain('backgroundColor: theme.surface.muted');
+    expect(storyRailSource).toContain('backgroundColor: theme.surface.canvas');
   });
 });

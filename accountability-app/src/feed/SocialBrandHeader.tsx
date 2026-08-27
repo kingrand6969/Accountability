@@ -83,21 +83,19 @@ type BrandHeaderStyles = ReturnType<typeof createStyles>;
 
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   header: {
-    minHeight: 58,
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.xs,
-    backgroundColor: theme.surface.card,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border.subtle,
+    backgroundColor: theme.surface.canvas,
   },
   wordmark: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: spacing.sm,
   },
-  account: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 16 },
+  account: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 14, letterSpacing: 0.25 },
   actions: { flexDirection: 'row', alignItems: 'center' },
   iconButton: {
     minWidth: 44,

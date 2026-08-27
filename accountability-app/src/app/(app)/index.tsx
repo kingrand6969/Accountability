@@ -39,7 +39,6 @@ import { useFeedAdsReady } from '../../pro/adAdapter';
 import { useIsPro } from '../../pro/ProProvider';
 import { showToast } from '../../ui/Toast';
 import { BroadcastSheet } from '../../feed/BroadcastSheet';
-import { Avatar } from '../../feed/Avatar';
 import { useUnreadNotifications } from '../../notify/useUnread';
 import { getMyProfile } from '../../profiles/api';
 import type { FeedPost } from '../../feed/types';
@@ -123,30 +122,6 @@ function FeedLoadingSkeleton() {
         </View>
       ))}
     </View>
-  );
-}
-
-function QuickShare({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: IoniconName;
-  label: string;
-  onPress: () => void;
-}) {
-  const { colors: theme } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.quickShare, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <Ionicons name={icon} size={18} color={theme.ink.action} />
-      <Text style={styles.quickShareText}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -665,49 +640,8 @@ export default function Feed() {
     ),
   });
 
-  function openOwnBuddyCard() {
-    const ownerId = currentUserIdRef.current;
-    if (!ownerId) return;
-    router.push({ pathname: '/buddy-card/[id]', params: { id: ownerId } } as never);
-  }
-
   const feedHeader = (
     <>
-      <View style={styles.promptWrap}>
-        <View style={styles.promptRow}>
-          <Pressable
-            style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}
-            onPress={openOwnBuddyCard}
-            disabled={!myId}
-            accessibilityRole="button"
-            accessibilityLabel="View your Buddy Card"
-          >
-            <Avatar
-              url={profileOwnerId === myId ? me.avatar : null}
-              name={profileOwnerId === myId ? me.name : null}
-              size={36}
-            />
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.promptAction, pressed && styles.pressed]}
-            onPress={() => router.push(DIRECT_POST_HREF as never)}
-            accessibilityRole="button"
-            accessibilityLabel="Share a win — create a post"
-          >
-            <View style={styles.promptCopy}>
-              <Text style={styles.promptText} numberOfLines={1}>Inspire us today!</Text>
-            </View>
-          </Pressable>
-        </View>
-        <View style={styles.composerDivider} />
-        <View style={styles.quickShareRow}>
-          <QuickShare icon="create-outline" label="Post" onPress={() => router.push(DIRECT_POST_HREF as never)} />
-          <View style={styles.quickShareDivider} />
-          <QuickShare icon="images-outline" label="Photo" onPress={() => router.push('/compose?photo=1' as never)} />
-          <View style={styles.quickShareDivider} />
-          <QuickShare icon="sparkles-outline" label="Flex" onPress={() => router.push('/win-card' as never)} />
-        </View>
-      </View>
       {myId ? (
         <StoryRail
           key={myId}
@@ -930,17 +864,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   sheetCopy: { flex: 1 },
   sheetRowTitle: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
   sheetRowSub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted },
-  promptWrap: { ...contentMax, width: '93%', alignSelf: 'center', marginTop: spacing.sm, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: radius.lg, backgroundColor: theme.surface.card, overflow: 'hidden', ...shadow.card },
-  promptRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
-  avatarButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  promptAction: { minHeight: 48, flex: 1, justifyContent: 'center', paddingRight: spacing.md },
-  promptCopy: { flex: 1, justifyContent: 'center' },
-  promptText: { fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
-  composerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.border.subtle, marginHorizontal: spacing.lg },
-  quickShareRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center' },
-  quickShare: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  quickShareDivider: { width: StyleSheet.hairlineWidth, height: 24, backgroundColor: theme.border.subtle },
-  quickShareText: { color: theme.ink.secondary, fontFamily: font.semibold, fontSize: 13.5 },
   inlineError: { minHeight: 58, margin: spacing.md, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: theme.status.danger, backgroundColor: theme.status.dangerSoft },
   inlineErrorCopy: { flex: 1 },
   inlineErrorTitle: { color: theme.status.danger, fontFamily: font.bold, fontSize: 13 },
