@@ -41,15 +41,16 @@ function composite(foreground: string, background: string, alpha: number): strin
 }
 
 describe('competition and challenge appearance contract', () => {
-  test('themes the shared glass foundation while preserving the approved Light treatment', () => {
+  test('themes the shared glass foundation with permanent dark semantic roles', () => {
     expect(glass).toContain("import { useAppTheme } from './AppThemeProvider'");
-    expect(glass).toContain("mode === 'light'");
-    expect(glass).toContain("['#F6F7F3', '#ECEFE8', '#DDE3DA']");
-    expect(glass).toContain("['#EEF7E4', '#B9FF3D']");
-    expect(glass).toContain("tint={mode === 'light' ? 'light' : 'dark'}");
+    expect(glass).toContain('[theme.surface.canvas, theme.surface.card, theme.surface.raised]');
+    expect(glass).toContain('[theme.ink.action, theme.surface.muted]');
+    expect(glass).toContain('tint="dark"');
     expect(glass).toContain('theme.surface.canvas');
     expect(glass).toContain('theme.surface.card');
     expect(glass).toContain('theme.border.strong');
+    expect(glass).not.toContain("mode === 'light'");
+    expect(glass).not.toContain("tint='light'");
   });
 
   test('competition controls keep their exact Light palette and derive Dark from semantic roles', () => {

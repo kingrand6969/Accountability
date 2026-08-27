@@ -9,9 +9,10 @@ const sources = {
   menu: readFileSync(path.resolve(__dirname, 'PostMenu.tsx'), 'utf8'),
   confirm: readFileSync(path.resolve(__dirname, '../ui/ConfirmDialog.tsx'), 'utf8'),
 };
+const adaptiveSources = Object.entries(sources).filter(([name]) => name !== 'confirm');
 
 describe('Feed interaction appearance contract', () => {
-  test.each(Object.entries(sources))(
+  test.each(adaptiveSources)(
     '%s follows the manual app appearance and semantic dark roles',
     (_name, source) => {
       expect(source).toContain('useAppTheme');
@@ -22,12 +23,25 @@ describe('Feed interaction appearance contract', () => {
     },
   );
 
+  test('confirm uses permanent semantic dark roles without a light fallback', () => {
+    expect(sources.confirm).toContain('useAppTheme');
+    expect(sources.confirm).toContain('const { colors: theme } = useAppTheme()');
+    expect(sources.confirm).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(sources.confirm).toContain('tint="dark"');
+    expect(sources.confirm).toContain('backgroundColor: theme.interaction.scrim');
+    expect(sources.confirm).toContain('backgroundColor: theme.surface.card');
+    expect(sources.confirm).toContain('borderColor: theme.border.strong');
+    expect(sources.confirm).not.toContain("mode === 'dark'");
+    expect(sources.confirm).not.toContain('darkStyles');
+    expect(sources.confirm).not.toContain("'light'");
+  });
+
   test('keeps every Light foundation visible while adding dark sheet, ink, border, and action roles', () => {
     expect(sources.broadcast).toContain('backgroundColor: colors.card');
     expect(sources.encouragement).toContain('backgroundColor: colors.cream');
     expect(sources.recorder).toContain('backgroundColor: colors.cream');
     expect(sources.menu).toContain('backgroundColor: colors.card');
-    expect(sources.confirm).toContain("tint={dark ? 'dark' : 'light'}");
+    expect(sources.confirm).toContain('tint="dark"');
 
     for (const source of Object.values(sources)) {
       expect(source).toContain('theme.surface');

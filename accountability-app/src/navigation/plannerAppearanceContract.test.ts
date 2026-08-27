@@ -18,10 +18,14 @@ describe('Planner create and detail appearance contract', () => {
     expect(addSource).toContain('backgroundColor: palette.scrim');
   });
 
-  test('the month calendar receives the active appearance while retaining its date semantics and touch geometry', () => {
-    expect(calendarSource).toContain('theme = themeColors(\'light\')');
-    expect(calendarSource).toContain("mode = 'light'");
+  test('the month calendar defaults to permanent dark roles while retaining its date semantics and touch geometry', () => {
+    expect(calendarSource).toContain('theme = themeColors(\'dark\')');
+    expect(calendarSource).toContain("mode = 'dark'");
     expect(calendarSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
+    expect(calendarSource).toContain('card: theme.surface.card');
+    expect(calendarSource).toContain('border: theme.border.subtle');
+    expect(calendarSource).toContain('action: theme.ink.action');
+    expect(calendarSource).not.toContain("mode === 'light'");
     expect(calendarSource).toContain('backgroundColor: palette.card');
     expect(calendarSource).toContain('borderColor: palette.border');
     expect(calendarSource).toContain('backgroundColor: palette.action');
@@ -29,11 +33,14 @@ describe('Planner create and detail appearance contract', () => {
     expect(calendarSource).toContain('width: 40, height: 40');
   });
 
-  test('the time picker adapts its controls and modal glass without changing minute entry behavior', () => {
-    expect(timePickerSource).toContain('theme = themeColors(\'light\')');
-    expect(timePickerSource).toContain("mode = 'light'");
+  test('the time picker uses permanent dark controls and modal glass without changing minute entry behavior', () => {
+    expect(timePickerSource).toContain('theme = themeColors(\'dark\')');
+    expect(timePickerSource).toContain("mode = 'dark'");
     expect(timePickerSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(timePickerSource).toContain('tint={mode}');
+    expect(timePickerSource).toContain('tint="dark"');
+    expect(timePickerSource).toContain('field: theme.surface.raised');
+    expect(timePickerSource).toContain('scrim: theme.interaction.scrim');
+    expect(timePickerSource).not.toContain("mode === 'light'");
     expect(timePickerSource).toContain('backgroundColor: palette.field');
     expect(timePickerSource).toContain('backgroundColor: palette.menuGlass');
     expect(timePickerSource).toContain('minHeight: spacing.touch');
