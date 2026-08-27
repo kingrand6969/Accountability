@@ -414,11 +414,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   hintTile: {
     width: STORY_ITEM,
     height: 76,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: theme.border.subtle,
-    backgroundColor: theme.surface.muted,
-    overflow: 'hidden',
   },
   retryTile: {
     width: 112,
@@ -458,8 +453,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   hintIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
   },

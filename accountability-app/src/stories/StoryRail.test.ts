@@ -43,4 +43,18 @@ describe('StoryRail circular-bubble presentation', () => {
     expect(source).not.toContain('const TILE_H = 132');
     expect(source).not.toContain('LinearGradient');
   });
+
+  test('keeps the buddy prompt as an unframed canvas control', () => {
+    const hintTile = source.match(/hintTile:\s*\{([\s\S]*?)\},\s*retryTile:/)?.[1];
+
+    expect(hintTile).toContain('width: STORY_ITEM');
+    expect(hintTile).not.toContain('backgroundColor');
+    expect(hintTile).not.toContain('borderWidth');
+    expect(hintTile).not.toContain('borderColor');
+    expect(hintTile).not.toContain('borderRadius');
+    expect(hintTile).not.toContain('shadow');
+    expect(hintTile).not.toContain('elevation');
+    expect(source).toContain('accessibilityLabel="Find accountability buddies"');
+    expect(source).toContain("onPress={() => router.push('/buddy')}");
+  });
 });
