@@ -46,6 +46,11 @@ describe('completed Run sharing actions', () => {
     await act(async () => myDay.props.onPress());
     expect(onMyDay).toHaveBeenCalledTimes(1);
     expect(onDestination).not.toHaveBeenCalled();
+
+    const saveImage = renderer.root.findByProps({ accessibilityLabel: 'Save image' });
+    await act(async () => saveImage.props.onPress());
+    expect(onDestination).toHaveBeenCalledWith('phone');
+    expect(renderer.root.findByProps({ children: 'Image saved' })).toBeTruthy();
     act(() => renderer.unmount());
   });
 
@@ -99,7 +104,7 @@ describe('completed Run sharing actions', () => {
     ]);
 
     await act(async () => {
-      await renderer.root.findByProps({ accessibilityLabel: 'Save to phone' }).props.onPress();
+      await renderer.root.findByProps({ accessibilityLabel: 'Save image' }).props.onPress();
     });
     expect([...new Set(renderer.root.findAllByProps({ accessibilityRole: 'alert' }).map((node) => node.props.children))]).toEqual([
       'Couldn’t save this image to your phone. Your run is still saved—try again.',

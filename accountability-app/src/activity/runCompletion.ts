@@ -148,7 +148,7 @@ export function createDurableCompletionController<
 export type RunSyncPresentation = {
   queued: boolean;
   status: UploadStatus | null;
-  title: 'Saved on phone';
+  title: 'Run saved';
   detail: string;
   feedDisabledReason: string | null;
 };
@@ -156,14 +156,14 @@ export type RunSyncPresentation = {
 function detailFor(status: UploadStatus): string {
   switch (status) {
     case 'uploading':
-      return 'Uploading now';
+      return 'Syncing to your account';
     case 'needs_sign_in':
-      return 'Sign in to upload automatically';
+      return 'Sign in to sync this run';
     case 'needs_attention':
-      return 'Upload needs attention';
+      return 'Sync needs attention';
     case 'saved':
     case 'waiting_network':
-      return 'Uploads automatically when online';
+      return 'Syncs automatically when online';
   }
 }
 
@@ -178,7 +178,7 @@ export function runSyncPresentation(
     return {
       queued: true,
       status: queued.status,
-      title: 'Saved on phone',
+      title: 'Run saved',
       detail,
       feedDisabledReason: detail,
     };
@@ -187,11 +187,11 @@ export function runSyncPresentation(
   return {
     queued: false,
     status: null,
-    title: 'Saved on phone',
+    title: 'Run saved',
     detail:
       initialStatus === 'waiting_network'
         ? detailFor(initialStatus)
-        : 'Uploaded',
+        : 'Synced to your account',
     feedDisabledReason: null,
   };
 }

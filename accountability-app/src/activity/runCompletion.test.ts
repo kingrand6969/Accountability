@@ -769,9 +769,9 @@ describe('run sync presentation', () => {
     ).toEqual({
       queued: true,
       status: 'waiting_network',
-      title: 'Saved on phone',
-      detail: 'Uploads automatically when online',
-      feedDisabledReason: 'Uploads automatically when online',
+      title: 'Run saved',
+      detail: 'Syncs automatically when online',
+      feedDisabledReason: 'Syncs automatically when online',
     });
   });
 
@@ -779,18 +779,18 @@ describe('run sync presentation', () => {
     expect(runSyncPresentation(ACTIVITY_ID, 'saved', [])).toEqual({
       queued: false,
       status: null,
-      title: 'Saved on phone',
-      detail: 'Uploaded',
+      title: 'Run saved',
+      detail: 'Synced to your account',
       feedDisabledReason: null,
     });
   });
 
-  it('still says Saved on phone when the network is absent', () => {
+  it('keeps local run saving distinct from account sync when the network is absent', () => {
     expect(
       runSyncPresentation(ACTIVITY_ID, 'waiting_network', []),
     ).toMatchObject({
-      title: 'Saved on phone',
-      detail: 'Uploads automatically when online',
+      title: 'Run saved',
+      detail: 'Syncs automatically when online',
     });
   });
 });
@@ -852,7 +852,7 @@ describe('fail-closed Feed availability', () => {
       }),
     ).toEqual({
       enabled: false,
-      reason: 'Uploads automatically when online',
+      reason: 'Syncs automatically when online',
     });
   });
 });

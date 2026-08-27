@@ -51,9 +51,9 @@ const actions: readonly {
   },
   {
     destination: 'phone',
-    label: 'Save to phone',
-    progressLabel: 'Saving to phone…',
-    successLabel: 'Saved to phone',
+    label: 'Save image',
+    progressLabel: 'Saving image…',
+    successLabel: 'Image saved',
     icon: 'download-outline',
   },
   {
