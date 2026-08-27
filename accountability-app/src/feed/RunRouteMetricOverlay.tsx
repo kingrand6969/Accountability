@@ -22,11 +22,16 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
   const distance = numberValue(data.distance_m);
   const duration = numberValue(data.duration_s);
   const points = routeValue(data.route);
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   if (data.verified !== true || distance == null || duration == null) return null;
+  const isLargeText = fontScale >= 1.75;
   const traceWidth = Math.min(126, Math.max(92, width * 0.27));
   return (
-    <View style={styles.overlay} pointerEvents="none">
+    <View
+      testID="run-route-metric-overlay"
+      style={[styles.overlay, isLargeText && styles.overlayLarge]}
+      pointerEvents="none"
+    >
       <LinearGradient colors={['transparent', 'rgba(2,8,20,.88)']} style={StyleSheet.absoluteFill} />
       {points.length > 1 ? (
         <RouteTrace
@@ -36,21 +41,24 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
           stroke={3}
           accent="#B9FF3D"
           pad={8}
-          style={styles.route}
+          style={StyleSheet.flatten([styles.route, isLargeText && styles.routeLarge])}
         />
       ) : null}
-      <View style={styles.stats}>
-        <Metric value={formatKm(distance)} label="km" />
-        <Metric value={formatDuration(duration)} label="time" />
-        <Metric value={formatPace(distance, duration)} label="pace /km" />
+      <View testID="run-route-metrics" style={[styles.stats, isLargeText && styles.statsLarge]}>
+        <Metric value={formatKm(distance)} label="km" largeText={isLargeText} />
+        <Metric value={formatDuration(duration)} label="time" largeText={isLargeText} />
+        <Metric value={formatPace(distance, duration)} label="pace /km" largeText={isLargeText} />
       </View>
     </View>
   );
 }
 
-function Metric({ value, label }: { value: string; label: string }) {
+function Metric({ value, label, largeText }: { value: string; label: string; largeText: boolean }) {
   return (
-    <View style={styles.metric}>
+    <View
+      testID={`run-route-metric-${label}`}
+      style={[styles.metric, largeText && styles.metricLarge]}
+    >
       <Text style={styles.value}>{value}</Text>
       <Text style={styles.label}>{label}</Text>
     </View>
@@ -67,14 +75,38 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     padding: spacing.md,
   },
+  overlayLarge: {
+    height: 286,
+  },
   route: { position: 'absolute', right: spacing.sm, top: 5 },
+  routeLarge: {
+    position: 'relative',
+    right: undefined,
+    top: undefined,
+    alignSelf: 'flex-end',
+    marginBottom: spacing.sm,
+  },
   stats: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.lg,
   },
+  statsLarge: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: spacing.xs,
+    width: '100%',
+  },
   metric: {
     minWidth: 68,
+  },
+  metricLarge: {
+    minWidth: 0,
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   value: {
     color: '#FFFFFF',

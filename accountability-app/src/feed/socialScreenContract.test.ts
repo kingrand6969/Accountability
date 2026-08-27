@@ -104,6 +104,14 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain('<Text style={styles.suggested}>Suggested for you</Text>');
   });
 
+  test('uses the behavior-tested suggestion coordinator for discovery and requests', () => {
+    expect(feedSource).toContain('createFeedBuddySuggestionCoordinator');
+    expect(feedSource).toContain('suggestionCoordinator.runDiscovery');
+    expect(feedSource).toContain('suggestionCoordinator.startRequest');
+    expect(feedSource).not.toContain('suggestionGeneration');
+    expect(feedSource).not.toContain('buddyRequestsInFlightRef');
+  });
+
   test('preserves the remaining Feed post-entry paths and other handoffs', () => {
     expect(DIRECT_POST_HREF).toEqual({ pathname: '/compose', params: { text: '' } });
     expect(feedSource).toContain("from '../../entry/createFlow'");
@@ -185,15 +193,21 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain("'I showed up today.'");
   });
 
-  test('keeps truthful run data in one compact metric row without vertical rules', () => {
+  test('keeps truthful run data responsive without vertical rules', () => {
     expect(metricSource).toContain('<RouteTrace');
     expect(metricSource).toContain('formatKm(distance)');
     expect(metricSource).toContain('formatDuration(duration)');
     expect(metricSource).toContain('formatPace(distance, duration)');
     expect(metricSource.match(/<LinearGradient/g)).toHaveLength(1);
     expect(metricSource).not.toContain('styles.rule');
+    expect(metricSource).toContain('const isLargeText = fontScale >= 1.75');
+    expect(metricSource).toContain('styles.overlayLarge');
+    expect(metricSource).toContain('styles.routeLarge');
+    expect(metricSource).toContain('styles.statsLarge');
     expect(styleBlock(metricSource, 'stats')).toContain("alignItems: 'flex-end'");
     expect(styleBlock(metricSource, 'stats')).toContain('gap: spacing.lg');
+    expect(styleBlock(metricSource, 'statsLarge')).toContain("flexDirection: 'column'");
+    expect(styleBlock(metricSource, 'routeLarge')).toContain("position: 'relative'");
     expect(styleBlock(metricSource, 'metric')).toContain('minWidth: 68');
     expect(styleBlock(metricSource, 'value')).toContain("color: '#FFFFFF'");
     expect(styleBlock(metricSource, 'value')).toContain('lineHeight: 23');

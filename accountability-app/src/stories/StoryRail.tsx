@@ -222,17 +222,19 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
         </Pressable>
         <Text style={styles.createLabel}>My Day</Text>
         <Pressable
-          style={styles.createPlus}
+          testID="story-create-plus-target"
+          style={styles.createPlusTarget}
           onPress={onAddStory}
-          hitSlop={4}
           accessibilityRole="button"
           accessibilityLabel="Add to My Day"
         >
-          {posting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="add" size={14} color="#fff" />
-          )}
+          <View testID="story-create-plus-visual" style={styles.createPlusVisual}>
+            {posting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="add" size={14} color="#fff" />
+            )}
+          </View>
         </Pressable>
       </View>
 
@@ -388,10 +390,16 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createPlus: {
+  createPlusTarget: {
     position: 'absolute',
-    top: 34,
-    left: 38,
+    top: 23,
+    left: 27,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createPlusVisual: {
     width: 22,
     height: 22,
     borderRadius: 11,

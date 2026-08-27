@@ -66,7 +66,10 @@ import { reconcileFeedPostsPublished } from '../../feed/feedPublishSignal';
 import { DIRECT_POST_HREF, type DirectPostHref } from '../../entry/createFlow';
 import { userFacingErrorMessage } from '../../ui/userFacingError';
 import { listDiscoveryCandidates, sendRequest, type Candidate } from '../../buddy/api';
-import { rankFeedBuddySuggestions } from '../../feed/feedBuddySuggestions';
+import {
+  createFeedBuddySuggestionCoordinator,
+  rankFeedBuddySuggestions,
+} from '../../feed/feedBuddySuggestions';
 import { authorLabel } from '../../feed/format';
 import { FeedBuddyRail } from '../../feed/FeedBuddyRail';
 import { buildQuietFeedRows, type QuietFeedRow } from '../../feed/quietFeedRows';
@@ -157,9 +160,8 @@ export default function Feed() {
   const [suggestionOwnerId, setSuggestionOwnerId] = useState<string | null>(null);
   const [buddyRequestsInFlight, setBuddyRequestsInFlight] = useState<Set<string>>(new Set());
   const likesInFlight = useRef<Set<string>>(new Set());
-  const buddyRequestsInFlightRef = useRef<Set<string>>(new Set());
   const loadGeneration = useRef(0);
-  const suggestionGeneration = useRef(0);
+  const suggestionCoordinator = useMemo(() => createFeedBuddySuggestionCoordinator(), []);
   const storyPickerQueue = useMemo(() => createStoryPickerQueue(myId), [myId]);
   const feedListRef = useRef<FlatList<FeedRow>>(null);
   const feedOffset = useRef(0);
@@ -238,37 +240,25 @@ export default function Feed() {
   }, [myId]);
 
   useEffect(() => {
-    const generation = ++suggestionGeneration.current;
-    const requestedOwner = myId;
-    const inFlightRequests = buddyRequestsInFlightRef.current;
+    const ownerGeneration = suggestionCoordinator.activateOwner(myId);
     setBuddySuggestions([]);
     setSuggestionOwnerId(null);
     setBuddyRequestsInFlight(new Set());
-    inFlightRequests.clear();
-    if (!requestedOwner) {
+    if (!ownerGeneration) {
       return () => {
-        suggestionGeneration.current += 1;
-        inFlightRequests.clear();
+        suggestionCoordinator.invalidate();
       };
     }
-    void Promise.resolve().then(async () => {
-      try {
-        const { candidates, viewerArea } = await listDiscoveryCandidates();
-        if (
-          generation !== suggestionGeneration.current
-          || currentUserIdRef.current !== requestedOwner
-        ) return;
-        setBuddySuggestions(rankFeedBuddySuggestions(candidates, viewerArea));
-        setSuggestionOwnerId(requestedOwner);
-      } catch {
-        // Buddy suggestions are an optional Feed enhancement.
-      }
+    void suggestionCoordinator.runDiscovery(ownerGeneration, listDiscoveryCandidates).then((result) => {
+      if (result.status !== 'loaded') return;
+      const { candidates, viewerArea } = result.value;
+      setBuddySuggestions(rankFeedBuddySuggestions(candidates, viewerArea));
+      setSuggestionOwnerId(ownerGeneration.ownerId);
     });
     return () => {
-      suggestionGeneration.current += 1;
-      inFlightRequests.clear();
+      suggestionCoordinator.invalidate(ownerGeneration);
     };
-  }, [myId]);
+  }, [myId, suggestionCoordinator]);
 
   useEffect(() => {
     let alive = true;
@@ -570,33 +560,24 @@ export default function Feed() {
 
   async function addSuggestedBuddy(candidate: Candidate) {
     const requestedOwner = myId;
-    const requestedGeneration = suggestionGeneration.current;
-    if (
-      !requestedOwner
-      || suggestionOwnerId !== requestedOwner
-      || buddyRequestsInFlightRef.current.has(candidate.id)
-    ) return;
-    buddyRequestsInFlightRef.current.add(candidate.id);
-    setBuddyRequestsInFlight(new Set(buddyRequestsInFlightRef.current));
-    const isCurrentSuggestionRequest = () =>
-      suggestionGeneration.current === requestedGeneration
-      && currentUserIdRef.current === requestedOwner
-      && suggestionOwnerId === requestedOwner;
-    try {
-      await sendRequest(candidate.id, requestedOwner);
-      if (!isCurrentSuggestionRequest()) return;
+    if (!requestedOwner || suggestionOwnerId !== requestedOwner) return;
+    const request = suggestionCoordinator.startRequest(
+      requestedOwner,
+      candidate.id,
+      (ownerId) => sendRequest(candidate.id, ownerId),
+    );
+    if (!request.started) return;
+    setBuddyRequestsInFlight(request.inFlightIds);
+    const result = await request.completion;
+    if (result.status === 'stale') return;
+
+    setBuddyRequestsInFlight(result.inFlightIds);
+    if (result.status === 'succeeded') {
       setBuddySuggestions((current) => current.filter((item) => item.id !== candidate.id));
       showToast(`Request sent to ${authorLabel(candidate.display_name)}`);
-    } catch (error) {
-      if (isCurrentSuggestionRequest()) {
-        Alert.alert('Could not send', userFacingErrorMessage(error, 'update'));
-      }
-    } finally {
-      if (isCurrentSuggestionRequest()) {
-        buddyRequestsInFlightRef.current.delete(candidate.id);
-        setBuddyRequestsInFlight(new Set(buddyRequestsInFlightRef.current));
-      }
+      return;
     }
+    Alert.alert('Could not send', userFacingErrorMessage(result.error, 'update'));
   }
 
   function onPostMenu(post: FeedPost) {

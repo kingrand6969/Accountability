@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
@@ -103,5 +103,18 @@ describe('FeedBuddyRail', () => {
     const action = renderer.root.findByProps({ accessibilityLabel: 'Add Alex as a buddy' });
 
     expect(action.props.accessibilityState).toEqual({ busy: true, disabled: true });
+  });
+
+  test('resolves each add action to a 44 by 44 target around a compact visual', () => {
+    const { renderer } = renderRail();
+    const action = renderer.root.findByProps({ accessibilityLabel: 'Add Alex as a buddy' });
+    const targetStyle = StyleSheet.flatten(action.props.style({ pressed: false }));
+    const visualStyle = StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'feed-buddy-add-visual-buddy-1' }).props.style,
+    );
+
+    expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(44);
+    expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(44);
+    expect(visualStyle).toEqual(expect.objectContaining({ width: 32, height: 32 }));
   });
 });

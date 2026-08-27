@@ -60,11 +60,16 @@ export function FeedBuddyRail({ candidates, busyIds, onOpen, onAdd, onSeeAll }: 
                 accessibilityLabel={`Add ${name} as a buddy`}
                 accessibilityState={busy ? { busy: true, disabled: true } : undefined}
               >
-                {busy ? (
-                  <ActivityIndicator size="small" color={theme.ink.inverse} />
-                ) : (
-                  <Ionicons name="add" size={18} color={theme.ink.inverse} />
-                )}
+                <View
+                  testID={`feed-buddy-add-visual-${candidate.id}`}
+                  style={styles.addVisual}
+                >
+                  {busy ? (
+                    <ActivityIndicator size="small" color={theme.ink.inverse} />
+                  ) : (
+                    <Ionicons name="add" size={18} color={theme.ink.inverse} />
+                  )}
+                </View>
               </Pressable>
             </View>
           );
@@ -109,9 +114,15 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     textAlign: 'center',
   },
   add: {
+    width: 44,
+    height: 44,
+    marginTop: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addVisual: {
     width: 32,
     height: 32,
-    marginTop: spacing.sm,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
