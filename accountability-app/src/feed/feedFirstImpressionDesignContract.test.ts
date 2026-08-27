@@ -24,8 +24,8 @@ describe('Feed first-impression design', () => {
   test('keeps My Day and its add control separate on the circular story rail', () => {
     expect(storyRail).toContain('<Text style={styles.createLabel}>My Day</Text>');
     expect(storyRail).toContain('const STORY_BUBBLE = 52');
-    expect(storyRail).toContain('style={styles.createPlusTarget}');
-    expect(storyRail).toContain('style={styles.createPlusVisual}');
+    expect(storyRail).toContain('style={[styles.createPlusTarget');
+    expect(storyRail).toContain('style={[styles.createPlusVisual');
     expect(storyRail).not.toContain("My Day{'\\n'}{meName?.trim().split(/\\s+/)[0] || 'You'}");
   });
 });

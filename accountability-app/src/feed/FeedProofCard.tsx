@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SaveToMemories } from '../memories/SaveToMemories';
 import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
@@ -9,7 +9,10 @@ import { authorLabel, taggedLabel, timeAgo } from './format';
 import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
 import { ProofHeadlineOverlay } from './ProofHeadlineOverlay';
-import { RunRouteMetricOverlay } from './RunRouteMetricOverlay';
+import {
+  RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
+  RunRouteMetricOverlay,
+} from './RunRouteMetricOverlay';
 import type { FeedPost } from './types';
 import type { EncouragementPreview } from './api';
 import { deriveFeedCardPresentation } from './SocialModeSelector';
@@ -58,10 +61,12 @@ export function FeedProofCard({
   onOpenEncouragement,
 }: Props) {
   const { colors: theme } = useAppTheme();
+  const { fontScale } = useWindowDimensions();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const typeLabel = postTypeLabel(post);
   const presentation = deriveFeedCardPresentation(post, currentUserId);
   const suggestionLabel = post.suggested ? 'Suggested for you' : null;
+  const needsLargeRunMedia = post.post_type === 'run' && fontScale >= 1.75;
   // Preserve the established accessibilityLabel="View comments" wording before adding the count.
   const viewCommentsLabel = 'View comments';
   return (
@@ -147,7 +152,11 @@ export function FeedProofCard({
               accessibilityRole="link"
               accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
               accessibilityHint="Opens the full post, comments, and Cheers"
-              style={({ pressed }) => [styles.media, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.media,
+                needsLargeRunMedia && styles.runMediaLarge,
+                pressed && styles.pressed,
+              ]}
             >
           {post.post_type === 'video' ? (
             <PostVideo url={post.image_url} active={mediaActive} />
@@ -368,6 +377,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     minHeight: 220,
     backgroundColor: theme.surface.muted,
     overflow: 'hidden',
+  },
+  runMediaLarge: {
+    minHeight: RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
   },
   topScrim: {
     position: 'absolute',

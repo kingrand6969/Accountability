@@ -38,6 +38,8 @@ type StoryRailProps = {
 
 const STORY_BUBBLE = 52;
 const STORY_ITEM = 64;
+const STORY_ADD_TARGET = 44;
+const STORY_ADD_VISUAL = 22;
 
 export function storyTileSizeForFontScale(fontScale: number) {
   if (fontScale >= 1.75) return { tileWidth: 104, tileHeight: 104, hintWidth: 104 };
@@ -60,6 +62,12 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
     hintWidth,
   } = storyTileSizeForFontScale(fontScale);
   const tileSize = { width: tileWidth, height: tileHeight };
+  const createPlusVisualItemLeft = (tileWidth - STORY_BUBBLE) / 2 + 32;
+  const createPlusTargetLeft = Math.min(
+    tileWidth - STORY_ADD_TARGET,
+    createPlusVisualItemLeft - (STORY_ADD_TARGET - STORY_ADD_VISUAL) / 2,
+  );
+  const createPlusVisualTargetLeft = createPlusVisualItemLeft - createPlusTargetLeft;
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [posting, setPosting] = useState(false);
   const [editorUri, setEditorUri] = useState<string | null>(null);
@@ -223,12 +231,15 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
         <Text style={styles.createLabel}>My Day</Text>
         <Pressable
           testID="story-create-plus-target"
-          style={styles.createPlusTarget}
+          style={[styles.createPlusTarget, { left: createPlusTargetLeft }]}
           onPress={onAddStory}
           accessibilityRole="button"
           accessibilityLabel="Add to My Day"
         >
-          <View testID="story-create-plus-visual" style={styles.createPlusVisual}>
+          <View
+            testID="story-create-plus-visual"
+            style={[styles.createPlusVisual, { left: createPlusVisualTargetLeft }]}
+          >
             {posting ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
@@ -393,14 +404,15 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   createPlusTarget: {
     position: 'absolute',
     top: 23,
-    left: 27,
-    width: 44,
+    width: STORY_ADD_TARGET,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   createPlusVisual: {
-    width: 22,
+    position: 'absolute',
+    top: 11,
+    width: STORY_ADD_VISUAL,
     height: 22,
     borderRadius: 11,
     backgroundColor: theme.ink.action,

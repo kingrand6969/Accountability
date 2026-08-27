@@ -4,6 +4,8 @@ import { RouteTrace } from '../activity/RouteTrace';
 import { formatDuration, formatKm, formatPace, type Pt } from '../activity/geo';
 import { font, spacing } from '../ui/theme';
 
+export const RUN_ROUTE_LARGE_OVERLAY_HEIGHT = 286;
+
 function numberValue(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -76,7 +78,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   overlayLarge: {
-    height: 286,
+    height: RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
   },
   route: { position: 'absolute', right: spacing.sm, top: 5 },
   routeLarge: {
