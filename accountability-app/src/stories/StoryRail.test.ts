@@ -5,18 +5,18 @@ import { describe, expect, test } from '@jest/globals';
 const source = fs.readFileSync(path.join(__dirname, 'StoryRail.tsx'), 'utf8');
 
 describe('StoryRail large-text layout', () => {
-  test('grows the story and buddy tiles without limiting font scaling', () => {
+  test('grows circular story items and buddy suggestions without limiting font scaling', () => {
     expect(source).toContain('storyTileSizeForFontScale(fontScale)');
-    expect(source).toContain('style={[styles.tile, tileSize]}');
+    expect(source).toContain('style={[styles.storyItem, tileSize]}');
     expect(source).toContain('style={[styles.hintTile, { width: hintWidth');
     expect(source).not.toContain('maxFontSizeMultiplier');
   });
 });
 
 describe('StoryRail receipt and retry presentation', () => {
-  test('uses viewed state for the existing story ring', () => {
+  test('uses viewed state for the circular story ring', () => {
     expect(source).toContain('viewed={g.viewed}');
-    expect(source).toContain('viewed && styles.tileAvatarRingViewed');
+    expect(source).toContain('viewed && styles.storyBubbleRingViewed');
     expect(source).toContain('`${name}, ${viewed ? \'viewed\' : \'unseen\'} story`');
   });
 
@@ -31,5 +31,16 @@ describe('StoryRail receipt and retry presentation', () => {
     expect(source).toContain('mutationGeneration.current += 1');
     expect(source).toContain('setEditorUri(null)');
     expect(source).toContain('generation !== mutationGeneration.current');
+  });
+});
+
+describe('StoryRail circular-bubble presentation', () => {
+  test('uses a flat circular story canvas with accessible controls', () => {
+    expect(source).toContain('const STORY_BUBBLE = 52');
+    expect(source).toContain('borderRadius: STORY_BUBBLE / 2');
+    expect(source).toContain('borderColor: theme.ink.action');
+    expect(source).toContain('accessibilityRole="button"');
+    expect(source).not.toContain('const TILE_H = 132');
+    expect(source).not.toContain('LinearGradient');
   });
 });

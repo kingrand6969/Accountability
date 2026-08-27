@@ -20,9 +20,10 @@ describe('Feed first-impression design', () => {
     expect(feed).not.toContain('promptText: { flex: 1');
   });
 
-  test('keeps the My Day label readable and moves the add control out of its text column', () => {
+  test('keeps My Day and its add control separate on the circular story rail', () => {
     expect(storyRail).toContain('<Text style={styles.createLabel}>My Day</Text>');
-    expect(storyRail).toMatch(/createPlus:\s*\{[\s\S]*?top: 8,/);
+    expect(storyRail).toContain('const STORY_BUBBLE = 52');
+    expect(storyRail).toContain('style={styles.createPlus}');
     expect(storyRail).not.toContain("My Day{'\\n'}{meName?.trim().split(/\\s+/)[0] || 'You'}");
   });
 });

@@ -22,7 +22,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { CachedImage } from '../ui/CachedImage';
 import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { listStoryGroups, addStory, type StoryGroup } from './api';
 import { authorLabel } from '../feed/format';
 import { PhotoEditor, type EditedPhoto } from '../media/PhotoEditor';
@@ -37,14 +36,13 @@ type StoryRailProps = {
   meAvatar?: string | null;
 };
 
+const STORY_BUBBLE = 52;
+const STORY_ITEM = 64;
+
 export function storyTileSizeForFontScale(fontScale: number) {
-  if (fontScale >= 1.75) {
-    return { tileWidth: 140, tileHeight: 184, hintWidth: 112 };
-  }
-  if (fontScale >= 1.25) {
-    return { tileWidth: 112, tileHeight: 152, hintWidth: 90 };
-  }
-  return { tileWidth: TILE_W, tileHeight: TILE_H, hintWidth: 72 };
+  if (fontScale >= 1.75) return { tileWidth: 104, tileHeight: 104, hintWidth: 104 };
+  if (fontScale >= 1.25) return { tileWidth: 80, tileHeight: 88, hintWidth: 80 };
+  return { tileWidth: STORY_ITEM, tileHeight: 76, hintWidth: STORY_ITEM };
 }
 
 /** Compact, photo-first My Day rail. It supports the feed without becoming the feed. */
@@ -191,10 +189,9 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
         <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
       ) : null}
 
-      {/* create tile — shows your latest story as background once you have one */}
-      <View style={[styles.tile, tileSize]}>
+      <View style={[styles.storyItem, tileSize]}>
         <Pressable
-          style={({ pressed }) => [styles.tileMainAction, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.createBubble, pressed && styles.pressed]}
           onPress={() => {
             if (mine) {
               router.push({ pathname: '/story/[userId]', params: { userId: mine.user_id } });
@@ -205,40 +202,27 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
           accessibilityLabel={mine ? 'View My Day' : 'Add to My Day'}
           accessibilityRole="button"
         >
-          {mine ? (
-            <CachedImage
-              uri={mine.stories[mine.stories.length - 1].image_url}
-              style={styles.tileImage}
-              contentFit="cover"
-            />
-          ) : (
-            <LinearGradient
-              colors={['#263223', '#6F9F00', '#83B91B']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.tileImage}
-            />
-          )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.6)']}
-            style={styles.tileScrim}
-            pointerEvents="none"
-          />
-          <View style={styles.createAvatarRing}>
-            {meAvatar ? (
-              <CachedImage uri={meAvatar} style={styles.createAvatar} contentFit="cover" />
+          <View style={styles.createBubbleRing}>
+            {mine ? (
+              <CachedImage
+                uri={mine.stories[mine.stories.length - 1].image_url}
+                style={styles.bubbleImage}
+                contentFit="cover"
+              />
+            ) : meAvatar ? (
+              <CachedImage uri={meAvatar} style={styles.bubbleImage} contentFit="cover" />
             ) : (
-              <View style={[styles.createAvatar, styles.createAvatarFallback]}>
+              <View style={[styles.bubbleImage, styles.createAvatarFallback]}>
                 <Text style={styles.createInitial}>
                   {(meName?.trim()?.[0] ?? 'Y').toUpperCase()}
                 </Text>
               </View>
             )}
           </View>
-          <Text style={styles.createLabel}>My Day</Text>
         </Pressable>
+        <Text style={styles.createLabel}>My Day</Text>
         <Pressable
-          style={({ pressed }) => [styles.createPlus, pressed && styles.pressed]}
+          style={styles.createPlus}
           onPress={onAddStory}
           hitSlop={4}
           accessibilityRole="button"
@@ -247,7 +231,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
           {posting ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Ionicons name="add" size={22} color="#fff" />
+            <Ionicons name="add" size={14} color="#fff" />
           )}
         </Pressable>
       </View>
@@ -257,7 +241,6 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
           key={g.user_id}
           styles={styles}
           image={g.stories[g.stories.length - 1].image_url}
-          avatar={g.avatar}
           name={authorLabel(g.name)}
           viewed={g.viewed}
           tileSize={tileSize}
@@ -313,7 +296,6 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
 function StoryTile({
   styles,
   image,
-  avatar,
   name,
   viewed,
   tileSize,
@@ -321,7 +303,6 @@ function StoryTile({
 }: {
   styles: StoryRailStyles;
   image: string;
-  avatar: string | null;
   name: string;
   viewed: boolean;
   tileSize: { width: number; height: number };
@@ -329,137 +310,110 @@ function StoryTile({
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.tile, tileSize, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.storyItem, tileSize, pressed && styles.pressed]}
       onPress={onPress}
       accessibilityLabel={`${name}, ${viewed ? 'viewed' : 'unseen'} story`}
       accessibilityRole="button"
     >
-      <CachedImage uri={image} style={styles.tileImage} contentFit="cover" />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.65)']}
-        style={styles.tileScrim}
-        pointerEvents="none"
-      />
-      <View style={[styles.tileAvatarRing, viewed && styles.tileAvatarRingViewed]}>
-        {avatar ? (
-          <CachedImage uri={avatar} style={styles.tileAvatar} />
-        ) : (
-          <View style={[styles.tileAvatar, styles.tileAvatarFallback]}>
-            <Ionicons name="person" size={13} color="#fff" />
-          </View>
-        )}
+      <View style={[styles.storyBubbleRing, viewed && styles.storyBubbleRingViewed]}>
+        <CachedImage uri={image} style={styles.bubbleImage} contentFit="cover" />
       </View>
-      <Text style={styles.tileName} numberOfLines={2}>
+      <Text style={styles.storyName} numberOfLines={1}>
         {name}
       </Text>
     </Pressable>
   );
 }
 
-const TILE_W = 92;
-const TILE_H = 132;
-
 type StoryRailStyles = ReturnType<typeof createStyles>;
 
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   rail: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
     gap: spacing.sm,
+    backgroundColor: theme.surface.canvas,
   },
   pressed: { opacity: 0.85 },
-  tile: {
-    width: TILE_W,
-    height: TILE_H,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: theme.surface.muted,
+  storyItem: {
+    width: STORY_ITEM,
+    height: 76,
+    alignItems: 'center',
   },
-  tileMainAction: {
-    flex: 1,
-  },
-  tileImage: { width: '100%', height: '100%' },
-  tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 64 },
-  tileAvatarRing: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2.5,
+  storyBubbleRing: {
+    width: STORY_BUBBLE,
+    height: STORY_BUBBLE,
+    borderRadius: STORY_BUBBLE / 2,
+    borderWidth: 2,
     borderColor: theme.ink.action,
     backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    padding: 2,
   },
-  tileAvatar: { width: 25, height: 25, borderRadius: 12.5 },
-  tileAvatarRingViewed: { borderColor: theme.border.subtle },
-  tileAvatarFallback: {
-    backgroundColor: theme.ink.action,
-    alignItems: 'center',
-    justifyContent: 'center',
+  storyBubbleRingViewed: { borderColor: theme.border.strong },
+  bubbleImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: (STORY_BUBBLE - 8) / 2,
   },
-  tileName: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
-    color: '#fff',
-    fontFamily: font.bold,
-    fontSize: 12.5,
-    lineHeight: 16,
+  storyName: {
+    marginTop: 4,
+    width: '100%',
+    color: theme.ink.muted,
+    fontFamily: font.medium,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
   },
-  // frosted ➕ floating over the tile — no white strip, all gradient
-  createPlus: {
-    position: 'absolute',
-    right: 8,
-    top: 8,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.ink.action,
-    borderWidth: 2.5,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+  createBubble: {
+    width: STORY_BUBBLE,
+    height: STORY_BUBBLE,
   },
-  createAvatarRing: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2.5,
-    borderColor: '#fff',
+  createBubbleRing: {
+    flex: 1,
+    borderRadius: STORY_BUBBLE / 2,
+    borderWidth: 2,
+    borderColor: theme.ink.action,
     backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    padding: 2,
   },
-  createAvatar: { width: 29, height: 29, borderRadius: 14.5 },
   createAvatarFallback: {
     backgroundColor: theme.ink.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  createPlus: {
+    position: 'absolute',
+    top: 34,
+    left: 38,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: theme.ink.action,
+    borderWidth: 2,
+    borderColor: theme.surface.canvas,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   createInitial: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
   createLabel: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 10,
-    color: '#fff',
-    fontFamily: font.bold,
-    fontSize: 12,
-    textAlign: 'left',
-    lineHeight: 16,
+    marginTop: 4,
+    width: '100%',
+    color: theme.ink.muted,
+    fontFamily: font.medium,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
   },
   hintTile: {
-    width: 72,
-    height: TILE_H,
+    width: STORY_ITEM,
+    height: 76,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: theme.border.subtle,
