@@ -21,7 +21,9 @@ describe('permanent dark appearance shell contract', () => {
       expo: {
         backgroundColor?: string;
         userInterfaceStyle?: string;
-        android?: { adaptiveIcon?: { backgroundColor?: string } };
+        android?: {
+          adaptiveIcon?: { backgroundColor?: string; backgroundImage?: string };
+        };
         plugins?: unknown[];
       };
     };
@@ -33,6 +35,7 @@ describe('permanent dark appearance shell contract', () => {
     expect(config.expo.backgroundColor).toBe('#0B0D0B');
     expect(config.expo.userInterfaceStyle).toBe('dark');
     expect(config.expo.android?.adaptiveIcon?.backgroundColor).toBe('#0B0D0B');
+    expect(config.expo.android?.adaptiveIcon?.backgroundImage).toBeUndefined();
     expect(splashPlugin?.[1]?.backgroundColor).toBe('#0B0D0B');
   });
 
