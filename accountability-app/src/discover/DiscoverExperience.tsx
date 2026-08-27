@@ -120,7 +120,7 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
   const [filter, setFilter] = useState<Filter>('for-you');
-  const [showAllPeople, setShowAllPeople] = useState(scope === 'people');
+  const [showAllPeople, setShowAllPeople] = useState(false);
   const [people, setPeople] = useState<Candidate[]>([]);
   const [cards, setCards] = useState<Map<string, BuddyCardView | null>>(new Map());
   const [groups, setGroups] = useState<Group[]>([]);
@@ -369,8 +369,8 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
           <SectionHeader
             appearance={appearance}
             title="People you may connect with"
-            action="Browse all"
-            onPress={() => setShowAllPeople(true)}
+            action={showAllPeople ? undefined : 'Browse all'}
+            onPress={showAllPeople ? undefined : () => setShowAllPeople(true)}
             largeText={layout.stackCards}
           />
           {visiblePeople.map((person) => (
@@ -436,20 +436,22 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
   );
 }
 
-function SectionHeader({ appearance, title, action, onPress, largeText }: { appearance: DiscoverAppearance; title: string; action: string; onPress: () => void; largeText: boolean }) {
+function SectionHeader({ appearance, title, action, onPress, largeText }: { appearance: DiscoverAppearance; title: string; action?: string; onPress?: () => void; largeText: boolean }) {
   const { styles } = appearance;
   return (
     <View style={[styles.sectionHeader, largeText && styles.sectionHeaderLargeText]}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <Pressable
-        style={[styles.sectionAction, largeText && styles.sectionActionLargeText]}
-        onPress={onPress}
-        hitSlop={DISCOVER_TOUCH_INSET.wide}
-        accessibilityRole="button"
-        accessibilityLabel={`${action}: ${title}`}
-      >
-        <Text style={styles.sectionActionText}>{action}</Text>
-      </Pressable>
+      {action && onPress ? (
+        <Pressable
+          style={[styles.sectionAction, largeText && styles.sectionActionLargeText]}
+          onPress={onPress}
+          hitSlop={DISCOVER_TOUCH_INSET.wide}
+          accessibilityRole="button"
+          accessibilityLabel={`${action}: ${title}`}
+        >
+          <Text style={styles.sectionActionText}>{action}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

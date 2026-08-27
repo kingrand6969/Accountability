@@ -55,9 +55,10 @@ describe('Discover and connection appearance contract', () => {
   test('Browse all expands people inside Discover and never opens the parallel legacy Buddy flow', () => {
     const discover = source('src/discover/DiscoverExperience.tsx');
 
-    expect(discover).toContain('const [showAllPeople, setShowAllPeople] = useState(scope === \'people\');');
+    expect(discover).toContain('const [showAllPeople, setShowAllPeople] = useState(false);');
     expect(discover).toContain('const visiblePeople = showAllPeople ? sortedPeople : sortedPeople.slice(0, 4);');
-    expect(discover).toContain('onPress={() => setShowAllPeople(true)}');
+    expect(discover).toContain("action={showAllPeople ? undefined : 'Browse all'}");
+    expect(discover).toContain('onPress={showAllPeople ? undefined : () => setShowAllPeople(true)}');
     expect(discover).not.toContain("router.push('/buddy' as never)");
   });
 

@@ -421,7 +421,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createInitial: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13 },
+  createInitial: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 13 },
   createLabel: {
     marginTop: 4,
     width: '100%',
