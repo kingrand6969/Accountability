@@ -4,19 +4,36 @@ import { describe, expect, test } from '@jest/globals';
 
 const source = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf8');
 
-describe('manual appearance shell contract', () => {
-  test('offers exactly Light and Dark as accessible selected controls in Menu', () => {
+describe('permanent dark appearance shell contract', () => {
+  test('does not expose app appearance controls in Menu', () => {
     const menu = source('src/app/menu.tsx');
     const feed = source('src/app/(app)/index.tsx');
 
-    expect(menu).toContain("const APPEARANCE_OPTIONS: AppearanceOption[] = [");
-    expect(menu).toContain("{ mode: 'light', label: 'Light'");
-    expect(menu).toContain("{ mode: 'dark', label: 'Dark'");
-    expect(menu).not.toContain("mode: 'system'");
-    expect(menu).toContain('accessibilityRole="radio"');
-    expect(menu).toContain('accessibilityState={{ selected }}');
-    expect(menu).toContain('onPress={() => setMode(option.mode)}');
+    expect(menu).not.toContain('APPEARANCE_OPTIONS');
+    expect(menu).not.toContain('setMode');
+    expect(menu).not.toContain('Light appearance');
+    expect(menu).not.toContain('Dark appearance');
     expect(feed).not.toContain('APPEARANCE_OPTIONS');
+  });
+
+  test('forces dark native chrome, splash, and adaptive icon canvases', () => {
+    const config = JSON.parse(source('app.json')) as {
+      expo: {
+        backgroundColor?: string;
+        userInterfaceStyle?: string;
+        android?: { adaptiveIcon?: { backgroundColor?: string } };
+        plugins?: unknown[];
+      };
+    };
+    const splashPlugin = config.expo.plugins?.find(
+      (plugin): plugin is [string, { backgroundColor?: string }] =>
+        Array.isArray(plugin) && plugin[0] === 'expo-splash-screen',
+    );
+
+    expect(config.expo.backgroundColor).toBe('#0B0D0B');
+    expect(config.expo.userInterfaceStyle).toBe('dark');
+    expect(config.expo.android?.adaptiveIcon?.backgroundColor).toBe('#0B0D0B');
+    expect(splashPlugin?.[1]?.backgroundColor).toBe('#0B0D0B');
   });
 
   test('wraps the app in the non-blocking theme provider and themes the root stack', () => {

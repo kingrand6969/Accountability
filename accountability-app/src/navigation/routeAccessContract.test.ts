@@ -131,12 +131,18 @@ describe('cold-link route access contract', () => {
     expect(statusBarStyleForPath?.('/activity', 'dark')).toBe('light');
   });
 
-  test('wires the primary tab shell to the manual appearance without changing its routes', () => {
+  test('wires the primary tab shell to permanent dark chrome without changing its routes', () => {
     const layoutSource = routeSource('(app)/_layout.tsx');
 
     expect(layoutSource).toContain('useAppTheme()');
-    expect(layoutSource).toContain('statusBarStyleForPath(pathname, mode)');
-    expect(layoutSource).toContain('backgroundColor: theme.surface.card');
+    expect(layoutSource).toContain('<StatusBar style="light" />');
+    expect(layoutSource).toContain('sceneStyle: { backgroundColor: theme.surface.canvas }');
+    expect(layoutSource).toContain('headerStyle: { backgroundColor: theme.surface.raised }');
+    expect(layoutSource).toContain('headerTintColor: theme.ink.primary');
+    expect(layoutSource).toContain('headerTitleStyle: { color: theme.ink.primary }');
+    expect(layoutSource).toContain('tabBarActiveTintColor: theme.ink.action');
+    expect(layoutSource).toContain('tabBarInactiveTintColor: theme.ink.muted');
+    expect(layoutSource).toContain('backgroundColor: theme.surface.raised');
     expect(layoutSource).toContain('borderTopColor: theme.border.subtle');
     expect(layoutSource).toContain("name=\"index\"");
     expect(layoutSource).toContain("name=\"activity\"");

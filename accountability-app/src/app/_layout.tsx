@@ -70,7 +70,7 @@ function HeaderBack() {
 
 function RootNavigator() {
   const { session, loading } = useAuth();
-  const { colors: theme, mode } = useAppTheme();
+  const { colors: theme } = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
   const query = useGlobalSearchParams() as RouteQuery;
@@ -223,7 +223,7 @@ function RootNavigator() {
 
   return (
     <>
-      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style="light" />
       <Stack
         screenOptions={{
           headerShown: false,

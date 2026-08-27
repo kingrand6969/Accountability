@@ -1,6 +1,6 @@
 import { type ComponentProps, useEffect, useState } from 'react';
 import { type ColorValue, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Redirect, Tabs, usePathname } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,14 +12,13 @@ import { GlassTabBar } from '../../ui/GlassTabBar';
 import { useUnreadMessages } from '../../buddy/useUnreadMessages';
 import { getMyProfile, touchLastActive } from '../../profiles/api';
 import { useAppTheme } from '../../ui/AppThemeProvider';
-import { statusBarStyleForPath } from '../../navigation/routeAccessContract';
 import { notificationHeaderOptions } from '../../navigation/SafeBackButton';
 import { AppLaunchState } from '../../ui/AppLaunchState';
 import { BrandWordmark } from '../../ui/BrandWordmark';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Quiet tab icon: the shell supplies the selected appearance's semantic ink. */
+/** Quiet tab icon: the dark shell supplies semantic ink. */
 function tabIcon(active: IoniconName, inactive: IoniconName) {
   return function TabIcon({
     color,
@@ -61,7 +60,7 @@ function MessagesTabIcon({
         color={color}
       />
       {unread > 0 && !focused ? (
-        <View style={[styles.unreadDot, { borderColor: theme.surface.card }]} />
+        <View style={[styles.unreadDot, { borderColor: theme.surface.raised }]} />
       ) : null}
     </View>
   );
@@ -83,8 +82,7 @@ const styles = StyleSheet.create({
 
 export default function AppLayout() {
   const { session } = useAuth();
-  const { colors: theme, mode } = useAppTheme();
-  const pathname = usePathname();
+  const { colors: theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { width: winW, fontScale } = useWindowDimensions();
   const userId = session?.user.id ?? null;
@@ -137,18 +135,22 @@ export default function AppLayout() {
 
   return (
     <>
-      <StatusBar style={statusBarStyleForPath(pathname, mode)} />
+      <StatusBar style="light" />
       <Tabs
       // custom quiet bar — guarantees the approved four destinations and spacing
       tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
         headerShown: true,
-        tabBarActiveTintColor: theme.ink.primary,
+        sceneStyle: { backgroundColor: theme.surface.canvas },
+        headerStyle: { backgroundColor: theme.surface.raised },
+        headerTintColor: theme.ink.primary,
+        headerTitleStyle: { color: theme.ink.primary },
+        tabBarActiveTintColor: theme.ink.action,
         tabBarInactiveTintColor: theme.ink.muted,
         tabBarShowLabel: true,
         // kept so the run screen can hide the bar via tabBarStyle:{display:'none'}
         tabBarStyle: floatingTabBarStyle(winW, insets.bottom, fontScale, {
-          backgroundColor: theme.surface.card,
+          backgroundColor: theme.surface.raised,
           borderTopColor: theme.border.subtle,
         }),
         tabBarItemStyle: {

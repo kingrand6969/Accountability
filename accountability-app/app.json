@@ -4,9 +4,10 @@
     "slug": "accountability-app",
     "version": "1.0.1",
     "orientation": "portrait",
+    "backgroundColor": "#0B0D0B",
     "icon": "./assets/images/icon.png",
     "scheme": "accountabilityapp",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.awldesk.accountability",
       "supportsTablet": true,
@@ -22,7 +23,7 @@
       "package": "com.awldesk.accountability",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "backgroundColor": "#F4F5F1",
+        "backgroundColor": "#0B0D0B",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -47,7 +48,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F4F5F1",
+          "backgroundColor": "#0B0D0B",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 140

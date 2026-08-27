@@ -23,7 +23,6 @@ import {
   spacing,
   contentMax,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
@@ -36,17 +35,6 @@ type GridItem = {
   route?: string;
   action?: 'owner-buddy-card';
 };
-
-type AppearanceOption = {
-  mode: AppThemeMode;
-  label: string;
-  icon: IoniconName;
-};
-
-const APPEARANCE_OPTIONS: AppearanceOption[] = [
-  { mode: 'light', label: 'Light', icon: 'sunny-outline' },
-  { mode: 'dark', label: 'Dark', icon: 'moon-outline' },
-];
 
 const GRID: GridItem[] = [
   { icon: 'podium-outline', tint: '#446B00', title: 'Leaderboards & Wins', route: '/compete' },
@@ -68,7 +56,7 @@ const GRID: GridItem[] = [
 export default function Menu() {
   const router = useRouter();
   const { session } = useAuth();
-  const { colors: theme, mode, setMode } = useAppTheme();
+  const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const ownerId = session?.user.id ?? null;
   const currentOwnerIdRef = useRef(ownerId);
@@ -242,43 +230,6 @@ export default function Menu() {
             <Text style={styles.cardTitle}>{item.title}</Text>
           </Pressable>
         ))}
-      </View>
-
-      <Text style={styles.sectionTitle}>Appearance</Text>
-      <View
-        style={styles.appearanceGroup}
-        accessibilityRole="radiogroup"
-        accessibilityLabel="Appearance"
-      >
-        {APPEARANCE_OPTIONS.map((option) => {
-          const selected = mode === option.mode;
-          return (
-            <Pressable
-              key={option.mode}
-              style={({ pressed }) => [
-                styles.appearanceOption,
-                selected && styles.appearanceOptionSelected,
-                pressed && styles.pressed,
-              ]}
-              onPress={() => setMode(option.mode)}
-              accessibilityRole="radio"
-              accessibilityLabel={`${option.label} appearance`}
-              accessibilityState={{ selected }}
-            >
-              <View style={[styles.appearanceIcon, selected && styles.appearanceIconSelected]}>
-                <Ionicons
-                  name={option.icon}
-                  size={20}
-                  color={selected ? theme.ink.action : theme.ink.muted}
-                />
-              </View>
-              <Text style={styles.appearanceLabel}>{option.label}</Text>
-              <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
-                {selected ? <View style={styles.radioInner} /> : null}
-              </View>
-            </Pressable>
-          );
-        })}
       </View>
 
       <Pressable
@@ -480,59 +431,4 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     justifyContent: 'center',
   },
   cardTitle: { fontFamily: font.bold, fontSize: 14.5, color: theme.ink.primary },
-  appearanceGroup: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  appearanceOption: {
-    flex: 1,
-    minHeight: spacing.touch,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: theme.border.subtle,
-    backgroundColor: theme.surface.card,
-  },
-  appearanceOptionSelected: {
-    borderColor: theme.border.action,
-  },
-  appearanceIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.surface.muted,
-  },
-  appearanceIconSelected: {
-    backgroundColor: theme.surface.raised,
-  },
-  appearanceLabel: {
-    flex: 1,
-    fontFamily: font.semibold,
-    fontSize: 14,
-    color: theme.ink.primary,
-  },
-  radioOuter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: theme.border.strong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOuterSelected: {
-    borderColor: theme.border.action,
-  },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: theme.ink.action,
-  },
 });

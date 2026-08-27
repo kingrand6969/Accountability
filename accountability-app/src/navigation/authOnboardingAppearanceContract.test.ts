@@ -5,10 +5,11 @@ import { describe, expect, test } from '@jest/globals';
 const source = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf8');
 
 describe('auth and onboarding appearance contract', () => {
-  test('keeps root status icons and the edge-to-edge canvas aligned with the selected appearance', () => {
+  test('keeps root status icons light over the permanent dark canvas', () => {
     const rootLayout = source('src/app/_layout.tsx');
 
-    expect(rootLayout).toContain("<StatusBar style={mode === 'dark' ? 'light' : 'dark'} />");
+    expect(rootLayout).toContain('<StatusBar style="light" />');
+    expect(rootLayout).not.toContain("<StatusBar style={mode === 'dark' ? 'light' : 'dark'} />");
     expect(rootLayout).toContain('contentStyle: { backgroundColor: theme.surface.canvas }');
     expect(rootLayout).not.toContain('<StatusBar backgroundColor=');
   });
