@@ -29,6 +29,10 @@ const feedSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/(app)/index.tsx'),
   'utf8',
 );
+const brandHeaderSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/feed/SocialBrandHeader.tsx'),
+  'utf8',
+);
 const menuSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/app/menu.tsx'),
   'utf8',
@@ -244,11 +248,12 @@ describe('Buddy Card viewer state', () => {
     expect(screenSource).toContain('context.targetId !== latestTargetIdRef.current');
   });
 
-  test('the signed-in feed avatar is a separate 48-point route to the owner Buddy Card', () => {
-    expect(feedSource).toContain('accessibilityLabel="View your Buddy Card"');
+  test('the compact Feed header keeps a separate 48-point route to the owner Buddy Card', () => {
+    expect(brandHeaderSource).toContain('accessibilityLabel="View your Buddy Card"');
+    expect(brandHeaderSource).toContain('profileButton: { minWidth: 48, minHeight: 48');
+    expect(feedSource).toContain('onProfile={openOwnBuddyCard}');
     expect(feedSource).toContain("pathname: '/buddy-card/[id]'");
     expect(feedSource).toContain('params: { id: ownerId }');
-    expect(feedSource).toContain('avatarButton: { minWidth: 48, minHeight: 48');
   });
 
   test('the menu opens only the latest signed-in owner Buddy Card and never the editor', () => {

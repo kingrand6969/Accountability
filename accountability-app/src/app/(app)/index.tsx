@@ -621,6 +621,12 @@ export default function Feed() {
     ),
   });
 
+  function openOwnBuddyCard() {
+    const ownerId = currentUserIdRef.current;
+    if (!ownerId) return;
+    router.push({ pathname: '/buddy-card/[id]', params: { id: ownerId } } as never);
+  }
+
   const feedHeader = (
     <>
       {myId ? (
@@ -655,6 +661,9 @@ export default function Feed() {
     <View style={styles.screen}>
       <SocialBrandHeader
         unread={unread}
+        profileName={profileOwnerId === myId ? me.name : null}
+        profileAvatar={profileOwnerId === myId ? me.avatar : null}
+        onProfile={openOwnBuddyCard}
         onMenu={() => router.push('/menu' as never)}
         onSearch={() => router.push('/search' as never)}
         onCreate={() => setCreateOpen(true)}
