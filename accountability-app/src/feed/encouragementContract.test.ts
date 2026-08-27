@@ -67,9 +67,10 @@ describe('Group 3 encouragement contract', () => {
     expect(sheetSource).not.toContain('private message');
   });
 
-  test('matches the approved cream sheet geometry and compact visual hierarchy', () => {
+  test('matches the approved dark sheet geometry and compact visual hierarchy', () => {
     expect(sheetSource).toContain("height: '54%'");
-    expect(sheetSource).toContain('backgroundColor: colors.cream');
+    expect(sheetSource).toContain('backgroundColor: theme.surface.card');
+    expect(sheetSource).toContain('backgroundColor: theme.interaction.scrim');
     expect(sheetSource).toContain('fontFamily: font.serif');
     expect(sheetSource).toContain('voiceWave');
     expect(sheetSource).toContain('voiceDuration');

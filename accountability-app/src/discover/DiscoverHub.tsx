@@ -14,13 +14,11 @@ import { joinGroup, listGroups, type Group } from '../groups/api';
 import { followPage, listPages, type Page } from '../pages/api';
 import { showToast } from '../ui/Toast';
 import {
-  colors,
   font,
   radius,
   shadow,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { DiscoverExperience } from './DiscoverExperience';
@@ -253,24 +251,24 @@ function InterestResults() {
   );
 }
 
-function discoverHubPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function discoverHubPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
-    card: mode === 'light' ? colors.card : theme.surface.card,
-    border: mode === 'light' ? colors.border : theme.border.subtle,
-    primarySoft: mode === 'light' ? colors.primarySoft : theme.surface.raised,
-    text: mode === 'light' ? colors.text : theme.ink.primary,
-    textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
-    textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    disabledOpacity: mode === 'light' ? 0.65 : theme.interaction.disabledOpacity,
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    border: theme.border.subtle,
+    primarySoft: theme.surface.raised,
+    text: theme.ink.primary,
+    textMuted: theme.ink.muted,
+    textFaint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    disabledOpacity: theme.interaction.disabledOpacity,
   };
 }
 
 function useDiscoverHubAppearance() {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => discoverHubPalette(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => discoverHubPalette(theme), [theme]);
   const styles = useMemo(() => createStyles(palette), [palette]);
   return { palette, styles };
 }

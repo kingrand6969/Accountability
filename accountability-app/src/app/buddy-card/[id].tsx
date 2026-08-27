@@ -53,14 +53,11 @@ import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
 import {
-  colors as legacyColors,
   font,
   radius,
-  shadow,
   spacing,
   contentMax,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import { navigateBackSafely } from '../../navigation/routeAccessContract';
@@ -108,9 +105,9 @@ export default function BuddyCardScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => buddyCardShellPalette(theme, mode), [mode, theme]);
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => buddyCardShellPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [view, setView] = useState<BuddyCardView | null>(null);
   const [stats, setStats] = useState<BuddyStats | null>(null);
   const [boardRank, setBoardRank] = useState<BoardRank | null>(null);
@@ -711,7 +708,7 @@ export default function BuddyCardScreen() {
         <Button
           title="Edit Buddy Card"
           onPress={() => router.push('/buddy-card-edit' as never)}
-          icon={<Ionicons name="create-outline" size={18} color="#fff" />}
+          icon={<Ionicons name="create-outline" size={18} color={palette.onAction} />}
           style={styles.connect}
         />
       ) : isBuddy ? (
@@ -723,7 +720,7 @@ export default function BuddyCardScreen() {
           <Button
             title="Message"
             onPress={() => router.push({ pathname: '/buddy-chat/[id]', params: { id: id! } })}
-            icon={<Ionicons name="chatbubble-ellipses-outline" size={17} color="#fff" />}
+            icon={<Ionicons name="chatbubble-ellipses-outline" size={17} color={palette.onAction} />}
             style={styles.connect}
           />
         </>
@@ -736,9 +733,9 @@ export default function BuddyCardScreen() {
             disabled={sent}
             icon={
               sent ? (
-                <Ionicons name="checkmark-circle-outline" size={19} color="#fff" />
+                <Ionicons name="checkmark-circle-outline" size={19} color={palette.onAction} />
               ) : (
-                <Ionicons name="person-add-outline" size={19} color="#fff" />
+                <Ionicons name="person-add-outline" size={19} color={palette.onAction} />
               )
             }
             style={styles.connect}
@@ -752,29 +749,27 @@ export default function BuddyCardScreen() {
   );
 }
 
-function buddyCardShellPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function buddyCardShellPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? legacyColors.surface : theme.surface.canvas,
+    canvas: theme.surface.canvas,
     stateCanvas: theme.surface.canvas,
-    surface: mode === 'light' ? legacyColors.card : theme.surface.card,
-    mutedSurface: mode === 'light' ? legacyColors.surface : theme.surface.muted,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    secondaryInk: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    faintInk: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    chipSurface: mode === 'light' ? '#F2F5EE' : theme.surface.muted,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    success: mode === 'light' ? legacyColors.success : theme.status.success,
+    surface: theme.surface.card,
+    mutedSurface: theme.surface.muted,
+    ink: theme.ink.primary,
+    secondaryInk: theme.ink.secondary,
+    mutedInk: theme.ink.muted,
+    faintInk: theme.ink.muted,
+    border: theme.border.subtle,
+    chipSurface: theme.surface.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = buddyCardShellPalette(theme, mode);
-  const panelFrame = mode === 'light'
-    ? shadow.card
-    : { borderWidth: 1, borderColor: palette.border };
+const createStyles = (theme: AppThemeColors) => {
+  const palette = buddyCardShellPalette(theme);
+  const panelFrame = { borderWidth: 1, borderColor: palette.border };
 
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.canvas },

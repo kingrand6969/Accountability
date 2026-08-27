@@ -3,7 +3,7 @@ import path from 'path';
 
 import { describe, expect, test } from '@jest/globals';
 
-import { themeColors, type AppThemeMode } from '../ui/theme';
+import { themeColors } from '../ui/theme';
 
 const source = fs.readFileSync(
   path.resolve(__dirname, '../app/(app)/profile.tsx'),
@@ -28,7 +28,7 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe('Profile overview appearance and navigation contract', () => {
-  test('uses the shared semantic Light/Dark palette without light-only surface islands', () => {
+  test('uses the permanent semantic dark palette without light-only surface islands', () => {
     expect(source).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
     expect(source).toContain('const { colors: theme } = useAppTheme()');
     expect(source).toContain('useMemo(() => createStyles(theme), [theme])');
@@ -41,6 +41,7 @@ describe('Profile overview appearance and navigation contract', () => {
     expect(source).toContain('backgroundColor: theme.ink.action');
     expect(source).not.toMatch(/const (?:PAPER|INK|MUTED|BLUE)\s*=/);
     expect(source).not.toMatch(/#(?:FFFCF6|F7F4EC|E1DDD2|DDD8CC|EEF4FF)/i);
+    expect(source).not.toContain("mode === 'light'");
   });
 
   test('keeps the media hero deliberately dark and readable in either appearance', () => {
@@ -68,13 +69,10 @@ describe('Profile overview appearance and navigation contract', () => {
     expect(source).toMatch(/settingsRow:\s*\{[^}]*minHeight: 56/s);
   });
 
-  test.each(['light', 'dark'] satisfies AppThemeMode[])(
-    '%s text, cards and primary controls retain accessible contrast',
-    (mode) => {
-      const theme = themeColors(mode);
-      expect(contrast(theme.ink.primary, theme.surface.canvas)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  test('text, cards and primary controls retain accessible contrast', () => {
+    const theme = themeColors('dark');
+    expect(contrast(theme.ink.primary, theme.surface.canvas)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
+  });
 });

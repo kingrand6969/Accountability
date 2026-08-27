@@ -30,12 +30,13 @@ describe('Feed manual appearance contract', () => {
   });
 
   test('themes the composer sheet and loading feedback without changing the photo overlay', () => {
-    expect(feedSource).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(feedSource).toContain('tint={mode}');
+    expect(feedSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(feedSource).toContain('tint="dark"');
     expect(feedSource).toContain('backgroundColor: theme.interaction.scrim');
     expect(feedSource).toContain('backgroundColor: theme.interaction.skeleton');
     expect(feedSource).toContain('tintColor={theme.ink.action}');
     expect(feedSource).toContain("photoPreview: { flex: 1, justifyContent: 'center', backgroundColor: '#000' }");
+    expect(feedSource).not.toContain("mode === 'light'");
   });
 
   test('keeps dark status icons readable with a canvas-colored Feed safe-area header', () => {

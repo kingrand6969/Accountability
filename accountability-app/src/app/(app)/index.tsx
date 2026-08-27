@@ -130,7 +130,7 @@ function FeedLoadingSkeleton() {
 
 export default function Feed() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
+  const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const createMenuItems = useMemo(() => createItems(theme), [theme]);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
@@ -672,7 +672,7 @@ export default function Feed() {
       <Modal visible={!!myId && createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
         <Pressable style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)}>
           <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-            <BlurView intensity={60} tint={mode} style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]} />
+            <BlurView intensity={60} tint="dark" style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]} />
             <View style={styles.sheetGlass} />
             <Text style={styles.sheetTitle}>Create</Text>
             {createMenuItems.map((item) => (

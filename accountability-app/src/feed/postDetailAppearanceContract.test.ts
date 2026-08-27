@@ -23,15 +23,12 @@ const immersivePost = {
   share_data: { verified: true },
 } as unknown as FeedPost;
 
-describe('Post detail Light/Dark appearance contract', () => {
-  test('uses light status-bar content for dark or immersive detail while keeping light compact defaults', () => {
-    expect(postDetailStatusBarStyle(null)).toBe('dark');
-    expect(postDetailStatusBarStyle(compactPost)).toBe('dark');
-    expect(postDetailStatusBarStyle(null, 'dark')).toBe('light');
-    expect(postDetailStatusBarStyle(compactPost, 'dark')).toBe('light');
-    expect(postDetailStatusBarStyle(immersivePost, 'light')).toBe('light');
-    expect(postDetailStatusBarStyle(immersivePost, 'dark')).toBe('light');
-    expect(routeSource).toContain('postDetailStatusBarStyle(post, mode)');
+describe('Post detail permanent dark appearance contract', () => {
+  test('always uses light status-bar content over permanent dark or immersive detail', () => {
+    expect(postDetailStatusBarStyle(null)).toBe('light');
+    expect(postDetailStatusBarStyle(compactPost)).toBe('light');
+    expect(postDetailStatusBarStyle(immersivePost)).toBe('light');
+    expect(routeSource).toContain('postDetailStatusBarStyle(post)');
   });
 
   test('themes loading, errors, comments, and the keyboard-safe composer from semantic roles', () => {
@@ -50,7 +47,7 @@ describe('Post detail Light/Dark appearance contract', () => {
 
   test('themes compact text and event chrome without recoloring immersive media overlays', () => {
     expect(immersiveSource).toContain("from '../ui/AppThemeProvider'");
-    expect(immersiveSource).toContain('createCompactStyles(theme');
+    expect(immersiveSource).toContain('createCompactStyles(theme)');
     expect(immersiveSource).toContain('backgroundColor: theme.surface.card');
     expect(immersiveSource).toContain('borderBottomColor: theme.border.subtle');
     expect(immersiveSource).toContain('color: theme.ink.primary');
@@ -59,5 +56,6 @@ describe('Post detail Light/Dark appearance contract', () => {
     expect(immersiveSource).toContain("color: '#fff'");
     expect(immersiveSource).toContain('width: spacing.touch');
     expect(immersiveSource).toContain('height: spacing.touch');
+    expect(immersiveSource).not.toContain("mode === 'light'");
   });
 });

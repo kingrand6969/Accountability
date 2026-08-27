@@ -138,35 +138,29 @@ describe('Group 3 immersive Post Detail contract', () => {
     });
   });
 
-  test('uses readable route-local status bar ink for every post surface', () => {
-    expect(postDetailStatusBarStyle(null)).toBe('dark');
-    expect(postDetailStatusBarStyle({ ...post, post_type: 'post' })).toBe('dark');
-    expect(postDetailStatusBarStyle({ ...post, post_type: 'event' })).toBe('dark');
+  test('uses readable light status bar ink for every permanent-dark post surface', () => {
+    expect(postDetailStatusBarStyle(null)).toBe('light');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'post' })).toBe('light');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'event' })).toBe('light');
     expect(
       postDetailStatusBarStyle({
         ...post,
         post_type: 'photo',
         share_data: { verified: false },
       }),
-    ).toBe('dark');
+    ).toBe('light');
     expect(
       postDetailStatusBarStyle({
         ...post,
         post_type: 'video',
         share_data: {},
       }),
-    ).toBe('dark');
-    expect(
-      postDetailStatusBarStyle(
-        { ...post, post_type: 'photo', share_data: { verified: false } },
-        'dark',
-      ),
     ).toBe('light');
     expect(postDetailStatusBarStyle({ ...post, post_type: 'photo' })).toBe('light');
     expect(postDetailStatusBarStyle(post)).toBe('light');
     expect(routeSource).toContain("import { StatusBar } from 'expo-status-bar'");
     expect(routeSource).toContain(
-      'isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null',
+      'isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null',
     );
   });
 

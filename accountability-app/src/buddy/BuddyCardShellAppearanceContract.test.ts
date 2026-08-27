@@ -12,23 +12,24 @@ function publicFaceInvocation(source: string) {
 describe('Buddy Card supporting shell appearance contract', () => {
   test('binds only the surrounding screen chrome to the manual appearance', () => {
     expect(shell).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
-    expect(shell).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(shell).toContain('const palette = useMemo(() => buddyCardShellPalette(theme, mode), [mode, theme])');
-    expect(shell).toContain('const styles = useMemo(() => createStyles(theme, mode), [mode, theme])');
-    expect(shell).toContain('function buddyCardShellPalette(theme: AppThemeColors, mode: AppThemeMode)');
+    expect(shell).toContain('const { colors: theme } = useAppTheme()');
+    expect(shell).toContain('const palette = useMemo(() => buddyCardShellPalette(theme), [theme])');
+    expect(shell).toContain('const styles = useMemo(() => createStyles(theme), [theme])');
+    expect(shell).toContain('function buddyCardShellPalette(theme: AppThemeColors)');
     expect(shell).not.toMatch(/\bcolors\./);
   });
 
-  test('preserves every approved Light shell value and supplies semantic Dark equivalents', () => {
-    expect(shell).toContain("canvas: mode === 'light' ? legacyColors.surface : theme.surface.canvas");
-    expect(shell).toContain("surface: mode === 'light' ? legacyColors.card : theme.surface.card");
-    expect(shell).toContain("ink: mode === 'light' ? legacyColors.text : theme.ink.primary");
-    expect(shell).toContain("secondaryInk: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary");
-    expect(shell).toContain("mutedInk: mode === 'light' ? legacyColors.textMuted : theme.ink.muted");
-    expect(shell).toContain("border: mode === 'light' ? legacyColors.border : theme.border.subtle");
-    expect(shell).toContain("chipSurface: mode === 'light' ? '#F2F5EE' : theme.surface.muted");
-    expect(shell).toContain("action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action");
-    expect(shell).toContain("success: mode === 'light' ? legacyColors.success : theme.status.success");
+  test('uses permanent semantic dark shell roles without touching the public card artwork', () => {
+    expect(shell).toContain('canvas: theme.surface.canvas');
+    expect(shell).toContain('surface: theme.surface.card');
+    expect(shell).toContain('ink: theme.ink.primary');
+    expect(shell).toContain('secondaryInk: theme.ink.secondary');
+    expect(shell).toContain('mutedInk: theme.ink.muted');
+    expect(shell).toContain('border: theme.border.subtle');
+    expect(shell).toContain('chipSurface: theme.surface.muted');
+    expect(shell).toContain('action: theme.ink.action');
+    expect(shell).toContain('success: theme.status.success');
+    expect(shell).not.toContain("mode === 'light'");
   });
 
   test('themes loading, error, header action, About, posts and relationship chrome', () => {

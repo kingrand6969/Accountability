@@ -3,7 +3,7 @@ import path from 'path';
 
 import { describe, expect, test } from '@jest/globals';
 
-import { themeColors, type AppThemeMode } from '../ui/theme';
+import { themeColors } from '../ui/theme';
 
 const screenSource = fs.readFileSync(
   path.resolve(__dirname, '../app/buddy-chat/[id].tsx'),
@@ -29,7 +29,7 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe('BuddyChat approved appearance contract', () => {
-  test('uses the shared Light/Dark provider and semantic roles across the screen shell', () => {
+  test('uses the permanent semantic dark provider roles across the screen shell', () => {
     expect(screenSource).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
     expect(screenSource).toContain('const { colors: theme } = useAppTheme()');
     expect(screenSource).toContain('useMemo(() => createStyles(theme), [theme])');
@@ -41,6 +41,7 @@ describe('BuddyChat approved appearance contract', () => {
     expect(screenSource).toContain('selectionColor={theme.ink.action}');
     expect(screenSource).toContain('color={theme.ink.action}');
     expect(screenSource).not.toMatch(/\bcolors\.(?:background|text|textMuted|textFaint|border|surfaceAlt|primary)\b/);
+    expect(screenSource).not.toContain("mode === 'light'");
   });
 
   test('passes the active semantic palette to message rows without changing existing callers', () => {
@@ -53,12 +54,9 @@ describe('BuddyChat approved appearance contract', () => {
     expect(rowSource).toContain('color: theme.ink.primary');
   });
 
-  test.each(['light', 'dark'] satisfies AppThemeMode[])(
-    '%s outgoing and incoming bubble pairs meet normal-text contrast',
-    (mode) => {
-      const theme = themeColors(mode);
-      expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.primary, theme.surface.muted)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  test('outgoing and incoming bubble pairs meet normal-text contrast', () => {
+    const theme = themeColors('dark');
+    expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.primary, theme.surface.muted)).toBeGreaterThanOrEqual(4.5);
+  });
 });

@@ -10,7 +10,7 @@ import { Avatar } from './Avatar';
 import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
 import type { FeedPost } from './types';
-import { colors, font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
+import { colors, font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
 export type ImmersivePostState =
@@ -250,11 +250,9 @@ export function usesImmersivePostSurface(
 }
 
 export function postDetailStatusBarStyle(
-  post: FeedPost | null,
-  mode: AppThemeMode = 'light',
+  _post: FeedPost | null,
 ): 'dark' | 'light' {
-  if (post && usesImmersivePostSurface(post)) return 'light';
-  return mode === 'dark' ? 'light' : 'dark';
+  return 'light';
 }
 
 function numberValue(value: unknown) {
@@ -454,8 +452,8 @@ function CompactPostSurface({
   onOpenEncouragement(): void;
   topInset: number;
 }) {
-  const { mode, colors: theme } = useAppTheme();
-  const styles = useMemo(() => createCompactStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createCompactStyles(theme), [theme]);
   const presentation = presentImmersivePost(post, viewerId);
   const typeLabel = compactPostTypeLabel(post);
   const body = post.body.trim();
@@ -569,8 +567,8 @@ function EncouragementCard({
   supporterAvatars: { id: string; name: string | null; avatar_url: string | null }[];
   onPress(): void;
 }) {
-  const { mode, colors: theme } = useAppTheme();
-  const compactStyles = useMemo(() => createCompactStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const compactStyles = useMemo(() => createCompactStyles(theme), [theme]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -680,7 +678,7 @@ function Action({ icon, label, shortLabel, active = false, onPress }: { icon: 'c
   );
 }
 
-const createCompactStyles = (theme: AppThemeColors, mode: AppThemeMode) => StyleSheet.create({
+const createCompactStyles = (theme: AppThemeColors) => StyleSheet.create({
   compactSurface: {
     width: '100%',
     backgroundColor: theme.surface.card,
@@ -725,7 +723,7 @@ const createCompactStyles = (theme: AppThemeColors, mode: AppThemeMode) => Style
     alignItems: 'center',
     gap: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: mode === 'dark' ? theme.status.successSoft : colors.primarySoft,
+    backgroundColor: theme.status.successSoft,
     borderWidth: 1,
     borderColor: theme.border.subtle,
   },
@@ -738,12 +736,12 @@ const createCompactStyles = (theme: AppThemeColors, mode: AppThemeMode) => Style
     backgroundColor: theme.surface.card,
   },
   compactEventCopy: { flex: 1, gap: 2 },
-  compactEventEyebrow: { color: mode === 'dark' ? theme.ink.action : colors.primary, fontFamily: font.bold, fontSize: 11 },
+  compactEventEyebrow: { color: theme.ink.action, fontFamily: font.bold, fontSize: 11 },
   compactEventTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15, lineHeight: 20 },
   compactEventMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
   compactMedia: {
     overflow: 'hidden',
-    backgroundColor: mode === 'dark' ? theme.surface.canvas : theme.surface.inverse,
+    backgroundColor: theme.surface.canvas,
   },
   compactEngagement: { gap: spacing.sm, padding: spacing.md },
   encouragementCard: { minHeight: 70, borderRadius: radius.lg, backgroundColor: theme.surface.canvas, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border.subtle },
@@ -781,12 +779,12 @@ const immersiveStyles = StyleSheet.create({
   author: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
   accessLabel: { color: 'rgba(255,255,255,.72)', fontFamily: font.medium, fontSize: 9.5 },
   caption: { color: 'rgba(255,255,255,.8)', fontFamily: font.regular, fontSize: 11, lineHeight: 15 },
-  encouragementCard: { minHeight: 70, borderRadius: radius.lg, backgroundColor: colors.cream, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  encouragementCard: { minHeight: 70, borderRadius: radius.lg, backgroundColor: 'rgba(11,13,11,.88)', paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   faces: { flexDirection: 'row', minWidth: 52 },
-  face: { borderWidth: 2, borderColor: colors.cream, borderRadius: 17 },
+  face: { borderWidth: 2, borderColor: '#272D27', borderRadius: 17 },
   encouragementCopy: { flex: 1 },
-  encouragementNames: { color: colors.navy, fontFamily: font.semibold, fontSize: 12 },
-  encouragementText: { color: colors.textMuted, fontFamily: font.regular, fontSize: 10.5 },
+  encouragementNames: { color: '#F7F8F4', fontFamily: font.semibold, fontSize: 12 },
+  encouragementText: { color: '#CED4CB', fontFamily: font.regular, fontSize: 10.5 },
   miniWave: { height: 18, flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 3 },
   waveBar: { width: 2, borderRadius: 1, backgroundColor: colors.primary },
   actionBar: { minHeight: 48, borderRadius: radius.pill, backgroundColor: 'rgba(2,8,20,.78)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },

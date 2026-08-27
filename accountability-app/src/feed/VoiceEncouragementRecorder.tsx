@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -19,7 +19,7 @@ import {
   useAudioRecorderState,
 } from 'expo-audio';
 import { useAppTheme } from '../ui/AppThemeProvider';
-import { colors, font, radius, spacing, themeColors } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
 type Props = {
   visible: boolean;
@@ -194,10 +194,10 @@ export function VoiceEncouragementRecorder({
   onClose,
   onSend,
 }: Props) {
-  const { mode } = useAppTheme();
-  const dark = mode === 'dark';
-  const actionColor = dark ? theme.ink.action : colors.primary;
-  const actionInk = dark ? theme.ink.inverse : colors.onPrimary;
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const actionColor = theme.ink.action;
+  const actionInk = theme.ink.inverse;
   const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 100);
   const player = useAudioPlayer(null);
@@ -437,14 +437,14 @@ export function VoiceEncouragementRecorder({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modal}>
         <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close recorder" />
-        <View style={[styles.sheet, dark && darkStyles.sheet]}>
+        <View style={styles.sheet}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.title, dark && darkStyles.title]}>Voice Cheer</Text>
-              <Text style={[styles.subtitle, dark && darkStyles.subtitle]}>A natural, private message · up to 10 seconds</Text>
+              <Text style={styles.title}>Voice Cheer</Text>
+              <Text style={styles.subtitle}>A natural, private message · up to 10 seconds</Text>
             </View>
             <Pressable style={styles.iconButton} onPress={onClose} accessibilityLabel="Close recorder">
-              <Ionicons name="close" size={22} color={dark ? theme.ink.primary : colors.navy} />
+              <Ionicons name="close" size={22} color={theme.ink.primary} />
             </Pressable>
           </View>
 
@@ -463,14 +463,13 @@ export function VoiceEncouragementRecorder({
                 key={index}
                 style={[
                   styles.bar,
-                  dark && darkStyles.bar,
                   { height: recorderState.isRecording ? height : Math.max(7, height * 0.7) },
                 ]}
               />
             ))}
           </View>
 
-          <Text style={[styles.timer, dark && darkStyles.timer]}>
+          <Text style={styles.timer}>
             {recorderState.isRecording
               ? `0:${String(seconds).padStart(2, '0')} / 0:10`
               : previewUri
@@ -479,7 +478,7 @@ export function VoiceEncouragementRecorder({
           </Text>
 
           {error ? (
-            <Text style={[styles.error, dark && darkStyles.error]} accessibilityRole="alert">
+            <Text style={styles.error} accessibilityRole="alert">
               {error}
             </Text>
           ) : null}
@@ -488,7 +487,7 @@ export function VoiceEncouragementRecorder({
             <Pressable
               onPress={recorderState.isRecording ? stop : start}
               disabled={interruptionPending}
-              style={({ pressed }) => [styles.record, dark && darkStyles.primaryAction, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.record, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={recorderState.isRecording ? 'Stop recording' : 'Start recording'}
               accessibilityState={{ disabled: interruptionPending, busy: interruptionPending }}
@@ -496,7 +495,7 @@ export function VoiceEncouragementRecorder({
               {interruptionPending
                 ? <ActivityIndicator color={actionInk} />
                 : <Ionicons name={recorderState.isRecording ? 'stop' : 'mic'} size={24} color={actionInk} />}
-              <Text style={[styles.recordText, dark && darkStyles.primaryActionText]}>
+              <Text style={styles.recordText}>
                 {recorderState.isRecording ? 'Stop and preview' : 'Start recording'}
               </Text>
             </Pressable>
@@ -505,25 +504,25 @@ export function VoiceEncouragementRecorder({
               <Pressable
                 onPress={() => (playerStatus.playing ? player.pause() : player.play())}
                 disabled={uploadPending}
-                style={[styles.previewButton, dark && darkStyles.previewButton]}
+                style={styles.previewButton}
                 accessibilityRole="button"
                 accessibilityLabel={playerStatus.playing ? 'Pause preview' : 'Play preview'}
               >
                 <Ionicons name={playerStatus.playing ? 'pause' : 'play'} size={20} color={actionColor} />
-                <Text style={[styles.previewText, dark && darkStyles.previewText]}>{playerStatus.playing ? 'Pause' : 'Preview'}</Text>
+                <Text style={styles.previewText}>{playerStatus.playing ? 'Pause' : 'Preview'}</Text>
               </Pressable>
-              <Pressable disabled={uploadPending} onPress={discard} style={[styles.previewButton, dark && darkStyles.previewButton]} accessibilityLabel="Delete and re-record">
-                <Ionicons name="refresh" size={20} color={dark ? theme.ink.primary : colors.navy} />
-                <Text style={[styles.previewText, dark && darkStyles.previewText]}>Discard</Text>
+              <Pressable disabled={uploadPending} onPress={discard} style={styles.previewButton} accessibilityLabel="Delete and re-record">
+                <Ionicons name="refresh" size={20} color={theme.ink.primary} />
+                <Text style={styles.previewText}>Discard</Text>
               </Pressable>
               <Pressable
                 onPress={send}
                 disabled={sending || uploadPending}
-                style={[styles.send, dark && darkStyles.primaryAction, (sending || uploadPending) && styles.disabled]}
+                style={[styles.send, (sending || uploadPending) && styles.disabled]}
                 accessibilityRole="button"
                 accessibilityState={{ busy: sending || uploadPending, disabled: sending || uploadPending }}
               >
-                {sending || uploadPending ? <ActivityIndicator color={actionInk} /> : <Text style={[styles.sendText, dark && darkStyles.primaryActionText]}>Send</Text>}
+                {sending || uploadPending ? <ActivityIndicator color={actionInk} /> : <Text style={styles.sendText}>Send</Text>}
               </Pressable>
             </View>
           )}
@@ -533,19 +532,19 @@ export function VoiceEncouragementRecorder({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   modal: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(17,20,17,0.52)' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: theme.interaction.scrim },
   sheet: {
-    backgroundColor: colors.cream,
+    backgroundColor: theme.surface.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: spacing.xl,
     paddingBottom: 32,
   },
   header: { flexDirection: 'row', alignItems: 'center' },
-  title: { color: colors.navy, fontFamily: font.bold, fontSize: 23 },
-  subtitle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12.5, marginTop: 2 },
+  title: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 23 },
+  subtitle: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5, marginTop: 2 },
   iconButton: { width: 48, height: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   waveform: {
     height: 72,
@@ -555,59 +554,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
   },
-  bar: { width: 4, borderRadius: 2, backgroundColor: colors.primary },
-  timer: { textAlign: 'center', color: colors.navy, fontFamily: font.bold, fontSize: 16 },
-  error: { color: colors.danger, fontFamily: font.medium, textAlign: 'center', marginTop: spacing.md },
+  bar: { width: 4, borderRadius: 2, backgroundColor: theme.ink.action },
+  timer: { textAlign: 'center', color: theme.ink.primary, fontFamily: font.bold, fontSize: 16 },
+  error: { color: theme.status.danger, fontFamily: font.medium, textAlign: 'center', marginTop: spacing.md },
   record: {
     minHeight: 52,
     marginTop: spacing.xl,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  recordText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  recordText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   previewActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl },
   previewButton: {
     minHeight: 48,
     minWidth: 86,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.raised,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 5,
   },
-  previewText: { color: colors.navy, fontFamily: font.semibold, fontSize: 12.5 },
+  previewText: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 12.5 },
   send: {
     flex: 1,
     minHeight: 48,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  sendText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.76 },
-});
-
-const theme = themeColors('dark');
-const darkStyles = StyleSheet.create({
-  sheet: { backgroundColor: theme.surface.canvas },
-  title: { color: theme.ink.primary },
-  subtitle: { color: theme.ink.muted },
-  bar: { backgroundColor: theme.ink.action },
-  timer: { color: theme.ink.primary },
-  error: { color: theme.status.danger },
-  previewButton: {
-    backgroundColor: theme.surface.card,
-    borderColor: theme.border.subtle,
-  },
-  previewText: { color: theme.ink.primary },
-  primaryAction: { backgroundColor: theme.border.action },
-  primaryActionText: { color: theme.ink.inverse },
 });

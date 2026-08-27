@@ -26,7 +26,7 @@ describe('communication surfaces appearance contract', () => {
   test('Notifications themes loading, refresh, unread rows, copy, and badges without changing routing', () => {
     const notifications = source('src/app/(app)/notifications.tsx');
 
-    expect(notifications).toContain('const { colors: theme, mode } = useAppTheme();');
+    expect(notifications).toContain('const { colors: theme } = useAppTheme();');
     expect(notifications).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
     expect(notifications).toContain('<ActivityIndicator color={theme.ink.action}');
     expect(notifications).toContain('tintColor={theme.ink.action}');
@@ -38,13 +38,14 @@ describe('communication surfaces appearance contract', () => {
     expect(notifications).toContain('color: theme.ink.primary');
     expect(notifications).toContain('color: theme.ink.muted');
     expect(notifications).toContain('backgroundColor: theme.ink.action');
-    expect(notifications).toContain('notificationBadge(item.type, theme, mode)');
+    expect(notifications).toContain('notificationBadge(item.type, theme)');
     expect(notifications).toContain('background: theme.status.attention');
-    expect(notifications).toContain("foreground: mode === 'dark' ? theme.ink.inverse : theme.ink.primary");
+    expect(notifications).toContain('foreground: theme.ink.inverse');
     expect(notifications).toContain('background: theme.status.success');
-    expect(notifications).toContain('foreground: theme.surface.canvas');
+    expect(notifications).toContain('foreground: theme.ink.inverse');
     expect(notifications).toContain("router.push({ pathname: '/post/[id]'");
     expect(notifications).not.toContain('const styles = StyleSheet.create({');
+    expect(notifications).not.toContain("mode === 'light'");
   });
 
   test('shared communication empty states remain readable in either appearance', () => {

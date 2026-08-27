@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +20,7 @@ import { listBuddies, sendMessage, type Buddy } from '../buddy/api';
 import { hapticTap } from '../ui/haptics';
 import { showToast } from '../ui/Toast';
 import { useAppTheme } from '../ui/AppThemeProvider';
-import { colors, font, radius, spacing, themeColors } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { listGroups, type Group } from '../groups/api';
 import { createPost } from './api';
 import { addStory } from '../stories/api';
@@ -42,10 +42,10 @@ function broadcastText(post: FeedPost): string {
  * it to any other app — Facebook, TikTok, WhatsApp… — via the system share sheet.
  */
 export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClose: () => void }) {
-  const { mode } = useAppTheme();
-  const dark = mode === 'dark';
-  const actionColor = dark ? theme.ink.action : colors.primary;
-  const actionInk = dark ? theme.ink.inverse : colors.onPrimary;
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const actionColor = theme.ink.action;
+  const actionInk = theme.ink.inverse;
   const [buddies, setBuddies] = useState<Buddy[] | null>(null);
   const [sent, setSent] = useState<Set<string>>(new Set());
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -174,7 +174,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
   return (
     <Modal visible={!!post} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, dark && darkStyles.sheet]} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.captureOnly} pointerEvents="none">
             <ExternalShareCard
               ref={publicCardRef}
@@ -182,17 +182,17 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
               author={post?.author_name ?? null}
             />
           </View>
-          <View style={[styles.grabber, dark && darkStyles.grabber]} />
+          <View style={styles.grabber} />
           <View style={styles.titleRow}>
             <Ionicons name="megaphone" size={18} color={actionColor} />
-            <Text style={[styles.title, dark && darkStyles.title]}>Broadcast</Text>
+            <Text style={styles.title}>Broadcast</Text>
           </View>
 
-          <Text style={[styles.section, dark && darkStyles.section]}>Send to a buddy</Text>
+          <Text style={styles.section}>Send to a buddy</Text>
           {buddies === null ? (
             <ActivityIndicator color={actionColor} style={{ marginVertical: 18 }} />
           ) : buddies.length === 0 ? (
-            <Text style={[styles.empty, dark && darkStyles.empty]}>No buddies yet — add some to broadcast to them.</Text>
+            <Text style={styles.empty}>No buddies yet — add some to broadcast to them.</Text>
           ) : (
             <ScrollView
               horizontal
@@ -213,16 +213,16 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
                     <View>
                       <Avatar url={b.avatar} name={b.name} size={52} />
                       {done ? (
-                        <View style={[styles.sentBadge, dark && darkStyles.sentBadge]}>
-                          <Ionicons name="checkmark" size={12} color="#fff" />
+                        <View style={styles.sentBadge}>
+                          <Ionicons name="checkmark" size={12} color={theme.ink.inverse} />
                         </View>
                       ) : sending === b.id ? (
-                        <View style={[styles.sentBadge, dark && darkStyles.sentBadge]}>
-                          <ActivityIndicator size={10} color="#fff" />
+                        <View style={styles.sentBadge}>
+                          <ActivityIndicator size={10} color={theme.ink.inverse} />
                         </View>
                       ) : null}
                     </View>
-                    <Text style={[styles.buddyName, dark && darkStyles.buddyName]} numberOfLines={1}>
+                    <Text style={styles.buddyName} numberOfLines={1}>
                       {done ? 'Sent ✓' : (b.name ?? 'Buddy')}
                     </Text>
                   </Pressable>
@@ -231,14 +231,13 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
             </ScrollView>
           )}
 
-          <Text style={[styles.section, dark && darkStyles.section]}>Share inside AccountAbility</Text>
+          <Text style={styles.section}>Share inside AccountAbility</Text>
           <View style={styles.internalRow}>
             <Pressable
               onPress={onAddToMyDay}
               disabled={!post?.image_url || post?.post_type === 'video' || addingToDay || addedToDay}
               style={({ pressed }) => [
                 styles.internalBtn,
-                dark && darkStyles.internalBtn,
                 (!post?.image_url || post?.post_type === 'video') && styles.disabled,
                 pressed && styles.pressed,
               ]}
@@ -260,13 +259,13 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
               ) : (
                 <Ionicons name={addedToDay ? 'checkmark-circle' : 'add-circle-outline'} size={20} color={actionColor} />
               )}
-              <Text style={[styles.internalText, dark && darkStyles.internalText]}>{addedToDay ? 'Added' : 'My Day'}</Text>
+              <Text style={styles.internalText}>{addedToDay ? 'Added' : 'My Day'}</Text>
             </Pressable>
           </View>
 
           {groups && groups.length > 0 ? (
             <>
-              <Text style={[styles.section, dark && darkStyles.section]}>Share to a group</Text>
+              <Text style={styles.section}>Share to a group</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupRow}>
                 {groups.map((group) => {
                   const done = sharedGroups.has(group.id);
@@ -275,13 +274,13 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
                       key={group.id}
                       onPress={() => onShareToGroup(group)}
                       disabled={done || sending === group.id}
-                      style={({ pressed }) => [styles.groupBtn, dark && darkStyles.groupBtn, pressed && styles.pressed]}
+                      style={({ pressed }) => [styles.groupBtn, pressed && styles.pressed]}
                       accessibilityRole="button"
                       accessibilityLabel={`Share to ${group.name}`}
                       accessibilityState={{ disabled: done || sending === group.id, busy: sending === group.id }}
                     >
-                      <Ionicons name={done ? 'checkmark-circle' : 'people-circle-outline'} size={22} color={done ? (dark ? theme.status.success : colors.success) : actionColor} />
-                      <Text style={[styles.groupName, dark && darkStyles.groupName]} numberOfLines={1}>{done ? 'Shared' : group.name}</Text>
+                      <Ionicons name={done ? 'checkmark-circle' : 'people-circle-outline'} size={22} color={done ? theme.status.success : actionColor} />
+                      <Text style={styles.groupName} numberOfLines={1}>{done ? 'Shared' : group.name}</Text>
                     </Pressable>
                   );
                 })}
@@ -289,21 +288,21 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
             </>
           ) : null}
 
-          <Text style={[styles.section, dark && darkStyles.section]}>Everywhere else</Text>
+          <Text style={styles.section}>Everywhere else</Text>
           <Pressable
             onPress={onShareExternal}
             disabled={sharingExternal}
-            style={({ pressed }) => [styles.externalBtn, dark && darkStyles.externalBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.externalBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Share to other apps"
             accessibilityState={{ disabled: sharingExternal, busy: sharingExternal }}
           >
             <Ionicons name="share-social" size={19} color={actionInk} />
-            <Text style={[styles.externalText, dark && darkStyles.externalText]}>Facebook, TikTok, WhatsApp & more…</Text>
+            <Text style={styles.externalText}>Facebook, TikTok, WhatsApp & more…</Text>
           </Pressable>
 
           <Pressable onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
-            <Text style={[styles.closeText, dark && darkStyles.closeText]}>Done</Text>
+            <Text style={styles.closeText}>Done</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -311,12 +310,12 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   pressed: { opacity: 0.75 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: theme.interaction.scrim, justifyContent: 'flex-end' },
   captureOnly: { position: 'absolute', left: -5000, top: 0 },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing.xl,
@@ -330,24 +329,24 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.border,
+    backgroundColor: theme.border.subtle,
     alignSelf: 'center',
     marginBottom: 4,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontFamily: font.bold, fontSize: 18, color: colors.text },
+  title: { fontFamily: font.bold, fontSize: 18, color: theme.ink.primary },
   section: {
     fontFamily: font.bold,
     fontSize: 12,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: colors.textMuted,
+    color: theme.ink.muted,
     marginTop: spacing.sm,
   },
-  empty: { fontFamily: font.regular, fontSize: 13.5, color: colors.textMuted, paddingVertical: 8 },
+  empty: { fontFamily: font.regular, fontSize: 13.5, color: theme.ink.muted, paddingVertical: 8 },
   buddyRow: { gap: spacing.md, paddingVertical: 4 },
   buddy: { alignItems: 'center', gap: 5, width: 64 },
-  buddyName: { fontFamily: font.medium, fontSize: 11.5, color: colors.textSecondary },
+  buddyName: { fontFamily: font.medium, fontSize: 11.5, color: theme.ink.secondary },
   internalRow: { flexDirection: 'row', gap: spacing.sm },
   internalBtn: {
     minHeight: 48,
@@ -357,10 +356,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.muted,
   },
-  internalText: { color: colors.text, fontFamily: font.bold, fontSize: 13.5 },
+  internalText: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13.5 },
   disabled: { opacity: 0.45 },
   groupRow: { gap: spacing.sm, paddingVertical: 2 },
   groupBtn: {
@@ -371,11 +370,11 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
   },
-  groupName: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 12.5, maxWidth: 105 },
+  groupName: { color: theme.ink.secondary, fontFamily: font.semibold, fontSize: 12.5, maxWidth: 105 },
   sentBadge: {
     position: 'absolute',
     right: -2,
@@ -383,50 +382,23 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: colors.success,
+    backgroundColor: theme.status.success,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.card,
+    borderColor: theme.surface.card,
   },
   externalBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingVertical: 13,
     minHeight: 48,
   },
-  externalText: { fontFamily: font.bold, fontSize: 14.5, color: colors.onPrimary },
+  externalText: { fontFamily: font.bold, fontSize: 14.5, color: theme.ink.inverse },
   closeBtn: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
-  closeText: { fontFamily: font.bold, fontSize: 14, color: colors.textMuted },
-});
-
-const theme = themeColors('dark');
-const darkStyles = StyleSheet.create({
-  sheet: { backgroundColor: theme.surface.card },
-  grabber: { backgroundColor: theme.border.subtle },
-  title: { color: theme.ink.primary },
-  section: { color: theme.ink.muted },
-  empty: { color: theme.ink.muted },
-  buddyName: { color: theme.ink.secondary },
-  internalBtn: {
-    backgroundColor: theme.surface.muted,
-    borderColor: theme.border.subtle,
-  },
-  internalText: { color: theme.ink.primary },
-  groupBtn: {
-    backgroundColor: theme.surface.muted,
-    borderColor: theme.border.subtle,
-  },
-  groupName: { color: theme.ink.secondary },
-  sentBadge: {
-    backgroundColor: theme.status.success,
-    borderColor: theme.surface.card,
-  },
-  externalBtn: { backgroundColor: theme.border.action },
-  externalText: { color: theme.ink.inverse },
-  closeText: { color: theme.ink.muted },
+  closeText: { fontFamily: font.bold, fontSize: 14, color: theme.ink.muted },
 });

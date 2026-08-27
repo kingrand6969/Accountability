@@ -25,12 +25,10 @@ import {
 import { showToast } from '../ui/Toast';
 import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import {
-  colors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
@@ -111,8 +109,8 @@ export async function loadDiscoverScopeData(input: {
 
 export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope }) {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const appearance = useMemo(() => createDiscoverAppearance(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const appearance = useMemo(() => createDiscoverAppearance(theme), [theme]);
   const { palette, styles } = appearance;
   const { fontScale } = useWindowDimensions();
   const layout = deriveDiscoverLayout(fontScale);
@@ -565,7 +563,7 @@ function GroupCard({
   onOpen: () => void;
   onJoin: () => void;
 }) {
-  const { styles } = appearance;
+  const { palette, styles } = appearance;
   return (
     <View style={[styles.groupCard, largeText && styles.groupCardLargeText]} accessibilityLabel={`Recommended public group, ${group.name}`}>
       <Pressable
@@ -588,7 +586,7 @@ function GroupCard({
           />
         ) : (
           <>
-            <Ionicons name="people" size={largeText ? 28 : 22} color="#fff" />
+            <Ionicons name="people" size={largeText ? 28 : 22} color={palette.text} />
             <Text
               style={[
                 styles.groupFallbackLabel,
@@ -736,29 +734,29 @@ function Empty({ appearance, icon, text }: { appearance: DiscoverAppearance; ico
   );
 }
 
-function discoverPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function discoverPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
-    card: mode === 'light' ? colors.card : theme.surface.card,
-    mutedSurface: mode === 'light' ? colors.surfaceAlt : theme.surface.muted,
-    border: mode === 'light' ? colors.border : theme.border.subtle,
-    primarySoft: mode === 'light' ? colors.primarySoft : theme.surface.raised,
-    text: mode === 'light' ? colors.text : theme.ink.primary,
-    textSecondary: mode === 'light' ? colors.textSecondary : theme.ink.secondary,
-    textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
-    textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    warningSurface: mode === 'light' ? '#fff7ed' : theme.status.dangerSoft,
-    warningText: mode === 'light' ? '#9a3412' : theme.status.attention,
-    disabledOpacity: mode === 'light' ? 0.55 : theme.interaction.disabledOpacity,
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    mutedSurface: theme.surface.muted,
+    border: theme.border.subtle,
+    primarySoft: theme.surface.raised,
+    text: theme.ink.primary,
+    textSecondary: theme.ink.secondary,
+    textMuted: theme.ink.muted,
+    textFaint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    warningSurface: theme.status.dangerSoft,
+    warningText: theme.status.attention,
+    disabledOpacity: theme.interaction.disabledOpacity,
   };
 }
 
 type DiscoverPalette = ReturnType<typeof discoverPalette>;
 
-function createDiscoverAppearance(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = discoverPalette(theme, mode);
+function createDiscoverAppearance(theme: AppThemeColors) {
+  const palette = discoverPalette(theme);
   return { palette, styles: createStyles(palette) };
 }
 
@@ -814,7 +812,7 @@ const createStyles = (palette: DiscoverPalette) => StyleSheet.create({
   personFallback: { alignItems: 'center', justifyContent: 'center' },
   personScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,18,45,.36)' },
   personCopy: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: 5 },
-  personCopyLargeText: { position: 'relative', left: 0, right: 0, bottom: 0, padding: spacing.md, backgroundColor: colors.primaryDark },
+  personCopyLargeText: { position: 'relative', left: 0, right: 0, bottom: 0, padding: spacing.md, backgroundColor: palette.mutedSurface },
   personName: { color: '#fff', fontFamily: font.serif, fontSize: 20, lineHeight: 21 },
   personMeta: { color: '#e2e8f0', fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
   areaBadge: { alignSelf: 'flex-start', minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,.92)', paddingHorizontal: 9, marginTop: spacing.sm },
@@ -835,11 +833,11 @@ const createStyles = (palette: DiscoverPalette) => StyleSheet.create({
   disabled: { opacity: palette.disabledOpacity },
   groupCard: { height: DISCOVER_GEOMETRY.group, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, padding: 3, backgroundColor: palette.card },
   groupCardLargeText: { height: 'auto', minHeight: DISCOVER_GEOMETRY.group, flexDirection: 'column', alignItems: 'stretch', padding: spacing.sm },
-  groupArt: { width: 50, height: 50, borderRadius: radius.sm, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', gap: 2, overflow: 'hidden' },
+  groupArt: { width: 50, height: 50, borderRadius: radius.sm, backgroundColor: palette.mutedSurface, alignItems: 'center', justifyContent: 'center', gap: 2, overflow: 'hidden' },
   groupArtLargeText: { width: '100%', height: 'auto', minHeight: 112, padding: spacing.sm, overflow: 'visible' },
   groupFixtureImage: { width: 50, height: 50 },
   groupImageRadius: { borderRadius: radius.sm },
-  groupFallbackLabel: { color: '#fff', fontFamily: font.bold, fontSize: 9, lineHeight: 11, textAlign: 'center' },
+  groupFallbackLabel: { color: palette.text, fontFamily: font.bold, fontSize: 9, lineHeight: 11, textAlign: 'center' },
   groupFallbackLabelLargeText: { fontSize: 11, lineHeight: 14 },
   groupCopy: { flex: 1, minHeight: 44, justifyContent: 'center' },
   groupCopyLargeText: { flex: 0, minHeight: 48 },

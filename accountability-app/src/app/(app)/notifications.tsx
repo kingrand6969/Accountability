@@ -26,7 +26,6 @@ import {
   spacing,
   contentMax,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import { useAuth } from '../../auth/AuthProvider';
@@ -42,23 +41,22 @@ const TYPE_ICON: Record<AppNotification['type'], string> = {
 function notificationBadge(
   type: AppNotification['type'],
   theme: AppThemeColors,
-  mode: AppThemeMode,
 ): { background: string; foreground: string } {
   if (type === 'like' || type === 'buddy_request') {
     return {
       background: theme.status.attention,
-      foreground: mode === 'dark' ? theme.ink.inverse : theme.ink.primary,
+      foreground: theme.ink.inverse,
     };
   }
   if (type === 'comment') {
-    return { background: theme.ink.action, foreground: theme.surface.canvas };
+    return { background: theme.ink.action, foreground: theme.ink.inverse };
   }
-  return { background: theme.status.success, foreground: theme.surface.canvas };
+  return { background: theme.status.success, foreground: theme.ink.inverse };
 }
 
 export default function Notifications() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
+  const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
@@ -223,7 +221,7 @@ export default function Notifications() {
             />
           }
           renderItem={({ item }) => {
-            const badge = notificationBadge(item.type, theme, mode);
+            const badge = notificationBadge(item.type, theme);
             return (
               <Pressable
                 onPress={() => open(item)}

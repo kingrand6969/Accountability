@@ -9,16 +9,20 @@ const sources = {
   menu: readFileSync(path.resolve(__dirname, 'PostMenu.tsx'), 'utf8'),
   confirm: readFileSync(path.resolve(__dirname, '../ui/ConfirmDialog.tsx'), 'utf8'),
 };
-const adaptiveSources = Object.entries(sources).filter(([name]) => name !== 'confirm');
+const socialSources = Object.entries(sources).filter(([name]) => name !== 'confirm');
 
 describe('Feed interaction appearance contract', () => {
-  test.each(adaptiveSources)(
-    '%s follows the manual app appearance and semantic dark roles',
+  test.each(socialSources)(
+    '%s uses permanent semantic dark roles without an appearance fork',
     (_name, source) => {
       expect(source).toContain('useAppTheme');
-      expect(source).toContain("mode === 'dark'");
-      expect(source).toContain("themeColors('dark')");
-      expect(source).toContain('darkStyles');
+      expect(source).toContain('const { colors: theme } = useAppTheme()');
+      expect(source).toContain('createStyles(theme)');
+      expect(source).toContain('theme.interaction.scrim');
+      expect(source).not.toContain("mode === 'light'");
+      expect(source).not.toContain("mode === 'dark'");
+      expect(source).not.toContain("themeColors('dark')");
+      expect(source).not.toContain('darkStyles');
       expect(source).not.toContain('useColorScheme');
     },
   );
@@ -36,11 +40,7 @@ describe('Feed interaction appearance contract', () => {
     expect(sources.confirm).not.toContain("'light'");
   });
 
-  test('keeps every Light foundation visible while adding dark sheet, ink, border, and action roles', () => {
-    expect(sources.broadcast).toContain('backgroundColor: colors.card');
-    expect(sources.encouragement).toContain('backgroundColor: colors.cream');
-    expect(sources.recorder).toContain('backgroundColor: colors.cream');
-    expect(sources.menu).toContain('backgroundColor: colors.card');
+  test('uses semantic sheet, ink, border, action, inverse, and status roles throughout', () => {
     expect(sources.confirm).toContain('tint="dark"');
 
     for (const source of Object.values(sources)) {
@@ -48,6 +48,10 @@ describe('Feed interaction appearance contract', () => {
       expect(source).toContain('theme.ink');
       expect(source).toContain('theme.border');
     }
+    expect(sources.broadcast).toContain('backgroundColor: theme.status.success');
+    expect(sources.encouragement).toContain('backgroundColor: theme.surface.card');
+    expect(sources.recorder).toContain('backgroundColor: theme.ink.action');
+    expect(sources.menu).toContain('backgroundColor: theme.status.dangerSoft');
   });
 
   test('keeps modal exits and lifecycle actions while exposing 48dp controls', () => {

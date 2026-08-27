@@ -32,13 +32,11 @@ import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
 import {
-  colors,
   font,
   radius,
   spacing,
   shadow,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
@@ -46,8 +44,8 @@ type Tab = 'discover' | 'requests' | 'buddies';
 
 export default function BuddyHub() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => buddyPalette(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => buddyPalette(theme), [theme]);
   const styles = useMemo(() => createStyles(palette), [palette]);
   const [optIn, setOptIn] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -398,21 +396,21 @@ export default function BuddyHub() {
   );
 }
 
-function buddyPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function buddyPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
-    card: mode === 'light' ? colors.card : theme.surface.card,
-    mutedSurface: mode === 'light' ? colors.surfaceAlt : theme.surface.muted,
-    raisedSurface: mode === 'light' ? colors.surface : theme.surface.raised,
-    border: mode === 'light' ? colors.border : theme.border.subtle,
-    primarySoft: mode === 'light' ? colors.primarySoft : theme.surface.raised,
-    text: mode === 'light' ? colors.text : theme.ink.primary,
-    textSecondary: mode === 'light' ? colors.textSecondary : theme.ink.secondary,
-    textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
-    textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    danger: mode === 'light' ? colors.danger : theme.status.danger,
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    mutedSurface: theme.surface.muted,
+    raisedSurface: theme.surface.raised,
+    border: theme.border.subtle,
+    primarySoft: theme.surface.raised,
+    text: theme.ink.primary,
+    textSecondary: theme.ink.secondary,
+    textMuted: theme.ink.muted,
+    textFaint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    danger: theme.status.danger,
   };
 }
 

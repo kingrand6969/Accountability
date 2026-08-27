@@ -241,9 +241,9 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
             style={[styles.createPlusVisual, { left: createPlusVisualTargetLeft }]}
           >
             {posting ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <ActivityIndicator size="small" color={theme.ink.inverse} />
             ) : (
-              <Ionicons name="add" size={14} color="#fff" />
+              <Ionicons name="add" size={14} color={theme.ink.inverse} />
             )}
           </View>
         </Pressable>
@@ -421,7 +421,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createInitial: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
+  createInitial: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13 },
   createLabel: {
     marginTop: 4,
     width: '100%',

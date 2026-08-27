@@ -26,21 +26,19 @@ import { listPages, type Page } from '../pages/api';
 import { Avatar } from '../feed/Avatar';
 import { EmptyState } from '../ui/EmptyState';
 import {
-  colors,
   font,
   radius,
   spacing,
   contentMax,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { useAuth } from '../auth/AuthProvider';
 
 export default function Search() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const appearance = useMemo(() => createSearchAppearance(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const appearance = useMemo(() => createSearchAppearance(theme), [theme]);
   const { palette, styles } = appearance;
   const { isPro } = useIsPro();
   const { session } = useAuth();
@@ -381,25 +379,25 @@ function Row({
   );
 }
 
-function searchPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function searchPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? colors.background : theme.surface.canvas,
-    card: mode === 'light' ? colors.card : theme.surface.card,
-    mutedSurface: mode === 'light' ? colors.surfaceAlt : theme.surface.muted,
-    imageFallback: mode === 'light' ? colors.surface : theme.surface.raised,
-    border: mode === 'light' ? colors.border : theme.border.subtle,
-    primarySoft: mode === 'light' ? colors.primarySoft : theme.surface.raised,
-    text: mode === 'light' ? colors.text : theme.ink.primary,
-    textMuted: mode === 'light' ? colors.textMuted : theme.ink.muted,
-    textFaint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    mutedSurface: theme.surface.muted,
+    imageFallback: theme.surface.raised,
+    border: theme.border.subtle,
+    primarySoft: theme.surface.raised,
+    text: theme.ink.primary,
+    textMuted: theme.ink.muted,
+    textFaint: theme.ink.muted,
+    action: theme.ink.action,
   };
 }
 
 type SearchPalette = ReturnType<typeof searchPalette>;
 
-function createSearchAppearance(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = searchPalette(theme, mode);
+function createSearchAppearance(theme: AppThemeColors) {
+  const palette = searchPalette(theme);
   return { palette, styles: createStyles(palette) };
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import {
   Modal,
   Pressable,
@@ -11,7 +11,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from './Avatar';
 import { useAppTheme } from '../ui/AppThemeProvider';
-import { colors, font, radius, spacing, themeColors } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -44,8 +44,8 @@ export function openPostMenu(opts: Options): void {
 }
 
 export function PostMenuHost() {
-  const { mode } = useAppTheme();
-  const dark = mode === 'dark';
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [opts, setOpts] = useState<Options | null>(null);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -85,41 +85,40 @@ export function PostMenuHost() {
         <Pressable
           style={[
             styles.sheet,
-            dark && darkStyles.sheet,
             wide
               ? styles.sheetWide
               : { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm },
           ]}
           onPress={(e) => e.stopPropagation()}
         >
-          {!wide ? <View style={[styles.handle, dark && darkStyles.handle]} /> : null}
+          {!wide ? <View style={styles.handle} /> : null}
 
           {/* which post this is about */}
           {preview ? (
             <View style={styles.preview}>
               <Avatar url={preview.avatar} name={preview.name} size={34} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.previewName, dark && darkStyles.previewName]} numberOfLines={1}>
+                <Text style={styles.previewName} numberOfLines={1}>
                   {preview.name ?? 'Post'}
                 </Text>
                 {excerpt ? (
-                  <Text style={[styles.previewBody, dark && darkStyles.previewBody]} numberOfLines={1}>
+                  <Text style={styles.previewBody} numberOfLines={1}>
                     {excerpt}
                   </Text>
                 ) : (
-                  <Text style={[styles.previewBody, dark && darkStyles.previewBody]}>Photo post</Text>
+                  <Text style={styles.previewBody}>Photo post</Text>
                 )}
               </View>
             </View>
           ) : null}
 
-          <View style={[styles.group, dark && darkStyles.group]}>
+          <View style={styles.group}>
             {opts?.options.map((o, i) => (
               <View key={o.label}>
-                {i > 0 ? <View style={[styles.divider, dark && darkStyles.divider]} /> : null}
+                {i > 0 ? <View style={styles.divider} /> : null}
                 <Pressable
                   onPress={() => pick(o)}
-                  style={({ pressed }) => [styles.row, pressed && (dark ? darkStyles.rowPressed : styles.rowPressed)]}
+                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                   accessibilityRole="button"
                   accessibilityLabel={o.label}
                   accessibilityHint={o.subtitle}
@@ -128,28 +127,24 @@ export function PostMenuHost() {
                     style={[
                       styles.rowIcon,
                       o.destructive ? styles.iconDanger : styles.iconPlain,
-                      dark && (o.destructive ? darkStyles.iconDanger : darkStyles.iconPlain),
                     ]}
                   >
                     <Ionicons
                       name={o.icon}
                       size={17}
-                      color={o.destructive
-                        ? (dark ? theme.status.danger : colors.danger)
-                        : (dark ? theme.ink.secondary : colors.textSecondary)}
+                      color={o.destructive ? theme.status.danger : theme.ink.secondary}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[
                       styles.rowLabel,
-                      dark && darkStyles.rowLabel,
-                      o.destructive && { color: dark ? theme.status.danger : colors.danger },
+                      o.destructive && { color: theme.status.danger },
                     ]}>
                       {o.label}
                     </Text>
-                    {o.subtitle ? <Text style={[styles.rowSub, dark && darkStyles.rowSub]}>{o.subtitle}</Text> : null}
+                    {o.subtitle ? <Text style={styles.rowSub}>{o.subtitle}</Text> : null}
                   </View>
-                  <Ionicons name="chevron-forward" size={15} color={dark ? theme.ink.muted : colors.textFaint} />
+                  <Ionicons name="chevron-forward" size={15} color={theme.ink.muted} />
                 </Pressable>
               </View>
             ))}
@@ -157,11 +152,11 @@ export function PostMenuHost() {
 
           <Pressable
             onPress={close}
-            style={({ pressed }) => [styles.cancel, dark && darkStyles.cancel, pressed && { opacity: 0.75 }]}
+            style={({ pressed }) => [styles.cancel, pressed && { opacity: 0.75 }]}
             accessibilityRole="button"
             accessibilityLabel="Cancel"
           >
-            <Text style={[styles.cancelText, dark && darkStyles.cancelText]}>Cancel</Text>
+            <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -169,12 +164,12 @@ export function PostMenuHost() {
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)' },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: theme.interaction.scrim },
   backdropBottom: { justifyContent: 'flex-end' },
   backdropCenter: { justifyContent: 'center', padding: spacing.xxl },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: spacing.lg,
@@ -193,7 +188,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.border,
+    backgroundColor: theme.border.subtle,
     marginBottom: 2,
   },
   preview: {
@@ -203,16 +198,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },
-  previewName: { fontFamily: font.bold, fontSize: 13.5, color: colors.text },
-  previewBody: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
+  previewName: { fontFamily: font.bold, fontSize: 13.5, color: theme.ink.primary },
+  previewBody: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted, marginTop: 1 },
   group: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     overflow: 'hidden',
   },
-  divider: { height: 1, backgroundColor: colors.border, marginLeft: 62 },
+  divider: { height: 1, backgroundColor: theme.border.subtle, marginLeft: 62 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -221,7 +216,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
-  rowPressed: { backgroundColor: colors.surface },
+  rowPressed: { backgroundColor: theme.interaction.pressedOverlay },
   rowIcon: {
     width: 36,
     height: 36,
@@ -229,36 +224,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconPlain: { backgroundColor: colors.surface },
-  iconDanger: { backgroundColor: colors.dangerSoft },
-  rowLabel: { fontFamily: font.semibold, fontSize: 15, color: colors.text },
-  rowSub: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted, marginTop: 1.5 },
+  iconPlain: { backgroundColor: theme.surface.raised },
+  iconDanger: { backgroundColor: theme.status.dangerSoft },
+  rowLabel: { fontFamily: font.semibold, fontSize: 15, color: theme.ink.primary },
+  rowSub: { fontFamily: font.regular, fontSize: 12, color: theme.ink.muted, marginTop: 1.5 },
   cancel: {
     minHeight: 50,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.raised,
   },
-  cancelText: { fontFamily: font.bold, fontSize: 15, color: colors.textSecondary },
-});
-
-const theme = themeColors('dark');
-const darkStyles = StyleSheet.create({
-  sheet: { backgroundColor: theme.surface.card },
-  handle: { backgroundColor: theme.border.subtle },
-  previewName: { color: theme.ink.primary },
-  previewBody: { color: theme.ink.muted },
-  group: {
-    backgroundColor: theme.surface.muted,
-    borderColor: theme.border.subtle,
-  },
-  divider: { backgroundColor: theme.border.subtle },
-  rowPressed: { backgroundColor: theme.interaction.pressedOverlay },
-  iconPlain: { backgroundColor: theme.surface.raised },
-  iconDanger: { backgroundColor: theme.status.dangerSoft },
-  rowLabel: { color: theme.ink.primary },
-  rowSub: { color: theme.ink.muted },
-  cancel: { backgroundColor: theme.surface.raised },
-  cancelText: { color: theme.ink.secondary },
+  cancelText: { fontFamily: font.bold, fontSize: 15, color: theme.ink.secondary },
 });

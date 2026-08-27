@@ -91,7 +91,7 @@ function PostDetailView({
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const { mode, colors: theme } = useAppTheme();
+  const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const renderViewKey = `${id ?? ''}:${myId ?? ''}`;
   const [snapshot, setSnapshot] = useState<
@@ -480,7 +480,7 @@ function PostDetailView({
   if (viewState === 'loading') {
     return (
       <>
-        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null}
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
         <PostDetailState
           topInset={insets.top}
           onBack={() => navigateBackSafely(router)}
@@ -495,7 +495,7 @@ function PostDetailView({
   if (!post) {
     return (
       <>
-        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null}
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
         <PostDetailState
           topInset={insets.top}
           onBack={() => navigateBackSafely(router)}
@@ -536,7 +536,7 @@ function PostDetailView({
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
-      {isFocused ? <StatusBar style={postDetailStatusBarStyle(post, mode)} animated /> : null}
+      {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
       {viewState === 'offline-cached' ? (
         <View style={styles.offlineBanner} accessibilityRole="alert">
           <Text style={styles.offlineText}>Offline · showing this session’s last loaded copy</Text>
