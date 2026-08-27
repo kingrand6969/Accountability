@@ -55,6 +55,6 @@ describe('StoryRail circular-bubble presentation', () => {
     expect(hintTile).not.toContain('shadow');
     expect(hintTile).not.toContain('elevation');
     expect(source).toContain('accessibilityLabel="Find accountability buddies"');
-    expect(source).toContain("onPress={() => router.push('/buddy')}");
+    expect(source).toContain("onPress={() => router.push('/discover')}");
   });
 });

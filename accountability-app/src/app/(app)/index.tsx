@@ -753,7 +753,7 @@ export default function Feed() {
                     <Pressable onPress={() => router.push(DIRECT_POST_HREF as never)} style={styles.emptyPrimary} accessibilityRole="button">
                       <Text style={styles.emptyPrimaryText}>Share a win</Text>
                     </Pressable>
-                    <Pressable onPress={() => router.push('/buddy' as never)} style={styles.emptySecondary} accessibilityRole="button">
+                    <Pressable onPress={() => router.push('/discover' as never)} style={styles.emptySecondary} accessibilityRole="button">
                       <Text style={styles.emptySecondaryText}>Find buddies</Text>
                     </Pressable>
                   </View>

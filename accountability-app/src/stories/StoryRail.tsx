@@ -279,7 +279,7 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
         <View style={[styles.hintTile, { width: hintWidth, height: tileHeight }]}>
           <Pressable
             style={({ pressed }) => [styles.hintContent, pressed && styles.pressed]}
-            onPress={() => router.push('/buddy')}
+            onPress={() => router.push('/discover')}
             accessibilityLabel="Find accountability buddies"
             accessibilityRole="button"
           >
