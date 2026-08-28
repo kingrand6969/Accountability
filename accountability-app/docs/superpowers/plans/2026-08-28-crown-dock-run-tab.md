@@ -52,7 +52,7 @@ Expected: PASS.
 
 - [ ] **Step 1: Run static checks**
 
-Run: `npm run typecheck` and `npm run lint`.
+Run: `npx tsc --noEmit` and `npm run lint`.
 
 Expected: both exit successfully.
 
@@ -63,4 +63,3 @@ Run the existing EAS preview update command for Android. Never publish productio
 - [ ] **Step 3: Open and verify on the connected device**
 
 Confirm the new elevated Crown Dock is visible, Run opens the tracker, and the other four destinations still work.
-

@@ -3,6 +3,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandMark } from './BrandMark';
+import { CrownDockRunAction } from './CrownDockRunAction';
 import {
   TAB_BAR_MIN_CONTENT_HEIGHT,
   tabBarContentHeight,
@@ -92,6 +93,7 @@ export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarPr
             const { options } = descriptors[route.key];
             const isFocused = route.key === focusedKey;
             const accessibleLabel = options.title ?? route.name;
+            const isRun = accessibleLabel === 'Run';
             const visualLabel =
               fontScale >= 1.25 && visibleTabLabels.has(accessibleLabel)
                 ? compactTabLabels[accessibleLabel as (typeof VISIBLE_TAB_LABELS)[number]]
@@ -114,9 +116,15 @@ export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarPr
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isFocused }}
                 accessibilityLabel={accessibleLabel}
-                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.item,
+                  isRun && styles.runItem,
+                  pressed && styles.pressed,
+                ]}
               >
-                {(options.title ?? route.name) === 'Journey' ? (
+                {isRun ? (
+                  <CrownDockRunAction focused={isFocused} />
+                ) : (options.title ?? route.name) === 'Journey' ? (
                   <BrandMark
                     size={27}
                     color={isFocused ? theme.ink.action : theme.ink.muted}
@@ -129,18 +137,20 @@ export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarPr
                     size: 24,
                   })
                 )}
-                <Text
-                  testID={`tab-label-${accessibleLabel}`}
-                  style={[
-                    styles.label,
-                    { color: theme.ink.muted },
-                    isFocused && { color: theme.ink.action },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {visualLabel}
-                </Text>
-                {isFocused ? (
+                {!isRun ? (
+                  <Text
+                    testID={`tab-label-${accessibleLabel}`}
+                    style={[
+                      styles.label,
+                      { color: theme.ink.muted },
+                      isFocused && { color: theme.ink.action },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {visualLabel}
+                  </Text>
+                ) : null}
+                {isFocused && !isRun ? (
                   <View
                     testID={`tab-indicator-${options.title ?? route.name}`}
                     style={{
@@ -184,6 +194,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     minHeight: 68,
     borderTopWidth: StyleSheet.hairlineWidth,
+    overflow: 'visible',
   },
   row: {
     minHeight: TAB_BAR_MIN_CONTENT_HEIGHT,
@@ -191,6 +202,7 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     paddingTop: 6,
     paddingBottom: 8,
+    overflow: 'visible',
   },
   item: {
     flex: 1,
@@ -200,6 +212,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
     paddingHorizontal: 2,
+  },
+  runItem: {
+    overflow: 'visible',
+    zIndex: 4,
+    elevation: 14,
   },
   pressed: { opacity: 0.72 },
   label: {

@@ -170,7 +170,12 @@ describe('GlassTabBar contract', () => {
       'Messages',
       'Menu',
     ]);
-    expect(visibleLabels(renderer)).toEqual(VISIBLE_TAB_LABELS);
+    expect(visibleLabels(renderer)).toEqual([
+      'Feed',
+      'Journey',
+      'Messages',
+      'Menu',
+    ]);
     expect(visibleLabels(renderer)).not.toEqual(
       expect.arrayContaining(['Today', 'Profile', 'Notifications']),
     );
@@ -290,10 +295,29 @@ describe('GlassTabBar contract', () => {
     }
   });
 
+  it('renders Run as the elevated Crown Dock action without a visual label', () => {
+    const focused = renderTabBar({ focusedIndex: 2 });
+    const run = pressableByLabel(focused.renderer, 'Run');
+
+    expect(
+      focused.renderer.root.findByProps({ testID: 'crown-dock-run' }),
+    ).toBeTruthy();
+    expect(
+      focused.renderer.root.findAllByProps({ testID: 'tab-label-Run' }),
+    ).toHaveLength(0);
+    expect(run.props.accessibilityRole).toBe('tab');
+    expect(run.props.accessibilityState).toEqual({ selected: true });
+
+    const unfocused = renderTabBar();
+    act(() => pressableByLabel(unfocused.renderer, 'Run').props.onPress());
+    expect(unfocused.navigate).toHaveBeenCalledWith('run');
+    expect(hapticSelect).toHaveBeenCalledTimes(1);
+  });
+
   it('allows centered two-line labels on a 320dp phone at high font scale', () => {
     const { renderer } = renderTabBar();
 
-    for (const label of VISIBLE_TAB_LABELS) {
+    for (const label of VISIBLE_TAB_LABELS.filter((label) => label !== 'Run')) {
       const text = renderer.root.findByProps({ testID: `tab-label-${label}` });
       expect(text.props.numberOfLines).not.toBe(1);
       expect(text.props.numberOfLines).toBe(2);
@@ -307,6 +331,7 @@ describe('GlassTabBar contract', () => {
         ]),
       );
     }
+    expect(renderer.root.findAllByProps({ testID: 'tab-label-Run' })).toHaveLength(0);
   });
 
   it('uses compact visual words at large text while preserving full accessible names', () => {
@@ -315,7 +340,6 @@ describe('GlassTabBar contract', () => {
     const expected = {
       Feed: 'Home',
       Journey: 'Path',
-      Run: 'Run',
       Messages: 'Chat',
     } as const;
 
@@ -327,6 +351,7 @@ describe('GlassTabBar contract', () => {
         renderer.root.findByProps({ testID: `tab-label-${accessibleName}` }).props.children,
       ).toBe(visualLabel);
     }
+    expect(renderer.root.findAllByProps({ testID: 'tab-label-Run' })).toHaveLength(0);
   });
 
   it('preserves tabPress prevention, navigation, and haptics', () => {
