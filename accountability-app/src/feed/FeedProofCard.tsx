@@ -5,7 +5,7 @@ import { SaveToMemories } from '../memories/SaveToMemories';
 import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { Avatar } from './Avatar';
-import { authorLabel, taggedLabel, timeAgo } from './format';
+import { authorLabel, postTimestampLabel, taggedLabel } from './format';
 import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
 import { ProofHeadlineOverlay } from './ProofHeadlineOverlay';
@@ -92,7 +92,7 @@ export function FeedProofCard({
           </Text>
           <View style={styles.metaRow}>
             <Text style={styles.time}>
-              {timeAgo(post.created_at)}
+              {postTimestampLabel(post.created_at)}
               {post.tagged.length > 0 ? ` · ${taggedLabel(post.tagged)}` : ''}
             </Text>
             <Text style={styles.audience}>{presentation.audienceLabel}</Text>

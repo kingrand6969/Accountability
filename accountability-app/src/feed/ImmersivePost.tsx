@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteTrace } from '../activity/RouteTrace';
 import { formatDuration, formatKm, formatPace, type Pt } from '../activity/geo';
-import { authorLabel, timeAgo } from './format';
+import { authorLabel, postTimestampLabel } from './format';
 import { Avatar } from './Avatar';
 import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
@@ -476,7 +476,7 @@ function CompactPostSurface({
         <View style={styles.compactAuthorCopy}>
           <Text style={styles.compactAuthor}>{authorLabel(post.author_name)}</Text>
           <Text style={styles.compactMeta}>
-            {timeAgo(post.created_at)} · {presentation.ownerLabel} · {presentation.audienceLabel}
+            {postTimestampLabel(post.created_at)} · {presentation.ownerLabel} · {presentation.audienceLabel}
             {typeLabel ? ` · ${typeLabel}` : ''}
           </Text>
         </View>

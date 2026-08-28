@@ -1,5 +1,5 @@
-export function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
+export function timeAgo(iso: string, nowMs = Date.now()): string {
+  const diffMs = nowMs - new Date(iso).getTime();
   const s = Math.floor(diffMs / 1000);
   if (s < 60) return 'just now';
   const m = Math.floor(s / 60);
@@ -10,12 +10,16 @@ export function timeAgo(iso: string): string {
   if (d < 7) return `${d}d`;
   // older posts: a friendly short date ("Jul 13"), year only when it differs
   const dt = new Date(iso);
-  const sameYear = dt.getFullYear() === new Date().getFullYear();
+  const sameYear = dt.getFullYear() === new Date(nowMs).getFullYear();
   return dt.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     ...(sameYear ? null : { year: 'numeric' }),
   });
+}
+
+export function postTimestampLabel(iso: string, nowMs = Date.now()): string {
+  return `· ${timeAgo(iso, nowMs)}`;
 }
 
 export function authorLabel(name: string | null): string {
