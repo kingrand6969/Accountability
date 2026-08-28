@@ -21,6 +21,8 @@ legal-web/
 admin-site-deploy.tar.gz
 supabase/
 docs/
+.release-evidence/
+.release-evidence/**
 
 # Local tooling and editor state
 .device-verification/
