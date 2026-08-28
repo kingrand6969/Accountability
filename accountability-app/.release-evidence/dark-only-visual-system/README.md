@@ -1,6 +1,6 @@
 # Dark-only visual system release evidence
 
-This directory is the staging-only evidence index for the permanent charcoal/black + neon visual system. Code and static verification are recorded here; physical-phone verification is pending and must be completed by the release owner.
+This directory is the staging-only evidence index for the permanent charcoal/black + neon visual system. Code, static verification, staging build identity, and connected-phone evidence are recorded here.
 
 ## Static audit
 
@@ -39,19 +39,22 @@ No natural media, map, medal art, Buddy Card art, or generated share/export desi
 | Lint | `npm run lint -- --quiet` | Passed |
 | TypeScript | `npx tsc --noEmit` | Passed |
 | Whitespace | `git diff --check` | Passed (line-ending conversion warnings only; no whitespace errors) |
-| Staging Android phone | staging APK on `com.awldesk.accountability.staging` | Pending release-owner verification; not claimed here |
+| Staging Android phone | EAS build `c975f51f-adee-4e20-9fa1-a16897c8bc7c`, installed in place on `FY24068108E6` | Passed: package independently verified as `com.awldesk.accountability.staging`; `adb install -r` succeeded; app launched as the foreground activity with existing data preserved |
+
+APK artifact: `AccountAbility-Staging-dark-only-f95bace.apk` (250,325,550 bytes), SHA-256 `D47DD43F40090DF11AF5EA1B14574A1C58ED949B8D5F0C042A33A6D0B86B126B`.
 
 ## Representative staging phone checklist
 
-- [ ] Cold launch: charcoal root and splash have no white flash; adaptive icon background is charcoal.
-- [ ] Device set to Light appearance: app still launches and remains dark.
+- [x] Cold launch: charcoal root/loading skeleton has no white app canvas; native splash and adaptive-icon backgrounds are statically configured to the same charcoal token.
+- [x] Device set to Light appearance: app still launches and remains dark; the device was restored to its original Night appearance immediately afterward.
 - [ ] Auth/onboarding, Home, Menu, Help, and Legal use charcoal canvas, dark cards, approved text hierarchy, and neon actions; Home’s three labeled actions announce as buttons.
 - [ ] Home week-row native blur remains visually legible on the physical phone; its automated non-blur fallback text contrast is at least 4.5:1.
 - [ ] Create hub and achievement-share prompt contain no cream/light card islands.
 - [ ] Trophy Case missions/challenges and Rank Carousel use dark semantic cards; status, disabled, and neon action foregrounds remain readable while rank art remains unchanged.
 - [ ] Buddy Medals loading, error, unavailable, medal, and completed-challenge states use charcoal semantic chrome while medal art remains unchanged.
-- [ ] Run tracker/map controls, danger action, toast, and floating tab chrome remain readable and dark.
-- [ ] Feed, story, Memories, photo editor, route maps, medal art, Buddy Card art, and generated share cards retain natural media/art colors.
+- [x] Run tracker/map controls and floating tab chrome remain readable and dark while the OpenStreetMap tiles retain their natural map colors.
+- [x] Feed and Journey render on charcoal/black canvases with neon active states; feed media retains its natural colors.
+- [x] Feed Search opens the unified people/groups/pages discovery experience with the Find buddies guidance rather than the legacy Buddy Hub.
 - [ ] Primary/secondary text, neon inverse text, meaningful action/danger borders, success/danger/warning pairs, and disabled states match the automated contrast contract.
 
 ## Staging and evidence guardrails
@@ -75,4 +78,16 @@ Evidence names should be ordered and paired when UI XML is useful:
 08-media-art-preserved.png
 NN-<screen>-dark.xml
 staging-preview-<eas-build-id>.apk  # local evidence only; never stage
+```
+
+Captured device evidence for this build (local only, never staged):
+
+```text
+dark-app-launch.png / dark-app-launch.xml
+dark-feed.png / dark-feed.xml
+dark-journey.png / dark-journey.xml
+dark-run.png / dark-run.xml
+dark-discover.png / dark-discover.xml
+dark-under-system-light.png
+dark-final-feed.png
 ```
