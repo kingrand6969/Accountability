@@ -212,8 +212,6 @@ type PrivacySelectorProps = {
 function PrivacySelector({ value, onChange, publicHint, privateHint }: PrivacySelectorProps) {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const actionColor = theme.ink.action;
-  const mutedColor = theme.ink.muted;
   const options = [
     { value: 'public' as const, icon: 'globe-outline' as const, label: 'Public' },
     { value: 'private' as const, icon: 'lock-closed-outline' as const, label: 'Private' },
@@ -241,7 +239,7 @@ function PrivacySelector({ value, onChange, publicHint, privateHint }: PrivacySe
               <Ionicons
                 name={option.icon}
                 size={16}
-                color={selected ? actionColor : mutedColor}
+                color={selected ? theme.ink.inverse : theme.ink.secondary}
               />
               <Text
                 style={[

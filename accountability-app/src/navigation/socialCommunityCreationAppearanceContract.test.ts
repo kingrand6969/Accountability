@@ -74,6 +74,27 @@ describe('Group and Page creation appearance contract', () => {
     }
   });
 
+  test('privacy selection binds inverse icon and text ink to neon with accessible contrast', () => {
+    const theme = themeColors('dark');
+
+    expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.secondary, theme.surface.muted)).toBeGreaterThanOrEqual(3);
+    expect(theme.ink.inverse).not.toBe(theme.ink.action);
+
+    for (const source of [groupNew, pageNew]) {
+      expect(source).toContain(
+        'color={selected ? theme.ink.inverse : theme.ink.secondary}',
+      );
+      expect(source).toContain(
+        'privacySegmentSelected: {\n      backgroundColor: theme.ink.action',
+      );
+      expect(source).toContain(
+        'privacySegmentTextSelected: { color: theme.ink.inverse',
+      );
+      expect(source).not.toContain('color={selected ? actionColor : mutedColor}');
+    }
+  });
+
   test('keeps every direct form control at least 48dp', () => {
     for (const source of [groupNew, pageNew]) {
       expect(source).toMatch(/input:\s*\{[^}]*minHeight: spacing\.touch/s);
