@@ -110,6 +110,12 @@ describe('RunCard approved layouts', () => {
     expect(mockMap).toHaveBeenLastCalledWith(expect.objectContaining({
       interactive: false,
       route: points.map((point) => ({ lat: point.lat, lng: point.lon })),
+      routeStyle: {
+        color: '#B9FF3D',
+        weight: 5,
+        casingColor: '#0B0D0B',
+        casingWeight: 9,
+      },
       markers: [],
       showLatestMarker: false,
       tiles: 'osm',
@@ -154,6 +160,26 @@ describe('RunCard approved layouts', () => {
         { lat: points[2].lat, lng: points[2].lon, color: '#B9FF3D' },
       ],
     }));
+    act(() => renderer.unmount());
+  });
+
+  test('uses contrasting semantic glyph colors for hidden and exposed endpoints', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(card('map-focus')); });
+    const hiddenGlyph = renderer.root.findByProps({ children: '✓' });
+    const hiddenBadge = StyleSheet.flatten(hiddenGlyph.parent!.props.style);
+    expect(StyleSheet.flatten(hiddenGlyph.props.style)).toMatchObject({ color: '#0B0D0B' });
+    expect(hiddenBadge).toMatchObject({ backgroundColor: '#B9FF3D', borderColor: '#B9FF3D' });
+    expect(contrast(rgb('#0B0D0B'), rgb('#B9FF3D'))).toBeGreaterThanOrEqual(4.5);
+
+    act(() => { renderer.update(card('map-focus', { showEndpoints: true })); });
+    const exposedGlyph = renderer.root.findByProps({ children: '!' });
+    const exposedBadge = StyleSheet.flatten(exposedGlyph.parent!.props.style);
+    expect(StyleSheet.flatten(exposedGlyph.props.style)).toMatchObject({ color: '#FBBF24' });
+    expect(exposedBadge).toMatchObject({ borderColor: '#FBBF24' });
+    const contrastPlateOverLightMap = compositeOverWhite([11, 13, 11], 0.86);
+    expect(contrast(rgb('#FBBF24'), contrastPlateOverLightMap)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(rgb('#FBBF24'), contrastPlateOverLightMap)).toBeGreaterThanOrEqual(3);
     act(() => renderer.unmount());
   });
 });

@@ -10,6 +10,7 @@ import {
   type OsmAuthenticatedBridgeMessage,
   type OsmDocumentIdentity,
   type OsmRouteUpdateOptions,
+  type OsmRouteStyle,
 } from './osmHtml';
 import { OsmBridgeGate } from './osmBridgeGate';
 
@@ -51,11 +52,12 @@ export type OsmMapHandle = {
   fitRoute: () => void;
 };
 
-export type { MapFitPadding } from './osmHtml';
+export type { MapFitPadding, OsmRouteStyle } from './osmHtml';
 
 export type OsmMapProps = {
   markers?: MapMarker[];
   route?: LatLng[];
+  routeStyle?: OsmRouteStyle;
   interactive?: boolean;
   tiles?: 'osm' | 'dark';
   showZoomControl?: boolean;
@@ -74,6 +76,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   {
     markers = [],
     route = [],
+    routeStyle,
     interactive = true,
     tiles = 'osm',
     showZoomControl = true,
@@ -87,7 +90,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
   const previousDeclarativeRouteLength = useRef(route.length);
   const loadedGeneration = useRef<string | null>(null);
   const [securityEpoch, setSecurityEpoch] = useState(0);
-  const serializedMapData = JSON.stringify({ markers, route, fitPadding });
+  const serializedMapData = JSON.stringify({ markers, route, fitPadding, routeStyle });
   const documentKey = JSON.stringify({
     serializedMapData,
     interactive,
@@ -133,6 +136,7 @@ export const OsmMap = forwardRef<OsmMapHandle, OsmMapProps>(function OsmMap(
         markers: MapMarker[];
         route: LatLng[];
         fitPadding?: MapFitPadding;
+        routeStyle?: OsmRouteStyle;
       };
       return buildOsmHtml({
         ...stableMapData,

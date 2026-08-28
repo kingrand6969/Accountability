@@ -173,6 +173,20 @@ describe('web OsmMap imperative bridge', () => {
     );
   });
 
+  test('forwards optional route styling into the web Leaflet document', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <OsmMap routeStyle={{ color: '#B9FF3D', casingColor: '#0B0D0B' }} />,
+      );
+      mounted.push(renderer);
+    });
+
+    const html = renderer.root.findByType('iframe').props.srcDoc as string;
+    expect(html).toContain('var routeColor = "#B9FF3D";');
+    expect(html).toContain('var routeCasingColor = "#0B0D0B";');
+  });
+
   test('uses the same preserve, center, overview, and clear messages as native', () => {
     const postMessage = jest.fn();
     const frameWindow = { postMessage };

@@ -1,6 +1,12 @@
 export type LatLng = { lat: number; lng: number };
 export type MapMarker = LatLng & { label?: string; color?: string };
 export type MapFitPadding = { top: number; right: number; bottom: number; left: number };
+export type OsmRouteStyle = {
+  color?: string;
+  weight?: number;
+  casingColor?: string;
+  casingWeight?: number;
+};
 
 export type OsmMapViewport =
   | { mode: 'preserve' }
@@ -63,6 +69,16 @@ export function createOsmViewportMessage(
 
 const ACCENT = '#6F9F00';
 
+function safeRouteColor(value: string | undefined, fallback: string) {
+  return value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+function safeRouteWeight(value: number | undefined, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(16, Math.max(1, value))
+    : fallback;
+}
+
 /**
  * A self-contained Leaflet map page (OpenStreetMap raster tiles — no API key,
  * no billing). Rendered inside a WebView on native and an iframe on web. Exposes
@@ -77,6 +93,7 @@ export function buildOsmHtml(opts: {
   showZoomControl?: boolean;
   showLatestMarker?: boolean;
   fitPadding?: MapFitPadding;
+  routeStyle?: OsmRouteStyle;
   parentOrigin?: string;
   bridgeGeneration?: string;
   bridgeNonce?: string;
@@ -87,6 +104,15 @@ export function buildOsmHtml(opts: {
   const showZoomControl = interactive && opts.showZoomControl !== false;
   const showLatestMarker = opts.showLatestMarker !== false;
   const dark = opts.tiles === 'dark';
+  const routeColor = safeRouteColor(opts.routeStyle?.color, dark ? '#c6f24e' : ACCENT);
+  const routeWeight = safeRouteWeight(opts.routeStyle?.weight, 5);
+  const routeCasingColor = opts.routeStyle?.casingColor
+    ? safeRouteColor(opts.routeStyle.casingColor, '') || null
+    : null;
+  const routeCasingWeight = Math.max(
+    routeWeight,
+    safeRouteWeight(opts.routeStyle?.casingWeight, routeWeight + 4),
+  );
   const fitPadding = opts.fitPadding ?? { top: 28, right: 28, bottom: 28, left: 28 };
   const parentOrigin = opts.parentOrigin ?? null;
   const bridgeGeneration = opts.bridgeGeneration ?? null;
@@ -140,6 +166,10 @@ export function buildOsmHtml(opts: {
   var showZoomControl = ${showZoomControl ? 'true' : 'false'};
   var showLatestMarker = ${showLatestMarker ? 'true' : 'false'};
   var fitPadding = ${safeJson(fitPadding)};
+  var routeColor = ${safeJson(routeColor)};
+  var routeWeight = ${routeWeight};
+  var routeCasingColor = ${safeJson(routeCasingColor)};
+  var routeCasingWeight = ${routeCasingWeight};
   var parentOrigin = ${safeJson(parentOrigin)};
   var bridgeGeneration = ${safeJson(bridgeGeneration)};
   var bridgeNonce = ${safeJson(bridgeNonce)};
@@ -153,23 +183,28 @@ export function buildOsmHtml(opts: {
   }).addTo(map);
   if (map.attributionControl) { map.attributionControl.setPrefix(false); }
 
+  var lineCasing = null;
   var line = null;
   var posMarker = null;
   function drawRoute(pts) {
     if (line) { map.removeLayer(line); line = null; }
+    if (lineCasing) { map.removeLayer(lineCasing); lineCasing = null; }
     if (!pts || !pts.length) {
       if (posMarker) { map.removeLayer(posMarker); posMarker = null; }
       return;
     }
     var ll = pts.map(function (p) { return [p.lat, p.lng]; });
-    line = L.polyline(ll, { color: '${dark ? '#c6f24e' : ACCENT}', weight: 5, opacity: 0.95, lineJoin: 'round' }).addTo(map);
+    if (routeCasingColor) {
+      lineCasing = L.polyline(ll, { color: routeCasingColor, weight: routeCasingWeight, opacity: 0.9, lineJoin: 'round', interactive: false }).addTo(map);
+    }
+    line = L.polyline(ll, { color: routeColor, weight: routeWeight, opacity: 0.98, lineJoin: 'round', interactive: false }).addTo(map);
     if (showLatestMarker) {
       // a "you are here" dot at the latest point
       var last = ll[ll.length - 1];
       if (posMarker) { posMarker.setLatLng(last); }
       else {
         posMarker = L.marker(last, { icon: L.divIcon({ className: '',
-          html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid ${dark ? '#c6f24e' : ACCENT};box-shadow:0 1px 6px rgba(0,0,0,0.5)"></div>',
+          html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:4px solid ' + routeColor + ';box-shadow:0 1px 6px rgba(0,0,0,0.5)"></div>',
           iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
       }
     }

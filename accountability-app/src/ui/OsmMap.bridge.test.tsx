@@ -110,6 +110,19 @@ describe('native OsmMap imperative bridge', () => {
     );
   });
 
+  test('forwards optional route styling into the native Leaflet document', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <OsmMap routeStyle={{ color: '#B9FF3D', casingColor: '#0B0D0B' }} />,
+      );
+      mounted.push(renderer);
+    });
+
+    expect(nativeWebView(renderer).props.source.html).toContain('var routeColor = "#B9FF3D";');
+    expect(nativeWebView(renderer).props.source.html).toContain('var routeCasingColor = "#0B0D0B";');
+  });
+
   test('does not clear an initially marker-only map or clear it again when marker layout changes', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {

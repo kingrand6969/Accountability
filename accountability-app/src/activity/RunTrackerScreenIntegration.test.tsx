@@ -459,6 +459,12 @@ describe('Run tracker Open Map route integration', () => {
         interactive: true,
         showZoomControl: false,
         tiles: 'osm',
+        routeStyle: {
+          color: '#B9FF3D',
+          weight: 5,
+          casingColor: '#0B0D0B',
+          casingWeight: 9,
+        },
       }),
     );
     expect(StyleSheet.flatten(mockMapProps?.style as never)).toMatchObject({

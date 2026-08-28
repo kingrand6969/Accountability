@@ -142,6 +142,12 @@ export const RunCard = forwardRef<View, RunCardProps>(function RunCard(
         <>
           <RunCardMap
             route={route}
+            routeStyle={{
+              color: '#B9FF3D',
+              weight: 5,
+              casingColor: '#0B0D0B',
+              casingWeight: 9,
+            }}
             markers={markers}
             interactive={false}
             showLatestMarker={false}
@@ -289,8 +295,10 @@ function StatRow({ data, includeCalories = true }: { data: LayoutData; includeCa
 function Privacy({ data }: { data: LayoutData }) {
   return (
     <View style={styles.privacyPill}>
-      <View style={[styles.check, !data.showEndpoints && styles.checkActive]}>
-        <Text style={styles.checkText}>{data.showEndpoints ? '!' : '✓'}</Text>
+      <View style={[styles.check, data.showEndpoints ? styles.checkWarning : styles.checkActive]}>
+        <Text style={[styles.checkText, data.showEndpoints && styles.checkWarningText]}>
+          {data.showEndpoints ? '!' : '✓'}
+        </Text>
       </View>
       <Text style={[styles.privacyText, { color: data.ink }]}>{data.showEndpoints ? 'START & FINISH SHOWN' : 'START & FINISH HIDDEN'}</Text>
     </View>
@@ -429,6 +437,8 @@ const styles = StyleSheet.create({
   check: { width: 17, height: 17, borderRadius: 5, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.65)' },
   checkActive: { backgroundColor: ROUTE, borderColor: ROUTE },
   checkText: { color: palette.ink.inverse, fontFamily: 'Inter_800ExtraBold', fontSize: 11, lineHeight: 13 },
+  checkWarning: { borderColor: palette.status.attention },
+  checkWarningText: { color: palette.status.attention },
   privacyText: { fontFamily: 'Inter_700Bold', fontSize: 6, letterSpacing: 0.55 },
   rightRailPerformance: {
     position: 'absolute',

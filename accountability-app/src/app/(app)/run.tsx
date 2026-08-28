@@ -1852,6 +1852,12 @@ export default function ActivityTrack() {
             key={mapAuthorityKey}
             ref={bindMapHandle}
             route={mapRoute}
+            routeStyle={{
+              color: '#B9FF3D',
+              weight: 5,
+              casingColor: '#0B0D0B',
+              casingWeight: 9,
+            }}
             markers={idleMarkers}
             interactive
             tiles="osm"
