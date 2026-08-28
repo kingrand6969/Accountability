@@ -5,8 +5,7 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 import { RankBadge } from './RankBadge';
 import { SwipeDeck } from './SwipeDeck';
 import { RANKS } from './catalog';
-import { font, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
-import { INK_SOFT, ACCENT } from '../compete/CompeteUI';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -36,15 +35,15 @@ export function RankCarousel({ points, ready }: { points: number; ready: boolean
 }
 
 function RankPage({ index, cur, points }: { index: number; cur: number; points: number }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => rankPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => rankPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const r = RANKS[index];
   const next = RANKS[index + 1] ?? null;
   const status = index < cur ? 'achieved' : index === cur ? 'current' : 'locked';
 
   let kicker: string;
-  let kickerColor = palette.muted;
+  let kickerColor: string = palette.muted;
   let ptsLabel: string;
   let progress: number;
   let foot: string;
@@ -70,7 +69,7 @@ function RankPage({ index, cur, points }: { index: number; cur: number; points: 
   }
 
   return (
-    <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
+    <GlassCard plateOpacity={0}>
       <View style={styles.inner}>
         <Text style={[styles.kicker, { color: kickerColor }]}>{kicker}</Text>
         <RankBadge rank={r.name} size={62} />
@@ -84,18 +83,18 @@ function RankPage({ index, cur, points }: { index: number; cur: number; points: 
   );
 }
 
-function rankPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function rankPalette(theme: AppThemeColors) {
   return {
-    action: mode === 'dark' ? theme.ink.action : ACCENT,
-    success: mode === 'dark' ? theme.status.success : '#16a34a',
-    points: mode === 'dark' ? theme.ink.primary : INK_SOFT,
-    muted: mode === 'dark' ? theme.ink.muted : INK_SOFT,
-    track: mode === 'dark' ? theme.interaction.skeleton : 'rgba(17,20,17,0.1)',
+    action: theme.ink.action,
+    success: theme.status.success,
+    points: theme.ink.primary,
+    muted: theme.ink.muted,
+    track: theme.interaction.skeleton,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = rankPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = rankPalette(theme);
 
   return StyleSheet.create({
   inner: {
@@ -104,7 +103,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     gap: 8,
     minHeight: 168,
     justifyContent: 'center',
-    backgroundColor: mode === 'dark' ? theme.surface.card : 'transparent',
+    backgroundColor: theme.surface.card,
   },
   kicker: { fontFamily: font.extrabold, fontSize: 11, letterSpacing: 1.5 },
   pts: { fontFamily: font.semibold, fontSize: 13, color: palette.points, marginTop: 2 },

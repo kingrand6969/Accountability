@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +24,13 @@ import { BuddyCardLoadGuard, type BuddyCardLoadToken } from '../../buddy/BuddyCa
 import { getAuthorizedBuddyCard, getBuddyCard, type BuddyCardView } from '../../buddy/card';
 import { getBuddyCardAccessMode } from '../../buddy/buddyCardRelationship';
 import { useAppTheme } from '../../ui/AppThemeProvider';
-import { colors, contentMax, font, radius, spacing } from '../../ui/theme';
+import {
+  contentMax,
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../../ui/theme';
 
 type ChallengeLoad =
   | { status: 'loading'; items: CompletedChallenge[] }
@@ -39,23 +45,20 @@ type GalleryItem =
   | { kind: 'challenge-error'; key: 'challenge-error' }
   | { kind: 'challenge'; key: string; challenge: CompletedChallenge };
 
-const LIGHT = {
-  background: colors.background,
-  card: colors.card,
-  text: colors.text,
-  textMuted: colors.textMuted,
-  border: colors.border,
-  soft: colors.surfaceAlt,
-};
-
-const DARK = {
-  background: '#07111f',
-  card: '#0f1b2d',
-  text: '#f8fafc',
-  textMuted: '#a8b5c7',
-  border: '#26364d',
-  soft: '#142238',
-};
+function buddyMedalsPalette(theme: AppThemeColors) {
+  return {
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    raised: theme.surface.raised,
+    soft: theme.surface.muted,
+    text: theme.ink.primary,
+    textMuted: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    actionInk: theme.ink.inverse,
+    success: theme.status.success,
+  };
+}
 
 function medalStatesFor(view: BuddyCardView): MedalState[] {
   const earned = new Map((view.card.medals_list ?? []).map((medal) => [medal.id, medal.tier]));
@@ -114,8 +117,9 @@ export default function BuddyMedals() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
-  const { mode: scheme } = useAppTheme();
-  const tone = scheme === 'dark' ? DARK : LIGHT;
+  const { colors: theme } = useAppTheme();
+  const tone = useMemo(() => buddyMedalsPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [view, setView] = useState<BuddyCardView | null>(null);
   const [states, setStates] = useState<MedalState[] | null>(null);
   const [challenges, setChallenges] = useState<ChallengeLoad>({ status: 'loading', items: [] });
@@ -315,7 +319,7 @@ export default function BuddyMedals() {
       accessibilityLabel="Retry Medals and Challenges"
       style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}
     >
-      <Ionicons name="refresh" size={18} color={colors.onPrimary} />
+      <Ionicons name="refresh" size={18} color={tone.actionInk} />
       <Text style={styles.primaryActionText}>Try again</Text>
     </Pressable>
   );
@@ -324,7 +328,7 @@ export default function BuddyMedals() {
     return (
       <View style={[styles.center, { backgroundColor: tone.background }]}>
         <Stack.Screen options={{ title: 'Medals and Challenges' }} />
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={tone.action} />
         <Text style={[styles.stateCopy, { color: tone.textMuted }]}>Loading achievements...</Text>
       </View>
     );
@@ -400,7 +404,7 @@ export default function BuddyMedals() {
                     <Text
                       style={[
                         styles.medalTier,
-                        { color: state.unlocked ? colors.primaryDark : tone.textMuted },
+                        { color: state.unlocked ? tone.action : tone.textMuted },
                       ]}
                       numberOfLines={1}
                     >
@@ -423,7 +427,7 @@ export default function BuddyMedals() {
           if (item.kind === 'challenge-loading') {
             return (
               <View style={styles.sectionState}>
-                <ActivityIndicator color={colors.primary} />
+                <ActivityIndicator color={tone.action} />
                 <Text style={[styles.sectionStateText, { color: tone.textMuted }]}>Loading completed challenges...</Text>
               </View>
             );
@@ -438,7 +442,7 @@ export default function BuddyMedals() {
                   accessibilityLabel="Retry completed challenges"
                   style={({ pressed }) => [styles.retryAction, pressed && styles.pressed]}
                 >
-                  <Ionicons name="refresh" size={18} color={colors.primary} />
+                  <Ionicons name="refresh" size={18} color={tone.action} />
                   <Text style={styles.retryActionText}>Try again</Text>
                 </Pressable>
               </View>
@@ -463,8 +467,8 @@ export default function BuddyMedals() {
                 pressed && styles.pressed,
               ]}
             >
-              <View style={[styles.challengeIcon, { backgroundColor: tone.soft }]}>
-                <Ionicons name="checkmark" size={20} color={colors.success} />
+              <View style={[styles.challengeIcon, { backgroundColor: tone.raised }]}>
+                <Ionicons name="checkmark" size={20} color={tone.success} />
               </View>
               <View style={styles.challengeCopy}>
                 <Text style={[styles.challengeTitle, { color: tone.text }]} numberOfLines={2}>
@@ -483,7 +487,8 @@ export default function BuddyMedals() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppThemeColors) {
+  return StyleSheet.create({
   center: {
     flex: 1,
     alignItems: 'center',
@@ -498,13 +503,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  primaryActionText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 14 },
+  primaryActionText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
   list: { padding: spacing.lg, paddingBottom: 56 },
   intro: { alignItems: 'center', paddingBottom: spacing.lg },
   title: { fontFamily: font.extrabold, fontSize: 22, textAlign: 'center', lineHeight: 28 },
@@ -548,7 +553,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  retryActionText: { color: colors.primaryDark, fontFamily: font.bold, fontSize: 14 },
+  retryActionText: { color: theme.ink.action, fontFamily: font.bold, fontSize: 14 },
   challengeRow: {
     minHeight: 64,
     borderWidth: 1,
@@ -570,4 +575,5 @@ const styles = StyleSheet.create({
   challengeTitle: { fontFamily: font.bold, fontSize: 14.5, lineHeight: 19 },
   challengeMeta: { fontFamily: font.regular, fontSize: 12.5, marginTop: 2 },
   pressed: { opacity: 0.72 },
-});
+  });
+}

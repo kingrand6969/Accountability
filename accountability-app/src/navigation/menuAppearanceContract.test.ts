@@ -90,9 +90,19 @@ describe('permanent dark appearance shell contract', () => {
     expect(menu).toContain("backgroundColor: 'rgba(11,13,11,0.72)'");
     expect(menu).toContain("backgroundColor: 'rgba(255,255,255,0.2)'");
     expect(contrast('#FFFFFF', homeTextWorstCase)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#F2F5EE', homeIconWorstCase)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast('#FFFFFF', homeIconWorstCase)).toBeGreaterThanOrEqual(4.5);
     expect(contrast('#FFFFFF', menuTextWorstCase)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#FFFFFF', homeIconWorstCase)).toBeGreaterThanOrEqual(3);
     expect(contrast('#FFFFFF', menuIconWorstCase)).toBeGreaterThanOrEqual(3);
+  });
+
+  test('labels every HomeHeader navigation control as a button', () => {
+    const home = source('src/home/HomeHeader.tsx');
+
+    expect(home.match(/accessibilityRole="button"/g)).toHaveLength(3);
+    expect(home).toContain('accessibilityLabel="Share your streak"');
+    expect(home).toContain('accessibilityLabel="Accountability buddies"');
+    expect(home).toContain('accessibilityLabel="See your full progress"');
   });
 
   test('uses a semantic dark foreground for the amber Trophy Case icon', () => {

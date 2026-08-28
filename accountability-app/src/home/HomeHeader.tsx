@@ -45,6 +45,7 @@ export function HomeHeader() {
             <Pressable
               style={({ pressed }) => [styles.streak, pressed && styles.pressed]}
               onPress={() => router.push('/win-card')}
+              accessibilityRole="button"
               accessibilityLabel="Share your streak"
             >
               <View style={styles.flameWrap}>
@@ -64,6 +65,7 @@ export function HomeHeader() {
             <Pressable
               style={({ pressed }) => [styles.buddy, pressed && styles.pressed]}
               onPress={() => router.push('/buddy')}
+              accessibilityRole="button"
               accessibilityLabel="Accountability buddies"
             >
               <Ionicons name="people" size={18} color="#fff" />
@@ -82,6 +84,7 @@ export function HomeHeader() {
           <Pressable
             style={({ pressed }) => [styles.weekRowWrap, pressed && styles.pressed]}
             onPress={() => router.push('/insights')}
+            accessibilityRole="button"
             accessibilityLabel="See your full progress"
           >
             <BlurView intensity={22} tint="light" style={styles.weekRow}>

@@ -23,6 +23,7 @@ const retiredBrandColors = [
   '#071a46', '#0b4fd8', '#0a84ff', '#0d3d83', '#9cc0ff', '#bfd2f4',
   '#d9e6ff', '#5f96ff', '#76a5ff', '#72a4ff', '#0c1c2a', '#e8eef3',
   '#a855f7', '#a78bfa',
+  '#07111f', '#0f1b2d', '#26364d', '#142238',
 ] as const;
 
 const retiredBrandRgba = [
@@ -107,7 +108,8 @@ describe('app-wide AccountAbility color identity', () => {
 
     expect(runTracker).toContain("danger ? colors.text : outlinedSecondary");
     expect(runTracker).toContain('actionLabelDanger: { color: colors.text }');
-    expect(buddyGallery).toContain('name="refresh" size={18} color={colors.onPrimary}');
+    expect(buddyGallery).toContain('name="refresh" size={18} color={tone.actionInk}');
+    expect(buddyGallery).toContain('actionInk: theme.ink.inverse');
     expect(trophyCase).toContain("color={reached ? palette.prestigeReachedIcon : palette.prestigeLockedIcon}");
     expect(trophyCase).toContain('prestigeReachedIcon: theme.ink.inverse');
   });

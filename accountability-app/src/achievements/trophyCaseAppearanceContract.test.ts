@@ -98,13 +98,22 @@ describe('Trophy Case manual appearance contract', () => {
     expect(trophy.match(/onShare=\{openMedalFlex\}/g)).toHaveLength(2);
   });
 
-  test('rank carousel removes light-only card and copy islands in Dark mode', () => {
-    expect(rankCarousel).toContain('useAppTheme');
-    expect(rankCarousel).toContain('createStyles(theme, mode)');
-    expect(rankCarousel).toContain("plateOpacity={mode === 'dark' ? 0 : 0.45}");
-    expect(rankCarousel).toContain("mode === 'dark' ? theme.surface.card : 'transparent'");
-    expect(rankCarousel).toContain("mode === 'dark' ? theme.ink.primary");
-    expect(rankCarousel).toContain("mode === 'dark' ? theme.ink.muted");
+  test('rank carousel uses permanent dark semantic chrome while preserving rank art', () => {
+    expect(rankCarousel).toContain('const { colors: theme } = useAppTheme();');
+    expect(rankCarousel).toContain('const palette = useMemo(() => rankPalette(theme), [theme]);');
+    expect(rankCarousel).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
+    expect(rankCarousel).toContain('function rankPalette(theme: AppThemeColors)');
+    expect(rankCarousel).toContain('action: theme.ink.action');
+    expect(rankCarousel).toContain('success: theme.status.success');
+    expect(rankCarousel).toContain('points: theme.ink.primary');
+    expect(rankCarousel).toContain('muted: theme.ink.muted');
+    expect(rankCarousel).toContain('track: theme.interaction.skeleton');
+    expect(rankCarousel).toContain('backgroundColor: theme.surface.card');
+    expect(rankCarousel).toContain('plateOpacity={0}');
+    expect(rankCarousel).toContain('<RankBadge rank={r.name} size={62} />');
+    expect(rankCarousel).not.toContain("mode === 'dark'");
+    expect(rankCarousel).not.toContain('type AppThemeMode');
+    expect(rankCarousel).not.toContain("from '../compete/CompeteUI'");
     expect(rankCarousel).not.toContain('const styles = StyleSheet.create({');
   });
 
