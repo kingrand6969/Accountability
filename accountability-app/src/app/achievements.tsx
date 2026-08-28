@@ -298,7 +298,7 @@ export default function Achievements() {
                   <Ionicons
                     name={reached ? 'checkmark' : 'lock-closed'}
                     size={20}
-                    color={reached ? '#fff' : palette.prestigeLockedIcon}
+                    color={reached ? palette.prestigeReachedIcon : palette.prestigeLockedIcon}
                   />
                 </View>
                 <View style={styles.prestigeCopy}>
@@ -560,6 +560,7 @@ function trophyPalette(theme: AppThemeColors) {
     border: theme.border.subtle,
     consistencyLockedInk: theme.ink.muted,
     ladderLocked: theme.border.strong,
+    prestigeReachedIcon: theme.ink.inverse,
     prestigeLockedIcon: theme.ink.muted,
     primary: theme.ink.action,
     track: theme.interaction.skeleton,

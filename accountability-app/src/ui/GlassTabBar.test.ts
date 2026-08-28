@@ -374,4 +374,15 @@ describe('GlassTabBar contract', () => {
       }),
     );
   });
+
+  it('falls back to dark semantic tab chrome when no palette is supplied', () => {
+    const dark = themeColors('dark');
+
+    expect(floatingTabBar.floatingTabBarStyle(320, 16)).toEqual(
+      expect.objectContaining({
+        backgroundColor: dark.surface.canvas,
+        borderTopColor: dark.border.subtle,
+      }),
+    );
+  });
 });

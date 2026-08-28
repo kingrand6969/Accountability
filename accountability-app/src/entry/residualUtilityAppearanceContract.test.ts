@@ -15,10 +15,14 @@ describe('residual utility manual appearance contract', () => {
   test.each([
     ['achievement sharing', achievementSource],
     ['Create hub', createHubSource],
-  ])('%s follows the live Light/Dark appearance', (_name, componentSource) => {
+  ])('%s uses permanent dark semantic chrome', (_name, componentSource) => {
     expect(componentSource).toContain('useAppTheme');
-    expect(componentSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(componentSource).toContain('function createStyles(theme: AppThemeColors, mode: AppThemeMode)');
+    expect(componentSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(componentSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(componentSource).toContain('function createStyles(theme: AppThemeColors)');
+    expect(componentSource).not.toContain("mode === 'light'");
+    expect(componentSource).not.toContain("mode === 'dark'");
+    expect(componentSource).not.toContain('legacyColors');
     expect(componentSource).not.toContain('const styles = StyleSheet.create({');
   });
 
@@ -55,26 +59,17 @@ describe('residual utility manual appearance contract', () => {
     expect(uploadSource).not.toContain('const styles = StyleSheet.create({');
   });
 
-  test('achievement prompt preserves its Light modal and uses a Dark-native action set', () => {
-    expect(achievementSource).toContain(
-      "card: mode === 'light' ? legacyColors.card : theme.surface.card",
-    );
-    expect(achievementSource).toContain(
-      "ink: mode === 'light' ? legacyColors.text : theme.ink.primary",
-    );
-    expect(achievementSource).toContain("mode === 'light' ? (");
-    expect(achievementSource).toContain('<Button');
-    expect(achievementSource).toContain('<DarkPromptButton');
+  test('achievement prompt uses one dark-native action set', () => {
+    expect(achievementSource).toContain('card: theme.surface.card');
+    expect(achievementSource).toContain('ink: theme.ink.primary');
+    expect(achievementSource).not.toContain('<Button');
+    expect(achievementSource).toContain('<PromptButton');
     expect(achievementSource).toContain('minHeight: spacing.touch');
   });
 
-  test('Create keeps its exact cream Light canvas and semantic Dark hierarchy', () => {
-    expect(createHubSource).toContain(
-      "canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas",
-    );
-    expect(createHubSource).toContain(
-      "divider: mode === 'light' ? '#E8E2D7' : theme.border.subtle",
-    );
+  test('Create uses the permanent dark canvas and semantic hierarchy', () => {
+    expect(createHubSource).toContain('canvas: theme.surface.canvas');
+    expect(createHubSource).toContain('divider: theme.border.subtle');
     expect(createHubSource).toContain('backgroundColor: palette.canvas');
     expect(createHubSource).toContain('backgroundColor: palette.card');
     expect(createHubSource).toContain('width: 48');

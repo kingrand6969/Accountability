@@ -107,6 +107,7 @@ const darkSemanticTheme = {
     danger: '#F87171',
     dangerSoft: '#32151B',
     attention: '#FBBF24',
+    attentionSoft: '#3B2B08',
   },
   interaction: {
     pressedOverlay: 'rgba(255,255,255,0.10)',

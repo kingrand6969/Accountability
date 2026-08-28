@@ -1,4 +1,5 @@
 import type { ViewStyle } from 'react-native';
+import { colors } from './theme';
 
 export type FloatingTabBarPalette = Partial<
   Pick<ViewStyle, 'backgroundColor' | 'borderTopColor'>
@@ -31,9 +32,9 @@ export function floatingTabBarStyle(
     left: 0,
     bottom: 0,
     height: contentHeight + insetsBottom,
-    backgroundColor: palette.backgroundColor ?? '#ffffff',
+    backgroundColor: palette.backgroundColor ?? colors.background,
     borderTopWidth: 1,
-    borderTopColor: palette.borderTopColor ?? '#e2e8f0',
+    borderTopColor: palette.borderTopColor ?? colors.border,
   };
 }
 

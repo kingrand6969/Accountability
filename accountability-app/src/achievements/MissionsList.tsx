@@ -6,10 +6,7 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 import { type MissionState } from './missions';
 import { MissionIcon } from './MissionIcon';
 import { missionArtFor } from './missionArt';
-import { font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
-import { INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
-
-const DONE = '#16a34a';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
 /** The member's missions as a tidy list. The flex mission carries a "Flex now"
  *  button; the selfie mission shows its 2/5/10/25 km milestone pips. */
@@ -22,13 +19,13 @@ export function MissionsList({
   onFlex: () => void;
   flexing?: boolean;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => missionPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => missionPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   if (states === null) {
     return (
-      <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
+      <GlassCard plateOpacity={0}>
         <View style={styles.loading}>
           <ActivityIndicator color={palette.action} />
         </View>
@@ -37,7 +34,7 @@ export function MissionsList({
   }
 
   return (
-    <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
+    <GlassCard plateOpacity={0}>
       <View style={styles.list}>
         {states.map((s, i) => (
           <View key={s.def.id} style={[styles.row, i > 0 && styles.rowDivider]}>
@@ -129,37 +126,37 @@ export function MissionsList({
   );
 }
 
-function missionPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function missionPalette(theme: AppThemeColors) {
   return {
-    ink: mode === 'dark' ? theme.ink.primary : INK,
-    muted: mode === 'dark' ? theme.ink.muted : INK_SOFT,
-    action: mode === 'dark' ? theme.ink.action : ACCENT,
-    actionInk: mode === 'dark' ? theme.ink.inverse : '#FFFFFF',
-    success: mode === 'dark' ? theme.status.success : DONE,
-    divider: mode === 'dark' ? theme.border.subtle : 'rgba(17,20,17,0.08)',
-    track: mode === 'dark' ? theme.interaction.skeleton : 'rgba(17,20,17,0.1)',
-    icon: mode === 'dark' ? theme.surface.muted : 'rgba(185,255,61,0.18)',
-    iconDone: mode === 'dark' ? theme.status.successSoft : 'rgba(22,163,74,0.14)',
-    pip: mode === 'dark' ? theme.surface.muted : 'rgba(17,20,17,0.07)',
-    pipHit: mode === 'dark' ? theme.surface.raised : 'rgba(185,255,61,0.20)',
-    pipHitBorder: mode === 'dark' ? theme.border.action : 'rgba(111,159,0,0.56)',
-    chipBorder: mode === 'dark' ? theme.surface.card : '#fff',
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    action: theme.ink.action,
+    actionInk: theme.ink.inverse,
+    success: theme.status.success,
+    divider: theme.border.subtle,
+    track: theme.interaction.skeleton,
+    icon: theme.surface.muted,
+    iconDone: theme.status.successSoft,
+    pip: theme.surface.muted,
+    pipHit: theme.surface.raised,
+    pipHitBorder: theme.border.action,
+    chipBorder: theme.surface.card,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = missionPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = missionPalette(theme);
 
   return StyleSheet.create({
   loading: {
     padding: spacing.xl,
     alignItems: 'center',
-    backgroundColor: mode === 'dark' ? theme.surface.card : 'transparent',
+    backgroundColor: theme.surface.card,
   },
   list: {
     paddingHorizontal: spacing.md,
     paddingVertical: 4,
-    backgroundColor: mode === 'dark' ? theme.surface.card : 'transparent',
+    backgroundColor: theme.surface.card,
   },
   row: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, alignItems: 'flex-start' },
   rowDivider: { borderTopWidth: 1, borderTopColor: palette.divider },

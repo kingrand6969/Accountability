@@ -57,14 +57,58 @@ describe('app-wide AccountAbility color identity', () => {
     expect(offenders).toEqual([]);
   });
 
-  test('uses the approved warm Light canvas in native and legal-page configuration', () => {
+  test('uses the permanent dark canvas for native root, splash, and adaptive icon chrome', () => {
     const projectRoot = path.resolve(sourceRoot, '..');
-    const appConfig = readFileSync(path.join(projectRoot, 'app.json'), 'utf8');
+    const appConfig = JSON.parse(readFileSync(path.join(projectRoot, 'app.json'), 'utf8')) as {
+      expo: {
+        backgroundColor: string;
+        userInterfaceStyle: string;
+        android: { adaptiveIcon: { backgroundColor: string } };
+        plugins: Array<string | [string, Record<string, unknown>]>;
+      };
+    };
     const legalBuilder = readFileSync(path.join(projectRoot, 'scripts/build-legal.mjs'), 'utf8');
+    const splashPlugin = appConfig.expo.plugins.find((plugin) => (
+      Array.isArray(plugin) && plugin[0] === 'expo-splash-screen'
+    ));
 
-    expect(appConfig).not.toContain('#FFFFFC');
-    expect(appConfig).toContain('#F4F5F1');
+    expect(appConfig.expo.backgroundColor).toBe('#0B0D0B');
+    expect(appConfig.expo.userInterfaceStyle).toBe('dark');
+    expect(appConfig.expo.android.adaptiveIcon.backgroundColor).toBe('#0B0D0B');
+    expect(splashPlugin).toEqual([
+      'expo-splash-screen',
+      {
+        backgroundColor: '#0B0D0B',
+        android: {
+          image: './assets/images/splash-icon.png',
+          imageWidth: 140,
+        },
+      },
+    ]);
     expect(legalBuilder.toLowerCase()).not.toContain('#2563eb');
     expect(legalBuilder.toLowerCase()).toContain('#b9ff3d');
+  });
+
+  test('keeps the public theme boundary dark-only without persisted appearance preferences', () => {
+    const themeSource = readFileSync(path.join(sourceRoot, 'ui/theme.ts'), 'utf8');
+    const providerSource = readFileSync(path.join(sourceRoot, 'ui/AppThemeProvider.tsx'), 'utf8');
+
+    expect(themeSource).toContain("return 'dark';");
+    expect(themeSource).toContain('return darkSemanticTheme;');
+    expect(providerSource).not.toContain('APP_THEME_STORAGE_KEY');
+    expect(providerSource).not.toContain('AsyncStorage');
+    expect(providerSource).not.toContain('useColorScheme');
+  });
+
+  test('uses semantic foregrounds on status and neon app controls', () => {
+    const runTracker = readFileSync(path.join(sourceRoot, 'activity/RunTrackerOpenMap.tsx'), 'utf8');
+    const buddyGallery = readFileSync(path.join(sourceRoot, 'app/buddy-medals/[id].tsx'), 'utf8');
+    const trophyCase = readFileSync(path.join(sourceRoot, 'app/achievements.tsx'), 'utf8');
+
+    expect(runTracker).toContain("danger ? colors.text : outlinedSecondary");
+    expect(runTracker).toContain('actionLabelDanger: { color: colors.text }');
+    expect(buddyGallery).toContain('name="refresh" size={18} color={colors.onPrimary}');
+    expect(trophyCase).toContain("color={reached ? palette.prestigeReachedIcon : palette.prestigeLockedIcon}");
+    expect(trophyCase).toContain('prestigeReachedIcon: theme.ink.inverse');
   });
 });

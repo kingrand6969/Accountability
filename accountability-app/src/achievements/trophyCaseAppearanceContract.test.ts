@@ -98,17 +98,29 @@ describe('Trophy Case manual appearance contract', () => {
     expect(trophy.match(/onShare=\{openMedalFlex\}/g)).toHaveLength(2);
   });
 
+  test('rank carousel removes light-only card and copy islands in Dark mode', () => {
+    expect(rankCarousel).toContain('useAppTheme');
+    expect(rankCarousel).toContain('createStyles(theme, mode)');
+    expect(rankCarousel).toContain("plateOpacity={mode === 'dark' ? 0 : 0.45}");
+    expect(rankCarousel).toContain("mode === 'dark' ? theme.surface.card : 'transparent'");
+    expect(rankCarousel).toContain("mode === 'dark' ? theme.ink.primary");
+    expect(rankCarousel).toContain("mode === 'dark' ? theme.ink.muted");
+    expect(rankCarousel).not.toContain('const styles = StyleSheet.create({');
+  });
+
   test.each([
-    ['rank carousel', rankCarousel],
     ['missions', missions],
     ['challenges', challenges],
-  ])('%s removes light-only card and copy islands in Dark mode', (_name, fileSource) => {
+  ])('%s use the permanent dark card and copy system', (_name, fileSource) => {
     expect(fileSource).toContain('useAppTheme');
-    expect(fileSource).toContain('createStyles(theme, mode)');
-    expect(fileSource).toContain("plateOpacity={mode === 'dark' ? 0 : 0.45}");
-    expect(fileSource).toContain("mode === 'dark' ? theme.surface.card : 'transparent'");
-    expect(fileSource).toContain("mode === 'dark' ? theme.ink.primary");
-    expect(fileSource).toContain("mode === 'dark' ? theme.ink.muted");
+    expect(fileSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(fileSource).toContain('createStyles(theme)');
+    expect(fileSource).toContain('plateOpacity={0}');
+    expect(fileSource).toContain('backgroundColor: theme.surface.card');
+    expect(fileSource).toContain('ink: theme.ink.primary');
+    expect(fileSource).toContain('muted: theme.ink.muted');
+    expect(fileSource).not.toContain("mode === 'dark'");
+    expect(fileSource).not.toContain('type AppThemeMode');
     expect(fileSource).not.toContain('const styles = StyleSheet.create({');
   });
 

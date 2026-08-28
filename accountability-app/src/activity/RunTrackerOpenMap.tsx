@@ -597,7 +597,7 @@ function RunTrackerActionButton({
       <Ionicons
         name={action.icon}
         size={20}
-        color={danger ? '#FFFFFF' : outlinedSecondary ? colors.primary : colors.onPrimary}
+        color={danger ? colors.text : outlinedSecondary ? colors.primary : colors.onPrimary}
       />
       <Text
         testID={`run-${slot}-action-label`}
@@ -871,6 +871,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actionLabelConstrained: { fontSize: 14, lineHeight: 19 },
-  actionLabelDanger: { color: '#FFFFFF' },
+  actionLabelDanger: { color: colors.text },
   actionLabelSecondary: { color: colors.primary },
 });

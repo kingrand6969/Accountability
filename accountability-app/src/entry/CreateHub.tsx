@@ -3,12 +3,10 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
@@ -39,9 +37,9 @@ export function CreateHub({
   onContinue: (choice: CreateChoice, media: MediaChoice) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const palette = useMemo(() => createPalette(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => createPalette(theme), [theme]);
   const [selectedId, setSelectedId] = useState<CreateChoice['id']>('post');
   const [media, setMedia] = useState<MediaChoice>('photo');
   const mediaChoices = composerMediaChoices(Platform.OS, false);
@@ -214,24 +212,24 @@ export function CreateHub({
   );
 }
 
-function createPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function createPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    divider: mode === 'light' ? '#E8E2D7' : theme.border.subtle,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    inkMuted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    inkFaint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.raised,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    flex: mode === 'light' ? '#53634E' : '#B9FF3D',
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    divider: theme.border.subtle,
+    border: theme.border.subtle,
+    ink: theme.ink.primary,
+    inkMuted: theme.ink.muted,
+    inkFaint: theme.ink.muted,
+    action: theme.ink.action,
+    actionSoft: theme.surface.raised,
+    onAction: theme.ink.inverse,
+    flex: theme.ink.action,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = createPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = createPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.canvas },
   header: {

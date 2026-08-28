@@ -8,8 +8,7 @@ import { metricMeta, type ChallengeCard } from '../compete/api';
 import { MissionIcon } from './MissionIcon';
 import { challengeArtFor } from './missionArt';
 import { challengeEnded, daysLeft } from './challengeTime';
-import { font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
-import { INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
 const MINUTE_MS = 60_000;
 
@@ -23,9 +22,9 @@ export function ChallengesCarousel({
   onOpen: (id: string) => void;
   onBrowse: () => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => challengePalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => challengePalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -35,7 +34,7 @@ export function ChallengesCarousel({
 
   if (items === null) {
     return (
-      <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
+      <GlassCard plateOpacity={0}>
         <View style={styles.inner}>
           <ActivityIndicator color={palette.action} />
         </View>
@@ -45,7 +44,7 @@ export function ChallengesCarousel({
 
   if (items.length === 0) {
     return (
-      <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
+      <GlassCard plateOpacity={0}>
         <View style={styles.inner}>
           <View style={styles.iconWrap}>
             <Ionicons name="trophy" size={22} color={palette.action} />
@@ -77,13 +76,13 @@ export function ChallengesCarousel({
 }
 
 function ChallengePage({ c, now, onOpen }: { c: ChallengeCard; now: number; onOpen: (id: string) => void }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => challengePalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => challengePalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const meta = metricMeta(c.metric);
   const ended = challengeEnded(c.ends_at, now);
   return (
-    <GlassCard plateOpacity={mode === 'dark' ? 0 : 0.45}>
+    <GlassCard plateOpacity={0}>
       <Pressable
         onPress={() => onOpen(c.id)}
         style={({ pressed }) => [styles.inner, pressed && { opacity: 0.85 }]}
@@ -116,21 +115,21 @@ function ChallengePage({ c, now, onOpen }: { c: ChallengeCard; now: number; onOp
   );
 }
 
-function challengePalette(theme: AppThemeColors, mode: AppThemeMode) {
+function challengePalette(theme: AppThemeColors) {
   return {
-    ink: mode === 'dark' ? theme.ink.primary : INK,
-    muted: mode === 'dark' ? theme.ink.muted : INK_SOFT,
-    action: mode === 'dark' ? theme.ink.action : ACCENT,
-    actionInk: mode === 'dark' ? theme.ink.inverse : '#FFFFFF',
-    success: mode === 'dark' ? theme.status.success : '#166534',
-    icon: mode === 'dark' ? theme.surface.muted : 'rgba(185,255,61,0.18)',
-    pill: mode === 'dark' ? theme.surface.muted : 'rgba(185,255,61,0.18)',
-    pillJoined: mode === 'dark' ? theme.status.successSoft : 'rgba(22,163,74,0.14)',
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    action: theme.ink.action,
+    actionInk: theme.ink.inverse,
+    success: theme.status.success,
+    icon: theme.surface.muted,
+    pill: theme.surface.muted,
+    pillJoined: theme.status.successSoft,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = challengePalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = challengePalette(theme);
 
   return StyleSheet.create({
   inner: {
@@ -139,7 +138,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     gap: 6,
     minHeight: 168,
     justifyContent: 'center',
-    backgroundColor: mode === 'dark' ? theme.surface.card : 'transparent',
+    backgroundColor: theme.surface.card,
   },
   iconWrap: {
     width: 52,

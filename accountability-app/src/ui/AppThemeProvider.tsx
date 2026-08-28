@@ -12,9 +12,6 @@ import {
   type AppThemeMode,
 } from './theme';
 
-/** @deprecated Appearance preferences are no longer persisted. */
-export const APP_THEME_STORAGE_KEY = 'appearance:mode:v1';
-
 type AppThemeContextValue = {
   mode: AppThemeMode;
   colors: AppThemeColors;

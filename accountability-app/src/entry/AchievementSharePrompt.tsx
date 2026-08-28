@@ -1,13 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Button } from '../ui/Button';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
@@ -190,8 +187,8 @@ export function AchievementSharePrompt({
   onClose,
   feedDisabledReason,
 }: Props) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [lifecycle] = useState(() =>
     createAchievementSharePromptLifecycle({ onFeed, onStory, onPrivate, onClose }),
   );
@@ -247,23 +244,13 @@ export function AchievementSharePrompt({
               onPress={() => controller.select('story')}
             />
           </View>
-          {mode === 'light' ? (
-            <Button
-              title="Keep private"
-              variant="ghost"
-              disabled={state.working}
-              loading={state.working && selected === 'private'}
-              onPress={() => void controller.keepPrivate()}
-            />
-          ) : (
-            <DarkPromptButton
-              title="Keep private"
-              variant="ghost"
-              disabled={state.working}
-              loading={state.working && selected === 'private'}
-              onPress={() => void controller.keepPrivate()}
-            />
-          )}
+          <PromptButton
+            title="Keep private"
+            variant="ghost"
+            disabled={state.working}
+            loading={state.working && selected === 'private'}
+            onPress={() => void controller.keepPrivate()}
+          />
 
           {state.error ? (
             <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.error}>
@@ -271,38 +258,19 @@ export function AchievementSharePrompt({
             </Text>
           ) : null}
 
-          {mode === 'light' ? (
-            <Button
-              title="Confirm"
-              loading={state.working && selected !== 'private'}
-              disabled={state.working || (selected !== 'feed' && selected !== 'story')}
-              onPress={() => void controller.confirm()}
-              accessibilityLabel={selected ? `Confirm ${selected} share` : 'Confirm share'}
-            />
-          ) : (
-            <DarkPromptButton
-              title="Confirm"
-              loading={state.working && selected !== 'private'}
-              disabled={state.working || (selected !== 'feed' && selected !== 'story')}
-              onPress={() => void controller.confirm()}
-              accessibilityLabel={selected ? `Confirm ${selected} share` : 'Confirm share'}
-            />
-          )}
-          {mode === 'light' ? (
-            <Button
-              title="Cancel"
-              variant="outline"
-              disabled={state.working}
-              onPress={controller.cancel}
-            />
-          ) : (
-            <DarkPromptButton
-              title="Cancel"
-              variant="outline"
-              disabled={state.working}
-              onPress={controller.cancel}
-            />
-          )}
+          <PromptButton
+            title="Confirm"
+            loading={state.working && selected !== 'private'}
+            disabled={state.working || (selected !== 'feed' && selected !== 'story')}
+            onPress={() => void controller.confirm()}
+            accessibilityLabel={selected ? `Confirm ${selected} share` : 'Confirm share'}
+          />
+          <PromptButton
+            title="Cancel"
+            variant="outline"
+            disabled={state.working}
+            onPress={controller.cancel}
+          />
         </View>
       </View>
     </Modal>
@@ -320,8 +288,8 @@ function DestinationButton({
   disabled: boolean;
   onPress: () => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
       accessibilityRole="radio"
@@ -341,7 +309,7 @@ function DestinationButton({
   );
 }
 
-function DarkPromptButton({
+function PromptButton({
   title,
   onPress,
   variant = 'primary',
@@ -356,8 +324,8 @@ function DarkPromptButton({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const inactive = disabled || loading;
   const primary = variant === 'primary';
   return (
@@ -389,19 +357,19 @@ function DarkPromptButton({
   );
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+function createStyles(theme: AppThemeColors) {
   const palette = {
-    backdrop: mode === 'light' ? 'rgba(15,23,42,0.5)' : theme.interaction.scrim,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    field: mode === 'light' ? legacyColors.surface : theme.surface.raised,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    actionSoft: mode === 'light' ? legacyColors.primarySoft : theme.surface.raised,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    danger: mode === 'light' ? legacyColors.danger : theme.status.danger,
-    disabledOpacity: mode === 'light' ? 0.5 : theme.interaction.disabledOpacity,
+    backdrop: theme.interaction.scrim,
+    card: theme.surface.card,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    field: theme.surface.raised,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    actionSoft: theme.surface.raised,
+    onAction: theme.ink.inverse,
+    danger: theme.status.danger,
+    disabledOpacity: theme.interaction.disabledOpacity,
   };
   return StyleSheet.create({
   backdrop: {

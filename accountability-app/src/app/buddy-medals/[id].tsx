@@ -315,7 +315,7 @@ export default function BuddyMedals() {
       accessibilityLabel="Retry Medals and Challenges"
       style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}
     >
-      <Ionicons name="refresh" size={18} color="#fff" />
+      <Ionicons name="refresh" size={18} color={colors.onPrimary} />
       <Text style={styles.primaryActionText}>Try again</Text>
     </Pressable>
   );

@@ -18,4 +18,11 @@ describe('Toast animation state contract', () => {
       'const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);',
     );
   });
+
+  test('uses semantic dark toast chrome instead of a light surface with white text', () => {
+    expect(source).toContain('backgroundColor: colors.card');
+    expect(source).toContain('text: { color: colors.text');
+    expect(source).not.toContain('backgroundColor: colors.text');
+    expect(source).not.toContain("color: '#fff'");
+  });
 });
