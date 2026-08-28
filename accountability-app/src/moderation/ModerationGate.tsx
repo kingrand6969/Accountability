@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -156,7 +157,7 @@ function AuthenticatedModerationGate() {
   return null;
 }
 
-function BanWall({
+export function BanWall({
   message,
   onSignOut,
   busy,
@@ -169,46 +170,67 @@ function BanWall({
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <View style={[styles.wall, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
-      <ScrollView
-        contentContainerStyle={styles.wallInner}
-        showsVerticalScrollIndicator={false}
+    <Modal
+      visible
+      transparent={false}
+      animationType="fade"
+      backdropColor={theme.surface.canvas}
+      accessibilityViewIsModal
+      statusBarTranslucent
+      onRequestClose={() => {}}
+    >
+      <View
+        style={[
+          styles.wall,
+          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
+        ]}
       >
-        <View style={styles.wallIcon}>
-          <Ionicons name="ban" size={38} color={theme.status.danger} />
-        </View>
-        <Text style={styles.wallTitle}>Account banned</Text>
-        <Text style={styles.wallLede}>
-          Your access to AccountAbility has been removed for breaking our Community Rules.
-        </Text>
-        {message ? (
-          <View style={styles.wallCard}>
-            <Text style={styles.wallCardText}>{message}</Text>
-          </View>
-        ) : null}
-        <Text style={styles.wallAppeal}>
-          If you believe this is a mistake, you can appeal by emailing{'\n'}
-          <Text style={styles.wallEmail}>{CONTACT_EMAIL}</Text>
-        </Text>
-        <Pressable
-          onPress={onSignOut}
-          disabled={busy}
-          style={({ pressed }) => [styles.wallBtn, pressed && styles.wallBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
+        <ScrollView
+          contentContainerStyle={styles.wallInner}
+          showsVerticalScrollIndicator={false}
         >
-          {busy ? (
-            <ActivityIndicator color={theme.ink.inverse} />
-          ) : (
-            <Text style={styles.wallBtnText}>Sign out</Text>
-          )}
-        </Pressable>
-      </ScrollView>
-    </View>
+          <View style={styles.wallIcon}>
+            <Ionicons name="ban" size={38} color={theme.status.danger} />
+          </View>
+          <Text
+            accessibilityRole="header"
+            accessibilityLiveRegion="assertive"
+            style={styles.wallTitle}
+          >
+            Account banned
+          </Text>
+          <Text style={styles.wallLede}>
+            Your access to AccountAbility has been removed for breaking our Community Rules.
+          </Text>
+          {message ? (
+            <View style={styles.wallCard}>
+              <Text style={styles.wallCardText}>{message}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.wallAppeal}>
+            If you believe this is a mistake, you can appeal by emailing{'\n'}
+            <Text style={styles.wallEmail}>{CONTACT_EMAIL}</Text>
+          </Text>
+          <Pressable
+            onPress={onSignOut}
+            disabled={busy}
+            style={({ pressed }) => [styles.wallBtn, pressed && styles.wallBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            {busy ? (
+              <ActivityIndicator color={theme.ink.inverse} />
+            ) : (
+              <Text style={styles.wallBtnText}>Sign out</Text>
+            )}
+          </Pressable>
+        </ScrollView>
+      </View>
+    </Modal>
   );
 }
 
-function NoticeModal({
+export function NoticeModal({
   tone,
   icon,
   title,
@@ -228,25 +250,43 @@ function NoticeModal({
   const accent = tone === 'warning' ? theme.status.attention : theme.status.danger;
   const accentSoft = tone === 'warning' ? theme.surface.muted : theme.status.dangerSoft;
   return (
-    <View style={styles.scrim}>
-      <View style={styles.sheet}>
-        <View style={[styles.sheetIcon, { backgroundColor: accentSoft }]}>
-          <Ionicons name={icon} size={28} color={accent} />
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      accessibilityViewIsModal
+      statusBarTranslucent
+      onRequestClose={() => {}}
+    >
+      <View style={styles.scrim}>
+        <View style={styles.sheet}>
+          <View style={[styles.sheetIcon, { backgroundColor: accentSoft }]}>
+            <Ionicons name={icon} size={28} color={accent} />
+          </View>
+          <Text
+            accessibilityRole="header"
+            accessibilityLiveRegion="assertive"
+            style={styles.sheetTitle}
+          >
+            {title}
+          </Text>
+          <ScrollView
+            style={styles.sheetBodyWrap}
+            contentContainerStyle={{ paddingVertical: 2 }}
+          >
+            <Text style={styles.sheetBody}>{body}</Text>
+          </ScrollView>
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [styles.sheetBtn, pressed && styles.sheetBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cta}
+          >
+            <Text style={styles.sheetBtnText}>{cta}</Text>
+          </Pressable>
         </View>
-        <Text style={styles.sheetTitle}>{title}</Text>
-        <ScrollView style={styles.sheetBodyWrap} contentContainerStyle={{ paddingVertical: 2 }}>
-          <Text style={styles.sheetBody}>{body}</Text>
-        </ScrollView>
-        <Pressable
-          onPress={onClose}
-          style={({ pressed }) => [styles.sheetBtn, pressed && styles.sheetBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel={cta}
-        >
-          <Text style={styles.sheetBtnText}>{cta}</Text>
-        </Pressable>
       </View>
-    </View>
+    </Modal>
   );
 }
 

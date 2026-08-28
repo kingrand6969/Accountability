@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   Share,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,6 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile } from '../profiles/api';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
@@ -30,6 +32,7 @@ export default function InviteCard() {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const palette = useMemo(() => invitePalette(theme), [theme]);
+  const insets = useSafeAreaInsets();
   const cardRef = useRef<View>(null);
   const [name, setName] = useState('A friend');
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -75,14 +78,27 @@ export default function InviteCard() {
   }
 
   return (
-    <View style={styles.screen}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + spacing.lg },
+      ]}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.eyebrow}>YOUR INVITATION</Text>
       <Text style={styles.title}>Better together.</Text>
       <Text style={styles.subtitle}>
         Share a polished invitation—not a technical link.
       </Text>
 
-      <View ref={cardRef} collapsable={false} style={styles.capture}>
+      <View
+        ref={cardRef}
+        collapsable={false}
+        accessible
+        accessibilityLabel="Invitation artwork"
+        style={styles.capture}
+      >
         <LinearGradient
           colors={['#111411', '#263223', '#446B00']}
           start={{ x: 0, y: 0 }}
@@ -160,7 +176,7 @@ export default function InviteCard() {
       <Text style={styles.privacy}>
         Only this invitation image is shared. Your private app data is not included.
       </Text>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -181,8 +197,12 @@ const createStyles = (theme: AppThemeColors) => {
   screen: {
     flex: 1,
     backgroundColor: palette.canvas,
+  },
+  content: {
+    flexGrow: 1,
     padding: spacing.lg,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   eyebrow: {
     marginTop: spacing.sm,

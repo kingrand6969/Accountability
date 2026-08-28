@@ -113,6 +113,9 @@ export default function Books() {
             <Pressable
               key={i.key}
               onPress={() => toggleInterest(i.key)}
+              accessibilityRole="checkbox"
+              accessibilityLabel={i.label}
+              accessibilityState={{ checked: on }}
               style={({ pressed }) => [styles.chip, on && styles.chipOn, pressed && styles.pressed]}
             >
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{i.label}</Text>
@@ -122,11 +125,18 @@ export default function Books() {
       </View>
 
       <Text style={styles.sectionTitle}>New pick every</Text>
-      <View style={styles.toggle}>
+      <View
+        style={styles.toggle}
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Book delivery cadence"
+      >
         {CADENCES.map((c) => (
           <Pressable
             key={c.value}
             onPress={() => updatePrefs({ ...prefs, cadence: c.value })}
+            accessibilityRole="radio"
+            accessibilityLabel={c.label}
+            accessibilityState={{ selected: prefs.cadence === c.value }}
             style={({ pressed }) => [
               styles.toggleBtn,
               prefs.cadence === c.value && styles.toggleActive,
