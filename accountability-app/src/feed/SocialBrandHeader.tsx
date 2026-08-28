@@ -6,13 +6,9 @@ import { BrandMark } from '../ui/BrandMark';
 import { BRAND_WORDMARK } from '../ui/brandGeometry';
 import { font, spacing, type AppThemeColors } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
-import { Avatar } from './Avatar';
 
 type Props = {
   unread: number;
-  profileName: string | null;
-  profileAvatar: string | null;
-  onProfile: () => void;
   onMenu: () => void;
   onSearch: () => void;
   onCreate: () => void;
@@ -21,9 +17,6 @@ type Props = {
 
 export function SocialBrandHeader({
   unread,
-  profileName,
-  profileAvatar,
-  onProfile,
   onMenu,
   onSearch,
   onCreate,
@@ -56,14 +49,6 @@ export function SocialBrandHeader({
           />
           {unread > 0 ? <View style={styles.dot} accessibilityElementsHidden /> : null}
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="View your Buddy Card"
-          onPress={onProfile}
-          style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
-        >
-          <Avatar url={profileAvatar} name={profileName} size={30} />
-        </Pressable>
       </View>
     </View>
   );
@@ -112,7 +97,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   account: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 14, letterSpacing: 0.25 },
   actions: { flexDirection: 'row', alignItems: 'center' },
-  profileButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   iconButton: {
     minWidth: 44,
     minHeight: 44,
