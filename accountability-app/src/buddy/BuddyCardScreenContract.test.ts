@@ -248,12 +248,10 @@ describe('Buddy Card viewer state', () => {
     expect(screenSource).toContain('context.targetId !== latestTargetIdRef.current');
   });
 
-  test('the compact Feed header keeps a separate 48-point route to the owner Buddy Card', () => {
-    expect(brandHeaderSource).toContain('accessibilityLabel="View your Buddy Card"');
-    expect(brandHeaderSource).toContain('profileButton: { minWidth: 48, minHeight: 48');
-    expect(feedSource).toContain('onProfile={openOwnBuddyCard}');
-    expect(feedSource).toContain("pathname: '/buddy-card/[id]'");
-    expect(feedSource).toContain('params: { id: ownerId }');
+  test('the compact Feed header omits the redundant owner avatar route', () => {
+    expect(brandHeaderSource).not.toContain('accessibilityLabel="View your Buddy Card"');
+    expect(brandHeaderSource).not.toContain('profileButton: { minWidth: 48, minHeight: 48');
+    expect(feedSource).not.toContain('onProfile={openOwnBuddyCard}');
   });
 
   test('the menu opens only the latest signed-in owner Buddy Card and never the editor', () => {
