@@ -40,62 +40,64 @@ export function HomeHeader() {
         end={{ x: 1, y: 1 }}
         style={styles.gradient}
       >
-        <View style={styles.topRow}>
-          <Pressable
-            style={({ pressed }) => [styles.streak, pressed && styles.pressed]}
-            onPress={() => router.push('/win-card')}
-            accessibilityLabel="Share your streak"
-          >
-            <View style={styles.flameWrap}>
-              <Ionicons name="flame" size={20} color={colors.accent} />
-            </View>
-            {stats.streak > 0 ? (
-              <>
-                <Text style={styles.streakNum}>{stats.streak}</Text>
-                <Text style={styles.streakLabel}>
-                  day{stats.streak === 1 ? '' : 's'} streak · share
-                </Text>
-              </>
-            ) : (
-              <Text style={styles.streakLabel}>Start your streak today</Text>
-            )}
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.buddy, pressed && styles.pressed]}
-            onPress={() => router.push('/buddy')}
-            accessibilityLabel="Accountability buddies"
-          >
-            <Ionicons name="people" size={18} color="#fff" />
-            <Text style={styles.buddyText}>{stats.buddyCount}</Text>
-            {stats.buddyRequests > 0 ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{stats.buddyRequests}</Text>
+        <View style={styles.contentPlate}>
+          <View style={styles.topRow}>
+            <Pressable
+              style={({ pressed }) => [styles.streak, pressed && styles.pressed]}
+              onPress={() => router.push('/win-card')}
+              accessibilityLabel="Share your streak"
+            >
+              <View style={styles.flameWrap}>
+                <Ionicons name="flame" size={20} color={colors.accent} />
               </View>
-            ) : null}
+              {stats.streak > 0 ? (
+                <>
+                  <Text style={styles.streakNum}>{stats.streak}</Text>
+                  <Text style={styles.streakLabel}>
+                    day{stats.streak === 1 ? '' : 's'} streak · share
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.streakLabel}>Start your streak today</Text>
+              )}
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.buddy, pressed && styles.pressed]}
+              onPress={() => router.push('/buddy')}
+              accessibilityLabel="Accountability buddies"
+            >
+              <Ionicons name="people" size={18} color="#fff" />
+              <Text style={styles.buddyText}>{stats.buddyCount}</Text>
+              {stats.buddyRequests > 0 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{stats.buddyRequests}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
+
+          <Text style={styles.today}>{todayLine}</Text>
+
+          {/* frosted glass stat strip */}
+          <Pressable
+            style={({ pressed }) => [styles.weekRowWrap, pressed && styles.pressed]}
+            onPress={() => router.push('/insights')}
+            accessibilityLabel="See your full progress"
+          >
+            <BlurView intensity={22} tint="light" style={styles.weekRow}>
+              <Text style={styles.weekLabel}>This week · see progress</Text>
+              <View style={styles.weekStat}>
+                <Ionicons name="barbell-outline" size={15} color="#fff" />
+                <Text style={styles.weekStatText}>{stats.weekWorkouts}</Text>
+              </View>
+              <View style={styles.weekStat}>
+                <Ionicons name="walk-outline" size={15} color="#fff" />
+                <Text style={styles.weekStatText}>{stats.weekActivities}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color="#EEF7E4" />
+            </BlurView>
           </Pressable>
         </View>
-
-        <Text style={styles.today}>{todayLine}</Text>
-
-        {/* frosted glass stat strip */}
-        <Pressable
-          style={({ pressed }) => [styles.weekRowWrap, pressed && styles.pressed]}
-          onPress={() => router.push('/insights')}
-          accessibilityLabel="See your full progress"
-        >
-          <BlurView intensity={22} tint="light" style={styles.weekRow}>
-            <Text style={styles.weekLabel}>This week · see progress</Text>
-            <View style={styles.weekStat}>
-              <Ionicons name="barbell-outline" size={15} color="#fff" />
-              <Text style={styles.weekStatText}>{stats.weekWorkouts}</Text>
-            </View>
-            <View style={styles.weekStat}>
-              <Ionicons name="walk-outline" size={15} color="#fff" />
-              <Text style={styles.weekStatText}>{stats.weekActivities}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={14} color="#EEF7E4" />
-          </BlurView>
-        </Pressable>
       </LinearGradient>
     </View>
   );
@@ -113,7 +115,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
-  gradient: { padding: spacing.lg, gap: spacing.md },
+  gradient: {},
+  contentPlate: {
+    padding: spacing.lg,
+    gap: spacing.md,
+    backgroundColor: 'rgba(11,13,11,0.72)',
+  },
   pressed: { opacity: 0.75 },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   streak: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },

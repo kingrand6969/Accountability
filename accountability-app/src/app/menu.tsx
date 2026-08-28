@@ -126,20 +126,22 @@ export default function Menu() {
           colors={['#B9FF3D', '#6F9F00', '#263223']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.profileRow}
+          style={styles.profileGradient}
         >
-          {resolvedAvatar ? (
-            <Image source={{ uri: resolvedAvatar }} style={styles.profileAvatar} />
-          ) : (
-            <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
-              <Ionicons name="person" size={22} color="#fff" />
+          <View style={styles.profilePlate}>
+            {resolvedAvatar ? (
+              <Image source={{ uri: resolvedAvatar }} style={styles.profileAvatar} />
+            ) : (
+              <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
+                <Ionicons name="person" size={22} color="#fff" />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
+              <Text style={styles.profileSub}>View your profile</Text>
             </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
-            <Text style={styles.profileSub}>View your profile</Text>
+            <Ionicons name="chevron-forward" size={18} color="#EEF7E4" />
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#EEF7E4" />
         </LinearGradient>
       </Pressable>
 
@@ -151,7 +153,7 @@ export default function Menu() {
         accessibilityLabel="Open your Trophy Case"
       >
         <View style={styles.trophyIcon}>
-          <Ionicons name="medal" size={19} color="#fff" />
+          <Ionicons name="medal" size={19} color={colors.onPrimary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.trophyTitle}>Trophy Case</Text>
@@ -320,12 +322,14 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  profileRow: {
+  profileGradient: { minHeight: 68 },
+  profilePlate: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     padding: spacing.md,
     minHeight: 68,
+    backgroundColor: 'rgba(11,13,11,0.72)',
   },
   profileAvatar: {
     width: 46,
