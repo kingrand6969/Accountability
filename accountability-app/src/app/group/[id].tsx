@@ -36,13 +36,11 @@ import { EmptyState } from '../../ui/EmptyState';
 import { Button } from '../../ui/Button';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import {
-  colors,
   font,
   radius,
   spacing,
   shadow,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 
 export default function GroupDetail() {
@@ -50,11 +48,11 @@ export default function GroupDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [group, setGroup] = useState<Group | null>(null);
   const { session } = useAuth();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const actionColor = theme.ink.action;
-  const mutedColor = mode === 'light' ? colors.textMuted : theme.ink.muted;
-  const faintColor = mode === 'light' ? colors.textFaint : theme.ink.muted;
+  const mutedColor = theme.ink.muted;
+  const faintColor = theme.ink.muted;
   const myId = session?.user.id ?? null;
   const currentOwnerRef = useRef(myId);
   const loadGeneration = useRef(0);
@@ -547,7 +545,7 @@ export default function GroupDetail() {
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}
                   size={19}
-                  color={item.liked_by_me ? colors.cheer : mutedColor}
+                  color={item.liked_by_me ? actionColor : mutedColor}
                 />
                 <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
                   {item.like_count}
@@ -571,24 +569,16 @@ export default function GroupDetail() {
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const primaryInk = mode === 'light' ? colors.text : theme.ink.primary;
-  const secondaryInk = mode === 'light' ? colors.textSecondary : theme.ink.secondary;
-  const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted;
-  const faintInk = mode === 'light' ? colors.textFaint : theme.ink.muted;
-  const softActionSurface = mode === 'light' ? colors.primarySoft : theme.surface.muted;
-  const neutralSurface = mode === 'light' ? colors.surface : theme.surface.muted;
-
-  return StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.surface.raised },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xxl,
-    backgroundColor: theme.surface.raised,
+    backgroundColor: theme.surface.canvas,
   },
-  notFound: { fontFamily: font.regular, color: mutedInk },
+  notFound: { fontFamily: font.regular, color: theme.ink.muted },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   headerBlock: { gap: spacing.md },
   groupCard: {
@@ -605,13 +595,13 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: softActionSurface,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  groupName: { fontFamily: font.extrabold, fontSize: 20, color: primaryInk },
+  groupName: { fontFamily: font.extrabold, fontSize: 20, color: theme.ink.primary },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  groupMeta: { fontFamily: font.medium, fontSize: 13, color: mutedInk },
+  groupMeta: { fontFamily: font.medium, fontSize: 13, color: theme.ink.muted },
   keyBlock: { gap: spacing.sm },
   keyInput: {
     borderWidth: 1,
@@ -620,17 +610,17 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: primaryInk,
+    color: theme.ink.primary,
     minHeight: 48,
-    backgroundColor: theme.surface.muted,
+    backgroundColor: theme.surface.raised,
   },
-  keyHint: { fontFamily: font.regular, fontSize: 12.5, color: mutedInk },
+  keyHint: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted },
   memberActions: { flexDirection: 'row', gap: spacing.sm },
   adminChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: softActionSurface,
+    backgroundColor: theme.surface.muted,
     borderRadius: radius.pill,
     paddingVertical: 5,
     paddingHorizontal: 10,
@@ -640,7 +630,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     fontFamily: font.regular,
     fontSize: 14.5,
     lineHeight: 21,
-    color: secondaryInk,
+    color: theme.ink.secondary,
   },
   composer: { gap: spacing.sm },
   composerInput: {
@@ -650,9 +640,9 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: primaryInk,
+    color: theme.ink.primary,
     minHeight: 48,
-    backgroundColor: theme.surface.muted,
+    backgroundColor: theme.surface.raised,
   },
   postBtn: {
     alignSelf: 'flex-end',
@@ -684,10 +674,10 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     justifyContent: 'center',
     alignSelf: 'flex-start',
   },
-  author: { fontSize: 15, fontFamily: font.bold, color: primaryInk },
-  time: { color: faintInk, fontSize: 12, fontFamily: font.medium },
-  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: primaryInk },
-  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: neutralSurface },
+  author: { fontSize: 15, fontFamily: font.bold, color: theme.ink.primary },
+  time: { color: theme.ink.muted, fontSize: 12, fontFamily: font.medium },
+  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: theme.ink.primary },
+  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: theme.surface.muted },
   actions: { flexDirection: 'row', gap: spacing.xl, marginTop: 2 },
   action: {
     flexDirection: 'row',
@@ -696,7 +686,6 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     paddingVertical: spacing.xs,
     minHeight: 32,
   },
-  actionText: { fontSize: 14, color: mutedInk, fontFamily: font.semibold },
-  liked: { color: colors.cheer },
-  });
-};
+  actionText: { fontSize: 14, color: theme.ink.muted, fontFamily: font.semibold },
+  liked: { color: theme.ink.action },
+});

@@ -60,7 +60,7 @@ function useCompeteAppearance() {
 }
 
 export default function Compete() {
-  const { styles } = useCompeteAppearance();
+  const { palette, styles } = useCompeteAppearance();
   const router = useRouter();
   const { isPro } = useIsPro();
   const { width } = useWindowDimensions();
@@ -99,7 +99,7 @@ export default function Compete() {
               accessibilityLabel="Share a win"
             >
               <View style={styles.winIcon}>
-                <Ionicons name="flame" size={17} color="#f59e0b" />
+                <Ionicons name="flame" size={17} color={palette.statusAttention} />
               </View>
             </Pressable>
             {rank ? (
@@ -599,7 +599,9 @@ const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(245,158,11,0.15)',
+    backgroundColor: palette.faintAccent,
+    borderWidth: 1,
+    borderColor: palette.statusAttention,
     alignItems: 'center',
     justifyContent: 'center',
   },

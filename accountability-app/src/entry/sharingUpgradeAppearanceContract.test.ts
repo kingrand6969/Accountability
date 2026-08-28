@@ -9,10 +9,18 @@ const paywallSource = readFileSync(require.resolve('../app/paywall'), 'utf8');
 describe('sharing and upgrade appearance contract', () => {
   test('Win Card themes its controls without altering captured proof or guarded side effects', () => {
     expect(winCardSource).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
-    expect(winCardSource).toContain('const { colors: theme, mode } = useAppTheme();');
-    expect(winCardSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(winCardSource).toContain("mode === 'light' ? '#F8F5EE' : theme.surface.canvas");
+    expect(winCardSource).toContain('const { colors: theme } = useAppTheme();');
+    expect(winCardSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(winCardSource).toContain('canvas: theme.surface.canvas');
+    expect(winCardSource).toContain('surface: theme.surface.card');
+    expect(winCardSource).toContain('heading: theme.surface.muted');
+    expect(winCardSource).toContain('action: theme.ink.action');
+    expect(winCardSource).toContain('onAction: theme.ink.inverse');
+    expect(winCardSource).toContain('pendingBorder: theme.status.attention');
     expect(winCardSource).toContain('backgroundColor: palette.surface');
+    expect(winCardSource).not.toContain("mode === 'light'");
+    expect(winCardSource).not.toContain("mode === 'dark'");
+    expect(winCardSource).not.toContain("surface: '#FFFFFF'");
     expect(winCardSource).toContain('<ProofCaptureCard context={captureContext} backgroundUri={shareBackgroundUri} />');
     expect(winCardSource).toContain('publishFlexFeedPost({');
     expect(winCardSource).toContain('saveImageToMemories(uri, null, null, expectedProofOwner(token))');
@@ -21,20 +29,35 @@ describe('sharing and upgrade appearance contract', () => {
 
   test('Invite Card keeps its export artwork exact while adapting the surrounding shell', () => {
     expect(inviteCardSource).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
-    expect(inviteCardSource).toContain('const { colors: theme, mode } = useAppTheme();');
-    expect(inviteCardSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(inviteCardSource).toContain("mode === 'light' ? '#F4F5F1' : theme.surface.canvas");
+    expect(inviteCardSource).toContain('const { colors: theme } = useAppTheme();');
+    expect(inviteCardSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(inviteCardSource).toContain('canvas: theme.surface.canvas');
+    expect(inviteCardSource).toContain('title: theme.ink.primary');
+    expect(inviteCardSource).toContain('muted: theme.ink.muted');
+    expect(inviteCardSource).toContain('action: theme.ink.action');
+    expect(inviteCardSource).toContain('onAction: theme.ink.inverse');
+    expect(inviteCardSource).not.toContain("mode === 'light'");
+    expect(inviteCardSource).not.toContain("mode === 'dark'");
     expect(inviteCardSource).toContain("colors={['#111411', '#263223', '#446B00']}");
+    expect(inviteCardSource).toContain("brand: { color: '#fff'");
+    expect(inviteCardSource).toContain("avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#fff' }");
     expect(inviteCardSource).toContain("require('../../assets/images/logo.png')");
     expect(inviteCardSource).toContain("dialogTitle: 'Invite a buddy to AccountAbility'");
     expect(inviteCardSource).toContain('backgroundColor: palette.action');
   });
 
-  test('public Share handoff remains safe and readable in both manual appearances', () => {
+  test('public Share handoff remains safe in permanent dark appearance', () => {
     expect(publicShareSource).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
-    expect(publicShareSource).toContain('const { colors: theme, mode } = useAppTheme();');
-    expect(publicShareSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
-    expect(publicShareSource).toContain("mode === 'light' ? colors.cream : theme.surface.canvas");
+    expect(publicShareSource).toContain('const { colors: theme } = useAppTheme();');
+    expect(publicShareSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(publicShareSource).toContain('canvas: theme.surface.canvas');
+    expect(publicShareSource).toContain('ink: theme.ink.primary');
+    expect(publicShareSource).toContain('muted: theme.ink.muted');
+    expect(publicShareSource).toContain('action: theme.ink.action');
+    expect(publicShareSource).toContain('onAction: theme.ink.inverse');
+    expect(publicShareSource).not.toContain("mode === 'light'");
+    expect(publicShareSource).not.toContain("mode === 'dark'");
+    expect(publicShareSource).not.toContain('legacyColors');
     expect(publicShareSource).toContain('canonicalPublicShareDestination(shareId)');
     expect(publicShareSource).toContain('executeShareHandoff({');
     expect(publicShareSource).toContain('await WebBrowser.openBrowserAsync(webUrl)');

@@ -24,13 +24,11 @@ import { useBookFeed } from '../books/useBookFeed';
 import type { Cadence } from '../books/rotate';
 import { Button } from '../ui/Button';
 import {
-  colors as legacyColors,
   font,
   radius,
   shadow,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
@@ -41,9 +39,9 @@ const CADENCES: { value: Cadence; label: string }[] = [
 ];
 
 export default function Books() {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => booksPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => booksPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const { isPro, loading: proLoading } = useIsPro();
   const [prefs, setPrefs] = useState<BookPrefs | null>(null);
@@ -218,27 +216,27 @@ export default function Books() {
   );
 }
 
-function booksPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function booksPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
-    mutedSurface: mode === 'light' ? legacyColors.surface : theme.surface.muted,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    secondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    pro: mode === 'light' ? legacyColors.pro : theme.ink.action,
-    proSoft: mode === 'light' ? legacyColors.proSoft : theme.surface.muted,
-    buttonInk: legacyColors.onPrimary,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    mutedSurface: theme.surface.muted,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    pro: theme.ink.action,
+    proSoft: theme.surface.muted,
+    buttonInk: theme.ink.inverse,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = booksPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = booksPalette(theme);
   return StyleSheet.create({
   container: { padding: spacing.lg, gap: spacing.sm, backgroundColor: palette.background, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60, backgroundColor: palette.background },

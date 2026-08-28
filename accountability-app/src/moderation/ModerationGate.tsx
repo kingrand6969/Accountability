@@ -13,12 +13,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { supabase } from '../lib/supabase';
 import {
-  colors as legacyColors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { acknowledgeWarning, fetchModerationState, sessionPing, type ModerationState } from './api';
@@ -168,8 +166,8 @@ function BanWall({
   busy: boolean;
 }) {
   const insets = useSafeAreaInsets();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={[styles.wall, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
       <ScrollView
@@ -177,7 +175,7 @@ function BanWall({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.wallIcon}>
-          <Ionicons name="ban" size={38} color="#fca5a5" />
+          <Ionicons name="ban" size={38} color={theme.status.danger} />
         </View>
         <Text style={styles.wallTitle}>Account banned</Text>
         <Text style={styles.wallLede}>
@@ -200,7 +198,7 @@ function BanWall({
           accessibilityLabel="Sign out"
         >
           {busy ? (
-            <ActivityIndicator color={legacyColors.onPrimary} />
+            <ActivityIndicator color={theme.ink.inverse} />
           ) : (
             <Text style={styles.wallBtnText}>Sign out</Text>
           )}
@@ -225,10 +223,10 @@ function NoticeModal({
   cta: string;
   onClose: () => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const accent = tone === 'warning' ? legacyColors.accent : '#B45309';
-  const accentSoft = tone === 'warning' ? 'rgba(251,191,36,0.16)' : 'rgba(249,115,22,0.14)';
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const accent = tone === 'warning' ? theme.status.attention : theme.status.danger;
+  const accentSoft = tone === 'warning' ? theme.surface.muted : theme.status.dangerSoft;
   return (
     <View style={styles.scrim}>
       <View style={styles.sheet}>
@@ -252,19 +250,19 @@ function NoticeModal({
   );
 }
 
-function createPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function createPalette(theme: AppThemeColors) {
   return {
-    sheet: mode === 'light' ? legacyColors.card : theme.surface.card,
-    sheetInk: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    sheetSecondary: mode === 'light' ? legacyColors.textSecondary : theme.ink.secondary,
-    sheetAction: mode === 'light' ? legacyColors.text : theme.ink.action,
-    sheetOnAction: mode === 'light' ? legacyColors.onPrimary : theme.ink.inverse,
-    scrim: mode === 'light' ? 'rgba(15,23,42,0.55)' : theme.interaction.scrim,
+    sheet: theme.surface.card,
+    sheetInk: theme.ink.primary,
+    sheetSecondary: theme.ink.secondary,
+    sheetAction: theme.ink.action,
+    sheetOnAction: theme.ink.inverse,
+    scrim: theme.interaction.scrim,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = createPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = createPalette(theme);
   return StyleSheet.create({
   // ---- ban wall ----
   wall: {
@@ -274,7 +272,7 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     right: 0,
     bottom: 0,
     zIndex: 9999,
-    backgroundColor: '#0b1220',
+    backgroundColor: theme.surface.canvas,
     paddingHorizontal: 26,
   },
   wallInner: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
@@ -282,17 +280,17 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: 'rgba(239,68,68,0.14)',
+    backgroundColor: theme.status.dangerSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
   },
-  wallTitle: { fontFamily: font.extrabold, fontSize: 26, color: '#f8fafc', marginBottom: 10 },
+  wallTitle: { fontFamily: font.extrabold, fontSize: 26, color: theme.ink.primary, marginBottom: 10 },
   wallLede: {
     fontFamily: font.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: '#cbd5e1',
+    color: theme.ink.secondary,
     textAlign: 'center',
     maxWidth: 360,
     marginBottom: 20,
@@ -300,34 +298,34 @@ function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
   wallCard: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: theme.surface.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: theme.border.subtle,
     borderRadius: radius.lg,
     padding: 16,
     marginBottom: 22,
   },
-  wallCardText: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 22, color: '#e2e8f0' },
+  wallCardText: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 22, color: theme.ink.secondary },
   wallAppeal: {
     fontFamily: font.regular,
     fontSize: 13.5,
     lineHeight: 21,
-    color: '#94a3b8',
+    color: theme.ink.muted,
     textAlign: 'center',
     marginBottom: 28,
   },
-  wallEmail: { fontFamily: font.semibold, color: '#B9FF3D' },
+  wallEmail: { fontFamily: font.semibold, color: theme.ink.action },
   wallBtn: {
     minHeight: spacing.touch,
     minWidth: 200,
-    backgroundColor: legacyColors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingVertical: 14,
     paddingHorizontal: 28,
     alignItems: 'center',
   },
   wallBtnPressed: { opacity: 0.85 },
-  wallBtnText: { fontFamily: font.bold, fontSize: 16, color: legacyColors.onPrimary },
+  wallBtnText: { fontFamily: font.bold, fontSize: 16, color: theme.ink.inverse },
 
   // ---- notice modal (warning / restriction) ----
   scrim: {

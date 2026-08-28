@@ -18,13 +18,11 @@ import { EmptyState } from '../ui/EmptyState';
 import { useAuth } from '../auth/AuthProvider';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
-  colors,
   font,
   radius,
   spacing,
   shadow,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 
 type Row = { kind: 'header'; key: string; title: string } | { kind: 'page'; key: string; page: Page };
@@ -36,11 +34,11 @@ function categoryLabel(value: string): string | null {
 export default function Pages() {
   const router = useRouter();
   const { session } = useAuth();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const actionColor = theme.ink.action;
-  const mutedColor = mode === 'light' ? colors.textMuted : theme.ink.muted;
-  const faintColor = mode === 'light' ? colors.textFaint : theme.ink.muted;
+  const mutedColor = theme.ink.muted;
+  const faintColor = theme.ink.muted;
   const ownerId = session?.user.id ?? null;
   const currentOwnerRef = useRef(ownerId);
   const loadGeneration = useRef(0);
@@ -264,27 +262,21 @@ export default function Pages() {
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const primaryInk = mode === 'light' ? colors.text : theme.ink.primary;
-  const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted;
-  const softActionSurface = mode === 'light' ? colors.primarySoft : theme.surface.muted;
-  const neutralSurface = mode === 'light' ? colors.surface : theme.surface.muted;
-
-  return StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.surface.raised },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xxl,
-    backgroundColor: theme.surface.raised,
+    backgroundColor: theme.surface.canvas,
   },
   emptyWrap: { flexGrow: 1 },
   list: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 96 },
   sectionHeader: {
     fontFamily: font.bold,
     fontSize: 13,
-    color: mutedInk,
+    color: theme.ink.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginTop: spacing.sm,
@@ -302,25 +294,25 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     minHeight: 64,
     ...shadow.card,
   },
-  rowPressed: { opacity: 0.85 },
+  rowPressed: { opacity: 0.85, backgroundColor: theme.surface.muted },
   iconCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: softActionSurface,
+    backgroundColor: theme.surface.raised,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: neutralSurface },
+  avatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.surface.muted },
   rowBody: { flex: 1, gap: 2 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  name: { fontFamily: font.bold, fontSize: 15.5, color: primaryInk, flexShrink: 1 },
-  meta: { fontFamily: font.regular, fontSize: 13, color: mutedInk },
+  name: { fontFamily: font.bold, fontSize: 15.5, color: theme.ink.primary, flexShrink: 1 },
+  meta: { fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
   ownerChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: softActionSurface,
+    backgroundColor: theme.surface.muted,
     borderRadius: radius.pill,
     paddingVertical: 5,
     paddingHorizontal: 10,
@@ -346,7 +338,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     paddingVertical: 14,
     paddingHorizontal: spacing.xl,
     minHeight: spacing.touch,
-    shadowColor: '#0f172a',
+    shadowColor: theme.surface.canvas,
     shadowOpacity: 0.2,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -354,5 +346,4 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
   },
   fabText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   pressed: { opacity: 0.8 },
-  });
-};
+});

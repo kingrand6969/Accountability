@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { themeColors, type AppThemeMode } from '../ui/theme';
+import { themeColors } from '../ui/theme';
 
 const source = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf8');
 
@@ -30,16 +30,6 @@ function contrast(foreground: string, background: string): number {
   return (high + 0.05) / (low + 0.05);
 }
 
-function composite(foreground: string, background: string, alpha: number): string {
-  const fg = foreground.slice(1).match(/.{2}/g)!.map((value) => parseInt(value, 16));
-  const bg = background.slice(1).match(/.{2}/g)!.map((value) => parseInt(value, 16));
-  return `#${fg.map((value, index) =>
-    Math.round(value * alpha + bg[index] * (1 - alpha))
-      .toString(16)
-      .padStart(2, '0'),
-  ).join('')}`;
-}
-
 describe('competition and challenge appearance contract', () => {
   test('themes the shared glass foundation with permanent dark semantic roles', () => {
     expect(glass).toContain("import { useAppTheme } from './AppThemeProvider'");
@@ -53,15 +43,23 @@ describe('competition and challenge appearance contract', () => {
     expect(glass).not.toContain("tint='light'");
   });
 
-  test('competition controls keep their exact Light palette and derive Dark from semantic roles', () => {
+  test('competition controls use permanent dark semantic roles', () => {
     expect(controls).toContain("export const INK = '#111411'");
     expect(controls).toContain("export const INK_SOFT = 'rgba(17,20,17,0.72)'");
     expect(controls).toContain("export const ACCENT = '#446B00'");
     expect(controls).toContain('export function useCompetitionTheme()');
-    expect(controls).toContain("mode === 'light' ? INK : theme.ink.primary");
-    expect(controls).toContain("mode === 'light' ? INK_SOFT : theme.ink.secondary");
-    expect(controls).toContain("mode === 'light' ? ACCENT : theme.ink.action");
-    expect(controls).toContain("mode === 'light' ? '#fff' : theme.ink.inverse");
+    expect(controls).toContain('const { colors: theme } = useAppTheme()');
+    expect(controls).toContain('const palette = useMemo(() => competitionPalette(theme), [theme])');
+    expect(controls).toContain('ink: theme.ink.primary');
+    expect(controls).toContain('inkSoft: theme.ink.secondary');
+    expect(controls).toContain('accent: theme.ink.action');
+    expect(controls).toContain('onAccent: theme.ink.inverse');
+    expect(controls).toContain('segmentSurface: theme.surface.card');
+    expect(controls).toContain('chipSurface: theme.surface.raised');
+    expect(controls).toContain('selectedRow: theme.surface.muted');
+    expect(controls).toContain('inputBorder: theme.border.strong');
+    expect(controls).not.toContain("mode === 'light'");
+    expect(controls).not.toContain('rgba(255,255,255');
     expect(controls).not.toContain('const styles = StyleSheet.create({');
   });
 
@@ -69,24 +67,23 @@ describe('competition and challenge appearance contract', () => {
     ['Compete', compete],
     ['Challenge detail', detail],
     ['Challenge creation', create],
-  ])('%s binds styles and inline colors to live appearance', (_label, screen) => {
+  ])('%s binds all route chrome to the permanent competition palette', (_label, screen) => {
     expect(screen).toContain('useCompetitionTheme');
     expect(screen).toContain('const { palette } = useCompetitionTheme()');
     expect(screen).toContain('useMemo(() => createStyles(palette), [palette])');
     expect(screen).toContain('color: palette.ink');
     expect(screen).toContain('color: palette.inkSoft');
     expect(screen).toContain('backgroundColor: palette.accent');
+    expect(screen).not.toContain("mode === 'light'");
+    expect(screen).not.toContain("mode === 'dark'");
     expect(screen).not.toContain('const styles = StyleSheet.create({');
   });
 
-  test.each(['light', 'dark'] satisfies AppThemeMode[])(
-    '%s semantic competition text and actions meet normal-text contrast',
-    (mode) => {
-      const theme = themeColors(mode);
-      expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  test('permanent dark competition text and actions meet normal-text contrast', () => {
+    const theme = themeColors('dark');
+    expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
+  });
 
   test('all direct competition actions and shared selectors expose 48dp targets', () => {
     expect(controls).toMatch(/segBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
@@ -115,14 +112,12 @@ describe('competition and challenge appearance contract', () => {
     expect(carousel).not.toContain('style={styles.title} numberOfLines={2}');
   });
 
-  test('Light challenge secondary and success text meet 4.5:1 on the darkest approved glass stop', () => {
-    const darkestGlass = '#DDE3DA';
-    const secondary = composite('#111411', darkestGlass, 0.72);
-    const joinedSurface = composite('#16A34A', darkestGlass, 0.14);
-
-    expect(contrast(secondary, darkestGlass)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast('#166534', joinedSurface)).toBeGreaterThanOrEqual(4.5);
-    expect(carousel).toContain("success: mode === 'dark' ? theme.status.success : '#166534'");
-    expect(carousel).toContain("pillJoined: mode === 'dark' ? theme.status.successSoft : 'rgba(22,163,74,0.14)'");
+  test('competition status colors remain status-semantic and distinct from neon actions', () => {
+    const theme = themeColors('dark');
+    expect(contrast(theme.status.attention, theme.surface.raised)).toBeGreaterThanOrEqual(4.5);
+    expect(controls).toContain('statusAttention: theme.status.attention');
+    expect(compete).toContain('color={palette.statusAttention}');
+    expect(compete).toContain('borderColor: palette.statusAttention');
+    expect(carousel).toContain('theme.status.success');
   });
 });

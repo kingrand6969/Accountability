@@ -77,32 +77,25 @@ describe('Account and support manual appearance contract', () => {
     ['help', helpSource],
     ['legal reader', legalSource],
     ['books', booksSource],
-  ])('%s follows the live Light/Dark appearance', (_name, screenSource) => {
+  ])('%s uses permanent dark appearance', (_name, screenSource) => {
     expect(screenSource).toContain('useAppTheme');
-    expect(screenSource).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(screenSource).toContain('useMemo(() => createStyles(theme, mode), [theme, mode])');
+    expect(screenSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(screenSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(screenSource).not.toContain("mode === 'light'");
+    expect(screenSource).not.toContain("mode === 'dark'");
+    expect(screenSource).not.toContain('legacyColors');
     expect(screenSource).not.toContain('const styles = StyleSheet.create({');
   });
 
   test.each([
     ['help', helpSource],
     ['books', booksSource],
-  ])('%s keeps its exact Light surfaces and gains semantic Dark equivalents', (_name, screenSource) => {
-    expect(screenSource).toContain(
-      "background: mode === 'light' ? legacyColors.background : theme.surface.canvas",
-    );
-    expect(screenSource).toContain(
-      "card: mode === 'light' ? legacyColors.card : theme.surface.card",
-    );
-    expect(screenSource).toContain(
-      "field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised",
-    );
-    expect(screenSource).toContain(
-      "ink: mode === 'light' ? legacyColors.text : theme.ink.primary",
-    );
-    expect(screenSource).toContain(
-      "border: mode === 'light' ? legacyColors.border : theme.border.subtle",
-    );
+  ])('%s uses the permanent dark semantic surface hierarchy', (_name, screenSource) => {
+    expect(screenSource).toContain('background: theme.surface.canvas');
+    expect(screenSource).toContain('card: theme.surface.card');
+    expect(screenSource).toContain('field: theme.surface.raised');
+    expect(screenSource).toContain('ink: theme.ink.primary');
+    expect(screenSource).toContain('border: theme.border.subtle');
     expect(screenSource).toContain('backgroundColor: palette.background');
     expect(screenSource).toContain('backgroundColor: palette.card');
     expect(screenSource).toContain('borderColor: palette.border');

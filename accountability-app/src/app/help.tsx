@@ -7,13 +7,11 @@ import { CONTACT_EMAIL } from '../legal/content';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
 import {
-  colors as legacyColors,
   contentMax,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
 
@@ -24,9 +22,9 @@ const KINDS: { key: SupportKind; label: string; icon: keyof typeof Ionicons.glyp
 ];
 
 export default function HelpScreen() {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => helpPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => helpPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [kind, setKind] = useState<SupportKind>('support');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -160,22 +158,22 @@ function LinkRow({
   );
 }
 
-function helpPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function helpPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    card: mode === 'light' ? legacyColors.card : theme.surface.card,
-    field: mode === 'light' ? legacyColors.surfaceAlt : theme.surface.raised,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    placeholder: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
-    border: mode === 'light' ? legacyColors.border : theme.border.subtle,
-    action: mode === 'light' ? legacyColors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = helpPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = helpPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   scroll: { ...contentMax, padding: spacing.lg, gap: spacing.md, paddingBottom: 48 },

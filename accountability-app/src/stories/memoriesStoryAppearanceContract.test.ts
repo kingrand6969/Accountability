@@ -3,7 +3,7 @@ import path from 'path';
 
 import { describe, expect, test } from '@jest/globals';
 
-import { themeColors, type AppThemeMode } from '../ui/theme';
+import { themeColors } from '../ui/theme';
 
 function route(relativePath: string): string {
   return fs.readFileSync(path.resolve(__dirname, `../app/${relativePath}`), 'utf8');
@@ -30,29 +30,28 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe('Memories and Story appearance contract', () => {
-  test('Memories follows manual Light/Dark appearance without changing its Light palette', () => {
+  test('Memories uses permanent dark route chrome while leaving viewer media natural', () => {
     expect(memories).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
-    expect(memories).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(memories).toContain('useMemo(() => createStyles(theme, mode), [mode, theme])');
-    expect(memories).toContain("const primaryInk = mode === 'light' ? colors.text : theme.ink.primary");
-    expect(memories).toContain("const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted");
+    expect(memories).toContain('const { colors: theme } = useAppTheme()');
+    expect(memories).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(memories).toContain('backgroundColor: theme.surface.canvas');
     expect(memories).toContain('backgroundColor: theme.surface.raised');
     expect(memories).toContain('color={theme.ink.action}');
-    expect(memories).toContain('color: primaryInk');
-    expect(memories).toContain('color: mutedInk');
+    expect(memories).toContain('color: theme.ink.primary');
+    expect(memories).toContain('color: theme.ink.muted');
+    expect(memories).not.toContain("mode === 'light'");
+    expect(memories).not.toContain("mode === 'dark'");
+    expect(memories).not.toContain('type AppThemeMode');
     expect(memories).not.toContain('const styles = StyleSheet.create');
     expect(memories).not.toContain('backgroundColor: colors.background');
   });
 
-  test.each(['light', 'dark'] satisfies AppThemeMode[])(
-    '%s Memories text and activity color keep useful contrast',
-    (mode) => {
-      const theme = themeColors(mode);
-      expect(contrast(theme.ink.primary, theme.surface.raised)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.muted, theme.surface.raised)).toBeGreaterThanOrEqual(3);
-      expect(contrast(theme.ink.action, theme.surface.raised)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  test('permanent dark Memories text and activity color keep useful contrast', () => {
+    const theme = themeColors('dark');
+    expect(contrast(theme.ink.primary, theme.surface.raised)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.muted, theme.surface.raised)).toBeGreaterThanOrEqual(3);
+    expect(contrast(theme.ink.action, theme.surface.raised)).toBeGreaterThanOrEqual(4.5);
+  });
 
   test('keeps the Memories viewer immersive and its compact actions at 48dp', () => {
     expect(memories).toContain("backgroundColor: 'rgba(0,0,0,0.94)'");
@@ -65,7 +64,7 @@ describe('Memories and Story appearance contract', () => {
     expect(memories.match(/hitSlop=\{4\}/g)?.length).toBe(2);
   });
 
-  test('keeps Story media-first in both appearances while theming interaction state', () => {
+  test('keeps Story media-first while using permanent dark interaction state', () => {
     expect(story).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
     expect(story).toContain('const { colors: theme } = useAppTheme()');
     expect(story).toContain('useMemo(() => createStyles(theme), [theme])');
@@ -80,6 +79,8 @@ describe('Memories and Story appearance contract', () => {
     expect(story).not.toContain('<Image source={{ uri: story.image_url }}');
     expect(story).toContain('reporting && styles.reportBtnDisabled');
     expect(story).toContain('opacity: theme.interaction.disabledOpacity');
+    expect(story).not.toContain("mode === 'light'");
+    expect(story).not.toContain("mode === 'dark'");
     expect(story).not.toContain('const styles = StyleSheet.create');
   });
 

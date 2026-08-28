@@ -22,10 +22,8 @@ import {
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAppTheme } from '../ui/AppThemeProvider';
-import { ACCENT } from '../compete/CompeteUI';
 import { Medal } from '../achievements/Medal';
 import { RankCarousel } from '../achievements/RankCarousel';
 import { ChallengesCarousel } from '../achievements/ChallengesCarousel';
@@ -66,9 +64,9 @@ export function medalFlexRoute(state: MedalState) {
 
 export default function Achievements() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => trophyPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => trophyPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const [states, setStates] = useState<MedalState[] | null>(null);
@@ -394,9 +392,7 @@ export default function Achievements() {
                       size={13}
                       color={
                         s.unlocked
-                          ? mode === 'dark'
-                            ? TIER_META[medalMetal(s.def, s.tierIndex)].light
-                            : TIER_META[medalMetal(s.def, s.tierIndex)].dark
+                          ? TIER_META[medalMetal(s.def, s.tierIndex)].light
                           : palette.lockedInk
                       }
                     />
@@ -405,9 +401,7 @@ export default function Achievements() {
                         styles.statusText,
                         {
                           color: s.unlocked
-                            ? mode === 'dark'
-                              ? TIER_META[medalMetal(s.def, s.tierIndex)].light
-                              : TIER_META[medalMetal(s.def, s.tierIndex)].dark
+                            ? TIER_META[medalMetal(s.def, s.tierIndex)].light
                             : palette.lockedInk,
                         },
                       ]}
@@ -486,9 +480,9 @@ function MedalSheet({
   onClose: () => void;
   onShare: (s: MedalState) => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => trophyPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => trophyPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <Modal visible={!!state} transparent animationType="fade" onRequestClose={onClose}>
@@ -557,47 +551,47 @@ function fmt(n: number): string {
   return n >= 100 ? Math.round(n).toString() : (Math.round(n * 10) / 10).toString();
 }
 
-function trophyPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function trophyPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'dark' ? theme.surface.canvas : '#F4F5F1',
-    card: mode === 'dark' ? theme.surface.card : '#FFFCF6',
-    ink: mode === 'dark' ? theme.ink.primary : '#111411',
-    muted: mode === 'dark' ? theme.ink.muted : '#647084',
-    border: mode === 'dark' ? theme.border.subtle : '#DED9CC',
-    consistencyLockedInk: mode === 'dark' ? theme.ink.muted : '#9AA6B4',
-    ladderLocked: mode === 'dark' ? theme.border.strong : 'rgba(17,20,17,0.12)',
-    prestigeLockedIcon: mode === 'dark' ? theme.ink.muted : '#7C8796',
-    primary: mode === 'dark' ? theme.ink.action : ACCENT,
-    track: mode === 'dark' ? theme.interaction.skeleton : '#DDE4EF',
-    levelSeal: mode === 'dark' ? theme.surface.raised : '#111411',
-    levelInk: mode === 'dark' ? theme.ink.primary : '#fff',
-    sealBorder: mode === 'dark' ? theme.border.strong : '#A9B4C8',
-    lockedSurface: mode === 'dark' ? theme.surface.muted : '#E8E9EA',
-    lockedSolidBorder: mode === 'dark' ? theme.border.strong : '#BCC3CD',
-    connector: mode === 'dark' ? theme.border.subtle : '#D3D6DA',
-    glassCard: mode === 'dark' ? theme.surface.card : 'rgba(255,255,255,0.78)',
-    medalCard: mode === 'dark' ? theme.surface.card : 'rgba(255,255,255,0.82)',
-    glassBorder: mode === 'dark' ? theme.border.subtle : 'rgba(255,255,255,0.92)',
-    glassInk: mode === 'dark' ? theme.ink.primary : '#111411',
-    glassMuted: mode === 'dark' ? theme.ink.muted : 'rgba(17,20,17,0.72)',
-    glassDivider: mode === 'dark' ? theme.border.subtle : 'rgba(17,20,17,0.1)',
-    accent: mode === 'dark' ? theme.ink.action : ACCENT,
-    actionInk: mode === 'dark' ? theme.ink.inverse : '#FFFFFF',
-    lockedBorder: mode === 'dark' ? theme.border.strong : 'rgba(148,163,184,0.34)',
-    lockedChip: mode === 'dark' ? theme.surface.muted : 'rgba(100,116,139,0.1)',
-    lockedInk: mode === 'dark' ? theme.ink.muted : '#64748b',
-    lockedGlowStrong: mode === 'dark' ? theme.surface.muted : 'rgba(226,232,240,0.72)',
-    lockedGlowSoft: mode === 'dark' ? theme.surface.card : 'rgba(248,250,252,0.18)',
-    medalFade: mode === 'dark' ? 'rgba(13,27,46,0)' : 'rgba(255,255,255,0)',
-    prestigeSurface: mode === 'dark' ? 'rgba(196,181,253,0.14)' : 'rgba(124,58,237,0.1)',
-    prestigeInk: mode === 'dark' ? '#C4B5FD' : '#6d28d9',
-    scrim: mode === 'dark' ? theme.interaction.scrim : 'rgba(15,23,42,0.55)',
-    sheet: mode === 'dark' ? theme.surface.raised : '#fff',
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    border: theme.border.subtle,
+    consistencyLockedInk: theme.ink.muted,
+    ladderLocked: theme.border.strong,
+    prestigeLockedIcon: theme.ink.muted,
+    primary: theme.ink.action,
+    track: theme.interaction.skeleton,
+    levelSeal: theme.surface.raised,
+    levelInk: theme.ink.primary,
+    sealBorder: theme.border.strong,
+    lockedSurface: theme.surface.muted,
+    lockedSolidBorder: theme.border.strong,
+    connector: theme.border.subtle,
+    glassCard: theme.surface.card,
+    medalCard: theme.surface.card,
+    glassBorder: theme.border.subtle,
+    glassInk: theme.ink.primary,
+    glassMuted: theme.ink.muted,
+    glassDivider: theme.border.subtle,
+    accent: theme.ink.action,
+    actionInk: theme.ink.inverse,
+    lockedBorder: theme.border.strong,
+    lockedChip: theme.surface.muted,
+    lockedInk: theme.ink.muted,
+    lockedGlowStrong: theme.surface.muted,
+    lockedGlowSoft: theme.surface.card,
+    medalFade: 'rgba(13,27,46,0)',
+    prestigeSurface: 'rgba(196,181,253,0.14)',
+    prestigeInk: '#C4B5FD',
+    scrim: theme.interaction.scrim,
+    sheet: theme.surface.raised,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = trophyPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = trophyPalette(theme);
 
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.canvas },

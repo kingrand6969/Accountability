@@ -46,12 +46,10 @@ import {
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { userFacingErrorMessage } from '../ui/userFacingError';
 import {
-  colors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import {
   useProofActionOrchestrator,
@@ -87,9 +85,9 @@ type ProofFormat = 'portrait' | 'square' | 'landscape';
 export default function WinCard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const params = useLocalSearchParams<{
     location?: string | string[];
     route?: string | string[];
@@ -784,9 +782,9 @@ function proofFormatAspectRatio(format: ProofFormat): number {
 }
 
 function ScreenHeader({ onBack }: { onBack: () => void }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <View style={styles.screenHeader}>
@@ -816,9 +814,9 @@ function ToggleRow({
   value: boolean;
   onPress: () => void;
 }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <Pressable
@@ -840,9 +838,9 @@ function ToggleRow({
 }
 
 function ProofAction({ icon, label, onPress, busy, disabled }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => winCardPalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <Pressable style={({ pressed }) => [styles.actionRow, pressed && styles.pressed, disabled && styles.disabled]} onPress={onPress} disabled={busy || disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy: !!busy, disabled: !!disabled || !!busy }}>
@@ -871,29 +869,29 @@ function nextPaint(): Promise<void> {
   });
 }
 
-function winCardPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function winCardPalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? '#F8F5EE' : theme.surface.canvas,
-    surface: mode === 'light' ? '#FFFFFF' : theme.surface.card,
-    ink: mode === 'light' ? colors.text : theme.ink.primary,
-    secondary: mode === 'light' ? colors.textSecondary : theme.ink.secondary,
-    muted: mode === 'light' ? colors.textMuted : theme.ink.muted,
-    faint: mode === 'light' ? colors.textFaint : theme.ink.muted,
-    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
-    neutralBorder: mode === 'light' ? colors.border : theme.border.subtle,
-    panelBorder: mode === 'light' ? '#E5DFD4' : theme.border.subtle,
-    selected: mode === 'light' ? '#EEF2E9' : theme.surface.muted,
-    heading: mode === 'light' ? '#F2F4EE' : theme.surface.muted,
-    switchOff: mode === 'light' ? '#CBD5E1' : theme.border.strong,
-    pending: mode === 'light' ? '#FFF7E6' : theme.surface.muted,
-    pendingBorder: mode === 'light' ? '#F2C879' : theme.status.attention,
-    cardShadow: mode === 'light' ? '#000' : theme.surface.canvas,
+    canvas: theme.surface.canvas,
+    surface: theme.surface.card,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    faint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    neutralBorder: theme.border.subtle,
+    panelBorder: theme.border.subtle,
+    selected: theme.surface.muted,
+    heading: theme.surface.muted,
+    switchOff: theme.border.strong,
+    pending: theme.surface.muted,
+    pendingBorder: theme.status.attention,
+    cardShadow: theme.surface.canvas,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = winCardPalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = winCardPalette(theme);
 
   return StyleSheet.create({
   screen: { flexGrow: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 18, gap: 8, backgroundColor: palette.canvas },

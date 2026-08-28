@@ -12,18 +12,16 @@ import {
 import { BrandMark } from '../../ui/BrandMark';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 import {
-  colors,
   font,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 
 export default function SharedUpdateRoute() {
   const router = useRouter();
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => publicSharePalette(theme, mode), [theme, mode]);
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => publicSharePalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, loading: authLoading } = useAuth();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const shareId = typeof id === 'string' ? id : undefined;
@@ -123,18 +121,18 @@ export default function SharedUpdateRoute() {
   );
 }
 
-function publicSharePalette(theme: AppThemeColors, mode: AppThemeMode) {
+function publicSharePalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? colors.cream : theme.surface.canvas,
-    ink: mode === 'light' ? colors.navy : theme.ink.primary,
-    muted: mode === 'light' ? colors.inkSoft : theme.ink.muted,
-    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
+    canvas: theme.surface.canvas,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = publicSharePalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = publicSharePalette(theme);
 
   return StyleSheet.create({
   screen: { flex: 1, padding: spacing.xl, backgroundColor: palette.canvas, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },

@@ -25,12 +25,10 @@ import { confirmDestructive } from '../ui/confirm';
 import { EmptyState } from '../ui/EmptyState';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
-  colors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { BP } from '../ui/responsive';
 
@@ -61,8 +59,8 @@ function timeLabel(iso: string): string {
  *  bookmark on any post photo. */
 export default function Memories() {
   const { width } = useWindowDimensions();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [items, setItems] = useState<Memory[]>([]);
   const [used, setUsed] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -170,7 +168,7 @@ export default function Memories() {
                     />
                     {m.location ? (
                       <View style={styles.tilePin}>
-                        <Ionicons name="location" size={10} color="#fff" />
+                        <Ionicons name="location" size={10} color={theme.ink.primary} />
                       </View>
                     ) : null}
                   </Pressable>
@@ -242,17 +240,13 @@ export default function Memories() {
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const primaryInk = mode === 'light' ? colors.text : theme.ink.primary;
-  const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted;
-
-  return StyleSheet.create({
-    screen: { flex: 1, backgroundColor: theme.surface.raised },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.surface.canvas },
     center: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: theme.surface.raised,
+      backgroundColor: theme.surface.canvas,
     },
     scroll: {
       padding: spacing.lg,
@@ -264,7 +258,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     usageLine: {
       fontFamily: font.medium,
       fontSize: 12.5,
-      color: mutedInk,
+      color: theme.ink.muted,
       marginBottom: spacing.md,
     },
     emptyWrap: { flex: 1, justifyContent: 'center' },
@@ -272,7 +266,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
     dayHeader: {
       fontFamily: font.bold,
       fontSize: 14.5,
-      color: primaryInk,
+      color: theme.ink.primary,
       marginBottom: spacing.sm,
     },
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP },
@@ -283,7 +277,7 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
       width: 18,
       height: 18,
       borderRadius: 9,
-      backgroundColor: 'rgba(15,23,42,0.55)',
+      backgroundColor: theme.surface.raised,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -314,5 +308,4 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
       alignItems: 'center',
       justifyContent: 'center',
     },
-  });
-};
+});

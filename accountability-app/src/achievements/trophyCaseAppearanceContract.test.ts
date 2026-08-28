@@ -2,12 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from '@jest/globals';
 
-import { themeColors, type AppThemeMode } from '../ui/theme';
+import { themeColors } from '../ui/theme';
 
 const source = (file: string) =>
   fs.readFileSync(path.resolve(__dirname, file), 'utf8');
 
 const trophy = source('../app/achievements.tsx');
+const books = source('../app/books.tsx');
 const rankCarousel = source('RankCarousel.tsx');
 const missions = source('MissionsList.tsx');
 const challenges = source('ChallengesCarousel.tsx');
@@ -30,26 +31,47 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe('Trophy Case manual appearance contract', () => {
-  test('themes the Trophy Case hierarchy while retaining its approved light presentation', () => {
+  test('uses permanent dark semantic roles for the Trophy Case route and medal sheet', () => {
     expect(trophy).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
-    expect(trophy).toContain('const { colors: theme, mode } = useAppTheme();');
+    expect(trophy).toContain('const { colors: theme } = useAppTheme();');
     expect(trophy).toContain(
-      'const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);',
+      'const styles = useMemo(() => createStyles(theme), [theme]);',
     );
-    expect(trophy).toContain('function trophyPalette(theme: AppThemeColors, mode: AppThemeMode)');
-    expect(trophy).toContain("canvas: mode === 'dark' ? theme.surface.canvas : '#F4F5F1'");
-    expect(trophy).toContain("card: mode === 'dark' ? theme.surface.card : '#FFFCF6'");
-    expect(trophy).toContain("ink: mode === 'dark' ? theme.ink.primary : '#111411'");
-    expect(trophy).toContain("muted: mode === 'dark' ? theme.ink.muted : '#647084'");
-    expect(trophy).toContain("border: mode === 'dark' ? theme.border.subtle : '#DED9CC'");
-    expect(trophy).toContain("consistencyLockedInk: mode === 'dark' ? theme.ink.muted : '#9AA6B4'");
-    expect(trophy).toContain("ladderLocked: mode === 'dark' ? theme.border.strong : 'rgba(17,20,17,0.12)'");
-    expect(trophy).toContain("prestigeLockedIcon: mode === 'dark' ? theme.ink.muted : '#7C8796'");
+    expect(trophy).toContain('function trophyPalette(theme: AppThemeColors)');
+    expect(trophy).toContain('canvas: theme.surface.canvas');
+    expect(trophy).toContain('card: theme.surface.card');
+    expect(trophy).toContain('sheet: theme.surface.raised');
+    expect(trophy).toContain('scrim: theme.interaction.scrim');
+    expect(trophy).toContain('ink: theme.ink.primary');
+    expect(trophy).toContain('muted: theme.ink.muted');
+    expect(trophy).toContain('primary: theme.ink.action');
+    expect(trophy).toContain('actionInk: theme.ink.inverse');
     expect(trophy).toContain('backgroundColor: palette.canvas');
     expect(trophy).toContain('backgroundColor: palette.card');
     expect(trophy).toContain('color: palette.ink');
     expect(trophy).toContain('color: palette.muted');
+    expect(trophy).not.toContain("mode === 'light'");
+    expect(trophy).not.toContain("mode === 'dark'");
+    expect(trophy).not.toContain("backgroundColor: '#fff'");
     expect(trophy).not.toContain('const styles = StyleSheet.create({');
+  });
+
+  test('uses permanent dark semantic roles for the Books route while preserving cover media', () => {
+    expect(books).toContain("import { useAppTheme } from '../ui/AppThemeProvider'");
+    expect(books).toContain('const { colors: theme } = useAppTheme();');
+    expect(books).toContain('const palette = useMemo(() => booksPalette(theme), [theme]);');
+    expect(books).toContain('const styles = useMemo(() => createStyles(theme), [theme]);');
+    expect(books).toContain('function booksPalette(theme: AppThemeColors)');
+    expect(books).toContain('background: theme.surface.canvas');
+    expect(books).toContain('card: theme.surface.card');
+    expect(books).toContain('field: theme.surface.raised');
+    expect(books).toContain('mutedSurface: theme.surface.muted');
+    expect(books).toContain('action: theme.ink.action');
+    expect(books).toContain('onAction: theme.ink.inverse');
+    expect(books).toContain('<Image source={{ uri: feed.pick.coverUrl }} style={styles.cover} resizeMode="cover" />');
+    expect(books).toContain('<Image source={{ uri: b.coverUrl }} style={styles.rowCover} resizeMode="cover" />');
+    expect(books).not.toContain("mode === 'light'");
+    expect(books).not.toContain('legacyColors');
   });
 
   test('keeps real Trophy Case art, tier color, data and navigation behavior intact', () => {
@@ -99,13 +121,10 @@ describe('Trophy Case manual appearance contract', () => {
     expect(challenges).toMatch(/btn:\s*\{[^}]*minHeight: spacing\.touch/s);
   });
 
-  test.each(['light', 'dark'] satisfies AppThemeMode[])(
-    '%s semantic copy and controls retain accessible contrast',
-    (mode) => {
-      const theme = themeColors(mode);
-      expect(contrast(theme.ink.primary, theme.surface.canvas)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  test('permanent dark semantic copy and controls retain accessible contrast', () => {
+    const theme = themeColors('dark');
+    expect(contrast(theme.ink.primary, theme.surface.canvas)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
+  });
 });

@@ -19,19 +19,17 @@ import { getMyProfile } from '../profiles/api';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import {
-  colors,
   font,
   radius,
   shadow,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 
 export default function InviteCard() {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
-  const palette = useMemo(() => invitePalette(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => invitePalette(theme), [theme]);
   const cardRef = useRef<View>(null);
   const [name, setName] = useState('A friend');
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -166,18 +164,18 @@ export default function InviteCard() {
   );
 }
 
-function invitePalette(theme: AppThemeColors, mode: AppThemeMode) {
+function invitePalette(theme: AppThemeColors) {
   return {
-    canvas: mode === 'light' ? '#F4F5F1' : theme.surface.canvas,
-    title: mode === 'light' ? '#0f172a' : theme.ink.primary,
-    muted: mode === 'light' ? '#64748b' : theme.ink.muted,
-    action: mode === 'light' ? colors.primaryDark : theme.ink.action,
-    onAction: mode === 'light' ? '#FFFFFF' : theme.ink.inverse,
+    canvas: theme.surface.canvas,
+    title: theme.ink.primary,
+    muted: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
   } as const;
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const palette = invitePalette(theme, mode);
+const createStyles = (theme: AppThemeColors) => {
+  const palette = invitePalette(theme);
 
   return StyleSheet.create({
   screen: {

@@ -17,12 +17,10 @@ import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import {
-  colors,
   font,
   radius,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../ui/theme';
 import { useAuth } from '../auth/AuthProvider';
 
@@ -33,9 +31,9 @@ const HANDLE_RE = /^[a-z0-9_]{3,30}$/;
 export default function PageNew() {
   const router = useRouter();
   const { session } = useAuth();
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
-  const faintColor = mode === 'light' ? colors.textFaint : theme.ink.muted;
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const faintColor = theme.ink.muted;
   const ownerId = session?.user.id ?? null;
   const currentOwnerRef = useRef(ownerId);
   const createGeneration = useRef(0);
@@ -252,10 +250,10 @@ type PrivacySelectorProps = {
 };
 
 function PrivacySelector({ value, onChange, publicHint, privateHint }: PrivacySelectorProps) {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [mode, theme]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const actionColor = theme.ink.action;
-  const mutedColor = mode === 'light' ? colors.textMuted : theme.ink.muted;
+  const mutedColor = theme.ink.muted;
   const options = [
     { value: 'public' as const, icon: 'globe-outline' as const, label: 'Public' },
     { value: 'private' as const, icon: 'lock-closed-outline' as const, label: 'Private' },
@@ -302,18 +300,11 @@ function PrivacySelector({ value, onChange, publicHint, privateHint }: PrivacySe
   );
 }
 
-const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
-  const primaryInk = mode === 'light' ? colors.text : theme.ink.primary;
-  const secondaryInk = mode === 'light' ? colors.textSecondary : theme.ink.secondary;
-  const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted;
-  const dangerInk = mode === 'light' ? colors.danger : theme.status.danger;
-  const privacySurface = mode === 'light' ? colors.surface : theme.surface.muted;
-
-  return StyleSheet.create({
-    screen: { flex: 1, backgroundColor: theme.surface.raised },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.surface.canvas },
     content: { padding: spacing.lg, gap: spacing.xl },
     field: { gap: spacing.sm },
-    label: { fontFamily: font.semibold, fontSize: 14, color: secondaryInk },
+    label: { fontFamily: font.semibold, fontSize: 14, color: theme.ink.secondary },
     input: {
       borderWidth: 1,
       borderColor: theme.border.subtle,
@@ -321,13 +312,13 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
       padding: spacing.md,
       fontSize: 16,
       fontFamily: font.regular,
-      color: primaryInk,
+      color: theme.ink.primary,
       minHeight: spacing.touch,
-      backgroundColor: theme.surface.muted,
+      backgroundColor: theme.surface.raised,
     },
     multiline: { minHeight: 96, textAlignVertical: 'top' },
-    helper: { fontFamily: font.regular, fontSize: 13, color: mutedInk },
-    error: { fontFamily: font.medium, fontSize: 13, color: dangerInk },
+    helper: { fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
+    error: { fontFamily: font.medium, fontSize: 13, color: theme.status.danger },
     chipRow: { gap: spacing.sm, paddingVertical: 2 },
     chip: {
       borderWidth: 1,
@@ -339,12 +330,12 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
       backgroundColor: theme.surface.card,
     },
     chipSelected: { backgroundColor: theme.ink.action, borderColor: theme.border.action },
-    chipText: { fontFamily: font.semibold, fontSize: 14, color: secondaryInk },
+    chipText: { fontFamily: font.semibold, fontSize: 14, color: theme.ink.secondary },
     chipTextSelected: { color: theme.ink.inverse },
     privacyWrap: { gap: 6 },
     privacyRow: {
       flexDirection: 'row',
-      backgroundColor: privacySurface,
+      backgroundColor: theme.surface.muted,
       borderRadius: radius.sm,
       padding: 4,
       gap: 4,
@@ -359,18 +350,17 @@ const createStyles = (theme: AppThemeColors, mode: AppThemeMode) => {
       borderRadius: radius.sm - 2,
     },
     privacySegmentSelected: {
-      backgroundColor: theme.surface.card,
+      backgroundColor: theme.ink.action,
       borderWidth: 1,
       borderColor: theme.border.action,
     },
-    privacySegmentText: { fontFamily: font.semibold, fontSize: 14.5, color: mutedInk },
-    privacySegmentTextSelected: { color: theme.ink.action, fontFamily: font.bold },
+    privacySegmentText: { fontFamily: font.semibold, fontSize: 14.5, color: theme.ink.muted },
+    privacySegmentTextSelected: { color: theme.ink.inverse, fontFamily: font.bold },
     privacyHint: {
       fontFamily: font.regular,
       fontSize: 12.5,
-      color: mutedInk,
+      color: theme.ink.muted,
       paddingHorizontal: 2,
     },
     pressed: { opacity: 0.75 },
-  });
-};
+});

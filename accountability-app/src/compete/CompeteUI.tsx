@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Avatar } from '../feed/Avatar';
 import { useAppTheme } from '../ui/AppThemeProvider';
-import { font, radius, spacing, type AppThemeColors, type AppThemeMode } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 import { formatScore, type Metric } from './api';
 
 export const INK = '#111411';
@@ -32,38 +32,37 @@ export type CompetitionPalette = {
   quietInk: string;
   inputSurface: string;
   inputBorder: string;
+  statusAttention: string;
 };
 
-function competitionPalette(
-  theme: AppThemeColors,
-  mode: AppThemeMode,
-): CompetitionPalette {
+function competitionPalette(theme: AppThemeColors): CompetitionPalette {
   return {
-    ink: mode === 'light' ? INK : theme.ink.primary,
-    inkSoft: mode === 'light' ? INK_SOFT : theme.ink.secondary,
-    accent: mode === 'light' ? ACCENT : theme.ink.action,
-    onAccent: mode === 'light' ? '#fff' : theme.ink.inverse,
-    segmentSurface: mode === 'light' ? 'rgba(255,255,255,0.5)' : theme.surface.card,
-    segmentBorder: mode === 'light' ? 'rgba(255,255,255,0.7)' : theme.border.subtle,
-    chipSurface: mode === 'light' ? 'rgba(255,255,255,0.55)' : theme.surface.raised,
-    chipBorder: mode === 'light' ? 'rgba(255,255,255,0.75)' : theme.border.strong,
-    selectedRow: mode === 'light' ? 'rgba(185,255,61,0.16)' : theme.surface.muted,
-    neutralRank: mode === 'light' ? 'rgba(17,20,17,0.08)' : theme.surface.raised,
-    subtleAccent: mode === 'light' ? 'rgba(185,255,61,0.18)' : theme.surface.muted,
-    faintAccent: mode === 'light' ? 'rgba(185,255,61,0.12)' : theme.surface.raised,
-    accentBorder: mode === 'light' ? 'rgba(111,159,0,0.42)' : theme.border.action,
-    accentBorderStrong: mode === 'light' ? 'rgba(111,159,0,0.56)' : theme.border.action,
-    faintInk: mode === 'light' ? 'rgba(17,20,17,0.08)' : theme.surface.muted,
-    quietInk: mode === 'light' ? 'rgba(17,20,17,0.06)' : theme.surface.muted,
-    inputSurface: mode === 'light' ? 'rgba(255,255,255,0.6)' : theme.surface.raised,
-    inputBorder: mode === 'light' ? 'rgba(17,20,17,0.15)' : theme.border.strong,
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.secondary,
+    accent: theme.ink.action,
+    onAccent: theme.ink.inverse,
+    segmentSurface: theme.surface.card,
+    segmentBorder: theme.border.subtle,
+    chipSurface: theme.surface.raised,
+    chipBorder: theme.border.strong,
+    selectedRow: theme.surface.muted,
+    neutralRank: theme.surface.raised,
+    subtleAccent: theme.surface.muted,
+    faintAccent: theme.surface.raised,
+    accentBorder: theme.border.action,
+    accentBorderStrong: theme.border.action,
+    faintInk: theme.surface.muted,
+    quietInk: theme.surface.muted,
+    inputSurface: theme.surface.raised,
+    inputBorder: theme.border.strong,
+    statusAttention: theme.status.attention,
   };
 }
 
 export function useCompetitionTheme() {
-  const { colors: theme, mode } = useAppTheme();
-  const palette = useMemo(() => competitionPalette(theme, mode), [mode, theme]);
-  return { palette, mode, theme };
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => competitionPalette(theme), [theme]);
+  return { palette, theme };
 }
 
 type Opt = { value: string; label: string; icon?: string };

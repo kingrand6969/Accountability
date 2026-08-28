@@ -3,20 +3,18 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { DOCS, EFFECTIVE_DATE, type LegalDocKey } from '../../legal/content';
 import {
-  colors as legacyColors,
   contentMax,
   font,
   spacing,
   type AppThemeColors,
-  type AppThemeMode,
 } from '../../ui/theme';
 import { useAppTheme } from '../../ui/AppThemeProvider';
 
 /** Reader for the Terms of Service / Privacy Policy — reachable from the sign-up
  *  consent line and from Settings. Content lives in one place (legal/content). */
 export default function LegalScreen() {
-  const { colors: theme, mode } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { doc } = useLocalSearchParams<{ doc: string }>();
   const key: LegalDocKey = doc === 'privacy' ? 'privacy' : 'terms';
   const d = DOCS[key];
@@ -50,17 +48,17 @@ export default function LegalScreen() {
   );
 }
 
-function legalPalette(theme: AppThemeColors, mode: AppThemeMode) {
+function legalPalette(theme: AppThemeColors) {
   return {
-    background: mode === 'light' ? legacyColors.background : theme.surface.canvas,
-    ink: mode === 'light' ? legacyColors.text : theme.ink.primary,
-    muted: mode === 'light' ? legacyColors.textMuted : theme.ink.muted,
-    faint: mode === 'light' ? legacyColors.textFaint : theme.ink.muted,
+    background: theme.surface.canvas,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    faint: theme.ink.muted,
   };
 }
 
-function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
-  const palette = legalPalette(theme, mode);
+function createStyles(theme: AppThemeColors) {
+  const palette = legalPalette(theme);
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
   body: { padding: spacing.lg, paddingBottom: 48, gap: 4 },

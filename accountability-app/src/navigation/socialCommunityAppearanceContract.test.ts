@@ -3,7 +3,7 @@ import path from 'path';
 
 import { describe, expect, test } from '@jest/globals';
 
-import { themeColors, type AppThemeMode } from '../ui/theme';
+import { themeColors } from '../ui/theme';
 
 function route(relativePath: string): string {
   return fs.readFileSync(path.resolve(__dirname, `../app/${relativePath}`), 'utf8');
@@ -38,33 +38,36 @@ describe('Groups and Pages appearance contract', () => {
     ['pages list', pages],
     ['group detail', groupDetail],
     ['page detail', pageDetail],
-  ])('%s follows the live manual Light/Dark theme', (_name, source) => {
+  ])('%s uses permanent dark semantic route chrome', (_name, source) => {
     const providerPath = source === groupDetail || source === pageDetail
       ? '../../ui/AppThemeProvider'
       : '../ui/AppThemeProvider';
     expect(source).toContain(`import { useAppTheme } from '${providerPath}'`);
-    expect(source).toContain('const { colors: theme, mode } = useAppTheme()');
-    expect(source).toContain('useMemo(() => createStyles(theme, mode), [mode, theme])');
+    expect(source).toContain('const { colors: theme } = useAppTheme()');
+    expect(source).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(source).toContain('backgroundColor: theme.surface.canvas');
     expect(source).toContain('backgroundColor: theme.surface.raised');
     expect(source).toContain('backgroundColor: theme.surface.card');
     expect(source).toContain('borderColor: theme.border.subtle');
-    expect(source).toContain("const primaryInk = mode === 'light' ? colors.text : theme.ink.primary");
-    expect(source).toContain("const mutedInk = mode === 'light' ? colors.textMuted : theme.ink.muted");
-    expect(source).toContain('color: primaryInk');
-    expect(source).toContain('color: mutedInk');
+    expect(source).toContain('color: theme.ink.primary');
+    expect(source).toContain('color: theme.ink.muted');
     expect(source).toContain('backgroundColor: theme.ink.action');
+    expect(source).not.toContain("mode === 'light'");
+    expect(source).not.toContain("mode === 'dark'");
+    expect(source).not.toContain('type AppThemeMode');
     expect(source).not.toContain('const styles = StyleSheet.create');
     expect(source).not.toContain('colors.background');
     expect(source).not.toContain('color: colors.textMuted');
     expect(source).not.toContain('color: colors.textFaint');
   });
 
-  test('retains the exact light surfaces and blue accents while supplying dark equivalents', () => {
+  test('keeps neutral/secondary surfaces dark and reserves neon for actions', () => {
     for (const source of allScreens) {
-      expect(source).toContain("mode === 'light' ? colors.primarySoft : theme.surface.muted");
-      expect(source).toContain("mode === 'light' ? colors.textFaint : theme.ink.muted");
+      expect(source).toContain('theme.surface.muted');
+      expect(source).toContain('theme.ink.muted');
       expect(source).toContain('theme.surface.raised');
       expect(source).toContain('theme.ink.action');
+      expect(source).not.toMatch(/#(?:fff|ffffff)\b/i);
     }
   });
 
@@ -84,15 +87,12 @@ describe('Groups and Pages appearance contract', () => {
     }
   });
 
-  test.each(['light', 'dark'] satisfies AppThemeMode[])(
-    '%s cards, text and actions retain accessible contrast',
-    (mode) => {
-      const theme = themeColors(mode);
-      expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(theme.ink.muted, theme.surface.card)).toBeGreaterThanOrEqual(3);
-      expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  test('permanent dark cards, text and actions retain accessible contrast', () => {
+    const theme = themeColors('dark');
+    expect(contrast(theme.ink.primary, theme.surface.card)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.ink.muted, theme.surface.card)).toBeGreaterThanOrEqual(3);
+    expect(contrast(theme.ink.inverse, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
+  });
 
   test('preserves the established group/page destinations and privacy gates', () => {
     expect(groups).toContain("router.push('/group-new' as never)");
