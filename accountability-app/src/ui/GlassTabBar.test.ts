@@ -34,6 +34,15 @@ jest.mock('./haptics', () => ({
   hapticSelect: jest.fn(),
 }));
 
+jest.mock('@expo/vector-icons/Ionicons', () => {
+  const mockReact = jest.requireActual<typeof import('react')>('react');
+  const { View: MockView } = jest.requireActual<typeof import('react-native')>('react-native');
+  return ({ name }: { name: string; color: string }) => mockReact.createElement(
+    MockView,
+    { testID: `ionicon-${name}` },
+  );
+});
+
 jest.mock('./BrandMark', () => ({
   BrandMark: function MockBrandMark(props: Record<string, unknown>) {
     const React = jest.requireActual<typeof import('react')>('react');
@@ -95,6 +104,7 @@ function renderTabBar({
 } = {}) {
   const emit = jest.fn(() => ({ defaultPrevented: preventPress }));
   const navigate = jest.fn();
+  const onMenu = jest.fn();
   const descriptors = Object.fromEntries(
     routes.map((route, index) => [
       route.key,
@@ -116,10 +126,11 @@ function renderTabBar({
         state: { index: focusedIndex, routes },
         descriptors,
         navigation: { emit, navigate },
+        onMenu,
       }),
     );
   });
-  return { renderer, emit, navigate };
+  return { renderer, emit, navigate, onMenu };
 }
 
 function visibleLabels(renderer: TestRenderer.ReactTestRenderer) {
@@ -149,7 +160,7 @@ describe('GlassTabBar contract', () => {
     jest.clearAllMocks();
   });
 
-  it('shows exactly the approved four destinations in order', () => {
+  it('shows Menu immediately after Messages as the fifth dashboard destination', () => {
     const { renderer } = renderTabBar();
 
     expect(VISIBLE_TAB_LABELS).toEqual([
@@ -157,6 +168,7 @@ describe('GlassTabBar contract', () => {
       'Journey',
       'Run',
       'Messages',
+      'Menu',
     ]);
     expect(visibleLabels(renderer)).toEqual(VISIBLE_TAB_LABELS);
     expect(visibleLabels(renderer)).not.toEqual(
@@ -373,6 +385,16 @@ describe('GlassTabBar contract', () => {
         borderTopColor: dark.border.subtle,
       }),
     );
+  });
+
+  it('opens the existing Menu destination with haptic feedback', () => {
+    const { renderer, onMenu } = renderTabBar();
+
+    expect(renderer.root.findByProps({ testID: 'ionicon-menu-outline' })).toBeTruthy();
+    act(() => pressableByLabel(renderer, 'Menu').props.onPress());
+
+    expect(onMenu).toHaveBeenCalledTimes(1);
+    expect(hapticSelect).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to dark semantic tab chrome when no palette is supplied', () => {

@@ -1,6 +1,6 @@
 import { type ComponentProps, useEffect, useState } from 'react';
 import { type ColorValue, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Redirect, Tabs } from 'expo-router';
+import { Redirect, Tabs, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -81,6 +81,7 @@ const styles = StyleSheet.create({
 });
 
 export default function AppLayout() {
+  const router = useRouter();
   const { session } = useAuth();
   const { colors: theme } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -137,8 +138,8 @@ export default function AppLayout() {
     <>
       <StatusBar style="light" />
       <Tabs
-      // custom quiet bar — guarantees the approved four destinations and spacing
-      tabBar={(props) => <GlassTabBar {...props} />}
+      // custom quiet bar — guarantees the approved five destinations and spacing
+      tabBar={(props) => <GlassTabBar {...props} onMenu={() => router.push('/menu')} />}
       screenOptions={{
         headerShown: true,
         sceneStyle: { backgroundColor: theme.surface.canvas },

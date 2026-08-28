@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandMark } from './BrandMark';
@@ -25,6 +26,7 @@ type TabBarProps = {
     };
     navigate: (name: string) => void;
   };
+  onMenu: () => void;
 };
 
 export const VISIBLE_TAB_LABELS = [
@@ -32,6 +34,7 @@ export const VISIBLE_TAB_LABELS = [
   'Journey',
   'Run',
   'Messages',
+  'Menu',
 ] as const;
 
 const visibleTabLabels = new Set<string>(VISIBLE_TAB_LABELS);
@@ -40,10 +43,11 @@ const compactTabLabels: Record<(typeof VISIBLE_TAB_LABELS)[number], string> = {
   Journey: 'Path',
   Run: 'Run',
   Messages: 'Chat',
+  Menu: 'Menu',
 };
 
-/** Quiet four-destination bottom navigation matching the approved references. */
-export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
+/** Quiet five-destination bottom navigation matching the approved references. */
+export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const { colors: theme } = useAppTheme();
   const fontScale = PixelRatio.getFontScale();
@@ -148,6 +152,25 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              onMenu();
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: false }}
+            accessibilityLabel="Menu"
+            style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+          >
+            <Ionicons name="menu-outline" size={24} color={theme.ink.action} />
+            <Text
+              testID="tab-label-Menu"
+              style={[styles.label, { color: theme.ink.muted }]}
+              numberOfLines={2}
+            >
+              {fontScale >= 1.25 ? compactTabLabels.Menu : 'Menu'}
+            </Text>
+          </Pressable>
       </View>
     </View>
   );
