@@ -75,6 +75,45 @@ function rgb(hex: string) {
   ];
 }
 
+async function containsRgb(filePath: string, expectedRgb: number[]) {
+  const { data, info } = await sharp(filePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  for (let offset = 0; offset < data.length; offset += info.channels) {
+    if (
+      data[offset] === expectedRgb[0] &&
+      data[offset + 1] === expectedRgb[1] &&
+      data[offset + 2] === expectedRgb[2] &&
+      data[offset + 3] === 255
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function containsVisibleContent(filePath: string) {
+  const image = sharp(filePath).ensureAlpha();
+  const { data, info } = await image
+    .clone()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const stats = await image.stats();
+  const background = Array.from(data.subarray(0, info.channels));
+
+  return (
+    stats.channels[3].max > 0 &&
+    Array.from({ length: data.length / info.channels }).some((_, index) => {
+      const offset = index * info.channels;
+      return Array.from(data.subarray(offset, offset + info.channels)).some(
+        (channel, channelIndex) => channel !== background[channelIndex],
+      );
+    })
+  );
+}
+
 const validMantleGeometry = {
   viewBox: '0 0 96 96',
   wordmark: 'Mantle',
@@ -285,7 +324,7 @@ describe('Mantle brand geometry contract', () => {
     fs.rmSync(fixtureDirectory, { recursive: true, force: true });
   });
 
-  it('generates all eight PNGs at approved dimensions in an isolated directory', () => {
+  it('generates all eight PNGs at approved dimensions and with visible brand content in an isolated directory', async () => {
     const outputDirectory = fs.mkdtempSync(
       path.join(os.tmpdir(), 'brand-assets-'),
     );
@@ -310,10 +349,28 @@ describe('Mantle brand geometry contract', () => {
       Object.keys(expectedDimensions).sort(),
     );
     for (const [fileName, dimensions] of Object.entries(expectedDimensions)) {
-      expect(pngDimensions(path.join(outputDirectory, fileName))).toEqual(
-        dimensions,
-      );
+      const filePath = path.join(outputDirectory, fileName);
+      expect(pngDimensions(filePath)).toEqual(dimensions);
+      await expect(sharp(filePath).metadata()).resolves.toMatchObject({
+        format: 'png',
+        ...dimensions,
+      });
     }
+
+    await expect(
+      containsRgb(path.join(outputDirectory, 'logo-mark.png'), [185, 255, 61]),
+    ).resolves.toBe(true);
+    await expect(
+      containsRgb(path.join(outputDirectory, 'android-icon-monochrome.png'), [
+        0, 0, 0,
+      ]),
+    ).resolves.toBe(true);
+    await expect(
+      containsVisibleContent(path.join(outputDirectory, 'logo.png')),
+    ).resolves.toBe(true);
+    await expect(
+      containsVisibleContent(path.join(outputDirectory, 'wordmark.png')),
+    ).resolves.toBe(true);
     fs.rmSync(outputDirectory, { recursive: true, force: true });
   });
 
