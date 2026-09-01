@@ -9,17 +9,35 @@ const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html'
 const staleProperName = /AccountAbility|ACCOUNTABILITY|Accountability App/g;
 const splitJsxProperName = /Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/gs;
 const historicalAttribution = 'OpenAI generated for AccountAbility';
-const historicalAttributionFiles = new Set([
-  'src/progress/workoutPhotoLibrary.test.ts',
-  'src/progress/workoutPhotoLibrary.ts',
+const historicalAttributionLines = new Map([
+  [
+    'src/progress/workoutPhotoLibrary.test.ts',
+    `    expect(all.every((photo) => photo.licenseSource === '${historicalAttribution}')).toBe(true);`,
+  ],
+  [
+    'src/progress/workoutPhotoLibrary.ts',
+    `const LICENSE_SOURCE = '${historicalAttribution}';`,
+  ],
 ]);
 
 function publicCopyContents(relativePath, contents) {
-  if (!historicalAttributionFiles.has(relativePath)) {
+  const allowedLine = historicalAttributionLines.get(relativePath);
+  if (!allowedLine) {
     return contents;
   }
 
-  return contents.replace(historicalAttribution, '');
+  const lineBreak = contents.includes('\r\n') ? '\r\n' : '\n';
+  const lines = contents.split(/\r?\n/);
+  const matchingLines = lines
+    .map((line, index) => line === allowedLine ? index : -1)
+    .filter((index) => index >= 0);
+
+  if (matchingLines.length !== 1) {
+    return contents;
+  }
+
+  lines[matchingLines[0]] = '';
+  return lines.join(lineBreak);
 }
 
 function containsStaleProperName(contents) {
@@ -69,22 +87,30 @@ test('active mobile surfaces contain no stale AccountAbility proper name', async
 
 test('historical attribution exemption is exact and does not hide other stale proper names', () => {
   const attributionPath = 'src/progress/workoutPhotoLibrary.ts';
+  const declarationLine = historicalAttributionLines.get(attributionPath);
+  assert.equal(typeof declarationLine, 'string');
 
-  assert.equal(publicCopyContents(attributionPath, historicalAttribution), '');
+  assert.equal(publicCopyContents(attributionPath, declarationLine), '');
   assert.equal(
     containsStaleProperName(
-      publicCopyContents(attributionPath, `${historicalAttribution}\nAccountAbility`),
+      publicCopyContents(attributionPath, `${declarationLine}\nAccountAbility`),
     ),
     true,
   );
   assert.equal(
     containsStaleProperName(
-      publicCopyContents(attributionPath, `${historicalAttribution}\n${historicalAttribution}`),
+      publicCopyContents(attributionPath, `${declarationLine}\n${declarationLine}`),
     ),
     true,
   );
   assert.equal(
     containsStaleProperName(publicCopyContents('src/example.ts', historicalAttribution)),
+    true,
+  );
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(attributionPath, `${declarationLine} AccountAbility member`),
+    ),
     true,
   );
 });

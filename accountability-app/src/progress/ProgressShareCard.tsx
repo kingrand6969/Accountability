@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import type { ShareStudioContext, ShareStudioResult } from '../share/shareStudioDraft';
 import { useAppTheme } from '../ui/AppThemeProvider';
+import { BrandMark } from '../ui/BrandMark';
 import { font, type AppThemeColors } from '../ui/theme';
 
 export const PROGRESS_SHARE_WIDTH = 1080;
@@ -162,7 +163,7 @@ export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
         </View>
       ) : (
         <View style={styles.emptyVisual}>
-          <Text maxFontSizeMultiplier={1.25} style={styles.emptyMark}>A</Text>
+          <BrandMark size={210} color="rgba(255,255,255,0.18)" accessibilityLabel="Mantle logo" />
           <Text maxFontSizeMultiplier={1.25} style={styles.emptyCopy}>SHOWING UP, ONE DAY AT A TIME</Text>
         </View>
       )}
@@ -170,7 +171,9 @@ export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
       <View style={styles.shade} />
       <View style={styles.content}>
         <View style={styles.brandRow}>
-          <View style={styles.brandMark}><Text maxFontSizeMultiplier={1.2} style={styles.brandMarkText}>A</Text></View>
+          <View style={styles.brandMark}>
+            <BrandMark size={21} color="#B9FF3D" accessibilityLabel="Mantle logo" />
+          </View>
           <Text maxFontSizeMultiplier={1.2} style={styles.brand}>MANTLE</Text>
         </View>
         <View style={styles.copyBlock}>
@@ -230,13 +233,11 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   photoLabelText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },
   photoDateText: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 9, marginTop: 2 },
   emptyVisual: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ink.action },
-  emptyMark: { color: 'rgba(255,255,255,0.18)', fontFamily: font.bold, fontSize: 210, lineHeight: 230 },
   emptyCopy: { color: 'rgba(255,255,255,0.68)', fontFamily: font.bold, fontSize: 11, letterSpacing: 2 },
   shade: { position: 'absolute', inset: 0, backgroundColor: 'rgba(17,20,17,0.42)' },
   content: { flex: 1, justifyContent: 'space-between', paddingHorizontal: '7%', paddingTop: '7%', paddingBottom: '7%' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandMark: { width: 29, height: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  brandMarkText: { color: '#B9FF3D', fontFamily: font.bold, fontSize: 17 },
   brand: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.7 },
   copyBlock: { gap: 10 },
   eyebrow: { color: '#EAF2E5', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },

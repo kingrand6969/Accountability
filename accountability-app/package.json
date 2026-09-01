@@ -93,6 +93,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
+    "test:brand-public-copy": "node --test scripts/brand-public-copy-contract.test.mjs",
     "test:update-budget": "node --test scripts/check-update-budget.test.mjs",
     "test:challenge-lockdown": "node --test scripts/check-challenge-lockdown-rollout.test.mjs",
     "test:location-drain-patch": "node --test scripts/location-drain-bridge-patch.test.mjs",

@@ -11,6 +11,7 @@ import {
   type ProgressShareSnapshot,
 } from './ProgressShareCard';
 import type { ShareStudioResult } from '../share/shareStudioDraft';
+import { BrandMark } from '../ui/BrandMark';
 
 jest.mock('../ui/AppThemeProvider', () => {
   const { themeColors } = jest.requireActual<typeof import('../ui/theme')>('../ui/theme');
@@ -74,6 +75,17 @@ function textOf(renderer: TestRenderer.ReactTestRenderer): string {
 }
 
 describe('ProgressShareCard', () => {
+  test('renders canonical connected marks without branded literal A glyphs', () => {
+    const emptySnapshot = Object.freeze({ ...snapshot, privatePhotos: Object.freeze([]) });
+    const model = createProgressShareRenderModel(emptySnapshot, draft());
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(<ProgressShareCard model={model} />); });
+    mounted.push(renderer);
+
+    expect(renderer.root.findAllByType(BrandMark)).toHaveLength(2);
+    expect(renderer.root.findAllByType(Text).some((node) => node.props.children === 'A')).toBe(false);
+  });
+
   test('renders only the exact reviewed context and keeps hidden body stats out', () => {
     const model = createProgressShareRenderModel(snapshot, draft());
     let renderer!: TestRenderer.ReactTestRenderer;

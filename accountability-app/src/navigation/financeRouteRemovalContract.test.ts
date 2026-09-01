@@ -77,6 +77,18 @@ describe('finance and business removal contract', () => {
     }
   });
 
+  test('hosted legal surfaces use the current public operator name', () => {
+    const staleHostedName = new RegExp(
+      ['Account', 'Ability|ACCOUNT', 'ABILITY|Accountability', ' App'].join(''),
+    );
+    for (const file of ['legal-web/index.html', 'legal-web/terms.html', 'legal-web/privacy.html']) {
+      const hosted = read(file);
+      expect(hosted).toContain('Mantle');
+      expect(hosted).not.toMatch(staleHostedName);
+      expect(hosted).not.toMatch(/Account\s*<span\b[^>]*>\s*Ability\s*<\/span>/s);
+    }
+  });
+
   test('Terms section headings are sequential', () => {
     expect(TERMS.sections.map((section) => Number(section.h.match(/^(\d+)\./)?.[1])))
       .toEqual(TERMS.sections.map((_, index) => index + 1));
