@@ -34,9 +34,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const share = await getShare(id);
-  if (!share) return { title: "AccountAbility update" };
+  if (!share) return { title: "Mantle update" };
   return {
-    title: `${share.title} · AccountAbility`,
+    title: `${share.title} · Mantle`,
     description: share.description,
     openGraph: {
       title: share.title,
@@ -66,7 +66,7 @@ export default async function PublicShare({
     return (
       <main className="shareShell">
         <section className="shareCard missing">
-          <div className="brand">AccountAbility</div>
+          <div className="brand">Mantle</div>
           <h1>This update is no longer available</h1>
           <p>It may have expired or been removed by its owner.</p>
           <div className="storeRow">
@@ -82,7 +82,7 @@ export default async function PublicShare({
     <main className="shareShell">
       <article className="shareCard">
         <header className="shareHeader">
-          <div className="brand">AccountAbility</div>
+          <div className="brand">Mantle</div>
           <span className="secure">Secure shared update</span>
         </header>
         {share.preview_image_url ? (
@@ -91,11 +91,11 @@ export default async function PublicShare({
           <div className="quoteCard">“{share.title}”</div>
         )}
         <div className="shareBody">
-          <p className="eyebrow">{share.sender_name ?? "An AccountAbility member"} shared</p>
+          <p className="eyebrow">{share.sender_name ?? "A Mantle member"} shared</p>
           <h1>{share.title}</h1>
           <p>{share.description}</p>
           <a className="openButton" href={appLink}>
-            Open in AccountAbility
+            Open in Mantle
           </a>
           <p className="fallback">Don&apos;t have the app yet?</p>
           <div className="storeRow">

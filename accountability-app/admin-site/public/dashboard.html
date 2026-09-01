@@ -8,7 +8,7 @@
 <!-- Defense-in-depth: even if a stored value ever executed, connect-src stops it
      phoning the admin session out to any host that isn't our own Supabase. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
-<title>AccountAbility · Admin</title>
+<title>Mantle · Admin</title>
 <style>
   :root{
     --bg:#0a0f1a; --side:#0d1422; --panel:#121a2c; --panel2:#1a2439; --line:#22304b; --line2:#31446b;
@@ -216,7 +216,7 @@
 <!-- LOGIN -->
 <div id="login">
   <div class="card">
-    <h1>AccountAbility <b style="color:var(--brand)">Admin</b></h1>
+    <h1>Mantle <b style="color:var(--brand)">Admin</b></h1>
     <p>Sign in with your admin account.</p>
     <input id="email" class="field" type="email" placeholder="Email" autocomplete="username" />
     <input id="password" class="field" type="password" placeholder="Password" autocomplete="current-password" />
@@ -784,7 +784,7 @@ const dateInDays = (n) => new Date(Date.now()+Math.max(1,n)*86400000).toLocaleDa
 
 function genMsg(){
   const a=$('#modAction').value, r=($('#modReason').value||'a rules violation').toLowerCase(), d=days();
-  if(a==='warning')  return `Heads up from the AccountAbility team — we reviewed activity on your account for ${r}. Consider this a formal warning. Please re-read our Community Rules; further violations can lead to a temporary restriction or a ban. If you think this was a mistake, reach us any time through Help & Support.`;
+  if(a==='warning')  return `Heads up from the Mantle team — we reviewed activity on your account for ${r}. Consider this a formal warning. Please re-read our Community Rules; further violations can lead to a temporary restriction or a ban. If you think this was a mistake, reach us any time through Help & Support.`;
   if(a==='restrict') return `Your account has been restricted for ${plural(d,'day')} for ${r}. While restricted you can still browse, but you can't post, comment, message, or share. Access returns automatically on ${dateInDays(d)}. Questions? Contact us through Help & Support.`;
   if(a==='ban')      return d>0
       ? `Your account has been suspended for ${plural(d,'day')} for ${r}. You won't be able to sign in during this period; access returns automatically afterward. To appeal, email ${CONTACT_EMAIL}.`
@@ -1017,7 +1017,7 @@ function genRemoveMsg(){
   const quote = (rmCtx.excerpt||'').slice(0,200);
   return `Your ${kind} was removed by our moderation team for ${reason}.` +
     (quote ? `\n\nRemoved content: "${quote}"` : '') +
-    `\n\nThis is strike ${strikes} of 5 — at 5 strikes your account is banned. We don't condone abusive, harmful, or violent content of any kind. AccountAbility is committed to staying a safe and non-toxic community — please review our Community Rules in the Terms of Service.` +
+    `\n\nThis is strike ${strikes} of 5 — at 5 strikes your account is banned. We don't condone abusive, harmful, or violent content of any kind. Mantle is committed to staying a safe and non-toxic community — please review our Community Rules in the Terms of Service.` +
     `\n\nIf you believe this was a mistake, contact us through Help & Support.`;
 }
 function openRemoveModal(ctx){

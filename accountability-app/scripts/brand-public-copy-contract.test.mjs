@@ -65,7 +65,7 @@ async function collectFiles(relativeDirectory) {
 }
 
 test('active mobile surfaces contain no stale AccountAbility proper name', async () => {
-  const sourceFiles = await Promise.all(['src'].map(collectFiles));
+  const sourceFiles = await Promise.all(['src', 'admin-site/app', 'admin-site/public'].map(collectFiles));
   const files = [...sourceFiles.flat(), 'app.json', 'app.config.js'];
   const staleFiles = [];
 
