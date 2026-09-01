@@ -12,17 +12,21 @@ function sourceUrl(sourceReference) {
     : new URL(sourceReference, import.meta.url);
 }
 
-export async function loadBrandGeometry(sourceReference) {
+async function readBrandSource(sourceReference) {
   const resolvedSource = sourceUrl(sourceReference);
-  let source;
   try {
-    source = await readFile(resolvedSource, 'utf8');
+    return await readFile(resolvedSource, 'utf8');
   } catch (error) {
     throw new Error(
       `Unable to read brand geometry from ${fileURLToPath(resolvedSource)}`,
       { cause: error },
     );
   }
+}
+
+export async function loadBrandGeometry(sourceReference) {
+  const resolvedSource = sourceUrl(sourceReference);
+  const source = await readBrandSource(resolvedSource);
 
   const match = source.match(
     /parseBrandGeometry\(JSON\.parse\(String\.raw`([\s\S]*?)`\)\)/,
@@ -41,6 +45,20 @@ export async function loadBrandGeometry(sourceReference) {
       { cause: error },
     );
   }
+}
+
+export async function loadBrandRenderViewBox(sourceReference) {
+  const resolvedSource = sourceUrl(sourceReference);
+  const source = await readBrandSource(resolvedSource);
+  const match = source.match(
+    /export const BRAND_MARK_RENDER_VIEW_BOX = '([^']+)'/,
+  );
+  if (!match) {
+    throw new Error(
+      `Brand mark render viewBox not found in ${fileURLToPath(resolvedSource)}`,
+    );
+  }
+  return match[1];
 }
 
 function validateGeometry(geometry) {
@@ -86,30 +104,66 @@ function markBody({ mark }, fill) {
   return `<path d="${mark.path}" fill="none" stroke="${fill}" stroke-width="${mark.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>${nodes}`;
 }
 
-function createMarkup(geometry, brandFontBase64) {
-  const { colors, viewBox, wordmark: brandWordmark } = geometry;
+function parseViewBox(viewBox) {
+  const [x, y, width, height, ...rest] = viewBox.split(/\s+/).map(Number);
+  if (
+    rest.length > 0 ||
+    ![x, y, width, height].every(Number.isFinite) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    throw new Error('Invalid brand mark render viewBox');
+  }
+  return { x, y, width, height };
+}
 
-  function mark(fill = colors.lime, background = 'transparent') {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${viewBox}">
-      <rect width="96" height="96" fill="${background}"/>
+function createMarkup(geometry, renderViewBox) {
+  const { colors } = geometry;
+  const frame = parseViewBox(renderViewBox);
+
+  function mark(fill = colors.lime) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${renderViewBox}">
       ${markBody(geometry, fill)}
     </svg>`;
   }
 
   function appIcon(fill = colors.lime, background = colors.charcoal) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 96 96">
-      <rect width="96" height="96" fill="${background}"/>
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${renderViewBox}">
+      <rect x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}" fill="${background}"/>
       ${markBody(geometry, fill)}
     </svg>`;
   }
 
-  const wordmark = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="300" viewBox="0 0 1400 300">
-    <style>@font-face { font-family: MantleBrand; src: url('data:font/ttf;base64,${brandFontBase64}') format('truetype'); font-weight: 700; }</style>
+  const wordmarkMark = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="300" viewBox="0 0 1400 300">
     <g transform="translate(18 15) scale(2.72)">${markBody(geometry, colors.lime)}</g>
-    <text x="306" y="193" font-family="MantleBrand" font-size="126" font-weight="700" letter-spacing="-4" fill="${colors.charcoal}">${brandWordmark}</text>
   </svg>`;
 
-  return { appIcon, mark, wordmark };
+  return { appIcon, mark, wordmarkMark };
+}
+
+async function renderWordmark(markup, brandWordmark, color, brandFontPath) {
+  const { data: textLayer, info: textInfo } = await sharp({
+    text: {
+      text: `<span foreground="${color}" letter_spacing="-4096">${brandWordmark}</span>`,
+      font: 'Sora 126',
+      fontfile: brandFontPath,
+      dpi: 72,
+      rgba: true,
+    },
+  })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+
+  return sharp(Buffer.from(markup))
+    .composite([
+      {
+        input: textLayer,
+        left: 306,
+        top: 193 - textInfo.height,
+      },
+    ])
+    .png()
+    .toBuffer();
 }
 
 async function writeAtomically(destination, render) {
@@ -123,15 +177,23 @@ async function writeAtomically(destination, render) {
 }
 
 export async function generateBrandAssets(outputDirectory) {
-  const geometry = validateGeometry(
-    await loadBrandGeometry('../src/ui/brandGeometry.ts'),
-  );
-  const brandFont = await readFile(
+  const [loadedGeometry, renderViewBox] = await Promise.all([
+    loadBrandGeometry('../src/ui/brandGeometry.ts'),
+    loadBrandRenderViewBox('../src/ui/brandGeometry.ts'),
+  ]);
+  const geometry = validateGeometry(loadedGeometry);
+  const brandFontPath = fileURLToPath(
     new URL('../node_modules/@expo-google-fonts/sora/700Bold/Sora_700Bold.ttf', import.meta.url),
   );
-  const { appIcon, mark, wordmark } = createMarkup(
+  const { appIcon, mark, wordmarkMark } = createMarkup(
     geometry,
-    brandFont.toString('base64'),
+    renderViewBox,
+  );
+  const wordmark = await renderWordmark(
+    wordmarkMark,
+    geometry.wordmark,
+    geometry.colors.charcoal,
+    brandFontPath,
   );
   await mkdir(outputDirectory, { recursive: true });
 
@@ -171,11 +233,11 @@ export async function generateBrandAssets(outputDirectory) {
     ],
     [
       'logo.png',
-      () => sharp(Buffer.from(wordmark)).resize(900, 193).png(),
+      () => sharp(wordmark).resize(900, 193).png(),
     ],
     [
       'wordmark.png',
-      () => sharp(Buffer.from(wordmark)).resize(600, 129).png(),
+      () => sharp(wordmark).resize(600, 129).png(),
     ],
     [
       'favicon.png',

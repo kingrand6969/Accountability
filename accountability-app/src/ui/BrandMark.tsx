@@ -1,6 +1,10 @@
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import { BRAND_GEOMETRY, BRAND_WORDMARK } from './brandGeometry';
+import {
+  BRAND_GEOMETRY,
+  BRAND_MARK_RENDER_VIEW_BOX,
+  BRAND_WORDMARK,
+} from './brandGeometry';
 
 type BrandMarkProps = {
   size?: number;
@@ -20,7 +24,7 @@ export function BrandMark({
     <Svg
       width={size}
       height={size}
-      viewBox={BRAND_GEOMETRY.viewBox}
+      viewBox={BRAND_MARK_RENDER_VIEW_BOX}
       accessibilityRole="image"
       accessibilityLabel={accessibilityLabel}
     >

@@ -4,9 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from '@jest/globals';
+import sharp from 'sharp';
 
 import {
   BRAND_GEOMETRY,
+  BRAND_MARK_RENDER_VIEW_BOX,
   BRAND_WORDMARK,
   parseBrandGeometry,
 } from './brandGeometry';
@@ -41,6 +43,36 @@ function pngDimensions(filePath: string) {
     width: png.readUInt32BE(16),
     height: png.readUInt32BE(20),
   };
+}
+
+async function outerEdgePixels(filePath: string) {
+  const { data, info } = await sharp(filePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const pixels: number[][] = [];
+  const addPixel = (x: number, y: number) => {
+    const offset = (y * info.width + x) * info.channels;
+    pixels.push(Array.from(data.subarray(offset, offset + info.channels)));
+  };
+
+  for (let x = 0; x < info.width; x += 1) {
+    addPixel(x, 0);
+    addPixel(x, info.height - 1);
+  }
+  for (let y = 1; y < info.height - 1; y += 1) {
+    addPixel(0, y);
+    addPixel(info.width - 1, y);
+  }
+  return pixels;
+}
+
+function rgb(hex: string) {
+  return [
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
+  ];
 }
 
 const validMantleGeometry = {
@@ -85,6 +117,20 @@ describe('Mantle brand geometry contract', () => {
     });
     expect(BRAND_GEOMETRY.mark).not.toHaveProperty('primaryPath');
     expect(BRAND_GEOMETRY.mark).not.toHaveProperty('accentPath');
+  });
+
+  it('frames every node with visible breathing room without changing canonical geometry', () => {
+    const [x, y, width, height] = BRAND_MARK_RENDER_VIEW_BOX.split(' ').map(
+      Number,
+    );
+
+    expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 96');
+    for (const node of BRAND_GEOMETRY.mark.nodes) {
+      expect(node.cx - node.r).toBeGreaterThan(x);
+      expect(node.cx + node.r).toBeLessThan(x + width);
+      expect(node.cy - node.r).toBeGreaterThan(y);
+      expect(node.cy + node.r).toBeLessThan(y + height);
+    }
   });
 
   it('rejects malformed geometry instead of accepting partial contracts', () => {
@@ -208,6 +254,18 @@ describe('Mantle brand geometry contract', () => {
     }
   });
 
+  it('renders the wordmark with Sharp and the bundled Sora fontfile', () => {
+    const generator = fs.readFileSync(generatorPath, 'utf8');
+
+    expect(generator).toContain('fontfile: brandFontPath');
+    expect(generator).toContain(
+      "new URL('../node_modules/@expo-google-fonts/sora/700Bold/Sora_700Bold.ttf', import.meta.url)",
+    );
+    expect(generator).toContain('.composite([');
+    expect(generator).not.toContain('@font-face');
+    expect(generator).not.toContain('data:font');
+  });
+
   it('reports missing and malformed geometry source files', () => {
     const fixtureDirectory = fs.mkdtempSync(
       path.join(os.tmpdir(), 'brand-loader-'),
@@ -254,6 +312,39 @@ describe('Mantle brand geometry contract', () => {
     for (const [fileName, dimensions] of Object.entries(expectedDimensions)) {
       expect(pngDimensions(path.join(outputDirectory, fileName))).toEqual(
         dimensions,
+      );
+    }
+    fs.rmSync(outputDirectory, { recursive: true, force: true });
+  });
+
+  it('keeps generated foreground geometry away from every raster edge', async () => {
+    const outputDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'brand-edges-'),
+    );
+    execFileSync(
+      process.execPath,
+      [generatorPath, '--output-dir', outputDirectory],
+      { cwd: projectRoot, stdio: 'pipe' },
+    );
+
+    for (const fileName of [
+      'android-icon-foreground.png',
+      'android-icon-monochrome.png',
+      'logo-mark.png',
+    ]) {
+      const edge = await outerEdgePixels(path.join(outputDirectory, fileName));
+      expect(edge.every((pixel) => pixel[3] === 0)).toBe(true);
+    }
+
+    for (const [fileName, background] of [
+      ['icon.png', BRAND_GEOMETRY.colors.charcoal],
+      ['splash-icon.png', BRAND_GEOMETRY.colors.cream],
+      ['favicon.png', BRAND_GEOMETRY.colors.charcoal],
+    ] as const) {
+      const backgroundPixel = [...rgb(background), 255];
+      const edge = await outerEdgePixels(path.join(outputDirectory, fileName));
+      expect(edge.every((pixel) => pixel.join() === backgroundPixel.join())).toBe(
+        true,
       );
     }
     fs.rmSync(outputDirectory, { recursive: true, force: true });

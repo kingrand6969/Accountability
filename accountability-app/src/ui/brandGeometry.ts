@@ -110,4 +110,10 @@ export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
   }
 }`));
 
+/**
+ * Safe square framing for rendered marks. The canonical geometry reaches x=100,
+ * so this frame preserves four units of breathing room beyond every outer edge.
+ */
+export const BRAND_MARK_RENDER_VIEW_BOX = '-4 -4 108 108';
+
 export const BRAND_WORDMARK = BRAND_GEOMETRY.wordmark;
