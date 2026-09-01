@@ -147,7 +147,7 @@ export default function ProfileOverview() {
     );
   }
 
-  const displayName = ownedProfile?.display_name?.trim() || session?.user.email?.split('@')[0] || 'AccountAbility member';
+  const displayName = ownedProfile?.display_name?.trim() || session?.user.email?.split('@')[0] || 'Mantle member';
   const initial = displayName.charAt(0).toUpperCase();
 
   return (

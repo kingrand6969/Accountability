@@ -97,7 +97,7 @@ function compositeOverWhite(rgba: string) {
   );
 }
 
-describe('AccountAbility shared primitives', () => {
+describe('Mantle shared primitives', () => {
   it('renders AuthShell and EmptyState on approved dark surfaces through the real provider', () => {
     const dark = themeColors('dark');
     const auth = render(

@@ -95,7 +95,7 @@ export default function ChallengeDetail() {
       await Share.share({
         message:
           `I'm challenging you: "${challenge.title}" — ${days} days of ${meta.label.toLowerCase()} ` +
-          `on AccountAbility. Get the app, add me as a buddy and join the challenge. ` +
+          `on Mantle. Get the app, add me as a buddy and join the challenge. ` +
           `Think you can beat me? 🏆`,
       });
     } catch {

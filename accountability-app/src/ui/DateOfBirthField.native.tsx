@@ -69,7 +69,7 @@ export function DateOfBirthField({ value, onChange, minimumAge, error }: Props) 
         </Text>
         <Ionicons name="chevron-down" size={18} color={colors.textFaint} />
       </Pressable>
-      <Text style={styles.hint}>You must be {minimumAge}+ to use AccountAbility.</Text>
+      <Text style={styles.hint}>You must be {minimumAge}+ to use Mantle.</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {open ? (
         <View>

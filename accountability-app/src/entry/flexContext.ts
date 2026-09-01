@@ -76,7 +76,7 @@ export function parseFlexContext(params: FlexContextParams): FlexContext | null 
   const rawBody = optionalScalar(params.achievementText);
   if (rawBody === INVALID_SCALAR) return null;
   const body = rawBody === undefined
-    ? `${title} completed on AccountAbility. I showed up today.`
+    ? `${title} completed on Mantle. I showed up today.`
     : normalizeFlexDisplayText(rawBody, FLEX_BODY_MAX_LENGTH);
   if (!body) return null;
 

@@ -20,7 +20,7 @@ describe('Daily Proof privacy policy', () => {
 
   test('constructs a new allowlisted model and removes hidden and unknown fields', () => {
     const input = {
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       workouts: 3,
@@ -36,7 +36,7 @@ describe('Daily Proof privacy policy', () => {
     };
 
     expect(redactProofFields(input, DEFAULT_PROOF_PRIVACY)).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       workouts: 3,
@@ -54,7 +54,7 @@ describe('Daily Proof privacy policy', () => {
     expect(
       redactProofFields(
         {
-          brand: 'AccountAbility',
+          brand: 'Mantle',
           location: 'Kings Park',
           route: 'River loop',
           buddyNames: ['Alex'],
@@ -63,7 +63,7 @@ describe('Daily Proof privacy policy', () => {
         privacy,
       ),
     ).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       location: 'Kings Park',
     });
   });

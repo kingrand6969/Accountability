@@ -244,8 +244,8 @@ export default function WinCard() {
 
   const fallbackMessage =
     stats.streak > 0
-      ? `${stats.streak}-day streak on AccountAbility. Achieve consistency.`
-      : `Building better habits with AccountAbility - ${stats.weekWorkouts} workouts this week.`;
+      ? `${stats.streak}-day streak on Mantle. Achieve consistency.`
+      : `Building better habits with Mantle - ${stats.weekWorkouts} workouts this week.`;
   const flexContext = parsedFlexContext ?? {
     kind: 'streak' as const,
     sourceId: `streak-${stats.streak}-${new Date().toISOString().slice(0, 10)}`,
@@ -255,7 +255,7 @@ export default function WinCard() {
   };
   const message = flexContext.body;
   const proofInput: ProofExportInput = {
-    brand: 'AccountAbility',
+    brand: 'Mantle',
     headline: flexContext.title,
     format,
     metrics: {

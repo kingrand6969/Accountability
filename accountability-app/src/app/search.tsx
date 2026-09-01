@@ -334,7 +334,7 @@ export default function Search() {
           <EmptyState
             icon="search-outline"
             title="No results"
-            subtitle="Try a different name — or invite them to AccountAbility."
+            subtitle="Try a different name — or invite them to Mantle."
           />
         ) : null}
         {!searched && !searching ? (

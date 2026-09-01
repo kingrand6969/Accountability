@@ -64,7 +64,7 @@ export default function SharedUpdateRoute() {
 
   return (
     <View style={styles.screen}>
-      <BrandMark size={58} color={palette.action} accessibilityLabel="AccountAbility" />
+      <BrandMark size={58} color={palette.action} accessibilityLabel="Mantle" />
       <View
         style={styles.status}
         accessibilityLiveRegion="polite"
@@ -105,7 +105,7 @@ export default function SharedUpdateRoute() {
             disabled={openingWeb}
             style={({ pressed }) => [styles.button, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={displayStatus === 'web' ? 'Open public shared update' : 'Go to AccountAbility feed'}
+            accessibilityLabel={displayStatus === 'web' ? 'Open public shared update' : 'Go to Mantle feed'}
             accessibilityState={{ busy: openingWeb, disabled: openingWeb }}
           >
             <Text style={styles.buttonText}>

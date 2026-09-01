@@ -85,7 +85,7 @@ export function ProofCaptureCard({ context, backgroundUri }: { context: ProofCap
         accessibilityElementsHidden
       >
         <View style={styles.brandRow}>
-          <BrandMark size={24} color="#FFFFFF" accessibilityLabel="AccountAbility" />
+          <BrandMark size={24} color="#FFFFFF" accessibilityLabel="Mantle" />
           <Text allowFontScaling={false} style={styles.brandTop}>
             Account<Text allowFontScaling={false} style={styles.brandAbility}>Ability</Text>
           </Text>

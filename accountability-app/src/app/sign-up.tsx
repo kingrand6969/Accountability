@@ -42,7 +42,7 @@ export default function SignUp() {
       : rawBirthdayError
         ? rawBirthdayError
         : age === null || age < MIN_AGE
-          ? `You must be ${MIN_AGE} or older to use AccountAbility.`
+          ? `You must be ${MIN_AGE} or older to use Mantle.`
           : '';
     const nextConsentError = agree
       ? ''
@@ -132,7 +132,7 @@ export default function SignUp() {
       <View style={styles.safetyBox}>
         <Ionicons name="heart-circle-outline" size={19} color={theme.ink.action} />
         <Text style={styles.safetyText}>
-          Train safely and respect the community. AccountAbility is not medical advice, and harmful
+          Train safely and respect the community. Mantle is not medical advice, and harmful
           or abusive content is not allowed.{' '}
           <Text style={styles.safetyLink} onPress={() => router.push('/legal/terms')}>
             Review the rules.

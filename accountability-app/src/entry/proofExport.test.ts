@@ -19,7 +19,7 @@ import {
 } from './ProofCaptureCard';
 
 const safeInput: ProofExportInput = {
-  brand: 'AccountAbility',
+  brand: 'Mantle',
   headline: 'I showed up today.',
   format: 'portrait',
   metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -108,7 +108,7 @@ describe('Share Proof screen safety contract', () => {
         { ...safeInput, format },
         allOptIns,
       ))).toBe(
-        `AccountAbility. I showed up today. 3 workouts. 5 activities. 8 day streak. ` +
+        `Mantle. I showed up today. 3 workouts. 5 activities. 8 day streak. ` +
         `Location: Kings Park. Buddies: Alex, Sam. ${format} format.`,
       );
     },
@@ -138,7 +138,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
     'preserves exact DTO shape in %s format',
     (format) => {
       expect(build({ ...safeInput, format }, noOptIns)).toEqual({
-        brand: 'AccountAbility',
+        brand: 'Mantle',
         headline: 'I showed up today.',
         format,
         metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -148,7 +148,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
 
   test('constructs the exact safe keyset with no opt-ins', () => {
     expect(build(safeInput, noOptIns)).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -164,7 +164,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
   test.each(singleOptInCases)('allows only the single %s opt-in', (_name, optIns, key, value) => {
     const output = build(safeInput, optIns);
     expect(output).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -181,7 +181,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
 
   test('all legal scalar opt-ins remain independent', () => {
     expect(build(safeInput, allOptIns)).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -341,7 +341,7 @@ describe('trusted proof render asset store', () => {
         buddyPortraitImages: [portrait1, portrait2],
       });
       expect(build(input, allOptIns)).toEqual({
-        brand: 'AccountAbility',
+        brand: 'Mantle',
         headline: 'I showed up today.',
         format: 'portrait',
         metrics: { workouts: 3, activities: 5, streakDays: 8 },

@@ -4,7 +4,7 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
-    name: isStaging ? 'AccountAbility Staging' : config.name,
+    name: isStaging ? 'Mantle Staging' : config.name,
     scheme: isStaging ? 'accountabilityapp-staging' : config.scheme,
     extra: {
       ...config.extra,

@@ -198,7 +198,7 @@ function RootNavigator() {
   });
 
   if (loading || (!fontsLoaded && !fontError)) {
-    return <AppLaunchState message="Opening AccountAbility" />;
+    return <AppLaunchState message="Opening Mantle" />;
   }
 
   if (!!session && onboardingFailed) {
@@ -218,7 +218,7 @@ function RootNavigator() {
   }
 
   if (!!session && onboarded === null) {
-    return <AppLaunchState message="Opening AccountAbility" />;
+    return <AppLaunchState message="Opening Mantle" />;
   }
 
   return (

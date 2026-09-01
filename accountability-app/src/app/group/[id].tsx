@@ -210,8 +210,8 @@ export default function GroupDetail() {
     const target = group;
     if (!requestOwner || !target) return;
     let message =
-      `Join my group "${target.name}" on AccountAbility! ` +
-      `Search "AccountAbility" in your app store.`;
+      `Join my group "${target.name}" on Mantle! ` +
+      `Search "Mantle" in your app store.`;
     if (target.privacy === 'private') {
       const key = await getGroupGatekey(target.id).catch(() => null);
       if (!isCurrentMutation(requestOwner, lifecycle, requestViewKey)) return;

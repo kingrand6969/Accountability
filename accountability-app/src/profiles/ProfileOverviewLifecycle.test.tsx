@@ -163,7 +163,7 @@ describe('Profile overview truthful load lifecycle', () => {
     await flush();
 
     expect(visibleText(renderer)).toContain('We couldn’t load your profile');
-    expect(visibleText(renderer)).not.toContain('AccountAbility member');
+    expect(visibleText(renderer)).not.toContain('Mantle member');
     const retry = renderer.root.findByProps({ accessibilityLabel: 'Retry loading profile' });
     expect(retry.props.accessibilityRole).toBe('button');
 

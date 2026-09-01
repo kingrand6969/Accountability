@@ -274,7 +274,7 @@ export default function BuddyHub() {
             <Pressable
               style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
               onPress={() => router.push('/invite-card' as never)}
-              accessibilityLabel="Invite friends to AccountAbility"
+              accessibilityLabel="Invite friends to Mantle"
             >
               <Ionicons name="paper-plane-outline" size={17} color={palette.action} />
               <Text style={styles.inviteText}>
@@ -287,7 +287,7 @@ export default function BuddyHub() {
               <EmptyState
                 icon="person-outline"
                 title="No one found"
-                subtitle="They may not be on AccountAbility yet — or they keep buddy matching off (their choice is respected)."
+                subtitle="They may not be on Mantle yet — or they keep buddy matching off (their choice is respected)."
               />
             ) : (
               <EmptyState

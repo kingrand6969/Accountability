@@ -37,7 +37,7 @@ export function FeedBuddyRail({ candidates, busyIds, onOpen, onAdd, onSeeAll }: 
       </View>
       <View style={styles.people}>
         {visibleCandidates.map((candidate) => {
-          const name = candidate.display_name?.trim() || 'AccountAbility member';
+          const name = candidate.display_name?.trim() || 'Mantle member';
           const context = candidate.area?.trim() || 'Suggested';
           const busy = busyIds.has(candidate.id);
           return (

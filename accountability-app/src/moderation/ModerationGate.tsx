@@ -200,7 +200,7 @@ export function BanWall({
             Account banned
           </Text>
           <Text style={styles.wallLede}>
-            Your access to AccountAbility has been removed for breaking our Community Rules.
+            Your access to Mantle has been removed for breaking our Community Rules.
           </Text>
           {message ? (
             <View style={styles.wallCard}>

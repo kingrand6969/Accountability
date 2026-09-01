@@ -42,7 +42,7 @@ describe('sharing and upgrade appearance contract', () => {
     expect(inviteCardSource).toContain("brand: { color: '#fff'");
     expect(inviteCardSource).toContain("avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#fff' }");
     expect(inviteCardSource).toContain("require('../../assets/images/logo.png')");
-    expect(inviteCardSource).toContain("dialogTitle: 'Invite a buddy to AccountAbility'");
+    expect(inviteCardSource).toContain("dialogTitle: 'Invite a buddy to Mantle'");
     expect(inviteCardSource).toContain('backgroundColor: palette.action');
   });
 

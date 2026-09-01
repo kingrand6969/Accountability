@@ -34,7 +34,7 @@ import { ExternalShareCard } from './ExternalShareCard';
 /** What a broadcast message/share says — the post body plus provenance. */
 function broadcastText(post: FeedPost): string {
   const body = post.body?.trim() || 'Check out my progress!';
-  return `${body}\n\n— shared privately from AccountAbility`;
+  return `${body}\n\n— shared privately from Mantle`;
 }
 
 /**
@@ -94,7 +94,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
     if (!post || sharingExternal) return;
     const title = post.body?.trim() || 'A win worth sharing';
     Alert.alert(
-      'Share outside AccountAbility?',
+      'Share outside Mantle?',
       `${title}\n\nA revocable joinaccountability.app preview will be created. Your private ID and storage address will not appear in the message.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -104,7 +104,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
             setSharingExternal(true);
             try {
               if (Platform.OS === 'web' || !publicCardRef.current) {
-                throw new Error('Open AccountAbility on your phone to share this visual card.');
+                throw new Error('Open Mantle on your phone to share this visual card.');
               }
               const base64 = await captureRef(publicCardRef, {
                 format: 'png',
@@ -153,7 +153,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
     setSending(group.id);
     try {
       await createPost(
-        `${post.body?.trim() || 'A win worth sharing'}\n\nShared from ${post.author_name ?? 'AccountAbility'}`,
+        `${post.body?.trim() || 'A win worth sharing'}\n\nShared from ${post.author_name ?? 'Mantle'}`,
         post.image_url,
         group.id,
         null,
@@ -231,7 +231,7 @@ export function BroadcastSheet({ post, onClose }: { post: FeedPost | null; onClo
             </ScrollView>
           )}
 
-          <Text style={styles.section}>Share inside AccountAbility</Text>
+          <Text style={styles.section}>Share inside Mantle</Text>
           <View style={styles.internalRow}>
             <Pressable
               onPress={onAddToMyDay}

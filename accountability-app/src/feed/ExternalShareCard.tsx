@@ -21,7 +21,7 @@ export const ExternalShareCard = forwardRef<View, { title: string; author: strin
         <View style={styles.orbitOne} />
         <View style={styles.orbitTwo} />
         <View style={styles.brand}>
-          <BrandMark size={28} color="#FFFFFF" accessibilityLabel="AccountAbility" />
+          <BrandMark size={28} color="#FFFFFF" accessibilityLabel="Mantle" />
           <Text style={styles.wordmark}>Account<Text style={styles.ability}>Ability</Text></Text>
         </View>
         <View style={styles.copy}>

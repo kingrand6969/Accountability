@@ -69,7 +69,7 @@ describe('FeedBuddyRail', () => {
     const { Avatar } = jest.requireMock('./Avatar') as { Avatar: jest.Mock };
 
     expect(Avatar).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'AccountAbility member', size: 44 }),
+      expect.objectContaining({ name: 'Mantle member', size: 44 }),
       undefined,
     );
   });

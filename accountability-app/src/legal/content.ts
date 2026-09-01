@@ -19,7 +19,7 @@
 export const LEGAL_VERSION = '2026-08-10';
 export const EFFECTIVE_DATE = 'August 10, 2026';
 
-export const OPERATOR = 'AccountAbility'; // consumer / brand name
+export const OPERATOR = 'Mantle'; // consumer / brand name
 export const OPERATOR_ENTITY = ''; // TODO(founder): exact registered legal name, once the entity is formed
 export const OPERATOR_ADDRESS = ''; // TODO(founder): registered office address
 export const OPERATOR_REG_NO = ''; // TODO(founder): SEC/DTI (or local) registration number

@@ -27,7 +27,7 @@ export function DateOfBirthField({ value, onChange, minimumAge, error }: Props) 
         />
       </View>
       <Text style={styles.hint}>
-        Use YYYY-MM-DD. You must be {minimumAge}+ to use AccountAbility.
+        Use YYYY-MM-DD. You must be {minimumAge}+ to use Mantle.
       </Text>
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">

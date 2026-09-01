@@ -76,12 +76,12 @@ describe('shared controls follow the active app appearance', () => {
 
   test('AppLaunchState renders the canvas, action spinner, and readable ink roles', () => {
     const dark = themeColors('dark');
-    const renderer = render(createElement(AppLaunchState, { message: 'Opening AccountAbility' }));
+    const renderer = render(createElement(AppLaunchState, { message: 'Opening Mantle' }));
     const root = renderer.toJSON() as TestRenderer.ReactTestRendererJSON;
 
     expect(flat(root.props.style).backgroundColor).toBe(dark.surface.canvas);
     expect(renderer.root.findByType(ActivityIndicator).props.color).toBe(dark.ink.action);
-    expect(flat(renderer.root.findByProps({ children: 'Opening AccountAbility' }).props.style).color)
+    expect(flat(renderer.root.findByProps({ children: 'Opening Mantle' }).props.style).color)
       .toBe(dark.ink.secondary);
     expect(flat(renderer.root.findAllByType(Image)[1].props.style).tintColor).toBe(dark.ink.primary);
   });

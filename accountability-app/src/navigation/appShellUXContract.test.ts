@@ -11,7 +11,7 @@ describe('app shell UX contract', () => {
     const loadingSurface = source('src/ui/AppLaunchState.tsx');
 
     expect(rootLayout).toContain("import { AppLaunchState } from '../ui/AppLaunchState';");
-    expect(rootLayout).toContain('<AppLaunchState message="Opening AccountAbility" />');
+    expect(rootLayout).toContain('<AppLaunchState message="Opening Mantle" />');
     expect(appLayout).toContain("import { AppLaunchState } from '../../ui/AppLaunchState';");
     expect(appLayout).toContain('<AppLaunchState message="Getting your training ready" />');
     expect(appLayout).not.toMatch(

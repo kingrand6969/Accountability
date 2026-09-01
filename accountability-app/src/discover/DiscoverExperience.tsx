@@ -488,7 +488,7 @@ function PersonCard({
         onPress={onOpen}
         style={[styles.personHero, largeText && styles.personHeroLargeText]}
         accessibilityRole="button"
-        accessibilityLabel={`Open public profile for ${card?.name ?? person.display_name ?? 'AccountAbility member'}`}
+        accessibilityLabel={`Open public profile for ${card?.name ?? person.display_name ?? 'Mantle member'}`}
         accessibilityHint="Shows their public accountability card"
       >
         {resolvedHeroImage ? (
@@ -496,7 +496,7 @@ function PersonCard({
             source={{ uri: resolvedHeroImage }}
             style={[styles.personImage, largeText && styles.personImageLargeText]}
             imageStyle={styles.personImageRadius}
-            accessibilityLabel={`Public profile image for ${card?.name ?? person.display_name ?? 'AccountAbility member'}`}
+            accessibilityLabel={`Public profile image for ${card?.name ?? person.display_name ?? 'Mantle member'}`}
           >
             <View style={styles.personScrim} />
           </ImageBackground>
@@ -506,7 +506,7 @@ function PersonCard({
           </View>
         )}
         <View style={[styles.personCopy, largeText && styles.personCopyLargeText]}>
-          <Text style={styles.personName}>{card?.name ?? person.display_name ?? 'AccountAbility member'}</Text>
+          <Text style={styles.personName}>{card?.name ?? person.display_name ?? 'Mantle member'}</Text>
           <Text style={styles.personMeta}>
             {comparisonFixture
               ? 'Runner. Coffee lover.\nAlways up for a challenge.'

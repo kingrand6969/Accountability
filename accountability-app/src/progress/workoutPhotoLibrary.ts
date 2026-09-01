@@ -12,7 +12,7 @@ export type WorkoutPhoto = Readonly<{
   licenseAuthor: string;
 }>;
 
-const LICENSE_SOURCE = 'OpenAI generated for AccountAbility';
+const LICENSE_SOURCE = 'OpenAI generated for Mantle';
 const LICENSE_AUTHOR = 'OpenAI';
 
 function photo(

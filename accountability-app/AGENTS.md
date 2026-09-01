@@ -8,7 +8,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
 - EAS project ID: `f91c0791-4a6e-4080-88fd-5cc9a4e720bf`
 - Staging mobile build: Android `preview` profile, internal APK distribution
 - Staging update channel/environment: `preview`
-- Staging app identity: `AccountAbility Staging`
+- Staging app identity: `Mantle Staging`
   (`com.awldesk.accountability.staging`)
 - Production mobile build: `production` profile and `production` channel
 - Never deploy the `production` profile or publish to the `production` channel

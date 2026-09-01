@@ -167,7 +167,7 @@ export default function Menu() {
         style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
         onPress={() => router.push('/invite-card' as never)}
         accessibilityRole="button"
-        accessibilityLabel="Invite friends to AccountAbility"
+        accessibilityLabel="Invite friends to Mantle"
       >
         <View style={styles.inviteIcon}>
           <Ionicons name="paper-plane" size={19} color={colors.onPrimary} />
@@ -213,7 +213,7 @@ export default function Menu() {
       ) : null}
 
       {/* everything grid */}
-      <Text style={styles.sectionTitle}>All of AccountAbility</Text>
+      <Text style={styles.sectionTitle}>All of Mantle</Text>
       <View style={styles.grid}>
         {GRID.map((item) => (
           <Pressable

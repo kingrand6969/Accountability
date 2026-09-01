@@ -47,7 +47,7 @@ export default function HelpScreen() {
   }
 
   function emailUs() {
-    const subj = encodeURIComponent(subject.trim() || 'AccountAbility support');
+    const subj = encodeURIComponent(subject.trim() || 'Mantle support');
     Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${subj}`).catch(() =>
       Alert.alert('No email app', `Reach us at ${CONTACT_EMAIL}`),
     );

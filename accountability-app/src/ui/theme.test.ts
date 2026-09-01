@@ -30,7 +30,7 @@ function contrastRatio(foreground: string, background: string) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-describe('AccountAbility semantic theme contract', () => {
+describe('Mantle semantic theme contract', () => {
   it('locks the approved brand and permanent dark semantic color roles', () => {
     expect(colors.primary).toBe('#B9FF3D');
     expect(colors.navy).toBe('#0B0D0B');

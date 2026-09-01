@@ -62,12 +62,12 @@ export default function InviteCard() {
         });
         await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
-          dialogTitle: 'Invite a buddy to AccountAbility',
+          dialogTitle: 'Invite a buddy to Mantle',
         });
         return;
       }
       await Share.share({
-        message: `${name} invited you to build better habits together on AccountAbility.`,
+        message: `${name} invited you to build better habits together on Mantle.`,
       });
     } catch (error) {
       if (String(error).toLowerCase().includes('cancel')) return;
@@ -109,7 +109,7 @@ export default function InviteCard() {
           <View style={styles.orbTwo} />
           <View style={styles.brandRow}>
             <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
-            <Text style={styles.brand}>AccountAbility</Text>
+            <Text style={styles.brand}>Mantle</Text>
           </View>
 
           <View style={styles.inviter}>
@@ -147,7 +147,7 @@ export default function InviteCard() {
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerPrimary}>Join me on AccountAbility</Text>
+            <Text style={styles.footerPrimary}>Join me on Mantle</Text>
             <Text style={styles.footerSecondary}>Achieve. Consistency.</Text>
           </View>
         </LinearGradient>

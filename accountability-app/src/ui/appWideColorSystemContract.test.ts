@@ -42,7 +42,7 @@ function productionSources(directory: string): string[] {
   });
 }
 
-describe('app-wide AccountAbility color identity', () => {
+describe('app-wide Mantle color identity', () => {
   test('does not hardcode the retired blue or orange brand in production UI', () => {
     const offenders = productionSources(sourceRoot).flatMap((absolute) => {
       const relative = path.normalize(path.relative(sourceRoot, absolute));

@@ -29,7 +29,7 @@ describe('Flex context parsing', () => {
       kind,
       sourceId: UUID,
       title: 'Morning milestone',
-      body: 'Morning milestone completed on AccountAbility. I showed up today.',
+      body: 'Morning milestone completed on Mantle. I showed up today.',
       showPublicly: false,
     });
   });

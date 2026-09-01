@@ -128,7 +128,7 @@ export default function Paywall() {
             />
             <Ionicons name="star" size={32} color={theme.ink.action} />
           </View>
-          <Text style={styles.title}>AccountAbility Pro</Text>
+          <Text style={styles.title}>Mantle Pro</Text>
           <Text style={styles.subtitle}>Get more out of every day.</Text>
         </LinearGradient>
       </View>

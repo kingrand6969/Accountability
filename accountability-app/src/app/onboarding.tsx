@@ -154,7 +154,7 @@ function PromiseStep({ userId }: { userId: string | null }) {
   return (
     <ScrollView contentContainerStyle={styles.promiseScreen} keyboardShouldPersistTaps="handled">
       <View style={styles.promiseIntro}>
-        <BrandMark size={34} color={theme.ink.action} accessibilityLabel="AccountAbility" />
+        <BrandMark size={34} color={theme.ink.action} accessibilityLabel="Mantle" />
         <Text accessibilityRole="header" style={styles.promiseTitle}>
           What will you{'\n'}show up for today?
         </Text>
@@ -341,9 +341,9 @@ export default function Onboarding() {
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.hero}>
-        <BrandMark size={62} color={theme.ink.action} accessibilityLabel="AccountAbility" />
+        <BrandMark size={62} color={theme.ink.action} accessibilityLabel="Mantle" />
       </View>
-      <Text style={styles.title}>Welcome to AccountAbility</Text>
+      <Text style={styles.title}>Welcome to Mantle</Text>
       <Text style={styles.subtitle}>
         Plan your day, track workouts, meals and runs — and keep your
         streak alive. Let&apos;s set you up.

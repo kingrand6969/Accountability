@@ -171,7 +171,7 @@ export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
       <View style={styles.content}>
         <View style={styles.brandRow}>
           <View style={styles.brandMark}><Text maxFontSizeMultiplier={1.2} style={styles.brandMarkText}>A</Text></View>
-          <Text maxFontSizeMultiplier={1.2} style={styles.brand}>ACCOUNTABILITY</Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.brand}>MANTLE</Text>
         </View>
         <View style={styles.copyBlock}>
           <Text maxFontSizeMultiplier={1.35} style={styles.eyebrow}>{model.periodLabel} · {model.date}</Text>

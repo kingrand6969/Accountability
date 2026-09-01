@@ -70,7 +70,7 @@ export function AuthShell({
             <BrandMark
               size={welcome ? 112 : 76}
               color={theme.ink.primary}
-              accessibilityLabel="AccountAbility logo"
+              accessibilityLabel="Mantle logo"
             />
             <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>
               Account<Text style={styles.ability}>Ability</Text>

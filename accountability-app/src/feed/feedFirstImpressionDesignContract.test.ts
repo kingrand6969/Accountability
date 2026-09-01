@@ -10,7 +10,7 @@ describe('Feed first-impression design', () => {
     expect(header).toContain("import { BRAND_WORDMARK } from '../ui/brandGeometry'");
     expect(header).toContain('{BRAND_WORDMARK}');
     expect(header).not.toContain('Account<Text style={styles.ability}>Ability</Text>');
-    expect(header).not.toContain('accessibilityLabel="AccountAbility"');
+    expect(header).not.toContain('accessibilityLabel="Mantle"');
   });
 
   test('starts the Feed with My Day and no boxed composer', () => {

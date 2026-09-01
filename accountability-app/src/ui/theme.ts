@@ -120,7 +120,7 @@ const darkSemanticTheme = {
 
 export type AppThemeColors = typeof darkSemanticTheme;
 
-/** AccountAbility intentionally uses one permanent dark appearance. */
+/** Mantle intentionally uses one permanent dark appearance. */
 export function resolveAppThemeMode(_value: unknown): AppThemeMode {
   return 'dark';
 }

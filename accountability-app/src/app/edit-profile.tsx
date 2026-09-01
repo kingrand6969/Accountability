@@ -488,7 +488,7 @@ export default function Profile() {
         <View style={styles.linkLeft}>
           <Ionicons name="star" size={17} color={proAppearance.icon} />
           <Text style={[styles.linkText, { color: proAppearance.text }]}>
-            {isPro ? 'AccountAbility Pro' : 'Upgrade to Pro'}
+            {isPro ? 'Mantle Pro' : 'Upgrade to Pro'}
           </Text>
         </View>
         <Ionicons
