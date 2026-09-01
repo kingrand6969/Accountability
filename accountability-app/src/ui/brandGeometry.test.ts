@@ -43,27 +43,48 @@ function pngDimensions(filePath: string) {
   };
 }
 
-describe('Accountability Unbroken A brand geometry contract', () => {
+const validMantleGeometry = {
+  viewBox: '0 0 96 96',
+  wordmark: 'Mantle',
+  colors: {
+    lime: '#B9FF3D',
+    supportingLime: '#7FAF1C',
+    charcoal: '#111411',
+    cream: '#F4F5F1',
+  },
+  mark: {
+    path: 'M20 67C33 41 47 37 58 50C69 63 76 58 87 37',
+    strokeWidth: 14,
+    nodes: [
+      { cx: 11, cy: 77, r: 9 },
+      { cx: 91, cy: 24, r: 9 },
+    ],
+  },
+};
+
+describe('Mantle brand geometry contract', () => {
   it('defines the approved canvas, colors, and wordmark capitalization', () => {
     expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 96');
     expect(BRAND_GEOMETRY.colors).toEqual({
-      cobalt: '#B9FF3D',
-      navy: '#111411',
-      cyan: '#7FAF1C',
+      lime: '#B9FF3D',
+      supportingLime: '#7FAF1C',
+      charcoal: '#111411',
       cream: '#F4F5F1',
     });
-    expect(BRAND_WORDMARK).toBe('Accountability');
+    expect(BRAND_WORDMARK).toBe('Mantle');
   });
 
-  it('contains one Unbroken A silhouette and one rising motivation accent', () => {
-    expect(BRAND_GEOMETRY).not.toHaveProperty('heads');
-    expect(BRAND_GEOMETRY).not.toHaveProperty('ribbons');
-    expect(BRAND_GEOMETRY.mark).toMatchInlineSnapshot(`
-      {
-        "accentPath": "M31 62 58 40 62 49 36 66Z",
-        "primaryPath": "M6 86 36 13Q39 5 47 5t11 8l32 73H68L61 68H31L24 86H6Zm32-35h16L46 30l-8 21Z",
-      }
-    `);
+  it('contains one rounded path connecting exactly two nodes', () => {
+    expect(BRAND_GEOMETRY.mark).toEqual({
+      path: 'M20 67C33 41 47 37 58 50C69 63 76 58 87 37',
+      strokeWidth: 14,
+      nodes: [
+        { cx: 11, cy: 77, r: 9 },
+        { cx: 91, cy: 24, r: 9 },
+      ],
+    });
+    expect(BRAND_GEOMETRY.mark).not.toHaveProperty('primaryPath');
+    expect(BRAND_GEOMETRY.mark).not.toHaveProperty('accentPath');
   });
 
   it('rejects malformed geometry instead of accepting partial contracts', () => {
@@ -72,18 +93,95 @@ describe('Accountability Unbroken A brand geometry contract', () => {
     );
     expect(() =>
       parseBrandGeometry({
-        ...BRAND_GEOMETRY,
-        colors: { ...BRAND_GEOMETRY.colors, cobalt: 'blue' },
+        ...validMantleGeometry,
+        colors: { ...validMantleGeometry.colors, lime: 'blue' },
       }),
     ).toThrow('Invalid brand geometry');
+
+    const malformedMarks = [
+      {
+        strokeWidth: validMantleGeometry.mark.strokeWidth,
+        nodes: validMantleGeometry.mark.nodes,
+      },
+      { ...validMantleGeometry.mark, path: '' },
+      { ...validMantleGeometry.mark, strokeWidth: 0 },
+      { ...validMantleGeometry.mark, strokeWidth: -1 },
+      { ...validMantleGeometry.mark, strokeWidth: Number.POSITIVE_INFINITY },
+      { ...validMantleGeometry.mark, nodes: [] },
+      { ...validMantleGeometry.mark, nodes: [validMantleGeometry.mark.nodes[0]] },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          ...validMantleGeometry.mark.nodes,
+          { cx: 48, cy: 48, r: 8 },
+        ],
+      },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          { ...validMantleGeometry.mark.nodes[0], cx: -1 },
+          validMantleGeometry.mark.nodes[1],
+        ],
+      },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          { ...validMantleGeometry.mark.nodes[0], cy: Number.NaN },
+          validMantleGeometry.mark.nodes[1],
+        ],
+      },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          validMantleGeometry.mark.nodes[0],
+          { ...validMantleGeometry.mark.nodes[1], cy: -1 },
+        ],
+      },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          validMantleGeometry.mark.nodes[0],
+          { ...validMantleGeometry.mark.nodes[1], cx: Number.POSITIVE_INFINITY },
+        ],
+      },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          { ...validMantleGeometry.mark.nodes[0], r: 0 },
+          validMantleGeometry.mark.nodes[1],
+        ],
+      },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          validMantleGeometry.mark.nodes[0],
+          { ...validMantleGeometry.mark.nodes[1], r: -1 },
+        ],
+      },
+      {
+        ...validMantleGeometry.mark,
+        nodes: [
+          validMantleGeometry.mark.nodes[0],
+          { ...validMantleGeometry.mark.nodes[1], r: Number.NaN },
+        ],
+      },
+    ];
+
+    for (const mark of malformedMarks) {
+      expect(() =>
+        parseBrandGeometry({ ...validMantleGeometry, mark }),
+      ).toThrow('Invalid brand geometry');
+    }
   });
 
   it('exposes deeply immutable geometry', () => {
     expect(Object.isFrozen(BRAND_GEOMETRY)).toBe(true);
     expect(Object.isFrozen(BRAND_GEOMETRY.colors)).toBe(true);
     expect(Object.isFrozen(BRAND_GEOMETRY.mark)).toBe(true);
-    (BRAND_GEOMETRY.colors as { cobalt: string }).cobalt = '#000000';
-    expect(BRAND_GEOMETRY.colors.cobalt).toBe('#B9FF3D');
+    expect(Object.isFrozen(BRAND_GEOMETRY.mark.nodes)).toBe(true);
+    expect(Object.isFrozen(BRAND_GEOMETRY.mark.nodes[0])).toBe(true);
+    (BRAND_GEOMETRY.colors as { lime: string }).lime = '#000000';
+    expect(BRAND_GEOMETRY.colors.lime).toBe('#B9FF3D');
   });
 
   it('makes the asset generator consume the authoritative TypeScript contract', () => {
@@ -95,8 +193,7 @@ describe('Accountability Unbroken A brand geometry contract', () => {
       '#111411',
       '#7FAF1C',
       '#F4F5F1',
-      'M6 86 36 13',
-      'M31 62 58 40',
+      'M20 67C33 41',
     ]) {
       expect(generator).not.toContain(duplicatedLiteral);
     }

@@ -1,23 +1,28 @@
 type DeepReadonly<T> = T extends (...args: never[]) => unknown
   ? T
-  : T extends readonly (infer Item)[]
-    ? readonly DeepReadonly<Item>[]
-    : T extends object
-      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
-      : T;
+  : T extends object
+    ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+    : T;
+
+type BrandNode = {
+  cx: number;
+  cy: number;
+  r: number;
+};
 
 type BrandGeometry = {
   viewBox: string;
   wordmark: string;
   colors: {
-    cobalt: string;
-    navy: string;
-    cyan: string;
+    lime: string;
+    supportingLime: string;
+    charcoal: string;
     cream: string;
   };
   mark: {
-    primaryPath: string;
-    accentPath: string;
+    path: string;
+    strokeWidth: number;
+    nodes: [BrandNode, BrandNode];
   };
 };
 
@@ -29,6 +34,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9A-F]{6}$/.test(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isBrandNode(value: unknown): value is BrandNode {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value.cx) &&
+    value.cx >= 0 &&
+    isFiniteNumber(value.cy) &&
+    value.cy >= 0 &&
+    isFiniteNumber(value.r) &&
+    value.r > 0
+  );
 }
 
 function deepFreeze<T>(value: T): DeepReadonly<T> {
@@ -47,15 +68,18 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
     typeof value.viewBox !== 'string' ||
     typeof value.wordmark !== 'string' ||
     !isRecord(value.colors) ||
-    !isHexColor(value.colors.cobalt) ||
-    !isHexColor(value.colors.navy) ||
-    !isHexColor(value.colors.cyan) ||
+    !isHexColor(value.colors.lime) ||
+    !isHexColor(value.colors.supportingLime) ||
+    !isHexColor(value.colors.charcoal) ||
     !isHexColor(value.colors.cream) ||
     !isRecord(value.mark) ||
-    typeof value.mark.primaryPath !== 'string' ||
-    value.mark.primaryPath.length === 0 ||
-    typeof value.mark.accentPath !== 'string' ||
-    value.mark.accentPath.length === 0
+    typeof value.mark.path !== 'string' ||
+    value.mark.path.length === 0 ||
+    !isFiniteNumber(value.mark.strokeWidth) ||
+    value.mark.strokeWidth <= 0 ||
+    !Array.isArray(value.mark.nodes) ||
+    value.mark.nodes.length !== 2 ||
+    !value.mark.nodes.every(isBrandNode)
   ) {
     throw new Error('Invalid brand geometry');
   }
@@ -68,16 +92,20 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
  */
 export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
   "viewBox": "0 0 96 96",
-  "wordmark": "Accountability",
+  "wordmark": "Mantle",
   "colors": {
-    "cobalt": "#B9FF3D",
-    "navy": "#111411",
-    "cyan": "#7FAF1C",
+    "lime": "#B9FF3D",
+    "supportingLime": "#7FAF1C",
+    "charcoal": "#111411",
     "cream": "#F4F5F1"
   },
   "mark": {
-    "primaryPath": "M6 86 36 13Q39 5 47 5t11 8l32 73H68L61 68H31L24 86H6Zm32-35h16L46 30l-8 21Z",
-    "accentPath": "M31 62 58 40 62 49 36 66Z"
+    "path": "M20 67C33 41 47 37 58 50C69 63 76 58 87 37",
+    "strokeWidth": 14,
+    "nodes": [
+      { "cx": 11, "cy": 77, "r": 9 },
+      { "cx": 91, "cy": 24, "r": 9 }
+    ]
   }
 }`));
 
