@@ -7,6 +7,10 @@ const dashboard = await readFile(
   new URL("../public/dashboard.html", import.meta.url),
   "utf8",
 );
+const canonicalDashboard = await readFile(
+  new URL("../../admin/index.html", import.meta.url),
+  "utf8",
+);
 
 async function renderRoot() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -85,6 +89,17 @@ test("server-rendered admin route remains healthy", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   assert.match(await response.text(), /<html|<!doctype html>/i);
+});
+
+test("canonical and hosted admin sources use the same Mantle product copy", () => {
+  for (const source of [canonicalDashboard, dashboard]) {
+    assert.match(source, /<title>Mantle · Admin<\/title>/);
+    assert.match(source, /<h1>Mantle <b[^>]*>Admin<\/b><\/h1>/);
+    assert.match(source, /<div class="side-logo">Mantle<span>Admin console<\/span><\/div>/);
+    assert.match(source, /Heads up from the Mantle team/);
+    assert.match(source, /Mantle is committed to staying a safe and non-toxic community/);
+    assert.doesNotMatch(source, /AccountAbility|ACCOUNTABILITY|Accountability App|Account\s*<b\b[^>]*>\s*Ability/);
+  }
 });
 
 const flag = {

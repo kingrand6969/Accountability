@@ -34,16 +34,16 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const share = await getShare(id);
-  if (!share) return { title: "AccountAbility update" };
+  if (!share) return { title: "Mantle update" };
   const previewUrl = `/s/${encodeURIComponent(id)}/image`;
   return {
-    title: `${share.title} · AccountAbility`,
+    title: `${share.title} · Mantle`,
     description: share.description,
     openGraph: {
       title: share.title,
       description: share.description,
       type: "article",
-      images: [{ url: previewUrl, width: 1200, height: 630, alt: "AccountAbility shared progress card" }],
+      images: [{ url: previewUrl, width: 1200, height: 630, alt: "Mantle shared progress card" }],
     },
     twitter: {
       card: "summary_large_image",
@@ -63,7 +63,7 @@ export default async function PublicShare({
   const share = await getShare(id);
   const appLink = `accountabilityapp://share/${encodeURIComponent(id)}`;
   // Until an official store listing is configured, send people to the honest
-  // AccountAbility landing/waitlist rather than a fake store identifier.
+  // Mantle landing/waitlist rather than a fake store identifier.
   const androidStore = process.env.NEXT_PUBLIC_ANDROID_STORE_URL ?? "https://joinaccountability.app/#get-the-app";
   const appleStore = process.env.NEXT_PUBLIC_APPLE_STORE_URL ?? "https://joinaccountability.app/#get-the-app";
 
@@ -71,7 +71,7 @@ export default async function PublicShare({
     return (
       <main className="shareShell">
         <section className="shareCard missing">
-          <div className="brand">AccountAbility</div>
+          <div className="brand">Mantle</div>
           <h1>This update is no longer available</h1>
           <p>It may have expired or been removed by its owner.</p>
           <div className="storeRow">
@@ -87,19 +87,19 @@ export default async function PublicShare({
     <main className="shareShell">
       <article className="shareCard">
         <header className="shareHeader">
-          <div className="brand">AccountAbility</div>
+          <div className="brand">Mantle</div>
           <span className="secure">Shared with permission</span>
         </header>
         <img
           className="shareImage"
           src={`/s/${encodeURIComponent(id)}/image`}
-          alt="Branded AccountAbility progress card"
+          alt="Branded Mantle progress card"
         />
         <div className="shareBody">
-          <p className="eyebrow">{share.sender_name ?? "An AccountAbility member"} shared</p>
+          <p className="eyebrow">{share.sender_name ?? "A Mantle member"} shared</p>
           <h1>{share.title}</h1>
           <p>{share.description}</p>
-          <a className="openButton" href={appLink}>Open in AccountAbility</a>
+          <a className="openButton" href={appLink}>Open in Mantle</a>
           <p className="fallback">Don&apos;t have the app yet?</p>
           <div className="storeRow">
             <Link href={androidStore}>Android</Link>

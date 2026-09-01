@@ -8,6 +8,8 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html']);
 const staleProperName = /AccountAbility|ACCOUNTABILITY|Accountability App/g;
 const splitJsxProperName = /Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/gs;
+const splitInlineProperName =
+  /\bAccount\s*(?:<\/?(?:b|strong|span|em|i|small|mark|u|s)\b[^>]*>\s*)+\s*Ability\b/gis;
 const historicalAttribution = 'OpenAI generated for AccountAbility';
 const historicalAttributionLines = new Map([
   [
@@ -43,7 +45,12 @@ function publicCopyContents(relativePath, contents) {
 function containsStaleProperName(contents) {
   staleProperName.lastIndex = 0;
   splitJsxProperName.lastIndex = 0;
-  return staleProperName.test(contents) || splitJsxProperName.test(contents);
+  splitInlineProperName.lastIndex = 0;
+  return (
+    staleProperName.test(contents) ||
+    splitJsxProperName.test(contents) ||
+    splitInlineProperName.test(contents)
+  );
 }
 
 async function collectFiles(relativeDirectory) {
@@ -64,8 +71,10 @@ async function collectFiles(relativeDirectory) {
   return files.flat();
 }
 
-test('active mobile surfaces contain no stale AccountAbility proper name', async () => {
-  const sourceFiles = await Promise.all(['src', 'admin-site/app', 'admin-site/public'].map(collectFiles));
+test('active public surfaces contain no stale AccountAbility proper name', async () => {
+  const sourceFiles = await Promise.all(
+    ['src', 'admin', 'admin-site/app', 'admin-site/public', 'share-site/app'].map(collectFiles),
+  );
   const files = [...sourceFiles.flat(), 'app.json', 'app.config.js'];
   const staleFiles = [];
 
@@ -113,4 +122,19 @@ test('historical attribution exemption is exact and does not hide other stale pr
     ),
     true,
   );
+});
+
+test('split inline markup cannot hide a stale proper name', () => {
+  assert.equal(containsStaleProperName('Account<b>Ability</b>'), true);
+
+  for (const tag of ['strong', 'span', 'em', 'i', 'small', 'mark', 'u', 's']) {
+    assert.equal(
+      containsStaleProperName(`Account <${tag} class="wordmark-part">\n Ability</${tag}>`),
+      true,
+      `detects a stale proper name split by <${tag}>`,
+    );
+  }
+
+  assert.equal(containsStaleProperName('Account <Text style={styles.brand}> Ability </Text>'), true);
+  assert.equal(containsStaleProperName('Account<div>Ability</div>'), false);
 });
