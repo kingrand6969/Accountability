@@ -79,7 +79,8 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
     value.mark.strokeWidth <= 0 ||
     !Array.isArray(value.mark.nodes) ||
     value.mark.nodes.length !== 2 ||
-    !value.mark.nodes.every(isBrandNode)
+    !isBrandNode(value.mark.nodes[0]) ||
+    !isBrandNode(value.mark.nodes[1])
   ) {
     throw new Error('Invalid brand geometry');
   }

@@ -174,6 +174,15 @@ describe('Mantle brand geometry contract', () => {
     }
   });
 
+  it('rejects sparse two-node arrays', () => {
+    expect(() =>
+      parseBrandGeometry({
+        ...validMantleGeometry,
+        mark: { ...validMantleGeometry.mark, nodes: new Array(2) },
+      }),
+    ).toThrow('Invalid brand geometry');
+  });
+
   it('exposes deeply immutable geometry', () => {
     expect(Object.isFrozen(BRAND_GEOMETRY)).toBe(true);
     expect(Object.isFrozen(BRAND_GEOMETRY.colors)).toBe(true);
