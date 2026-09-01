@@ -1,14 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from '@jest/globals';
 
-describe('theme-aware AccountAbility wordmark', () => {
+describe('theme-aware Mantle wordmark', () => {
   test('uses the active semantic ink and neon mark instead of a fixed blue image', () => {
     const source = readFileSync(require.resolve('./BrandWordmark'), 'utf8');
 
     expect(source).toContain('useAppTheme');
     expect(source).toContain('<BrandMark');
+    expect(source).toContain('Mantle');
+    expect(source).toContain('font.brand');
+    expect(source).toContain('accessibilityLabel="Mantle"');
     expect(source).toContain('theme.border.action');
     expect(source).toContain('theme.ink.primary');
+    expect(source).not.toContain('Account<Text');
+    expect(source).not.toContain('Ability</Text>');
     expect(source).not.toContain('wordmark.png');
   });
 

@@ -46,48 +46,67 @@ export async function loadBrandGeometry(sourceReference) {
 function validateGeometry(geometry) {
   const isColor = (color) =>
     typeof color === 'string' && /^#[0-9A-F]{6}$/.test(color);
+  const isFiniteNumber = (value) =>
+    typeof value === 'number' && Number.isFinite(value);
+  const isNode = (node) =>
+    isFiniteNumber(node?.cx) &&
+    node.cx >= 0 &&
+    isFiniteNumber(node?.cy) &&
+    node.cy >= 0 &&
+    isFiniteNumber(node?.r) &&
+    node.r > 0;
 
   if (
     typeof geometry?.viewBox !== 'string' ||
     typeof geometry?.wordmark !== 'string' ||
-    !isColor(geometry?.colors?.cobalt) ||
-    !isColor(geometry?.colors?.navy) ||
-    !isColor(geometry?.colors?.cyan) ||
+    !isColor(geometry?.colors?.lime) ||
+    !isColor(geometry?.colors?.supportingLime) ||
+    !isColor(geometry?.colors?.charcoal) ||
     !isColor(geometry?.colors?.cream) ||
-    typeof geometry?.mark?.primaryPath !== 'string' ||
-    geometry.mark.primaryPath.length === 0 ||
-    typeof geometry?.mark?.accentPath !== 'string' ||
-    geometry.mark.accentPath.length === 0
+    typeof geometry?.mark?.path !== 'string' ||
+    geometry.mark.path.length === 0 ||
+    !isFiniteNumber(geometry.mark.strokeWidth) ||
+    geometry.mark.strokeWidth <= 0 ||
+    !Array.isArray(geometry.mark.nodes) ||
+    geometry.mark.nodes.length !== 2 ||
+    !geometry.mark.nodes.every(isNode)
   ) {
     throw new Error('Invalid brand geometry');
   }
   return geometry;
 }
 
-function markBody({ colors, mark }, fill, accentFill = colors.cyan) {
-  return `<path d="${mark.primaryPath}" fill="${fill}"/><path d="${mark.accentPath}" fill="${accentFill}"/>`;
+function markBody({ mark }, fill) {
+  const nodes = mark.nodes
+    .map(
+      ({ cx, cy, r }) =>
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/>`,
+    )
+    .join('');
+  return `<path d="${mark.path}" fill="none" stroke="${fill}" stroke-width="${mark.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>${nodes}`;
 }
 
-function createMarkup(geometry) {
+function createMarkup(geometry, brandFontBase64) {
   const { colors, viewBox, wordmark: brandWordmark } = geometry;
 
-  function mark(fill = colors.cobalt, background = 'transparent') {
+  function mark(fill = colors.lime, background = 'transparent') {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${viewBox}">
-      <rect width="96" height="88" fill="${background}"/>
-      ${markBody(geometry, fill, fill === colors.cobalt ? colors.cyan : fill)}
+      <rect width="96" height="96" fill="${background}"/>
+      ${markBody(geometry, fill)}
     </svg>`;
   }
 
-  function appIcon(fill = colors.cobalt, background = colors.cream) {
+  function appIcon(fill = colors.lime, background = colors.charcoal) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 96 96">
       <rect width="96" height="96" fill="${background}"/>
-      ${markBody(geometry, fill, fill === colors.cobalt ? colors.cyan : fill)}
+      ${markBody(geometry, fill)}
     </svg>`;
   }
 
   const wordmark = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="300" viewBox="0 0 1400 300">
-    <g transform="translate(18 15) scale(2.72)">${markBody(geometry, colors.cobalt)}</g>
-    <text x="306" y="193" font-family="Arial, Helvetica, sans-serif" font-size="126" font-weight="700" letter-spacing="-4" fill="${colors.navy}">${brandWordmark}</text>
+    <style>@font-face { font-family: MantleBrand; src: url('data:font/ttf;base64,${brandFontBase64}') format('truetype'); font-weight: 700; }</style>
+    <g transform="translate(18 15) scale(2.72)">${markBody(geometry, colors.lime)}</g>
+    <text x="306" y="193" font-family="MantleBrand" font-size="126" font-weight="700" letter-spacing="-4" fill="${colors.charcoal}">${brandWordmark}</text>
   </svg>`;
 
   return { appIcon, mark, wordmark };
@@ -107,27 +126,46 @@ export async function generateBrandAssets(outputDirectory) {
   const geometry = validateGeometry(
     await loadBrandGeometry('../src/ui/brandGeometry.ts'),
   );
-  const { appIcon, mark, wordmark } = createMarkup(geometry);
+  const brandFont = await readFile(
+    new URL('../node_modules/@expo-google-fonts/sora/700Bold/Sora_700Bold.ttf', import.meta.url),
+  );
+  const { appIcon, mark, wordmark } = createMarkup(
+    geometry,
+    brandFont.toString('base64'),
+  );
   await mkdir(outputDirectory, { recursive: true });
 
   const assets = [
-    ['icon.png', () => sharp(Buffer.from(appIcon())).png()],
+    [
+      'icon.png',
+      () =>
+        sharp(
+          Buffer.from(
+            appIcon(geometry.colors.lime, geometry.colors.charcoal),
+          ),
+        ).png(),
+    ],
     [
       'android-icon-foreground.png',
-      () => sharp(Buffer.from(mark())).resize(432, 432).png(),
+      () =>
+        sharp(Buffer.from(mark(geometry.colors.lime))).resize(432, 432).png(),
     ],
     [
       'android-icon-monochrome.png',
-      () => sharp(Buffer.from(mark('#000000'))).resize(432, 432).png(),
+      () =>
+        sharp(Buffer.from(mark(geometry.colors.charcoal)))
+          .resize(432, 432)
+          .png(),
     ],
     [
       'logo-mark.png',
-      () => sharp(Buffer.from(mark())).resize(400, 400).png(),
+      () =>
+        sharp(Buffer.from(mark(geometry.colors.lime))).resize(400, 400).png(),
     ],
     [
       'splash-icon.png',
       () =>
-        sharp(Buffer.from(appIcon(geometry.colors.cobalt, geometry.colors.cream)))
+        sharp(Buffer.from(appIcon(geometry.colors.lime, geometry.colors.cream)))
           .resize(512, 512)
           .png(),
     ],
@@ -141,7 +179,14 @@ export async function generateBrandAssets(outputDirectory) {
     ],
     [
       'favicon.png',
-      () => sharp(Buffer.from(appIcon())).resize(64, 64).png(),
+      () =>
+        sharp(
+          Buffer.from(
+            appIcon(geometry.colors.lime, geometry.colors.charcoal),
+          ),
+        )
+          .resize(64, 64)
+          .png(),
     ],
   ];
 

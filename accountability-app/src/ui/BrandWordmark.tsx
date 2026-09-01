@@ -8,7 +8,7 @@ type BrandWordmarkProps = Readonly<{
   compact?: boolean;
 }>;
 
-/** Theme-aware lockup used anywhere app chrome displays the AccountAbility name. */
+/** Theme-aware lockup used anywhere app chrome displays the Mantle name. */
 export function BrandWordmark({ compact = false }: BrandWordmarkProps) {
   const { colors: theme } = useAppTheme();
   const markSize = compact ? 24 : 30;
@@ -17,12 +17,12 @@ export function BrandWordmark({ compact = false }: BrandWordmarkProps) {
     <View
       style={styles.row}
       accessibilityRole="image"
-      accessibilityLabel="AccountAbility"
+      accessibilityLabel="Mantle"
     >
       <BrandMark
         size={markSize}
         color={theme.border.action}
-        accessibilityLabel="AccountAbility"
+        accessibilityLabel="Mantle logo"
       />
       <Text
         maxFontSizeMultiplier={1.25}
@@ -33,7 +33,7 @@ export function BrandWordmark({ compact = false }: BrandWordmarkProps) {
           { color: theme.ink.primary },
         ]}
       >
-        Account<Text style={{ color: theme.ink.action }}>Ability</Text>
+        Mantle
       </Text>
     </View>
   );
@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   wordmark: {
-    fontFamily: font.extrabold,
+    fontFamily: font.brand,
     fontSize: 21,
     letterSpacing: -0.8,
   },
