@@ -2,6 +2,7 @@ import { ImageBackground, StyleSheet, Text, View, type ImageSourcePropType } fro
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BrandMark } from '../ui/BrandMark';
+import { BRAND_WORDMARK } from '../ui/brandGeometry';
 import { font } from '../ui/theme';
 import type { ProofExport, RenderAssetHandle } from './proofExport';
 
@@ -86,9 +87,7 @@ export function ProofCaptureCard({ context, backgroundUri }: { context: ProofCap
       >
         <View style={styles.brandRow}>
           <BrandMark size={24} color="#FFFFFF" accessibilityLabel="Mantle" />
-          <Text allowFontScaling={false} style={styles.brandTop}>
-            Account<Text allowFontScaling={false} style={styles.brandAbility}>Ability</Text>
-          </Text>
+          <Text allowFontScaling={false} style={styles.brandTop}>{BRAND_WORDMARK}</Text>
         </View>
 
         <View style={styles.bottomBlock}>
@@ -153,7 +152,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: 1,
   },
-  brandAbility: { color: '#B9FF3D' },
   bottomBlock: { gap: 8 },
   proofHeadline: {
     color: '#FFFFFF',

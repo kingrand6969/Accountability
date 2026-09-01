@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { font, spacing, type AppThemeColors } from './theme';
 import { BrandMark } from './BrandMark';
 import { useAppTheme } from './AppThemeProvider';
+import { BRAND_WORDMARK } from './brandGeometry';
 import { withAlpha } from './surfaces';
 
 type Props = {
@@ -72,9 +73,7 @@ export function AuthShell({
               color={theme.ink.primary}
               accessibilityLabel="Mantle logo"
             />
-            <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>
-              Account<Text style={styles.ability}>Ability</Text>
-            </Text>
+            <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>{BRAND_WORDMARK}</Text>
             <Text style={styles.tagline}>Build consistency. Together.</Text>
           </View>
           {glass ? (
@@ -142,7 +141,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     color: theme.ink.primary,
     letterSpacing: -1.1,
   },
-  ability: { color: theme.ink.action },
   welcomeWordmark: { fontSize: 31 },
   tagline: { fontFamily: font.medium, fontSize: 13.5, color: theme.ink.secondary },
   card: {

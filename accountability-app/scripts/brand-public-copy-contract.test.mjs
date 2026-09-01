@@ -7,6 +7,26 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html']);
 const staleProperName = /AccountAbility|ACCOUNTABILITY|Accountability App/g;
+const splitJsxProperName = /Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/gs;
+const historicalAttribution = 'OpenAI generated for AccountAbility';
+const historicalAttributionFiles = new Set([
+  'src/progress/workoutPhotoLibrary.test.ts',
+  'src/progress/workoutPhotoLibrary.ts',
+]);
+
+function publicCopyContents(relativePath, contents) {
+  if (!historicalAttributionFiles.has(relativePath)) {
+    return contents;
+  }
+
+  return contents.replace(historicalAttribution, '');
+}
+
+function containsStaleProperName(contents) {
+  staleProperName.lastIndex = 0;
+  splitJsxProperName.lastIndex = 0;
+  return staleProperName.test(contents) || splitJsxProperName.test(contents);
+}
 
 async function collectFiles(relativeDirectory) {
   const directory = path.join(projectRoot, relativeDirectory);
@@ -33,9 +53,9 @@ test('active mobile surfaces contain no stale AccountAbility proper name', async
 
   for (const relativePath of files) {
     const contents = await readFile(path.join(projectRoot, relativePath), 'utf8');
-    staleProperName.lastIndex = 0;
-    if (staleProperName.test(contents)) {
-      staleFiles.push(relativePath.split(path.sep).join('/'));
+    const normalizedPath = relativePath.split(path.sep).join('/');
+    if (containsStaleProperName(publicCopyContents(normalizedPath, contents))) {
+      staleFiles.push(normalizedPath);
     }
   }
 
@@ -44,5 +64,27 @@ test('active mobile surfaces contain no stale AccountAbility proper name', async
     staleFiles,
     [],
     `Stale AccountAbility proper name found in:\n${staleFiles.join('\n')}`,
+  );
+});
+
+test('historical attribution exemption is exact and does not hide other stale proper names', () => {
+  const attributionPath = 'src/progress/workoutPhotoLibrary.ts';
+
+  assert.equal(publicCopyContents(attributionPath, historicalAttribution), '');
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(attributionPath, `${historicalAttribution}\nAccountAbility`),
+    ),
+    true,
+  );
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(attributionPath, `${historicalAttribution}\n${historicalAttribution}`),
+    ),
+    true,
+  );
+  assert.equal(
+    containsStaleProperName(publicCopyContents('src/example.ts', historicalAttribution)),
+    true,
   );
 });

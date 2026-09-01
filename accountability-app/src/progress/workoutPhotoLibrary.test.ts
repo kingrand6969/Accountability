@@ -38,7 +38,7 @@ describe('workoutPhotoLibrary', () => {
     expect(new Set(all.map((photo) => photo.id)).size).toBe(64);
     expect(new Set(all.map((photo) => photo.source)).size).toBe(64);
     expect(all.every((photo) => photo.alt.trim().length >= 24)).toBe(true);
-    expect(all.every((photo) => photo.licenseSource === 'OpenAI generated for Mantle')).toBe(true);
+    expect(all.every((photo) => photo.licenseSource === 'OpenAI generated for AccountAbility')).toBe(true);
     expect(all.every((photo) => photo.licenseAuthor === 'OpenAI')).toBe(true);
   });
 

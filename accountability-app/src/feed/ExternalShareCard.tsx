@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BrandMark } from '../ui/BrandMark';
+import { BRAND_WORDMARK } from '../ui/brandGeometry';
 import { colors, font } from '../ui/theme';
 
 /**
@@ -22,7 +23,7 @@ export const ExternalShareCard = forwardRef<View, { title: string; author: strin
         <View style={styles.orbitTwo} />
         <View style={styles.brand}>
           <BrandMark size={28} color="#FFFFFF" accessibilityLabel="Mantle" />
-          <Text style={styles.wordmark}>Account<Text style={styles.ability}>Ability</Text></Text>
+          <Text style={styles.wordmark}>{BRAND_WORDMARK}</Text>
         </View>
         <View style={styles.copy}>
           <Text style={styles.eyebrow}>{author ? `${author} SHOWED UP` : 'A WIN WORTH SHARING'}</Text>
@@ -51,7 +52,6 @@ const styles = StyleSheet.create({
   orbitTwo: { position: 'absolute', width: 360, height: 360, borderRadius: 180, borderWidth: 2, borderColor: 'rgba(255,255,255,0.16)', right: -20, top: -100 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   wordmark: { color: '#FFFFFF', fontFamily: font.extrabold, fontSize: 28 },
-  ability: { color: '#B9FF3D' },
   copy: { maxWidth: 900 },
   eyebrow: { color: '#DDE8D7', fontFamily: font.bold, fontSize: 18, letterSpacing: 2.2 },
   title: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 68, lineHeight: 76, marginTop: 18 },

@@ -6,10 +6,10 @@ const feed = readFileSync(require.resolve('../app/(app)/index'), 'utf8');
 const storyRail = readFileSync(require.resolve('../stories/StoryRail'), 'utf8');
 
 describe('Feed first-impression design', () => {
-  test('renders the approved Accountability lockup instead of the legacy casing', () => {
+  test('renders the approved Mantle lockup instead of the legacy casing', () => {
     expect(header).toContain("import { BRAND_WORDMARK } from '../ui/brandGeometry'");
     expect(header).toContain('{BRAND_WORDMARK}');
-    expect(header).not.toContain('Account<Text style={styles.ability}>Ability</Text>');
+    expect(header).not.toContain('styles.ability');
     expect(header).not.toContain('accessibilityLabel="Mantle"');
   });
 

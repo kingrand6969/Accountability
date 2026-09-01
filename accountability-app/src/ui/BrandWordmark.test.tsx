@@ -23,4 +23,16 @@ describe('theme-aware Mantle wordmark', () => {
     expect(source).toContain('<BrandWordmark');
     expect(source).not.toContain("require('../../../assets/images/wordmark.png')");
   });
+
+  test.each([
+    ['auth shell', require.resolve('./AuthShell'), "import { BRAND_WORDMARK } from './brandGeometry'"],
+    ['proof capture card', require.resolve('../entry/ProofCaptureCard'), "import { BRAND_WORDMARK } from '../ui/brandGeometry'"],
+    ['external share card', require.resolve('../feed/ExternalShareCard'), "import { BRAND_WORDMARK } from '../ui/brandGeometry'"],
+  ])('%s renders the canonical Mantle wordmark as one text node', (_surface, sourcePath, expectedImport) => {
+    const source = readFileSync(sourcePath, 'utf8');
+
+    expect(source).toContain(expectedImport);
+    expect(source).toContain('{BRAND_WORDMARK}</Text>');
+    expect(source).not.toMatch(/Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/s);
+  });
 });

@@ -178,7 +178,7 @@ describe('captured Daily Proof binding', () => {
     expect(capturedSubtree).not.toMatch(
       /\bparams\.|\bstats\.|pickerPhotoReference|renderBackgroundUri/,
     );
-    expect(capturedSubtree.match(/allowFontScaling=\{false\}/g)?.length).toBeGreaterThanOrEqual(8);
+    expect(capturedSubtree.match(/allowFontScaling=\{false\}/g)?.length).toBeGreaterThanOrEqual(7);
     expect(capturedSubtree).toMatch(/buildProofCardSummary/);
   });
 });
