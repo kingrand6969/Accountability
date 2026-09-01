@@ -15,6 +15,42 @@ import {
 
 const projectRoot = path.resolve(__dirname, '../..');
 const generatorPath = path.join(projectRoot, 'scripts/generate-brand-assets.mjs');
+const committedAssetDirectory = path.join(projectRoot, 'assets/images');
+
+const expectedDimensions = {
+  'icon.png': { width: 1024, height: 1024 },
+  'android-icon-foreground.png': { width: 432, height: 432 },
+  'android-icon-monochrome.png': { width: 432, height: 432 },
+  'logo-mark.png': { width: 400, height: 400 },
+  'splash-icon.png': { width: 512, height: 512 },
+  'logo.png': { width: 900, height: 193 },
+  'wordmark.png': { width: 600, height: 129 },
+  'favicon.png': { width: 64, height: 64 },
+} as const;
+
+const minimumContentPixels = {
+  'icon.png': 100_000,
+  'android-icon-foreground.png': 20_000,
+  'android-icon-monochrome.png': 20_000,
+  'logo-mark.png': 20_000,
+  'splash-icon.png': 30_000,
+  'logo.png': 8_000,
+  'wordmark.png': 3_000,
+  'favicon.png': 300,
+} as const;
+
+const textRegionContracts = {
+  'logo.png': {
+    region: { left: 190, top: 0, width: 300, height: 193 },
+    minimumWidth: 200,
+    minimumHeight: 45,
+  },
+  'wordmark.png': {
+    region: { left: 128, top: 0, width: 200, height: 129 },
+    minimumWidth: 150,
+    minimumHeight: 35,
+  },
+} as const;
 
 function loaderError(sourcePath: string) {
   const expression = `
@@ -75,11 +111,12 @@ function rgb(hex: string) {
   ];
 }
 
-async function containsRgb(filePath: string, expectedRgb: number[]) {
+async function countOpaqueRgb(filePath: string, expectedRgb: number[]) {
   const { data, info } = await sharp(filePath)
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
+  let matchingPixels = 0;
 
   for (let offset = 0; offset < data.length; offset += info.channels) {
     if (
@@ -88,13 +125,13 @@ async function containsRgb(filePath: string, expectedRgb: number[]) {
       data[offset + 2] === expectedRgb[2] &&
       data[offset + 3] === 255
     ) {
-      return true;
+      matchingPixels += 1;
     }
   }
-  return false;
+  return matchingPixels;
 }
 
-async function containsVisibleContent(filePath: string) {
+async function contentSummary(filePath: string) {
   const image = sharp(filePath).ensureAlpha();
   const { data, info } = await image
     .clone()
@@ -102,16 +139,168 @@ async function containsVisibleContent(filePath: string) {
     .toBuffer({ resolveWithObject: true });
   const stats = await image.stats();
   const background = Array.from(data.subarray(0, info.channels));
+  let contentPixels = 0;
 
-  return (
-    stats.channels[3].max > 0 &&
-    Array.from({ length: data.length / info.channels }).some((_, index) => {
-      const offset = index * info.channels;
-      return Array.from(data.subarray(offset, offset + info.channels)).some(
-        (channel, channelIndex) => channel !== background[channelIndex],
-      );
-    })
+  for (let offset = 0; offset < data.length; offset += info.channels) {
+    const pixel = Array.from(data.subarray(offset, offset + info.channels));
+    const differsFromBackground = pixel.some(
+      (channel, channelIndex) => channel !== background[channelIndex],
+    );
+    const isContent =
+      background[3] === 0 ? pixel[3] > 0 : differsFromBackground;
+    if (isContent) {
+      contentPixels += 1;
+    }
+  }
+
+  return { alphaMaximum: stats.channels[3].max, contentPixels };
+}
+
+async function monochromeSummary(filePath: string) {
+  const { data, info } = await sharp(filePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let visiblePixels = 0;
+  let nonBlackVisiblePixels = 0;
+
+  for (let offset = 0; offset < data.length; offset += info.channels) {
+    if (data[offset + 3] === 0) continue;
+    visiblePixels += 1;
+    if (
+      data[offset] !== 0 ||
+      data[offset + 1] !== 0 ||
+      data[offset + 2] !== 0
+    ) {
+      nonBlackVisiblePixels += 1;
+    }
+  }
+
+  return { nonBlackVisiblePixels, visiblePixels };
+}
+
+async function textRegionSummary(
+  filePath: string,
+  region: { left: number; top: number; width: number; height: number },
+) {
+  const image = sharp(filePath).extract(region).ensureAlpha();
+  const { data, info } = await image
+    .clone()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const stats = await image.stats();
+  const charcoal = rgb(BRAND_GEOMETRY.colors.charcoal);
+  const lime = rgb(BRAND_GEOMETRY.colors.lime);
+  let charcoalPixels = 0;
+  let limePixels = 0;
+  let minX = info.width;
+  let minY = info.height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const offset = (y * info.width + x) * info.channels;
+      if (data[offset + 3] === 0) continue;
+      const pixelRgb = Array.from(data.subarray(offset, offset + 3));
+      if (pixelRgb.join() === charcoal.join()) {
+        charcoalPixels += 1;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+      if (pixelRgb.join() === lime.join()) limePixels += 1;
+    }
+  }
+
+  return {
+    alphaMaximum: stats.channels[3].max,
+    bounds:
+      maxX < 0
+        ? null
+        : { width: maxX - minX + 1, height: maxY - minY + 1 },
+    charcoalPixels,
+    limePixels,
+  };
+}
+
+async function expectAssetContracts(assetDirectory: string) {
+  for (const [fileName, dimensions] of Object.entries(expectedDimensions)) {
+    const filePath = path.join(assetDirectory, fileName);
+    expect(pngDimensions(filePath)).toEqual(dimensions);
+    await expect(sharp(filePath).metadata()).resolves.toMatchObject({
+      format: 'png',
+      ...dimensions,
+    });
+
+    const summary = await contentSummary(filePath);
+    expect(summary.alphaMaximum).toBe(255);
+    expect(summary.contentPixels).toBeGreaterThan(
+      minimumContentPixels[fileName as keyof typeof minimumContentPixels],
+    );
+  }
+
+  for (const fileName of [
+    'icon.png',
+    'android-icon-foreground.png',
+    'logo-mark.png',
+    'splash-icon.png',
+    'logo.png',
+    'wordmark.png',
+    'favicon.png',
+  ]) {
+    await expect(
+      countOpaqueRgb(
+        path.join(assetDirectory, fileName),
+        rgb(BRAND_GEOMETRY.colors.lime),
+      ),
+    ).resolves.toBeGreaterThan(50);
+  }
+
+  const monochrome = await monochromeSummary(
+    path.join(assetDirectory, 'android-icon-monochrome.png'),
   );
+  expect(monochrome.visiblePixels).toBeGreaterThan(20_000);
+  expect(monochrome.nonBlackVisiblePixels).toBe(0);
+
+  for (const [fileName, contract] of Object.entries(textRegionContracts)) {
+    const summary = await textRegionSummary(
+      path.join(assetDirectory, fileName),
+      contract.region,
+    );
+    expect(summary.alphaMaximum).toBe(255);
+    expect(summary.limePixels).toBe(0);
+    expect(summary.charcoalPixels).toBeGreaterThan(1_000);
+    expect(summary.bounds).not.toBeNull();
+    expect(summary.bounds!.width).toBeGreaterThan(contract.minimumWidth);
+    expect(summary.bounds!.height).toBeGreaterThan(contract.minimumHeight);
+  }
+}
+
+async function expectSafeRasterEdges(assetDirectory: string) {
+  for (const fileName of [
+    'android-icon-foreground.png',
+    'android-icon-monochrome.png',
+    'logo-mark.png',
+    'logo.png',
+    'wordmark.png',
+  ]) {
+    const edge = await outerEdgePixels(path.join(assetDirectory, fileName));
+    expect(edge.every((pixel) => pixel[3] === 0)).toBe(true);
+  }
+
+  for (const [fileName, background] of [
+    ['icon.png', BRAND_GEOMETRY.colors.charcoal],
+    ['splash-icon.png', BRAND_GEOMETRY.colors.cream],
+    ['favicon.png', BRAND_GEOMETRY.colors.charcoal],
+  ] as const) {
+    const backgroundPixel = [...rgb(background), 255];
+    const edge = await outerEdgePixels(path.join(assetDirectory, fileName));
+    expect(edge.every((pixel) => pixel.join() === backgroundPixel.join())).toBe(
+      true,
+    );
+  }
 }
 
 const validMantleGeometry = {
@@ -324,86 +513,70 @@ describe('Mantle brand geometry contract', () => {
     fs.rmSync(fixtureDirectory, { recursive: true, force: true });
   });
 
+  it('rejects a monochrome raster containing any visible non-black pixel', async () => {
+    const fixtureDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'brand-monochrome-'),
+    );
+    const fixturePath = path.join(fixtureDirectory, 'mixed.png');
+
+    try {
+      await sharp(
+        Buffer.from([
+          0, 0, 0, 255,
+          185, 255, 61, 255,
+        ]),
+        { raw: { width: 2, height: 1, channels: 4 } },
+      )
+        .png()
+        .toFile(fixturePath);
+
+      await expect(monochromeSummary(fixturePath)).resolves.toEqual({
+        visiblePixels: 2,
+        nonBlackVisiblePixels: 1,
+      });
+    } finally {
+      fs.rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('generates all eight PNGs at approved dimensions and with visible brand content in an isolated directory', async () => {
     const outputDirectory = fs.mkdtempSync(
       path.join(os.tmpdir(), 'brand-assets-'),
     );
-    execFileSync(
-      process.execPath,
-      [generatorPath, '--output-dir', outputDirectory],
-      { cwd: projectRoot, stdio: 'pipe' },
-    );
+    try {
+      execFileSync(
+        process.execPath,
+        [generatorPath, '--output-dir', outputDirectory],
+        { cwd: projectRoot, stdio: 'pipe' },
+      );
 
-    const expectedDimensions = {
-      'icon.png': { width: 1024, height: 1024 },
-      'android-icon-foreground.png': { width: 432, height: 432 },
-      'android-icon-monochrome.png': { width: 432, height: 432 },
-      'logo-mark.png': { width: 400, height: 400 },
-      'splash-icon.png': { width: 512, height: 512 },
-      'logo.png': { width: 900, height: 193 },
-      'wordmark.png': { width: 600, height: 129 },
-      'favicon.png': { width: 64, height: 64 },
-    };
-
-    expect(fs.readdirSync(outputDirectory).sort()).toEqual(
-      Object.keys(expectedDimensions).sort(),
-    );
-    for (const [fileName, dimensions] of Object.entries(expectedDimensions)) {
-      const filePath = path.join(outputDirectory, fileName);
-      expect(pngDimensions(filePath)).toEqual(dimensions);
-      await expect(sharp(filePath).metadata()).resolves.toMatchObject({
-        format: 'png',
-        ...dimensions,
-      });
+      expect(fs.readdirSync(outputDirectory).sort()).toEqual(
+        Object.keys(expectedDimensions).sort(),
+      );
+      await expectAssetContracts(outputDirectory);
+    } finally {
+      fs.rmSync(outputDirectory, { recursive: true, force: true });
     }
+  });
 
-    await expect(
-      containsRgb(path.join(outputDirectory, 'logo-mark.png'), [185, 255, 61]),
-    ).resolves.toBe(true);
-    await expect(
-      containsRgb(path.join(outputDirectory, 'android-icon-monochrome.png'), [
-        0, 0, 0,
-      ]),
-    ).resolves.toBe(true);
-    await expect(
-      containsVisibleContent(path.join(outputDirectory, 'logo.png')),
-    ).resolves.toBe(true);
-    await expect(
-      containsVisibleContent(path.join(outputDirectory, 'wordmark.png')),
-    ).resolves.toBe(true);
-    fs.rmSync(outputDirectory, { recursive: true, force: true });
+  it('keeps the checked-in eight-file raster inventory semantically valid', async () => {
+    await expectAssetContracts(committedAssetDirectory);
+    await expectSafeRasterEdges(committedAssetDirectory);
   });
 
   it('keeps generated foreground geometry away from every raster edge', async () => {
     const outputDirectory = fs.mkdtempSync(
       path.join(os.tmpdir(), 'brand-edges-'),
     );
-    execFileSync(
-      process.execPath,
-      [generatorPath, '--output-dir', outputDirectory],
-      { cwd: projectRoot, stdio: 'pipe' },
-    );
-
-    for (const fileName of [
-      'android-icon-foreground.png',
-      'android-icon-monochrome.png',
-      'logo-mark.png',
-    ]) {
-      const edge = await outerEdgePixels(path.join(outputDirectory, fileName));
-      expect(edge.every((pixel) => pixel[3] === 0)).toBe(true);
-    }
-
-    for (const [fileName, background] of [
-      ['icon.png', BRAND_GEOMETRY.colors.charcoal],
-      ['splash-icon.png', BRAND_GEOMETRY.colors.cream],
-      ['favicon.png', BRAND_GEOMETRY.colors.charcoal],
-    ] as const) {
-      const backgroundPixel = [...rgb(background), 255];
-      const edge = await outerEdgePixels(path.join(outputDirectory, fileName));
-      expect(edge.every((pixel) => pixel.join() === backgroundPixel.join())).toBe(
-        true,
+    try {
+      execFileSync(
+        process.execPath,
+        [generatorPath, '--output-dir', outputDirectory],
+        { cwd: projectRoot, stdio: 'pipe' },
       );
+      await expectSafeRasterEdges(outputDirectory);
+    } finally {
+      fs.rmSync(outputDirectory, { recursive: true, force: true });
     }
-    fs.rmSync(outputDirectory, { recursive: true, force: true });
   });
 });
