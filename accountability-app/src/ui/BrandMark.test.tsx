@@ -9,7 +9,7 @@ describe('Mantle brand mark', () => {
     expect(source).toContain('BRAND_GEOMETRY.mark.path');
     expect(source).toContain('BRAND_GEOMETRY.mark.strokeWidth');
     expect(source).toContain('BRAND_GEOMETRY.mark.nodes.map');
-    expect(source).toContain('BRAND_MARK_RENDER_VIEW_BOX');
+    expect(source).toContain('BRAND_GENERAL_MARK_RENDER_VIEW_BOX');
     expect(source).toContain('strokeLinecap="round"');
     expect(source).toContain('strokeLinejoin="round"');
     expect(source).not.toContain('primaryPath');

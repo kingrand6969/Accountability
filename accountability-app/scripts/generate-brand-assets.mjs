@@ -49,18 +49,24 @@ export async function loadBrandGeometry(sourceReference) {
   }
 }
 
-export async function loadBrandRenderViewBox(sourceReference) {
+export async function loadBrandRenderViewBoxes(sourceReference) {
   const resolvedSource = sourceUrl(sourceReference);
   const source = await readBrandSource(resolvedSource);
-  const match = source.match(
-    /export const BRAND_MARK_RENDER_VIEW_BOX = '([^']+)'/,
-  );
-  if (!match) {
-    throw new Error(
-      `Brand mark render viewBox not found in ${fileURLToPath(resolvedSource)}`,
+  const load = (constantName) => {
+    const match = source.match(
+      new RegExp(`export const ${constantName} = '([^']+)'`),
     );
-  }
-  return match[1];
+    if (!match) {
+      throw new Error(
+        `Brand mark render viewBox ${constantName} not found in ${fileURLToPath(resolvedSource)}`,
+      );
+    }
+    return match[1];
+  };
+  return {
+    adaptive: load('BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX'),
+    general: load('BRAND_GENERAL_MARK_RENDER_VIEW_BOX'),
+  };
 }
 
 function validateGeometry(geometry) {
@@ -119,19 +125,26 @@ function parseViewBox(viewBox) {
   return { x, y, width, height };
 }
 
-function createMarkup(geometry, renderViewBox) {
+function createMarkup(geometry, renderViewBoxes) {
   const { colors } = geometry;
-  const frame = parseViewBox(renderViewBox);
+  const generalFrame = parseViewBox(renderViewBoxes.general);
+  parseViewBox(renderViewBoxes.adaptive);
 
   function mark(fill = colors.lime) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${renderViewBox}">
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${renderViewBoxes.general}">
+      ${markBody(geometry, fill)}
+    </svg>`;
+  }
+
+  function adaptiveMark(fill = colors.lime) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${renderViewBoxes.adaptive}">
       ${markBody(geometry, fill)}
     </svg>`;
   }
 
   function appIcon(fill = colors.lime, background = colors.charcoal) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${renderViewBox}">
-      <rect x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}" fill="${background}"/>
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="${renderViewBoxes.general}">
+      <rect x="${generalFrame.x}" y="${generalFrame.y}" width="${generalFrame.width}" height="${generalFrame.height}" fill="${background}"/>
       ${markBody(geometry, fill)}
     </svg>`;
   }
@@ -140,7 +153,7 @@ function createMarkup(geometry, renderViewBox) {
     <g transform="translate(18 15) scale(2.72)">${markBody(geometry, colors.lime)}</g>
   </svg>`;
 
-  return { appIcon, mark, wordmarkMark };
+  return { adaptiveMark, appIcon, mark, wordmarkMark };
 }
 
 async function renderWordmark(markup, brandWordmark, color, brandFontPath) {
@@ -179,17 +192,17 @@ async function writeAtomically(destination, render) {
 }
 
 export async function generateBrandAssets(outputDirectory) {
-  const [loadedGeometry, renderViewBox] = await Promise.all([
+  const [loadedGeometry, renderViewBoxes] = await Promise.all([
     loadBrandGeometry('../src/ui/brandGeometry.ts'),
-    loadBrandRenderViewBox('../src/ui/brandGeometry.ts'),
+    loadBrandRenderViewBoxes('../src/ui/brandGeometry.ts'),
   ]);
   const geometry = validateGeometry(loadedGeometry);
   const brandFontPath = fileURLToPath(
     new URL('../node_modules/@expo-google-fonts/sora/700Bold/Sora_700Bold.ttf', import.meta.url),
   );
-  const { appIcon, mark, wordmarkMark } = createMarkup(
+  const { adaptiveMark, appIcon, mark, wordmarkMark } = createMarkup(
     geometry,
-    renderViewBox,
+    renderViewBoxes,
   );
   const wordmark = await renderWordmark(
     wordmarkMark,
@@ -212,12 +225,14 @@ export async function generateBrandAssets(outputDirectory) {
     [
       'android-icon-foreground.png',
       () =>
-        sharp(Buffer.from(mark(geometry.colors.lime))).resize(432, 432).png(),
+        sharp(Buffer.from(adaptiveMark(geometry.colors.lime)))
+          .resize(432, 432)
+          .png(),
     ],
     [
       'android-icon-monochrome.png',
       () =>
-        sharp(Buffer.from(mark(MONOCHROME_FOREGROUND)))
+        sharp(Buffer.from(adaptiveMark(MONOCHROME_FOREGROUND)))
           .resize(432, 432)
           .png(),
     ],

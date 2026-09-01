@@ -111,9 +111,13 @@ export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
 }`));
 
 /**
- * Safe square framing for rendered marks. The canonical geometry reaches x=100,
- * so this frame preserves four units of breathing room beyond every outer edge.
+ * General/native framing keeps rasterized small marks clear of every canvas edge.
  */
-export const BRAND_MARK_RENDER_VIEW_BOX = '-4 -4 108 108';
+export const BRAND_GENERAL_MARK_RENDER_VIEW_BOX = '-20 -20 140 140';
+
+/**
+ * Android adaptive foregrounds must fit the centered 66/108 circular safe zone.
+ */
+export const BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX = '-50 -50 200 200';
 
 export const BRAND_WORDMARK = BRAND_GEOMETRY.wordmark;

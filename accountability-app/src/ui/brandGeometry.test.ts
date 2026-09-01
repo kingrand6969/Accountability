@@ -7,8 +7,9 @@ import { describe, expect, it } from '@jest/globals';
 import sharp from 'sharp';
 
 import {
+  BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX,
+  BRAND_GENERAL_MARK_RENDER_VIEW_BOX,
   BRAND_GEOMETRY,
-  BRAND_MARK_RENDER_VIEW_BOX,
   BRAND_WORDMARK,
   parseBrandGeometry,
 } from './brandGeometry';
@@ -30,10 +31,10 @@ const expectedDimensions = {
 
 const minimumContentPixels = {
   'icon.png': 100_000,
-  'android-icon-foreground.png': 20_000,
-  'android-icon-monochrome.png': 20_000,
-  'logo-mark.png': 20_000,
-  'splash-icon.png': 30_000,
+  'android-icon-foreground.png': 8_000,
+  'android-icon-monochrome.png': 8_000,
+  'logo-mark.png': 15_000,
+  'splash-icon.png': 25_000,
   'logo.png': 8_000,
   'wordmark.png': 3_000,
   'favicon.png': 300,
@@ -101,6 +102,64 @@ async function outerEdgePixels(filePath: string) {
     addPixel(info.width - 1, y);
   }
   return pixels;
+}
+
+async function rasterGeometrySummary(
+  filePath: string,
+  size: number,
+  alphaThreshold = 1,
+) {
+  const { data, info } = await sharp(filePath)
+    .resize(size, size)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let minX = size;
+  let minY = size;
+  let maxX = -1;
+  let maxY = -1;
+  let maxRadialDistance = 0;
+  let leftNodePixels = 0;
+  let rightNodePixels = 0;
+  let edgeIsTransparent = true;
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const alpha = data[(y * size + x) * info.channels + 3];
+      if (
+        alpha !== 0 &&
+        (x === 0 || y === 0 || x === size - 1 || y === size - 1)
+      ) {
+        edgeIsTransparent = false;
+      }
+      if (alpha < alphaThreshold) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      maxRadialDistance = Math.max(
+        maxRadialDistance,
+        Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2),
+      );
+      if (alpha >= 128 && x < size * 0.3) leftNodePixels += 1;
+      if (alpha >= 128 && x > size * 0.7) rightNodePixels += 1;
+    }
+  }
+
+  return {
+    bounds: {
+      bottom: size - 1 - maxY,
+      height: maxY - minY + 1,
+      left: minX,
+      right: size - 1 - maxX,
+      top: minY,
+      width: maxX - minX + 1,
+    },
+    edgeIsTransparent,
+    leftNodePixels,
+    maxRadialDistance,
+    rightNodePixels,
+  };
 }
 
 function rgb(hex: string) {
@@ -261,7 +320,7 @@ async function expectAssetContracts(assetDirectory: string) {
   const monochrome = await monochromeSummary(
     path.join(assetDirectory, 'android-icon-monochrome.png'),
   );
-  expect(monochrome.visiblePixels).toBeGreaterThan(20_000);
+  expect(monochrome.visiblePixels).toBeGreaterThan(8_000);
   expect(monochrome.nonBlackVisiblePixels).toBe(0);
 
   for (const [fileName, contract] of Object.entries(textRegionContracts)) {
@@ -348,9 +407,9 @@ describe('Mantle brand geometry contract', () => {
   });
 
   it('frames every node with visible breathing room without changing canonical geometry', () => {
-    const [x, y, width, height] = BRAND_MARK_RENDER_VIEW_BOX.split(' ').map(
-      Number,
-    );
+    const [x, y, width, height] = BRAND_GENERAL_MARK_RENDER_VIEW_BOX.split(
+      ' ',
+    ).map(Number);
 
     expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 96');
     for (const node of BRAND_GEOMETRY.mark.nodes) {
@@ -471,6 +530,10 @@ describe('Mantle brand geometry contract', () => {
     const generator = fs.readFileSync(generatorPath, 'utf8');
 
     expect(generator).toContain("loadBrandGeometry('../src/ui/brandGeometry.ts')");
+    expect(generator).toContain('BRAND_GENERAL_MARK_RENDER_VIEW_BOX');
+    expect(generator).toContain('BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX');
+    expect(BRAND_GENERAL_MARK_RENDER_VIEW_BOX).toBe('-20 -20 140 140');
+    expect(BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX).toBe('-50 -50 200 200');
     for (const duplicatedLiteral of [
       '#B9FF3D',
       '#111411',
@@ -579,4 +642,63 @@ describe('Mantle brand geometry contract', () => {
       fs.rmSync(outputDirectory, { recursive: true, force: true });
     }
   });
+
+  it('keeps every adaptive foreground pixel inside the circular Android safe zone', async () => {
+    const outputDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'brand-adaptive-safe-zone-'),
+    );
+    try {
+      execFileSync(
+        process.execPath,
+        [generatorPath, '--output-dir', outputDirectory],
+        { cwd: projectRoot, stdio: 'pipe' },
+      );
+
+      const safeZoneRadius = (432 * 33) / 108;
+      const antialiasMargin = 4;
+      for (const fileName of [
+        'android-icon-foreground.png',
+        'android-icon-monochrome.png',
+      ]) {
+        const summary = await rasterGeometrySummary(
+          path.join(outputDirectory, fileName),
+          432,
+        );
+        expect(summary.maxRadialDistance).toBeLessThanOrEqual(
+          safeZoneRadius - antialiasMargin,
+        );
+        expect(summary.bounds.width).toBeGreaterThan(180);
+        expect(summary.leftNodePixels).toBeGreaterThan(100);
+        expect(summary.rightNodePixels).toBeGreaterThan(100);
+      }
+    } finally {
+      fs.rmSync(outputDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([24, 32, 64])(
+    'keeps a fully transparent boundary and visible nodes when independently rasterized at %d px',
+    async (size) => {
+      const summary = await rasterGeometrySummary(
+        path.join(committedAssetDirectory, 'logo-mark.png'),
+        size,
+        1,
+      );
+      const meaningful = await rasterGeometrySummary(
+        path.join(committedAssetDirectory, 'logo-mark.png'),
+        size,
+        32,
+      );
+
+      expect(summary.edgeIsTransparent).toBe(true);
+      expect(meaningful.bounds.left).toBeGreaterThanOrEqual(1);
+      expect(meaningful.bounds.top).toBeGreaterThanOrEqual(1);
+      expect(meaningful.bounds.right).toBeGreaterThanOrEqual(1);
+      expect(meaningful.bounds.bottom).toBeGreaterThanOrEqual(1);
+      expect(meaningful.bounds.width).toBeGreaterThan(size * 0.7);
+      expect(meaningful.bounds.height).toBeGreaterThan(size * 0.5);
+      expect(meaningful.leftNodePixels).toBeGreaterThan(1);
+      expect(meaningful.rightNodePixels).toBeGreaterThan(1);
+    },
+  );
 });
