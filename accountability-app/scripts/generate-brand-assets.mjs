@@ -5,6 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import sharp from 'sharp';
 
+const MONOCHROME_FOREGROUND = '#000000';
+
 function sourceUrl(sourceReference) {
   if (sourceReference instanceof URL) return sourceReference;
   return isAbsolute(sourceReference)
@@ -215,7 +217,7 @@ export async function generateBrandAssets(outputDirectory) {
     [
       'android-icon-monochrome.png',
       () =>
-        sharp(Buffer.from(mark(geometry.colors.charcoal)))
+        sharp(Buffer.from(mark(MONOCHROME_FOREGROUND)))
           .resize(432, 432)
           .png(),
     ],
