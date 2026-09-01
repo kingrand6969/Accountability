@@ -5,7 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html']);
+const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html', '.bat']);
 const staleProperName = /AccountAbility|ACCOUNTABILITY|Accountability App/g;
 const splitJsxProperName = /Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/gs;
 const splitInlineProperName =
