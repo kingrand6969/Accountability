@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLegalConsent } from '../auth/LegalConsentProvider';
@@ -36,6 +36,7 @@ export default function ConsentRefresh() {
     }
   }
 
+  const checking = consent.status === 'loading';
   const checkFailed = consent.status === 'error';
   return (
     <AuthShell>
@@ -43,9 +44,20 @@ export default function ConsentRefresh() {
         <Ionicons name="document-text-outline" size={28} color={theme.ink.action} />
       </View>
       <Text accessibilityRole="header" style={styles.title}>
-        {checkFailed ? 'Agreement check unavailable' : 'Terms and Privacy updated'}
+        {checking ? 'Checking your agreement' :
+          checkFailed ? 'Agreement check unavailable' : 'Terms and Privacy updated'}
       </Text>
-      {checkFailed ? (
+      {checking ? (
+        <View style={styles.checking}>
+          <ActivityIndicator
+            accessibilityLabel="Checking legal agreement status"
+            color={theme.ink.action}
+          />
+          <Text style={styles.body}>
+            Checking whether this account has accepted the current Terms and Privacy Policy.
+          </Text>
+        </View>
+      ) : checkFailed ? (
         <Text accessibilityRole="alert" style={styles.body}>{consent.error}</Text>
       ) : (
         <>
@@ -76,14 +88,16 @@ export default function ConsentRefresh() {
           {consent.error ? <Text accessibilityRole="alert" style={styles.error}>{consent.error}</Text> : null}
         </>
       )}
-      <Button
-        title={checkFailed ? 'Try again' : 'Accept and continue'}
-        accessibilityLabel={
-          checkFailed ? 'Retry legal agreement check' : 'Accept updated Terms and Privacy Policy'
-        }
-        onPress={checkFailed ? consent.retry : () => { void accept(); }}
-        loading={consent.accepting}
-      />
+      {checking ? null : (
+        <Button
+          title={checkFailed ? 'Try again' : 'Accept and continue'}
+          accessibilityLabel={
+            checkFailed ? 'Retry legal agreement check' : 'Accept updated Terms and Privacy Policy'
+          }
+          onPress={checkFailed ? consent.retry : () => { void accept(); }}
+          loading={consent.accepting}
+        />
+      )}
       <Button
         title="Sign out"
         accessibilityLabel="Sign out instead"
@@ -115,6 +129,11 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     fontSize: 14.5,
     lineHeight: 22,
     color: theme.ink.secondary,
+  },
+  checking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   links: { gap: spacing.sm },
   link: {

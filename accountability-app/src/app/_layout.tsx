@@ -203,10 +203,6 @@ function RootNavigator() {
     return <AppLaunchState message="Opening Mantle" />;
   }
 
-  if (!!session && consent.status === 'loading') {
-    return <AppLaunchState message="Checking your agreement" />;
-  }
-
   if (!!session && consent.status === 'current' && onboardingFailed) {
     return (
       <AppLaunchState
@@ -320,6 +316,25 @@ function RootNavigator() {
   );
 }
 
+function ConsentPriorityRuntime() {
+  const consent = useLegalConsent();
+  const locationGateEnabled = consent.status === 'signed-out' || consent.status === 'current';
+
+  return (
+    <LocationCollectorOwnerGate enabled={locationGateEnabled}>
+      <ActivitySyncProvider>
+        <ProProvider>
+          <RootNavigator />
+          <ModerationGate />
+          <ToastHost />
+          <ConfirmHost />
+          <PostMenuHost />
+        </ProProvider>
+      </ActivitySyncProvider>
+    </LocationCollectorOwnerGate>
+  );
+}
+
 export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -333,17 +348,7 @@ export default function RootLayout() {
       <LocationCollectorBootGate>
         <AuthProvider>
           <LegalConsentProvider>
-            <LocationCollectorOwnerGate>
-              <ActivitySyncProvider>
-                <ProProvider>
-                  <RootNavigator />
-                  <ModerationGate />
-                  <ToastHost />
-                  <ConfirmHost />
-                  <PostMenuHost />
-                </ProProvider>
-              </ActivitySyncProvider>
-            </LocationCollectorOwnerGate>
+            <ConsentPriorityRuntime />
           </LegalConsentProvider>
         </AuthProvider>
       </LocationCollectorBootGate>

@@ -13,7 +13,22 @@ describe('root layout contract', () => {
       '<LocationCollectorBootGate>',
       '<AuthProvider>',
       '<LegalConsentProvider>',
-      '<LocationCollectorOwnerGate>',
+      '<ConsentPriorityRuntime />',
+      '</LegalConsentProvider>',
+      '</AuthProvider>',
+      '</LocationCollectorBootGate>',
+    ];
+
+    let previousIndex = -1;
+    for (const marker of orderedMarkers) {
+      const markerIndex = layoutSource.indexOf(marker, previousIndex + 1);
+      expect(markerIndex).toBeGreaterThan(previousIndex);
+      previousIndex = markerIndex;
+    }
+
+    const runtimeMarkers = [
+      "const locationGateEnabled = consent.status === 'signed-out' || consent.status === 'current';",
+      '<LocationCollectorOwnerGate enabled={locationGateEnabled}>',
       '<ActivitySyncProvider>',
       '<ProProvider>',
       '<RootNavigator />',
@@ -24,13 +39,10 @@ describe('root layout contract', () => {
       '</ProProvider>',
       '</ActivitySyncProvider>',
       '</LocationCollectorOwnerGate>',
-      '</LegalConsentProvider>',
-      '</AuthProvider>',
-      '</LocationCollectorBootGate>',
     ];
 
-    let previousIndex = -1;
-    for (const marker of orderedMarkers) {
+    previousIndex = -1;
+    for (const marker of runtimeMarkers) {
       const markerIndex = layoutSource.indexOf(marker, previousIndex + 1);
       expect(markerIndex).toBeGreaterThan(previousIndex);
       previousIndex = markerIndex;
@@ -116,6 +128,16 @@ describe('root layout contract', () => {
     expect(consentSource).toContain('await consent.accept()');
     expect(consentSource).toContain('await supabase.auth.signOut()');
     expect(consentSource).not.toMatch(/checked|defaultChecked|auto.?accept/i);
+  });
+
+  test('loading and offline consent states stay on an actionable wall', () => {
+    expect(layoutSource).not.toContain('<AppLaunchState message="Checking your agreement" />');
+    expect(consentSource).toContain("const checking = consent.status === 'loading'");
+    expect(consentSource).toContain("checking ? 'Checking your agreement' :");
+    expect(consentSource).toContain('Checking whether this account has accepted the current Terms and Privacy Policy.');
+    expect(consentSource).toContain("checkFailed ? 'Try again' : 'Accept and continue'");
+    expect(consentSource).toContain("title=\"Sign out\"");
+    expect(consentSource).toContain("accessibilityLabel=\"Sign out instead\"");
   });
 
   test('signals successful onboarding to the root lifecycle instead of racing a local redirect', () => {

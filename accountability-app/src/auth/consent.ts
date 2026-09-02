@@ -1,6 +1,21 @@
 import { supabase } from '../lib/supabase';
 import { LEGAL_VERSION } from '../legal/content';
 
+type LegalConsentChangeListener = (ownerId: string) => void;
+
+const legalConsentChangeListeners = new Set<LegalConsentChangeListener>();
+
+export function subscribeToLegalConsentChanges(
+  listener: LegalConsentChangeListener,
+): () => void {
+  legalConsentChangeListeners.add(listener);
+  return () => legalConsentChangeListeners.delete(listener);
+}
+
+function notifyLegalConsentChanged(ownerId: string): void {
+  for (const listener of legalConsentChangeListeners) listener(ownerId);
+}
+
 export function isLegalConsentCurrent(
   acceptedVersion: string | null | undefined,
 ): boolean {
@@ -29,9 +44,10 @@ export async function acceptCurrentLegalTerms(): Promise<void> {
  *  the 13+ age confirmation. Called once a session exists (right after sign-up
  *  or after email verification). Best-effort here; the signed-in consent gate
  *  handles a missing stamp and lets the member retry or sign out. */
-export async function recordConsent(): Promise<void> {
+export async function recordConsent(ownerId: string): Promise<void> {
   try {
     await acceptCurrentLegalTerms();
+    notifyLegalConsentChanged(ownerId);
   } catch {
     // a failed stamp shouldn't trap a new member on the auth screen; the
     // required checkbox already gated sign-up, and we can re-prompt later

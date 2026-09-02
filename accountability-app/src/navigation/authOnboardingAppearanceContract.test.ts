@@ -63,4 +63,13 @@ describe('auth and onboarding appearance contract', () => {
     expect(entry).not.toContain("mode === 'light'");
     expect(entry).not.toMatch(/backgroundColor:\s*['"]#(?:fff|FFFFFF|fef2f2|F4F5F1)['"]/);
   });
+
+  test('signup and verification notify consent revalidation for the authenticated owner', () => {
+    const signUp = source('src/app/sign-up.tsx');
+    const verifyEmail = source('src/app/verify-email.tsx');
+
+    expect(signUp).toContain('await recordConsent(data.session.user.id)');
+    expect(verifyEmail).toContain('const { data, error } = await supabase.auth.verifyOtp');
+    expect(verifyEmail).toContain('await recordConsent(data.session.user.id)');
+  });
 });

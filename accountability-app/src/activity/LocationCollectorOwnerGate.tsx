@@ -26,7 +26,13 @@ type Result = Readonly<{
   phase: 'ready' | 'error';
 }>;
 
-export function LocationCollectorOwnerGate({ children }: { children: ReactNode }) {
+export function LocationCollectorOwnerGate({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode;
+  enabled?: boolean;
+}) {
   const { session, loading } = useAuth();
   const ownerId = session?.user.id ?? null;
   const key = ownerKey(ownerId);
@@ -81,7 +87,7 @@ export function LocationCollectorOwnerGate({ children }: { children: ReactNode }
   // Issue the new owner intent during commit so an older async reconciliation
   // cannot activate its collector in the gap before a normal effect runs.
   useLayoutEffect(() => {
-    if (Platform.OS === 'web' || loading) return;
+    if (!enabled || Platform.OS === 'web' || loading) return;
     let active = true;
     void reconcile(ownerId, intent)
       .then((status) => {
@@ -101,9 +107,9 @@ export function LocationCollectorOwnerGate({ children }: { children: ReactNode }
     return () => {
       active = false;
     };
-  }, [intent, key, loading, ownerId, reconcile]);
+  }, [enabled, intent, key, loading, ownerId, reconcile]);
 
-  if (Platform.OS === 'web') return children;
+  if (!enabled || Platform.OS === 'web') return children;
   if (
     !loading &&
     result?.key === key &&

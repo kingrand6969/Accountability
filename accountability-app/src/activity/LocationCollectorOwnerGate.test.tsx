@@ -82,6 +82,23 @@ beforeEach(() => {
 });
 
 describe('LocationCollectorOwnerGate', () => {
+  test('passes through without location reconciliation when a higher-priority gate disables it', async () => {
+    mockOwnerId = 'owner-a';
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <LocationCollectorOwnerGate enabled={false}>
+          <ChildScreen />
+        </LocationCollectorOwnerGate>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockReconcileOwner).not.toHaveBeenCalled();
+    expect(mockLaunchState).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType(ChildScreen)).toHaveLength(1);
+  });
+
   test('waits for auth before reconciling the collector', async () => {
     mockAuthLoading = true;
     const renderer = await renderOrUpdate();

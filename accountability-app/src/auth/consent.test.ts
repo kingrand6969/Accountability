@@ -27,6 +27,7 @@ import {
   getLegalConsentVersion,
   isLegalConsentCurrent,
   recordConsent,
+  subscribeToLegalConsentChanges,
 } from './consent';
 // eslint-disable-next-line import/first
 import { LEGAL_VERSION } from '../legal/content';
@@ -82,9 +83,27 @@ describe('legal consent version behavior', () => {
     await expect(acceptCurrentLegalTerms()).rejects.toBe(failure);
   });
 
-  test('keeps signup stamping best-effort', async () => {
-    mockRpc.mockRejectedValue(new Error('offline'));
-    await expect(recordConsent()).resolves.toBeUndefined();
+  test('notifies the matching owner after a successful signup or verification stamp', async () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeToLegalConsentChanges(listener);
+    mockRpc.mockResolvedValue({ error: null });
+
+    await expect(recordConsent('owner-1')).resolves.toBeUndefined();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith('owner-1');
+    unsubscribe();
+  });
+
+  test('keeps signup stamping best-effort without notifying or unlocking on failure', async () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeToLegalConsentChanges(listener);
+    mockRpc.mockResolvedValue({ error: new Error('offline') });
+
+    await expect(recordConsent('owner-1')).resolves.toBeUndefined();
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
   });
 
   test('re-acceptance refreshes the shared Terms and Privacy timestamp in an owner-scoped RPC', () => {

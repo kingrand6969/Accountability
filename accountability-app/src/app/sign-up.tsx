@@ -64,7 +64,7 @@ export default function SignUp() {
     }
     if (data.session) {
       await updateMyProfile({ birthday: birthday.trim() }).catch(() => {});
-      await recordConsent();
+      await recordConsent(data.session.user.id);
     } else {
       router.push({ pathname: '/verify-email', params: { email: email.trim(), birthday: birthday.trim() } });
     }

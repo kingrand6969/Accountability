@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 let mockActiveSession: Session | null = null;
 const mockGetVersion = jest.fn<(ownerId: string) => Promise<string | null>>();
 const mockAccept = jest.fn<() => Promise<void>>();
+let mockConsentChangeListener: ((ownerId: string) => void) | null = null;
 
 jest.mock('./AuthProvider', () => ({
   useAuth: () => ({ session: mockActiveSession, loading: false }),
@@ -15,6 +16,12 @@ jest.mock('./consent', () => ({
   getLegalConsentVersion: (ownerId: string) => mockGetVersion(ownerId),
   acceptCurrentLegalTerms: () => mockAccept(),
   isLegalConsentCurrent: (version: string | null | undefined) => version === '2026-09-02',
+  subscribeToLegalConsentChanges: (listener: (ownerId: string) => void) => {
+    mockConsentChangeListener = listener;
+    return () => {
+      if (mockConsentChangeListener === listener) mockConsentChangeListener = null;
+    };
+  },
 }));
 
 // eslint-disable-next-line import/first
@@ -52,6 +59,7 @@ describe('LegalConsentProvider', () => {
     mockActiveSession = session('owner-1');
     mockGetVersion.mockReset();
     mockAccept.mockReset();
+    mockConsentChangeListener = null;
   });
 
   test.each([null, '2026-08-10'])('blocks a missing or stale accepted version %p', async (version) => {
@@ -73,6 +81,45 @@ describe('LegalConsentProvider', () => {
     });
     expect(value(renderer)).toBe('current:2026-09-02:none');
     expect(mockAccept).not.toHaveBeenCalled();
+    await act(async () => renderer.unmount());
+  });
+
+  test('rechecks and unlocks after this owner is stamped outside the provider', async () => {
+    mockGetVersion
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('2026-09-02');
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(<LegalConsentProvider><Probe /></LegalConsentProvider>);
+    });
+    expect(value(renderer)).toBe('required:none:none');
+
+    await act(async () => {
+      mockConsentChangeListener?.('owner-1');
+      await Promise.resolve();
+    });
+
+    expect(mockGetVersion).toHaveBeenCalledTimes(2);
+    expect(mockGetVersion).toHaveBeenLastCalledWith('owner-1');
+    expect(mockAccept).not.toHaveBeenCalled();
+    expect(value(renderer)).toBe('current:2026-09-02:none');
+    await act(async () => renderer.unmount());
+  });
+
+  test('ignores a consent change from a different owner', async () => {
+    mockGetVersion.mockResolvedValue(null);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(<LegalConsentProvider><Probe /></LegalConsentProvider>);
+    });
+
+    await act(async () => {
+      mockConsentChangeListener?.('owner-2');
+      await Promise.resolve();
+    });
+
+    expect(mockGetVersion).toHaveBeenCalledTimes(1);
+    expect(value(renderer)).toBe('required:none:none');
     await act(async () => renderer.unmount());
   });
 

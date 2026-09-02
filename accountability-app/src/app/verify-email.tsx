@@ -37,7 +37,7 @@ export default function VerifyEmail() {
     const token = (value ?? code).trim();
     if (!email || token.length < 6 || busy) return;
     setBusy(true);
-    const { error } = await supabase.auth.verifyOtp({ email, token, type: 'signup' });
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'signup' });
     setBusy(false);
     if (error) {
       Alert.alert('Couldn’t verify', authErrorMessage(error.message));
@@ -47,7 +47,7 @@ export default function VerifyEmail() {
     // Session now exists → save the birthday from sign-up + stamp the consent
     // they gave, then the AuthProvider routes into the app (onboarding).
     if (birthday) await updateMyProfile({ birthday }).catch(() => {});
-    await recordConsent();
+    if (data.session) await recordConsent(data.session.user.id);
   }
 
   async function onResend() {

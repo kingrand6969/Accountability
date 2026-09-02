@@ -128,7 +128,8 @@ describe('Account and support manual appearance contract', () => {
     expect(legalSource).toContain("const key: LegalDocKey = doc === 'privacy' ? 'privacy' : 'terms'");
     expect(legalSource).toContain('const d = DOCS[key]');
     expect(legalSource).toContain('<Stack.Screen options={{ title: d.title }} />');
-    expect(legalSource).toContain('Effective {EFFECTIVE_DATE}');
+    expect(legalSource).toContain('DOCS, EFFECTIVE_DATE, LEGAL_VERSION');
+    expect(legalSource).toContain('Effective {EFFECTIVE_DATE} · Version {LEGAL_VERSION}');
     expect(legalSource).toContain('{d.sections.map((s) => (');
     expect(legalSource).toContain('{s.p.map((para, i) => (');
   });

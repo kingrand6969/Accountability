@@ -13,6 +13,7 @@ import {
   acceptCurrentLegalTerms,
   getLegalConsentVersion,
   isLegalConsentCurrent,
+  subscribeToLegalConsentChanges,
 } from './consent';
 
 export type LegalConsentStatus = 'signed-out' | 'loading' | 'current' | 'required' | 'error';
@@ -89,6 +90,11 @@ export function LegalConsentProvider({ children }: { children: ReactNode }) {
       });
     }
   }, [ownerId]);
+
+  useEffect(() => subscribeToLegalConsentChanges((changedOwnerId) => {
+    if (ownerId !== changedOwnerId) return;
+    void load();
+  }), [load, ownerId]);
 
   useEffect(() => {
     const scheduledGeneration = generationRef.current;

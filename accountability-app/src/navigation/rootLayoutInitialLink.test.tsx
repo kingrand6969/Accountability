@@ -5,6 +5,7 @@ import { Linking } from 'react-native';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 let mockOwnerId: string | null = null;
+let mockConsentStatus: 'signed-out' | 'loading' | 'current' | 'required' | 'error' | null = null;
 let mockPathname = '/sign-in';
 let mockQuery: Record<string, string | string[] | undefined> = {};
 const mockReplace = jest.fn();
@@ -19,6 +20,8 @@ const mockLaunchState = jest.fn((_props: {
   actionLabel?: string;
   onAction?: () => void;
 }) => null);
+const mockLocationOwnerGate = jest.fn(({ children }: { children?: React.ReactNode }) =>
+  React.createElement(React.Fragment, null, children));
 
 jest.mock('expo-router', () => {
   const ReactModule = require('react') as typeof React;
@@ -84,8 +87,10 @@ jest.mock('../auth/LegalConsentProvider', () => {
     LegalConsentProvider: ({ children }: { children?: React.ReactNode }) =>
       ReactModule.createElement(ReactModule.Fragment, null, children),
     useLegalConsent: () => ({
-      status: mockOwnerId ? 'current' : 'signed-out',
-      acceptedVersion: mockOwnerId ? '2026-09-02' : null,
+      status: mockConsentStatus ?? (mockOwnerId ? 'current' : 'signed-out'),
+      acceptedVersion: (mockConsentStatus ?? (mockOwnerId ? 'current' : 'signed-out')) === 'current'
+        ? '2026-09-02'
+        : null,
       accepting: false,
       error: null,
       accept: jest.fn(),
@@ -101,10 +106,9 @@ jest.mock('../activity/LocationCollectorBootGate', () => {
   };
 });
 jest.mock('../activity/LocationCollectorOwnerGate', () => {
-  const ReactModule = require('react') as typeof React;
   return {
-    LocationCollectorOwnerGate: ({ children }: { children?: React.ReactNode }) =>
-      ReactModule.createElement(ReactModule.Fragment, null, children),
+    LocationCollectorOwnerGate: (props: { children?: React.ReactNode }) =>
+      mockLocationOwnerGate(props),
   };
 });
 jest.mock('../pro/ProProvider', () => {
@@ -164,6 +168,7 @@ async function renderOrUpdate(renderer?: TestRenderer.ReactTestRenderer) {
 
 beforeEach(() => {
   mockOwnerId = null;
+  mockConsentStatus = null;
   mockPathname = '/sign-in';
   mockQuery = {};
   mockGetInitialURL.mockReset();
@@ -173,9 +178,44 @@ beforeEach(() => {
   mockStorageSetItem.mockReset().mockResolvedValue(undefined);
   mockGetMyProfile.mockReset().mockResolvedValue({ display_name: 'Ready Member', area: 'Perth' });
   mockLaunchState.mockClear();
+  mockLocationOwnerGate.mockClear();
 });
 
 describe('root launch-link capture lifecycle', () => {
+  test.each(['loading', 'required', 'error'] as const)(
+    'prioritizes the blocking legal experience over the native location owner gate while consent is %s',
+    async (status) => {
+      mockOwnerId = 'owner-a';
+      mockConsentStatus = status;
+      mockPathname = '/consent-refresh';
+      mockGetInitialURL.mockResolvedValue(null);
+
+      const renderer = await renderOrUpdate();
+
+      expect(mockLocationOwnerGate).toHaveBeenLastCalledWith(
+        expect.objectContaining({ enabled: false }),
+      );
+      expect(mockProtectedGuards.slice(-4)).toEqual([true, false, false, false]);
+      expect(mockLaunchState).not.toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Checking your agreement' }),
+      );
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  test('retains the native location owner gate after consent is confirmed current', async () => {
+    mockOwnerId = 'owner-a';
+    mockConsentStatus = 'current';
+    mockGetInitialURL.mockResolvedValue(null);
+
+    const renderer = await renderOrUpdate();
+
+    expect(mockLocationOwnerGate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: true }),
+    );
+    await act(async () => renderer.unmount());
+  });
+
   test('resumes a signed-out cold link once for its sign-in and never replays it after logout', async () => {
     mockGetInitialURL.mockResolvedValue('accountabilityapp://groups');
     let renderer = await renderOrUpdate();

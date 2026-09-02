@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { DOCS, EFFECTIVE_DATE, type LegalDocKey } from '../../legal/content';
+import { DOCS, EFFECTIVE_DATE, LEGAL_VERSION, type LegalDocKey } from '../../legal/content';
 import {
   contentMax,
   font,
@@ -27,7 +27,7 @@ export default function LegalScreen() {
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.meta}>Effective {EFFECTIVE_DATE}</Text>
+        <Text style={styles.meta}>Effective {EFFECTIVE_DATE} · Version {LEGAL_VERSION}</Text>
         <Text style={styles.intro}>{d.intro}</Text>
         {d.sections.map((s) => (
           <View key={s.h} style={styles.section}>
