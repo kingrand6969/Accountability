@@ -15,6 +15,8 @@ const mockStorageGetItem = jest.fn<() => Promise<string | null>>();
 const mockStorageSetItem = jest.fn<() => Promise<void>>();
 const mockGetMyProfile = jest.fn<() => Promise<{ display_name: string | null; area: string | null } | null>>();
 const mockReconcileOwner = jest.fn<(ownerId: string | null) => Promise<'running' | 'paused'>>();
+const mockCaptureReferralFromLaunch = jest.fn();
+const mockRedeemPendingReferral = jest.fn();
 let mockPostMenuHostMounts = 0;
 let mockPostMenuHostUnmounts = 0;
 let mockActivitySyncMounts = 0;
@@ -149,8 +151,8 @@ jest.mock('../ui/AppLaunchState', () => ({
   }) => mockLaunchState(props),
 }));
 jest.mock('../profiles/referrals', () => ({
-  captureReferralFromLaunch: jest.fn(),
-  redeemPendingReferral: jest.fn(),
+  captureReferralFromLaunch: () => mockCaptureReferralFromLaunch(),
+  redeemPendingReferral: (ownerId: string) => mockRedeemPendingReferral(ownerId),
 }));
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -202,6 +204,8 @@ beforeEach(() => {
   mockPostMenuHostUnmounts = 0;
   mockActivitySyncMounts = 0;
   mockActivitySyncUnmounts = 0;
+  mockCaptureReferralFromLaunch.mockReset();
+  mockRedeemPendingReferral.mockReset();
 });
 
 describe('root launch-link capture lifecycle', () => {
@@ -225,6 +229,41 @@ describe('root launch-link capture lifecycle', () => {
       await act(async () => renderer.unmount());
     },
   );
+
+  test.each(['loading', 'required', 'error'] as const)(
+    'does not redeem a pending referral while consent is %s',
+    async (status) => {
+      mockOwnerId = 'owner-a';
+      mockConsentStatus = status;
+      mockPathname = '/consent-refresh';
+      mockGetInitialURL.mockResolvedValue(null);
+
+      const renderer = await renderOrUpdate();
+
+      expect(mockRedeemPendingReferral).not.toHaveBeenCalled();
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  test('redeems a pending referral only for the current consenting owner', async () => {
+    mockOwnerId = 'owner-a';
+    mockConsentStatus = 'required';
+    mockPathname = '/consent-refresh';
+    mockGetInitialURL.mockResolvedValue(null);
+    let renderer = await renderOrUpdate();
+    expect(mockRedeemPendingReferral).not.toHaveBeenCalled();
+
+    mockConsentStatus = 'current';
+    renderer = await renderOrUpdate(renderer);
+    expect(mockRedeemPendingReferral).toHaveBeenCalledTimes(1);
+    expect(mockRedeemPendingReferral).toHaveBeenCalledWith('owner-a');
+
+    mockOwnerId = 'owner-b';
+    mockConsentStatus = 'required';
+    renderer = await renderOrUpdate(renderer);
+    expect(mockRedeemPendingReferral).toHaveBeenCalledTimes(1);
+    await act(async () => renderer.unmount());
+  });
 
   test('retains the native location owner gate after consent is confirmed current', async () => {
     mockOwnerId = 'owner-a';
@@ -276,6 +315,30 @@ describe('root launch-link capture lifecycle', () => {
     const renderer = await renderOrUpdate();
 
     expect(mockProtectedGuards.slice(-5)).toEqual([false, false, false, true, true]);
+    await act(async () => renderer.unmount());
+  });
+
+  test('resumes a validated signed-in public share for the same owner after consent', async () => {
+    const shareId = '123e4567-e89b-42d3-a456-426614174000';
+    const destination = `/share/${shareId}`;
+    mockOwnerId = 'owner-a';
+    mockConsentStatus = 'required';
+    mockPathname = destination;
+    mockQuery = { id: shareId };
+    mockGetInitialURL.mockResolvedValue(null);
+    let renderer = await renderOrUpdate();
+    expect(mockReplace).not.toHaveBeenCalledWith(destination);
+
+    mockConsentStatus = 'current';
+    mockPathname = '/consent-refresh';
+    mockQuery = {};
+    renderer = await renderOrUpdate(renderer);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith(destination);
     await act(async () => renderer.unmount());
   });
 

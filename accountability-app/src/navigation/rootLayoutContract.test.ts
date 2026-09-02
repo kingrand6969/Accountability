@@ -133,6 +133,7 @@ describe('root layout contract', () => {
   });
 
   test('the consent wall cannot be dismissed without acceptance or sign-out', () => {
+    expect(consentSource).toContain('useFocusEffect(');
     expect(consentSource).toContain("BackHandler.addEventListener('hardwareBackPress'");
     expect(consentSource).toContain('return true');
     expect(consentSource).toContain("router.push('/legal/terms')");

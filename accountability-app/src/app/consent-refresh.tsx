@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLegalConsent } from '../auth/LegalConsentProvider';
 import { supabase } from '../lib/supabase';
@@ -17,12 +17,12 @@ export default function ConsentRefresh() {
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       return true;
     });
     return () => subscription.remove();
-  }, []);
+  }, []));
 
   async function accept() {
     await consent.accept();
@@ -32,7 +32,8 @@ export default function ConsentRefresh() {
     setSigningOut(true);
     setSignOutError(null);
     try {
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch {
       setSignOutError('We could not sign you out. Check your connection and try again.');
     } finally {

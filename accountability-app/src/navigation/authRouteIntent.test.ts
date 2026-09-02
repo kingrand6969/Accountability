@@ -16,6 +16,10 @@ describe('protected Group 3 route intent validation', () => {
     ['/search', '/search'],
     ['/body', '/body'],
     ['/journey-path', '/journey-path'],
+    [
+      '/share/123e4567-e89b-42d3-a456-426614174000',
+      '/share/123e4567-e89b-42d3-a456-426614174000',
+    ],
     ['/compose?event=1&text=Show%20up', '/compose?event=1&text=Show+up'],
     [
       '/post/11111111-1111-4111-8111-111111111111',
@@ -45,7 +49,9 @@ describe('protected Group 3 route intent validation', () => {
   });
 
   test.each([
-    '/share/11111111-1111-4111-8111-111111111111',
+    '/share/not-a-uuid',
+    '/share/123e4567-e89b-42d3-a456-426614174000?source=private',
+    '/share/123e4567-e89b-42d3-a456-426614174000/nested',
     '/post/not-a-post-id',
     '/post/11111111-1111-4111-8111-111111111111/nested',
     '/post/11111111-1111-4111-8111-111111111111?comment=0',
@@ -95,6 +101,9 @@ describe('protected Group 3 route intent validation', () => {
     expect(routeIntentFromPath('/story/restored-user', { userId: 'restored-user' })).toBe(
       '/story/restored-user',
     );
+    expect(routeIntentFromPath('/share/123e4567-e89b-42d3-a456-426614174000', {
+      id: '123e4567-e89b-42d3-a456-426614174000',
+    })).toBe('/share/123e4567-e89b-42d3-a456-426614174000');
     expect(
       routeIntentFromPath('/post/11111111-1111-4111-8111-111111111111', {
         id: '11111111-1111-4111-8111-111111111111',
@@ -156,6 +165,19 @@ describe('one-shot authentication route intent lifecycle', () => {
     coordinator.synchronizeOwner('owner-b', privateIntent);
 
     expect(coordinator.captureForHold('owner-b', privateIntent)).toBe(false);
+    expect(controller.resumeForOwner('owner-b', true)).toBeNull();
+  });
+
+  test('does not transfer a held public share from owner A to owner B', () => {
+    const shareIntent = '/share/123e4567-e89b-42d3-a456-426614174000';
+    const controller = createAuthRouteIntentController('owner-a');
+    const coordinator = createAuthRouteIntentCoordinator(controller, 'owner-a');
+
+    coordinator.synchronizeOwner('owner-a', shareIntent);
+    expect(coordinator.captureForHold('owner-a', shareIntent)).toBe(true);
+    coordinator.synchronizeOwner('owner-b', shareIntent);
+
+    expect(coordinator.captureForHold('owner-b', shareIntent)).toBe(false);
     expect(controller.resumeForOwner('owner-b', true)).toBeNull();
   });
 

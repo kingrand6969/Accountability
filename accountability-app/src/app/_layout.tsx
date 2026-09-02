@@ -236,8 +236,8 @@ function RootNavigator() {
     captureReferralFromLaunch();
   }, []);
   useEffect(() => {
-    if (session) redeemPendingReferral();
-  }, [session]);
+    if (ownerId && consent.status === 'current') redeemPendingReferral(ownerId);
+  }, [consent.status, ownerId]);
 
   const [fontsLoaded, fontError] = useFonts({
     Anton_400Regular,

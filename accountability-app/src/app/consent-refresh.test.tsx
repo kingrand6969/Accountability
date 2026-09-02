@@ -1,5 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
+import { BackHandler } from 'react-native';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import type { LegalConsentStatus } from '../auth/LegalConsentProvider';
 
@@ -7,7 +8,22 @@ let mockStatus: LegalConsentStatus = 'loading';
 let mockError: string | null = null;
 const mockAccept = jest.fn<() => Promise<void>>();
 const mockRetry = jest.fn();
-const mockSignOut = jest.fn<() => Promise<void>>();
+const mockSignOut = jest.fn<() => Promise<{ error: Error | null }>>();
+const mockRouterPush = jest.fn();
+const mockBackRemove = jest.fn();
+let mockFocused = true;
+let mockFocusEpoch = 0;
+let mockHardwareBackHandler: (() => boolean | null | undefined) | null = null;
+
+jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+  mockHardwareBackHandler = handler;
+  return {
+    remove: () => {
+      mockBackRemove();
+      if (mockHardwareBackHandler === handler) mockHardwareBackHandler = null;
+    },
+  };
+});
 
 jest.mock('../auth/LegalConsentProvider', () => ({
   useLegalConsent: () => ({
@@ -22,24 +38,34 @@ jest.mock('../auth/LegalConsentProvider', () => ({
 jest.mock('../lib/supabase', () => ({
   supabase: { auth: { signOut: () => mockSignOut() } },
 }));
-jest.mock('expo-router', () => ({
-  router: { push: jest.fn() },
-}));
+jest.mock('expo-router', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- mock factory needs runtime React
+  const ReactModule = require('react') as typeof React;
+  return {
+    router: { push: (...args: unknown[]) => mockRouterPush(...args) },
+    useFocusEffect: (effect: () => void | (() => void)) =>
+      ReactModule.useEffect(
+        () => mockFocused ? effect() : undefined,
+        [effect, mockFocusEpoch, mockFocused],
+      ),
+  };
+});
 jest.mock('@expo/vector-icons/Ionicons', () => ({ __esModule: true, default: () => null }));
 jest.mock('../ui/AuthShell', () => ({
   AuthShell: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock('../ui/Button', () => ({
-  Button: ({ title, accessibilityLabel, onPress }: {
+  Button: ({ title, accessibilityLabel, onPress, loading }: {
     title: string;
     accessibilityLabel: string;
     onPress: () => void;
+    loading?: boolean;
   }) => {
     const ReactModule = jest.requireActual<typeof import('react')>('react');
     const { Pressable, Text } = jest.requireActual<typeof import('react-native')>('react-native');
     return ReactModule.createElement(
       Pressable,
-      { accessibilityLabel, onPress },
+      { accessibilityLabel, accessibilityState: { busy: !!loading }, onPress },
       ReactModule.createElement(Text, null, title),
     );
   },
@@ -75,7 +101,12 @@ beforeEach(() => {
   mockError = null;
   mockAccept.mockReset().mockResolvedValue(undefined);
   mockRetry.mockReset();
-  mockSignOut.mockReset().mockResolvedValue(undefined);
+  mockSignOut.mockReset().mockResolvedValue({ error: null });
+  mockRouterPush.mockReset();
+  mockBackRemove.mockReset();
+  mockFocused = true;
+  mockFocusEpoch = 0;
+  mockHardwareBackHandler = null;
 });
 
 describe('consent refresh wall', () => {
@@ -142,12 +173,73 @@ describe('consent refresh wall', () => {
     expect(renderer.root.findAllByProps({ accessibilityLabel: 'Sign out instead' }).length)
       .toBeGreaterThan(0);
 
-    mockSignOut.mockResolvedValueOnce(undefined);
+    mockSignOut.mockResolvedValueOnce({ error: null });
     await act(async () => {
       renderer.root.findAllByProps({ accessibilityLabel: 'Sign out instead' })[0].props.onPress();
       await Promise.resolve();
     });
     expect(mockSignOut).toHaveBeenCalledTimes(2);
+    await act(async () => renderer.unmount());
+  });
+
+  test('handles a returned Supabase sign-out error and resets the pending state for retry', async () => {
+    mockStatus = 'required';
+    mockSignOut.mockResolvedValueOnce({ error: new Error('offline') });
+    const renderer = await renderScreen();
+
+    await act(async () => {
+      renderer.root.findAllByProps({ accessibilityLabel: 'Sign out instead' })[0].props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findAllByProps({
+      children: 'We could not sign you out. Check your connection and try again.',
+    }).length).toBeGreaterThan(0);
+    const signOutButtons = renderer.root.findAll(
+      (node) => node.props.accessibilityLabel === 'Sign out instead',
+    );
+    expect(signOutButtons.some(
+      (node) => node.props.accessibilityState?.busy === false,
+    )).toBe(true);
+    const signOutButton = signOutButtons.find((node) => typeof node.props.onPress === 'function');
+
+    mockSignOut.mockResolvedValueOnce({ error: null });
+    await act(async () => {
+      signOutButton?.props.onPress();
+      await Promise.resolve();
+    });
+    expect(mockSignOut).toHaveBeenCalledTimes(2);
+    await act(async () => renderer.unmount());
+  });
+
+  test('blocks hardware back only while the consent wall is focused', async () => {
+    mockStatus = 'required';
+    let renderer = await renderScreen();
+
+    expect(mockHardwareBackHandler?.()).toBe(true);
+    await act(async () => {
+      renderer.root.findAllByProps({
+        accessibilityLabel: 'Read updated Terms of Service',
+      })[0].props.onPress();
+    });
+    expect(mockRouterPush).toHaveBeenCalledWith('/legal/terms');
+
+    mockFocused = false;
+    mockFocusEpoch += 1;
+    await act(async () => {
+      renderer.update(<ConsentRefresh />);
+    });
+    expect(mockHardwareBackHandler).toBeNull();
+    expect(mockBackRemove).toHaveBeenCalledTimes(1);
+
+    // The legal reader can use hardware Back, which focuses the wall again.
+    mockFocused = true;
+    mockFocusEpoch += 1;
+    await act(async () => {
+      renderer.update(<ConsentRefresh />);
+    });
+    expect(mockHardwareBackHandler?.()).toBe(true);
     await act(async () => renderer.unmount());
   });
 });
