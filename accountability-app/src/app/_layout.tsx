@@ -45,6 +45,7 @@ import {
   routeIntentFromPath,
   subscribeToOnboardingCompletion,
   type AuthRouteIntentController,
+  type AuthRouteIntentCoordinator,
   type RouteQuery,
 } from '../navigation/authRouteIntent';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
@@ -59,6 +60,7 @@ type OnboardingState = Readonly<{
 }>;
 
 const AuthRouteIntentContext = createContext<AuthRouteIntentController | null>(null);
+const AuthRouteIntentCoordinatorContext = createContext<AuthRouteIntentCoordinator | null>(null);
 
 function AuthRouteIntentProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
@@ -73,7 +75,7 @@ function AuthRouteIntentProvider({ children }: { children: ReactNode }) {
   const initialLinkCaptureStartedRef = useRef(false);
 
   useLayoutEffect(() => {
-    intentCoordinator.synchronize(ownerId, currentIntent);
+    intentCoordinator.synchronizeOwner(ownerId, currentIntent);
   }, [currentIntent, intentCoordinator, ownerId]);
 
   useEffect(() => {
@@ -90,7 +92,9 @@ function AuthRouteIntentProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthRouteIntentContext.Provider value={intentController}>
-      {children}
+      <AuthRouteIntentCoordinatorContext.Provider value={intentCoordinator}>
+        {children}
+      </AuthRouteIntentCoordinatorContext.Provider>
     </AuthRouteIntentContext.Provider>
   );
 }
@@ -101,6 +105,14 @@ function useAuthRouteIntentController(): AuthRouteIntentController {
     throw new Error('AuthRouteIntentProvider is required.');
   }
   return intentController;
+}
+
+function useAuthRouteIntentCoordinator(): AuthRouteIntentCoordinator {
+  const intentCoordinator = useContext(AuthRouteIntentCoordinatorContext);
+  if (!intentCoordinator) {
+    throw new Error('AuthRouteIntentProvider is required.');
+  }
+  return intentCoordinator;
 }
 
 /**
@@ -130,9 +142,11 @@ function RootNavigator() {
   const { colors: theme } = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
+  const query = useGlobalSearchParams() as RouteQuery;
   const ownerId = session?.user.id ?? null;
   const ownerRef = useRef(ownerId);
   const intentController = useAuthRouteIntentController();
+  const intentCoordinator = useAuthRouteIntentCoordinator();
   const [onboardingState, setOnboardingState] = useState<OnboardingState | null>(null);
   const [onboardingAttempt, setOnboardingAttempt] = useState(0);
   const ownerOnboardingState = ownerId && onboardingState?.ownerId === ownerId
@@ -144,6 +158,18 @@ function RootNavigator() {
       ? ownerOnboardingState.complete
       : null
     : false;
+  const currentIntent = routeIntentFromPath(pathname, query);
+  const shouldHoldIntent =
+    !session ||
+    consent.status !== 'current' ||
+    onboarded === false ||
+    onboardingFailed;
+
+  useEffect(() => {
+    if (!shouldHoldIntent || !currentIntent) return;
+    intentCoordinator.captureForHold(ownerId, currentIntent);
+  }, [currentIntent, intentCoordinator, ownerId, shouldHoldIntent]);
+
   useEffect(() => {
     ownerRef.current = ownerId;
   }, [ownerId]);
@@ -336,7 +362,9 @@ function RootNavigator() {
         <Stack.Screen name="verify-email" />
         <Stack.Screen name="forgot-password" />
       </Stack.Protected>
-      <Stack.Screen name="share/[id]" options={{ headerShown: true, title: 'Shared update' }} />
+      <Stack.Protected guard={!session || consent.status === 'current'}>
+        <Stack.Screen name="share/[id]" options={{ headerShown: true, title: 'Shared update' }} />
+      </Stack.Protected>
       {/* Legal docs are reachable both signed-out (sign-up consent) and in-app (settings). */}
       <Stack.Screen name="legal/[doc]" options={{ headerShown: true, title: 'Legal' }} />
       </Stack>

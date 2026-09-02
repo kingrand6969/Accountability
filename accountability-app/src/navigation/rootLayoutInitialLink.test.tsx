@@ -218,7 +218,7 @@ describe('root launch-link capture lifecycle', () => {
       expect(mockReconcileOwner).not.toHaveBeenCalled();
       expect(mockActivitySyncMounts).toBe(0);
       expect(mockPostMenuHostMounts).toBe(0);
-      expect(mockProtectedGuards.slice(-4)).toEqual([true, false, false, false]);
+      expect(mockProtectedGuards.slice(-5)).toEqual([true, false, false, false, false]);
       expect(mockLaunchState).not.toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Checking your agreement' }),
       );
@@ -234,6 +234,48 @@ describe('root launch-link capture lifecycle', () => {
     const renderer = await renderOrUpdate();
 
     expect(mockReconcileOwner).toHaveBeenCalledWith('owner-a');
+    await act(async () => renderer.unmount());
+  });
+
+  test('does not capture or replace ordinary protected navigation for an onboarded owner', async () => {
+    mockOwnerId = 'owner-a';
+    mockConsentStatus = 'current';
+    mockPathname = '/';
+    mockGetInitialURL.mockResolvedValue(null);
+    let renderer = await renderOrUpdate();
+    mockReplace.mockClear();
+
+    mockPathname = '/compose';
+    mockQuery = { text: 'private' };
+    renderer = await renderOrUpdate(renderer);
+
+    expect(mockReplace).not.toHaveBeenCalledWith('/compose?text=private');
+    await act(async () => renderer.unmount());
+  });
+
+  test.each(['loading', 'required', 'error'] as const)(
+    'blocks signed-in public share routing while consent is %s',
+    async (status) => {
+      mockOwnerId = 'owner-a';
+      mockConsentStatus = status;
+      mockPathname = '/share/public-post';
+      mockGetInitialURL.mockResolvedValue(null);
+
+      const renderer = await renderOrUpdate();
+
+      expect(mockProtectedGuards.slice(-5)).toEqual([true, false, false, false, false]);
+      await act(async () => renderer.unmount());
+    },
+  );
+
+  test('keeps public share routing available while signed out', async () => {
+    mockConsentStatus = 'signed-out';
+    mockPathname = '/share/public-post';
+    mockGetInitialURL.mockResolvedValue(null);
+
+    const renderer = await renderOrUpdate();
+
+    expect(mockProtectedGuards.slice(-5)).toEqual([false, false, false, true, true]);
     await act(async () => renderer.unmount());
   });
 
@@ -253,7 +295,7 @@ describe('root launch-link capture lifecycle', () => {
 
     expect(mockActivitySyncUnmounts).toBe(1);
     expect(mockPostMenuHostUnmounts).toBe(1);
-    expect(mockProtectedGuards.slice(-4)).toEqual([true, false, false, false]);
+    expect(mockProtectedGuards.slice(-5)).toEqual([true, false, false, false, false]);
     await act(async () => renderer.unmount());
   });
 
@@ -441,14 +483,14 @@ describe('root launch-link capture lifecycle', () => {
       notifyOnboardingComplete('owner-a');
       await Promise.resolve();
     });
-    expect(mockProtectedGuards.slice(-3)).toEqual([true, true, false]);
+    expect(mockProtectedGuards.slice(-4)).toEqual([true, true, false, true]);
 
     await act(async () => {
       resolveProfile({ display_name: null, area: null });
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(mockProtectedGuards.slice(-3)).toEqual([true, true, false]);
+    expect(mockProtectedGuards.slice(-4)).toEqual([true, true, false, true]);
     await act(async () => renderer.unmount());
   });
 
@@ -476,7 +518,7 @@ describe('root launch-link capture lifecycle', () => {
       await Promise.resolve();
     });
 
-    expect(mockProtectedGuards.slice(-3)).toEqual([true, true, false]);
+    expect(mockProtectedGuards.slice(-4)).toEqual([true, true, false, true]);
     expect(mockReplace).toHaveBeenCalledWith('/compose');
     await act(async () => renderer.unmount());
   });

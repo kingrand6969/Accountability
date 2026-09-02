@@ -156,7 +156,8 @@ export type AuthRouteIntentController = {
 };
 
 export type AuthRouteIntentCoordinator = Readonly<{
-  synchronize: (ownerId: string | null, intent: string | null) => void;
+  synchronizeOwner: (ownerId: string | null, observedIntent: string | null) => void;
+  captureForHold: (ownerId: string | null, intent: string) => boolean;
 }>;
 
 export function createAuthRouteIntentCoordinator(
@@ -164,40 +165,34 @@ export function createAuthRouteIntentCoordinator(
   initialOwnerId: string | null = null,
 ): AuthRouteIntentCoordinator {
   let previousOwnerId = initialOwnerId;
-  let previousIntent: string | null = null;
-  let signedOutResidualIntent: string | null = null;
+  let previousObservedIntent: string | null = null;
+  let ownerResidualIntent: string | null = null;
 
   return {
-    synchronize(ownerId, intent) {
+    synchronizeOwner(ownerId, observedIntent) {
       const ownerChanged = ownerId !== previousOwnerId;
       controller.transitionToOwner(ownerId);
 
-      if (ownerId === null) {
-        if (ownerChanged && previousOwnerId !== null) {
-          // A protected path can remain visible for one render after sign-out.
-          // Remember it so a subsequent account cannot inherit it as a new intent.
-          signedOutResidualIntent = intent;
-        } else if (
-          intent &&
-          intent !== previousIntent &&
-          intent !== signedOutResidualIntent
-        ) {
-          controller.capture(intent);
-        }
-        if (!intent) signedOutResidualIntent = null;
-      } else if (intent && (ownerChanged || intent !== previousIntent)) {
-        const inheritedFromSignedOutOwner =
-          previousOwnerId === null && intent === signedOutResidualIntent;
-        if (!inheritedFromSignedOutOwner) {
-          controller.captureForOwner(ownerId, intent);
-        }
-        signedOutResidualIntent = null;
-      } else if (ownerId !== null) {
-        signedOutResidualIntent = null;
+      if (
+        ownerChanged &&
+        observedIntent &&
+        observedIntent === previousObservedIntent
+      ) {
+        // A path still visible across an owner replacement belongs to the old
+        // navigation tree. Never transfer its route data to the next account.
+        ownerResidualIntent = observedIntent;
+      } else if (observedIntent !== previousObservedIntent) {
+        ownerResidualIntent = null;
       }
 
       previousOwnerId = ownerId;
-      previousIntent = intent;
+      previousObservedIntent = observedIntent;
+    },
+    captureForHold(ownerId, intent) {
+      if (intent === ownerResidualIntent) return false;
+      return ownerId
+        ? controller.captureForOwner(ownerId, intent)
+        : controller.capture(intent);
     },
   };
 }

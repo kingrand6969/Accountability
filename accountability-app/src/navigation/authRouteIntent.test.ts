@@ -114,9 +114,12 @@ describe('one-shot authentication route intent lifecycle', () => {
     const controller = createAuthRouteIntentController('owner-a');
     const coordinator = createAuthRouteIntentCoordinator(controller, 'owner-a');
 
-    coordinator.synchronize('owner-a', '/compose');
-    coordinator.synchronize(null, '/compose');
-    coordinator.synchronize('owner-b', '/compose');
+    coordinator.synchronizeOwner('owner-a', '/compose');
+    coordinator.captureForHold('owner-a', '/compose');
+    coordinator.synchronizeOwner(null, '/compose');
+    coordinator.captureForHold(null, '/compose');
+    coordinator.synchronizeOwner('owner-b', '/compose');
+    coordinator.captureForHold('owner-b', '/compose');
 
     expect(controller.resumeForOwner('owner-b', true)).toBeNull();
   });
@@ -125,7 +128,8 @@ describe('one-shot authentication route intent lifecycle', () => {
     const controller = createAuthRouteIntentController();
     const coordinator = createAuthRouteIntentCoordinator(controller);
 
-    coordinator.synchronize('owner-b', '/compose?photo=1');
+    coordinator.synchronizeOwner('owner-b', '/compose?photo=1');
+    expect(coordinator.captureForHold('owner-b', '/compose?photo=1')).toBe(true);
 
     expect(controller.resumeForOwner('owner-b', true)).toBe('/compose?photo=1');
   });
@@ -134,11 +138,25 @@ describe('one-shot authentication route intent lifecycle', () => {
     const controller = createAuthRouteIntentController('owner-a');
     const coordinator = createAuthRouteIntentCoordinator(controller, 'owner-a');
 
-    coordinator.synchronize('owner-a', '/groups');
-    coordinator.synchronize('owner-b', null);
+    coordinator.synchronizeOwner('owner-a', '/groups');
+    coordinator.captureForHold('owner-a', '/groups');
+    coordinator.synchronizeOwner('owner-b', null);
 
     expect(controller.resumeForOwner('owner-b', true)).toBeNull();
     expect(controller.peek()).toBeNull();
+  });
+
+  test('does not transfer an unchanged protected path or private query across owners', () => {
+    const privateIntent = '/compose?text=private';
+    const controller = createAuthRouteIntentController('owner-a');
+    const coordinator = createAuthRouteIntentCoordinator(controller, 'owner-a');
+
+    coordinator.synchronizeOwner('owner-a', privateIntent);
+    coordinator.captureForHold('owner-a', privateIntent);
+    coordinator.synchronizeOwner('owner-b', privateIntent);
+
+    expect(coordinator.captureForHold('owner-b', privateIntent)).toBe(false);
+    expect(controller.resumeForOwner('owner-b', true)).toBeNull();
   });
 
   test('holds a Post comment intent through sign-in and onboarding, then resumes it once', () => {

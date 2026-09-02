@@ -127,6 +127,9 @@ describe('root layout contract', () => {
     }
     expect(protectedAppRoutes).not.toContain('name="onboarding"');
     expect(layoutSource).toContain('<Stack.Screen name="legal/[doc]"');
+    expect(layoutSource).toMatch(
+      /<Stack\.Protected guard=\{!session \|\| consent\.status === 'current'\}>\s*<Stack\.Screen name="share\/\[id\]"/,
+    );
   });
 
   test('the consent wall cannot be dismissed without acceptance or sign-out', () => {
