@@ -216,7 +216,7 @@ describe('Group 3 social Feed contract', () => {
     const cheerAction = callWith(actions, 'onPress={onToggleLike}');
     const commentAction = callWith(actions, 'onPress={onComment}');
     const shareAction = callWith(actions, 'onPress={onShare}');
-    expect(cheerAction).toMatch(/\bicon=["']clap["']/);
+    expect(cheerAction).toMatch(/\bicon=["']cheer["']/);
     expect(cheerAction).toMatch(/\bcount=\{post\.like_count\}/);
     expect(cheerAction).not.toMatch(/\blabel=\{`Cheer/);
     expect(commentAction).toMatch(/\bicon=["']chatbubble-outline["']/);
@@ -232,7 +232,6 @@ describe('Group 3 social Feed contract', () => {
     expect(hasBooleanProp(memoryAction, 'inline')).toBe(true);
     expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(true);
     const actionStyle = styleBlock(proofCardSource, 'action');
-    expect(actionStyle).toMatch(/\bflex:\s*1\b/);
     expect(actionStyle).toMatch(/\bminWidth:\s*48\b/);
     expect(actionStyle).toMatch(/\bminHeight:\s*48\b/);
 
@@ -241,10 +240,17 @@ describe('Group 3 social Feed contract', () => {
       'function Action(',
       'type ProofCardStyles',
     );
+    expect(actionComponent).toContain("name={active ? 'thumbs-up' : 'thumbs-up-outline'}");
     expect(actionComponent).toContain('accessibilityState={active === undefined ? undefined : { selected: active }}');
     expect(actionComponent).toMatch(
       /active\s*\?\s*theme\.ink\.action\s*:\s*theme\.ink\.muted/,
     );
+    expect(proofCardSource).not.toContain('hand-left-outline');
+    expect(proofCardSource).not.toContain('hand-right-outline');
+    expect(proofCardSource).not.toContain('function CheerIcon(');
+    expect(proofCardSource).toContain('<View style={styles.socialActions}>');
+    expect(proofCardSource).toContain('<View style={styles.utilityActions}>');
+    expect(actionStyle).not.toContain('flex: 1');
   });
 
   test('opens only the Comment action with an explicit keyboard-focus intent', () => {

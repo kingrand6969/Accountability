@@ -420,10 +420,12 @@ describe('Group 3 immersive Post Detail contract', () => {
     );
   });
 
-  test('uses the approved clap for Cheer and truthful empty-comment copy', () => {
-    expect(componentSource).toContain('<Action icon="clap"');
-    expect(componentSource).toContain('name="hand-left-outline"');
-    expect(componentSource).toContain('name="hand-right-outline"');
+  test('uses the approved Solid Signal for Cheer and truthful empty-comment copy', () => {
+    expect(componentSource).toContain('<Action icon="cheer"');
+    expect(componentSource).toContain("name={active ? 'thumbs-up' : 'thumbs-up-outline'}");
+    expect(componentSource).not.toContain('hand-left-outline');
+    expect(componentSource).not.toContain('hand-right-outline');
+    expect(componentSource).not.toContain('function CheerIcon(');
     expect(componentSource).not.toContain("icon={post.liked_by_me ? 'flame' : 'flame-outline'}");
     expect(routeSource).toContain('title="Be the first to comment"');
     expect(routeSource).toContain('subtitle="Share something supportive about this post."');

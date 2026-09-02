@@ -174,33 +174,39 @@ export function FeedProofCard({
       ) : null}
 
       <View style={styles.actions}>
-        <Action
-          theme={theme}
-          styles={styles}
-          icon="clap"
-          count={post.like_count}
-          accessibilityLabel={`${post.liked_by_me ? 'Remove Cheer' : 'Cheer'}${post.like_count > 0 ? `, ${post.like_count} ${post.like_count === 1 ? 'Cheer' : 'Cheers'}` : ''}`}
-          active={post.liked_by_me}
-          onPress={onToggleLike}
-        />
-        <Action
-          theme={theme}
-          styles={styles}
-          icon="chatbubble-outline"
-          count={post.comment_count}
-          accessibilityLabel={`${viewCommentsLabel}${post.comment_count > 0 ? `, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}` : ''}`}
-          onPress={onComment}
-        />
-        <Action
-          theme={theme}
-          styles={styles}
-          icon="paper-plane-outline"
-          accessibilityLabel="Share this post"
-          onPress={onShare}
-        />
-        {post.image_url && post.post_type !== 'video' ? (
-          <SaveToMemories url={post.image_url} inline iconOnly />
-        ) : null}
+        <View style={styles.socialActions}>
+          <Action
+            theme={theme}
+            styles={styles}
+            icon="cheer"
+            count={post.like_count}
+            accessibilityLabel={`${post.liked_by_me ? 'Remove Cheer' : 'Cheer'}${post.like_count > 0 ? `, ${post.like_count} ${post.like_count === 1 ? 'Cheer' : 'Cheers'}` : ''}`}
+            active={post.liked_by_me}
+            onPress={onToggleLike}
+          />
+          <Action
+            theme={theme}
+            styles={styles}
+            icon="chatbubble-outline"
+            count={post.comment_count}
+            accessibilityLabel={`${viewCommentsLabel}${post.comment_count > 0 ? `, ${post.comment_count} ${post.comment_count === 1 ? 'comment' : 'comments'}` : ''}`}
+            onPress={onComment}
+          />
+        </View>
+        <View style={styles.utilityActions}>
+          <Action
+            theme={theme}
+            styles={styles}
+            icon="paper-plane-outline"
+            accessibilityLabel="Share this post"
+            onPress={onShare}
+          />
+          {post.image_url && post.post_type !== 'video' ? (
+            <View style={styles.memoryAction}>
+              <SaveToMemories url={post.image_url} inline iconOnly />
+            </View>
+          ) : null}
+        </View>
       </View>
       <FeedSupporterSummary
         styles={styles}
@@ -245,15 +251,6 @@ function FeedSupporterSummary({
   );
 }
 
-function CheerIcon({ color, styles }: { color: string; styles: ProofCardStyles }) {
-  return (
-    <View style={styles.cheerIcon} accessibilityElementsHidden>
-      <Ionicons name="hand-left-outline" size={21} color={color} style={styles.cheerLeft} />
-      <Ionicons name="hand-right-outline" size={21} color={color} style={styles.cheerRight} />
-    </View>
-  );
-}
-
 function Action({
   theme,
   styles,
@@ -265,7 +262,7 @@ function Action({
 }: {
   theme: AppThemeColors;
   styles: ProofCardStyles;
-  icon: 'clap' | keyof typeof Ionicons.glyphMap;
+  icon: 'cheer' | keyof typeof Ionicons.glyphMap;
   count?: number;
   accessibilityLabel: string;
   active?: boolean;
@@ -279,10 +276,11 @@ function Action({
       accessibilityState={active === undefined ? undefined : { selected: active }}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
-      {icon === 'clap' ? (
-        <CheerIcon
+      {icon === 'cheer' ? (
+        <Ionicons
+          name={active ? 'thumbs-up' : 'thumbs-up-outline'}
+          size={21}
           color={active ? theme.ink.action : theme.ink.muted}
-          styles={styles}
         />
       ) : (
         <Ionicons
@@ -393,12 +391,15 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     backgroundColor: theme.surface.canvas,
   },
+  socialActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  utilityActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  memoryAction: { width: 48, height: 48 },
   action: {
-    flex: 1,
+    width: 48,
     minWidth: 48,
     minHeight: 48,
     flexDirection: 'row',
@@ -406,9 +407,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  cheerIcon: { width: 27, height: 23, position: 'relative' },
-  cheerLeft: { position: 'absolute', left: 0, top: 0 },
-  cheerRight: { position: 'absolute', right: 0, top: 2 },
   actionText: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 11 },
   active: { color: theme.ink.action },
   supporters: {

@@ -414,7 +414,7 @@ export function ImmersivePost({
         />
 
         <View style={immersiveStyles.actionBar}>
-          <Action icon="clap" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
+          <Action icon="cheer" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
           <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
         </View>
@@ -523,7 +523,7 @@ function CompactPostSurface({
           onPress={onOpenEncouragement}
         />
         <View style={immersiveStyles.actionBar}>
-          <Action icon="clap" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
+          <Action icon="cheer" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
           <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
         </View>
@@ -655,21 +655,16 @@ function Metric({ value, label }: { value: string; label: string }) {
   );
 }
 
-function CheerIcon({ color }: { color: string }) {
-  return (
-    <View style={immersiveStyles.cheerIcon} accessibilityElementsHidden>
-      <Ionicons name="hand-left-outline" size={19} color={color} style={immersiveStyles.cheerLeft} />
-      <Ionicons name="hand-right-outline" size={19} color={color} style={immersiveStyles.cheerRight} />
-    </View>
-  );
-}
-
-function Action({ icon, label, shortLabel, active = false, onPress }: { icon: 'clap' | keyof typeof Ionicons.glyphMap; label: string; shortLabel: string; active?: boolean; onPress(): void }) {
+function Action({ icon, label, shortLabel, active = false, onPress }: { icon: 'cheer' | keyof typeof Ionicons.glyphMap; label: string; shortLabel: string; active?: boolean; onPress(): void }) {
   const color = active ? '#B9FF3D' : '#fff';
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={immersiveStyles.action}>
-      {icon === 'clap' ? (
-        <CheerIcon color={color} />
+      {icon === 'cheer' ? (
+        <Ionicons
+          name={active ? 'thumbs-up' : 'thumbs-up-outline'}
+          size={18}
+          color={color}
+        />
       ) : (
         <Ionicons name={icon} size={18} color={color} />
       )}
@@ -789,9 +784,6 @@ const immersiveStyles = StyleSheet.create({
   waveBar: { width: 2, borderRadius: 1, backgroundColor: colors.primary },
   actionBar: { minHeight: 48, borderRadius: radius.pill, backgroundColor: 'rgba(2,8,20,.78)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm },
   action: { flex: 1, minHeight: 48, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' },
-  cheerIcon: { width: 25, height: 21, position: 'relative' },
-  cheerLeft: { position: 'absolute', left: 0, top: 0 },
-  cheerRight: { position: 'absolute', right: 0, top: 2 },
   actionText: { color: '#fff', fontFamily: font.semibold, fontSize: 11 },
   actionActive: { color: '#B9FF3D' },
   pressed: { opacity: 0.72 },
