@@ -35,10 +35,12 @@ test("canonical public share surfaces use Mantle identity without changing link 
 
   assert.match(home, /<BrandLockup \/>/);
   assert.equal((page.match(/<BrandLockup \/>/g) ?? []).length, 2);
-  assert.match(lockup, /aria-label="Mantle"/);
+  assert.match(lockup, /className="brandLockup" role="img" aria-label="Mantle"/);
+  assert.equal((lockup.match(/aria-label="Mantle"/g) ?? []).length, 1);
+  assert.match(lockup, /className="brandMark"[^>]*aria-hidden="true"/);
   assert.match(lockup, /M20 67C33 41 47 37 58 50C69 63 76 58 87 37/);
   assert.equal((lockup.match(/<circle /g) ?? []).length, 2);
-  assert.match(lockup, /className="brandWord"[^>]*>Mantle</);
+  assert.match(lockup, /className="brandWord" aria-hidden="true">Mantle</);
   assert.match(css, /--mantle-lime:\s*#B9FF3D/i);
   assert.match(css, /--mantle-ivory:\s*#F4F5F1/i);
   assert.match(css, /--mantle-charcoal:\s*#111411/i);
