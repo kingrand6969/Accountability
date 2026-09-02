@@ -655,7 +655,6 @@ export default function Feed() {
     <View style={styles.screen}>
       <SocialBrandHeader
         unread={unread}
-        onMenu={() => router.push('/menu' as never)}
         onSearch={() => router.push('/search' as never)}
         onCreate={() => setCreateOpen(true)}
         onNotifications={() => router.push('/notifications' as never)}

@@ -25,7 +25,6 @@ test('keeps the notification bell as the final header action without a profile i
     renderer = TestRenderer.create(
       <SocialBrandHeader
         unread={0}
-        onMenu={jest.fn()}
         onSearch={jest.fn()}
         onCreate={jest.fn()}
         onNotifications={jest.fn()}
@@ -34,7 +33,13 @@ test('keeps the notification bell as the final header action without a profile i
   });
 
   expect(renderer.root.findAllByProps({ accessibilityLabel: 'View your Buddy Card' })).toHaveLength(0);
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Menu' })).toHaveLength(0);
   expect(renderer.root.findByProps({ accessibilityLabel: 'Notifications' })).toBeTruthy();
+});
+
+test('uses the dashboard Menu as the only menu entry point', () => {
+  expect(source).not.toContain('onMenu');
+  expect(source).not.toContain('icon="menu-outline"');
 });
 
 test('uses the canonical compact Mantle lockup instead of rebuilding the wordmark', () => {

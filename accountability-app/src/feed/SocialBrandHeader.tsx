@@ -8,7 +8,6 @@ import { useAppTheme } from '../ui/AppThemeProvider';
 
 type Props = {
   unread: number;
-  onMenu: () => void;
   onSearch: () => void;
   onCreate: () => void;
   onNotifications: () => void;
@@ -16,7 +15,6 @@ type Props = {
 
 export function SocialBrandHeader({
   unread,
-  onMenu,
   onSearch,
   onCreate,
   onNotifications,
@@ -26,7 +24,6 @@ export function SocialBrandHeader({
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={[styles.header, { paddingTop: insets.top }]}>
-      <IconButton icon="menu-outline" accessibilityLabel="Menu" onPress={onMenu} styles={styles} color={theme.ink.action} />
       <View style={styles.wordmark}>
         <BrandWordmark compact />
       </View>
@@ -80,7 +77,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.lg,
     backgroundColor: theme.surface.canvas,
   },
   wordmark: {

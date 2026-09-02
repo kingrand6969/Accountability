@@ -12,6 +12,8 @@ describe('Feed first-impression design', () => {
     expect(header).not.toContain("import { BrandMark } from '../ui/BrandMark'");
     expect(header).not.toContain('styles.ability');
     expect(header).not.toContain('font.extrabold');
+    expect(header).not.toContain('onMenu');
+    expect(feed).not.toContain("onMenu={() => router.push('/menu' as never)}");
   });
 
   test('starts the Feed with My Day and no boxed composer', () => {
