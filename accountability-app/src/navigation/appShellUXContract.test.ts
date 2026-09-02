@@ -23,7 +23,8 @@ describe('app shell UX contract', () => {
     expect(loadingSurface).toContain('accessibilityRole="button"');
     expect(loadingSurface).toContain('minHeight: spacing.touch');
     expect(loadingSurface).toContain('backgroundColor: theme.surface.canvas');
-    expect(loadingSurface).toContain('<BrandWordmark />');
+    expect(loadingSurface).toContain("require('../../assets/images/logo.png')");
+    expect(loadingSurface).not.toContain('BrandWordmark');
     expect(loadingSurface).not.toContain('tintColor');
     expect(loadingSurface).toContain('minHeight: 48');
   });

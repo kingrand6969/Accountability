@@ -4,6 +4,7 @@ import { describe, expect, jest, test } from '@jest/globals';
 import TestRenderer, { act } from 'react-test-renderer';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   StyleSheet,
   Text,
@@ -14,7 +15,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { AppThemeProvider } from './AppThemeProvider';
 import { AppLaunchState } from './AppLaunchState';
-import { BrandWordmark } from './BrandWordmark';
 import { AuthField } from './AuthField';
 import { AuthShell } from './AuthShell';
 import { ConfirmHost, confirmDialog } from './ConfirmDialog';
@@ -83,7 +83,11 @@ describe('shared controls follow the active app appearance', () => {
     expect(renderer.root.findByType(ActivityIndicator).props.color).toBe(dark.ink.action);
     expect(flat(renderer.root.findByProps({ children: 'Opening Mantle' }).props.style).color)
       .toBe(dark.ink.secondary);
-    expect(renderer.root.findAllByType(BrandWordmark)).toHaveLength(1);
+    const lockups = renderer.root.findAllByType(Image);
+    expect(lockups).toHaveLength(1);
+    expect(lockups[0].props.accessibilityLabel).toBe('Mantle');
+    expect(flat(lockups[0].props.style)).toEqual(expect.objectContaining({ width: 196, height: 42 }));
+    expect(flat(lockups[0].props.style).tintColor).toBeUndefined();
   });
 
   test('AuthField renders raised field roles and applies the action border on focus', () => {

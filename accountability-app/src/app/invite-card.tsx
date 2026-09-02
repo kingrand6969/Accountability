@@ -249,7 +249,7 @@ const createStyles = (theme: AppThemeColors) => {
     bottom: 30,
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  brand: { color: '#fff', fontFamily: font.brand, fontSize: 18 },
+  brand: { color: '#F4F5F1', fontFamily: font.brand, fontSize: 18 },
   inviter: {
     flexDirection: 'row',
     alignItems: 'center',

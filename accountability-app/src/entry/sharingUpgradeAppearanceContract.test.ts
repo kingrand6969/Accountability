@@ -39,7 +39,7 @@ describe('sharing and upgrade appearance contract', () => {
     expect(inviteCardSource).not.toContain("mode === 'light'");
     expect(inviteCardSource).not.toContain("mode === 'dark'");
     expect(inviteCardSource).toContain("colors={['#111411', '#263223', '#446B00']}");
-    expect(inviteCardSource).toContain("brand: { color: '#fff'");
+    expect(inviteCardSource).toContain("brand: { color: '#F4F5F1', fontFamily: font.brand");
     expect(inviteCardSource).toContain("avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#fff' }");
     expect(inviteCardSource).toContain("import { BrandMark } from '../ui/BrandMark'");
     expect(inviteCardSource).toContain('<BrandMark size={28}');

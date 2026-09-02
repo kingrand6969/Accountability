@@ -4,11 +4,14 @@ import { describe, expect, test } from '@jest/globals';
 const source = readFileSync(require.resolve('./AppLaunchState'), 'utf8');
 
 describe('AppLaunchState brand lockup', () => {
-  test('renders one canonical Mantle lockup without fixed or tinted duplicate images', () => {
-    expect(source).toContain("import { BrandWordmark } from './BrandWordmark'");
-    expect(source.match(/<BrandWordmark\s*\/>/g)).toHaveLength(1);
-    expect(source).not.toContain('LOGO_MARK');
-    expect(source).not.toContain('WORDMARK');
+  test('renders one generated horizontal lockup without depending on unloaded fonts', () => {
+    expect(source).toContain("const MANTLE_LOCKUP = require('../../assets/images/logo.png')");
+    expect(source.match(/<Image\b/g)).toHaveLength(1);
+    expect(source).toContain('source={MANTLE_LOCKUP}');
+    expect(source).toContain('accessibilityLabel="Mantle"');
+    expect(source).toContain('width: 196');
+    expect(source).toContain('height: 42');
+    expect(source).not.toContain('BrandWordmark');
     expect(source).not.toContain('tintColor');
   });
 });

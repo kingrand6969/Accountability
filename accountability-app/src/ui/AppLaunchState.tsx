@@ -1,7 +1,8 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { font, radius, spacing, type AppThemeColors } from './theme';
 import { useAppTheme } from './AppThemeProvider';
-import { BrandWordmark } from './BrandWordmark';
+
+const MANTLE_LOCKUP = require('../../assets/images/logo.png');
 
 type AppLaunchStateProps = Readonly<{
   message: string;
@@ -20,9 +21,14 @@ export function AppLaunchState({ message, error = false, actionLabel, onAction }
       accessibilityLabel={message}
       accessibilityLiveRegion="polite"
     >
-      <View style={styles.brand} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <BrandWordmark />
-      </View>
+      <Image
+        source={MANTLE_LOCKUP}
+        style={styles.lockup}
+        resizeMode="contain"
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel="Mantle"
+      />
       <View style={[styles.status, error && styles.errorStatus]}>
         {!error ? <ActivityIndicator color={theme.ink.action} size="small" /> : null}
         <Text style={[styles.message, error && styles.errorMessage]}>{message}</Text>
@@ -49,8 +55,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     backgroundColor: theme.surface.canvas,
   },
-  brand: {
-    alignItems: 'center',
+  lockup: {
+    width: 196,
+    height: 42,
   },
   status: {
     minHeight: 48,
