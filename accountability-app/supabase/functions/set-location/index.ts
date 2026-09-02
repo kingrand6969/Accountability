@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     let country: string | null = null;
     try {
       const res = await fetch(geoUrl, {
-        headers: { 'User-Agent': `AccountAbility/1.0 (${CONTACT})`, 'Accept-Language': 'en' },
+        headers: { 'User-Agent': `Mantle/1.0 (${CONTACT})`, 'Accept-Language': 'en' },
       });
       if (res.ok) {
         const g = await res.json();

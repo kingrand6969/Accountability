@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repositoryRoot = path.resolve(projectRoot, '..');
 const sourceExtensions = new Set([
   '.ts',
   '.tsx',
@@ -15,6 +16,8 @@ const sourceExtensions = new Set([
   '.bat',
   '.md',
   '.sql',
+  '.css',
+  '.svg',
 ]);
 const staleProperName = /AccountAbility|ACCOUNTABILITY|Accountability App/g;
 const splitJsxProperName = /Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/gs;
@@ -99,8 +102,12 @@ test('active public surfaces contain no stale AccountAbility proper name', async
       'admin',
       'admin-site/app',
       'admin-site/public',
+      'admin-site/worker',
       'share-site/app',
+      'share-site/public',
+      'share-site/worker',
       'legal-web',
+      'supabase/functions',
     ].map(collectFiles),
   );
   const migrationFiles = (await collectFiles('supabase/migrations')).filter(
@@ -115,6 +122,14 @@ test('active public surfaces contain no stale AccountAbility proper name', async
     'app.json',
     'app.config.js',
     'LAUNCH.md',
+    'admin-site/.openai/hosting.json',
+    'admin-site/next.config.ts',
+    'admin-site/package.json',
+    'admin-site/vite.config.ts',
+    'share-site/.openai/hosting.json',
+    'share-site/next.config.ts',
+    'share-site/package.json',
+    'share-site/vite.config.ts',
   ];
   const staleFiles = [];
 
@@ -132,6 +147,26 @@ test('active public surfaces contain no stale AccountAbility proper name', async
     [],
     `Stale AccountAbility proper name found in:\n${staleFiles.join('\n')}`,
   );
+});
+
+test('repository CI runs the complete Mantle release contract', async () => {
+  const workflow = await readFile(
+    path.join(repositoryRoot, '.github/workflows/ci.yml'),
+    'utf8',
+  );
+
+  assert.match(workflow, /- name: Check brand release contracts\s+run: npm run test:brand/);
+  assert.doesNotMatch(workflow, /run: npm run test:brand-public-copy/);
+});
+
+test('the location geocoder identifies the active Mantle product externally', async () => {
+  const source = await readFile(
+    path.join(projectRoot, 'supabase/functions/set-location/index.ts'),
+    'utf8',
+  );
+
+  assert.match(source, /'User-Agent': `Mantle\/1\.0 \(\$\{CONTACT\}\)`/);
+  assert.doesNotMatch(source, /AccountAbility\/1\.0/);
 });
 
 test('historical attribution exemption is exact and does not hide other stale proper names', () => {
