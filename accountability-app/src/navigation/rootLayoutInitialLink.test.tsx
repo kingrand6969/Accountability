@@ -77,6 +77,22 @@ jest.mock('../activity/ActivitySyncProvider', () => {
       ReactModule.createElement(ReactModule.Fragment, null, children),
   };
 });
+
+jest.mock('../auth/LegalConsentProvider', () => {
+  const ReactModule = require('react') as typeof React;
+  return {
+    LegalConsentProvider: ({ children }: { children?: React.ReactNode }) =>
+      ReactModule.createElement(ReactModule.Fragment, null, children),
+    useLegalConsent: () => ({
+      status: mockOwnerId ? 'current' : 'signed-out',
+      acceptedVersion: mockOwnerId ? '2026-09-02' : null,
+      accepting: false,
+      error: null,
+      accept: jest.fn(),
+      retry: jest.fn(),
+    }),
+  };
+});
 jest.mock('../activity/LocationCollectorBootGate', () => {
   const ReactModule = require('react') as typeof React;
   return {

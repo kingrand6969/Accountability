@@ -134,7 +134,9 @@ describe('Group 3 group/page compatibility routes', () => {
 
   test('preserves authentication resume and Group 2 compatibility destinations', () => {
     const root = route('_layout.tsx');
-    expect(root).toContain('<Stack.Protected guard={!!session}>');
+    expect(root).toContain(
+      "<Stack.Protected guard={!!session && consent.status === 'current' && onboarded === true}>",
+    );
     expect(root).toContain('<Stack.Protected guard={!session}>');
     for (const compatibility of ['compose.tsx', 'win-card.tsx', 'share/[id].tsx']) {
       expect(existsSync(path.join(appRoot, compatibility))).toBe(true);

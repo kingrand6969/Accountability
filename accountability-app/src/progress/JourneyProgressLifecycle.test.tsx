@@ -577,7 +577,9 @@ describe('Journey progress navigation contracts', () => {
   });
 
   test('registers the headerless route inside the authenticated onboarding guard', () => {
-    const guard = layoutSource.indexOf('<Stack.Protected guard={!!session && onboarded === true}>');
+    const guard = layoutSource.indexOf(
+      "<Stack.Protected guard={!!session && consent.status === 'current' && onboarded === true}>",
+    );
     const guardEnd = layoutSource.indexOf('</Stack.Protected>', guard);
     expect(layoutSource.slice(guard, guardEnd)).toContain('<Stack.Screen name="journey-progress" options={{ headerShown: false }} />');
   });

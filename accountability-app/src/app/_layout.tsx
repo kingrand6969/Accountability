@@ -17,6 +17,7 @@ import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk/700Bold';
 import { Sora_700Bold } from '@expo-google-fonts/sora/700Bold';
 import { BowlbyOneSC_400Regular } from '@expo-google-fonts/bowlby-one-sc/400Regular';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
+import { LegalConsentProvider, useLegalConsent } from '../auth/LegalConsentProvider';
 import { captureReferralFromLaunch, redeemPendingReferral } from '../profiles/referrals';
 import { ProProvider } from '../pro/ProProvider';
 import { ToastHost } from '../ui/Toast';
@@ -70,6 +71,7 @@ function HeaderBack() {
 
 function RootNavigator() {
   const { session, loading } = useAuth();
+  const consent = useLegalConsent();
   const { colors: theme } = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
@@ -119,7 +121,7 @@ function RootNavigator() {
   }, [intentController, ownerId]);
 
   useEffect(() => {
-    if (!ownerId) return;
+    if (!ownerId || consent.status !== 'current') return;
     let active = true;
     void (async () => {
       try {
@@ -153,7 +155,7 @@ function RootNavigator() {
     return () => {
       active = false;
     };
-  }, [onboardingAttempt, ownerId]);
+  }, [consent.status, onboardingAttempt, ownerId]);
 
   useEffect(() => subscribeToOnboardingCompletion((completedOwnerId) => {
     if (ownerRef.current !== completedOwnerId) return;
@@ -201,7 +203,11 @@ function RootNavigator() {
     return <AppLaunchState message="Opening Mantle" />;
   }
 
-  if (!!session && onboardingFailed) {
+  if (!!session && consent.status === 'loading') {
+    return <AppLaunchState message="Checking your agreement" />;
+  }
+
+  if (!!session && consent.status === 'current' && onboardingFailed) {
     return (
       <AppLaunchState
         message="We could not check your account setup"
@@ -217,7 +223,7 @@ function RootNavigator() {
     );
   }
 
-  if (!!session && onboarded === null) {
+  if (!!session && consent.status === 'current' && onboarded === null) {
     return <AppLaunchState message="Opening Mantle" />;
   }
 
@@ -234,10 +240,16 @@ function RootNavigator() {
           contentStyle: { backgroundColor: theme.surface.canvas },
         }}
       >
-      <Stack.Protected guard={!!session}>
+      <Stack.Protected guard={!!session && consent.status !== 'current'}>
+        <Stack.Screen
+          name="consent-refresh"
+          options={{ gestureEnabled: false }}
+        />
+      </Stack.Protected>
+      <Stack.Protected guard={!!session && consent.status === 'current'}>
         <Stack.Screen name="onboarding" />
       </Stack.Protected>
-      <Stack.Protected guard={!!session && onboarded === true}>
+      <Stack.Protected guard={!!session && consent.status === 'current' && onboarded === true}>
         <Stack.Screen name="(app)" />
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
         <Stack.Screen name="gym" options={{ headerShown: true, title: 'Exercise Library' }} />
@@ -320,17 +332,19 @@ export default function RootLayout() {
     <AppThemeProvider>
       <LocationCollectorBootGate>
         <AuthProvider>
-          <LocationCollectorOwnerGate>
-            <ActivitySyncProvider>
-              <ProProvider>
-                <RootNavigator />
-                <ModerationGate />
-                <ToastHost />
-                <ConfirmHost />
-                <PostMenuHost />
-              </ProProvider>
-            </ActivitySyncProvider>
-          </LocationCollectorOwnerGate>
+          <LegalConsentProvider>
+            <LocationCollectorOwnerGate>
+              <ActivitySyncProvider>
+                <ProProvider>
+                  <RootNavigator />
+                  <ModerationGate />
+                  <ToastHost />
+                  <ConfirmHost />
+                  <PostMenuHost />
+                </ProProvider>
+              </ActivitySyncProvider>
+            </LocationCollectorOwnerGate>
+          </LegalConsentProvider>
         </AuthProvider>
       </LocationCollectorBootGate>
     </AppThemeProvider>

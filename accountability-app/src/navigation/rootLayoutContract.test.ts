@@ -4,12 +4,15 @@ import { describe, expect, test } from '@jest/globals';
 
 const layoutSource = fs.readFileSync(path.join(__dirname, '../app/_layout.tsx'), 'utf8');
 const onboardingSource = fs.readFileSync(path.join(__dirname, '../app/onboarding.tsx'), 'utf8');
+const consentPath = path.join(__dirname, '../app/consent-refresh.tsx');
+const consentSource = fs.existsSync(consentPath) ? fs.readFileSync(consentPath, 'utf8') : '';
 
 describe('root layout contract', () => {
   test('keeps the approved provider and host order', () => {
     const orderedMarkers = [
       '<LocationCollectorBootGate>',
       '<AuthProvider>',
+      '<LegalConsentProvider>',
       '<LocationCollectorOwnerGate>',
       '<ActivitySyncProvider>',
       '<ProProvider>',
@@ -21,6 +24,7 @@ describe('root layout contract', () => {
       '</ProProvider>',
       '</ActivitySyncProvider>',
       '</LocationCollectorOwnerGate>',
+      '</LegalConsentProvider>',
       '</AuthProvider>',
       '</LocationCollectorBootGate>',
     ];
@@ -80,16 +84,19 @@ describe('root layout contract', () => {
     expect(layoutSource).not.toContain('<Stack.Screen name="post/[id]"');
   });
 
-  test('keeps onboarding session-only and requires completed onboarding for every app route', () => {
+  test('keeps stale consent on its own route and requires current consent for protected app use', () => {
     expect(layoutSource).toMatch(
-      /<Stack\.Protected guard=\{!!session\}>\s*<Stack\.Screen name="onboarding" \/>\s*<\/Stack\.Protected>/,
+      /<Stack\.Protected guard=\{!!session && consent\.status !== 'current'\}>\s*<Stack\.Screen\s+name="consent-refresh"\s+options=\{\{ gestureEnabled: false \}\}\s*\/>\s*<\/Stack\.Protected>/,
+    );
+    expect(layoutSource).toMatch(
+      /<Stack\.Protected guard=\{!!session && consent\.status === 'current'\}>\s*<Stack\.Screen name="onboarding" \/>\s*<\/Stack\.Protected>/,
     );
     expect(layoutSource).toContain(
-      '<Stack.Protected guard={!!session && onboarded === true}>',
+      "<Stack.Protected guard={!!session && consent.status === 'current' && onboarded === true}>",
     );
 
     const appGuard = layoutSource.indexOf(
-      '<Stack.Protected guard={!!session && onboarded === true}>',
+      "<Stack.Protected guard={!!session && consent.status === 'current' && onboarded === true}>",
     );
     const appGuardEnd = layoutSource.indexOf('</Stack.Protected>', appGuard);
     const protectedAppRoutes = layoutSource.slice(appGuard, appGuardEnd);
@@ -97,6 +104,18 @@ describe('root layout contract', () => {
       expect(protectedAppRoutes).toContain(`name="${route}"`);
     }
     expect(protectedAppRoutes).not.toContain('name="onboarding"');
+    expect(layoutSource).toContain('<Stack.Screen name="legal/[doc]"');
+  });
+
+  test('the consent wall cannot be dismissed without acceptance or sign-out', () => {
+    expect(consentSource).toContain("BackHandler.addEventListener('hardwareBackPress'");
+    expect(consentSource).toContain('return true');
+    expect(consentSource).toContain("router.push('/legal/terms')");
+    expect(consentSource).toContain("router.push('/legal/privacy')");
+    expect(consentSource).toContain("'Accept updated Terms and Privacy Policy'");
+    expect(consentSource).toContain('await consent.accept()');
+    expect(consentSource).toContain('await supabase.auth.signOut()');
+    expect(consentSource).not.toMatch(/checked|defaultChecked|auto.?accept/i);
   });
 
   test('signals successful onboarding to the root lifecycle instead of racing a local redirect', () => {

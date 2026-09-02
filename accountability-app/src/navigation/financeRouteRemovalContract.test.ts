@@ -77,6 +77,26 @@ describe('finance and business removal contract', () => {
     }
   });
 
+  test('the Mantle legal text change advances one synchronized consent version', () => {
+    expect(LEGAL_VERSION).toBe('2026-09-02');
+    expect(EFFECTIVE_DATE).toBe('September 2, 2026');
+    expect(Date.parse(`${LEGAL_VERSION}T00:00:00Z`))
+      .toBeGreaterThan(Date.parse('2026-08-10T00:00:00Z'));
+
+    const expectedMeta = `Effective ${EFFECTIVE_DATE} · Version ${LEGAL_VERSION}`;
+    for (const file of ['legal-web/index.html', 'legal-web/terms.html', 'legal-web/privacy.html']) {
+      const hosted = read(file);
+      expect(hosted.match(new RegExp(expectedMeta, 'g'))).toHaveLength(1);
+      expect(hosted).not.toMatch(/Effective August 10, 2026|Version 2026-08-10/);
+    }
+  });
+
+  test('the hosted legal generator uses the canonical operator identity', () => {
+    const generator = read('scripts/build-legal.mjs');
+    expect(generator).toContain('<div class="logo">${esc(OPERATOR)}</div>');
+    expect(generator).not.toContain(['Account', '<span>Ability</span>'].join(''));
+  });
+
   test('hosted legal surfaces use the current public operator name', () => {
     const staleHostedName = new RegExp(
       ['Account', 'Ability|ACCOUNT', 'ABILITY|Accountability', ' App'].join(''),

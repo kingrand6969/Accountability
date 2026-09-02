@@ -16,8 +16,8 @@
 //   6. Confirm the retention periods in the Privacy Policy match your REAL practice.
 //   7. Confirm CONTACT_EMAIL, JURISDICTION (governing-law anchor = your entity's home), MIN_AGE.
 
-export const LEGAL_VERSION = '2026-08-10';
-export const EFFECTIVE_DATE = 'August 10, 2026';
+export const LEGAL_VERSION = '2026-09-02';
+export const EFFECTIVE_DATE = 'September 2, 2026';
 
 export const OPERATOR = 'Mantle'; // consumer / brand name
 export const OPERATOR_ENTITY = ''; // TODO(founder): exact registered legal name, once the entity is formed
