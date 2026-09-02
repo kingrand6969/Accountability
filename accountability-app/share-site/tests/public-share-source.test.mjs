@@ -39,7 +39,9 @@ test("canonical public share surfaces use Mantle identity without changing link 
   assert.match(lockup, /className="brandLockup" role="img" aria-label="Mantle"/);
   assert.equal((lockup.match(/aria-label="Mantle"/g) ?? []).length, 1);
   assert.match(lockup, /className="brandMark"[^>]*aria-hidden="true"/);
-  assert.match(lockup, /M20 67C33 41 47 37 58 50C69 63 76 58 87 37/);
+  assert.match(lockup, /M25 51C37 43 44 26 56 27C63 27 65 33 70 32/);
+  assert.match(lockup, /M51 54C62 65 74 66 84 53C92 42 97 34 101 32/);
+  assert.equal((lockup.match(/<path /g) ?? []).length, 2);
   assert.equal((lockup.match(/<circle /g) ?? []).length, 2);
   assert.match(lockup, /className="brandWord" aria-hidden="true">Mantle</);
   assert.match(css, /--mantle-lime:\s*#B9FF3D/i);
@@ -52,8 +54,9 @@ test("canonical public share surfaces use Mantle identity without changing link 
   assert.doesNotMatch(css, /font-family:\s*ui-sans-serif/);
   assert.match(favicon, /fill="#111411"/i);
   assert.match(favicon, /stroke="#B9FF3D"/i);
-  assert.match(favicon, /viewBox="-20 -20 140 140"/);
-  assert.match(favicon, /<rect x="-20" y="-20" width="140" height="140"/);
+  assert.match(favicon, /viewBox="-24 -44 168 168"/);
+  assert.match(favicon, /<rect x="-24" y="-44" width="168" height="168"/);
+  assert.equal((favicon.match(/<path /g) ?? []).length, 2);
   assert.doesNotMatch(favicon, /#68C4FF|#0C79D8|#2E9EFF/i);
 });
 

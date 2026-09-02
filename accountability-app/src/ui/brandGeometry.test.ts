@@ -248,9 +248,9 @@ async function textRegionSummary(
     .raw()
     .toBuffer({ resolveWithObject: true });
   const stats = await image.stats();
-  const charcoal = rgb(BRAND_GEOMETRY.colors.charcoal);
+  const wordmarkColor = rgb(BRAND_GEOMETRY.colors.cream);
   const lime = rgb(BRAND_GEOMETRY.colors.lime);
-  let charcoalPixels = 0;
+  let wordmarkPixels = 0;
   let limePixels = 0;
   let minX = info.width;
   let minY = info.height;
@@ -262,8 +262,8 @@ async function textRegionSummary(
       const offset = (y * info.width + x) * info.channels;
       if (data[offset + 3] === 0) continue;
       const pixelRgb = Array.from(data.subarray(offset, offset + 3));
-      if (pixelRgb.join() === charcoal.join()) {
-        charcoalPixels += 1;
+      if (pixelRgb.join() === wordmarkColor.join()) {
+        wordmarkPixels += 1;
         minX = Math.min(minX, x);
         minY = Math.min(minY, y);
         maxX = Math.max(maxX, x);
@@ -279,7 +279,7 @@ async function textRegionSummary(
       maxX < 0
         ? null
         : { width: maxX - minX + 1, height: maxY - minY + 1 },
-    charcoalPixels,
+    wordmarkPixels,
     limePixels,
   };
 }
@@ -330,7 +330,7 @@ async function expectAssetContracts(assetDirectory: string) {
     );
     expect(summary.alphaMaximum).toBe(255);
     expect(summary.limePixels).toBe(0);
-    expect(summary.charcoalPixels).toBeGreaterThan(1_000);
+    expect(summary.wordmarkPixels).toBeGreaterThan(1_000);
     expect(summary.bounds).not.toBeNull();
     expect(summary.bounds!.width).toBeGreaterThan(contract.minimumWidth);
     expect(summary.bounds!.height).toBeGreaterThan(contract.minimumHeight);
@@ -363,7 +363,7 @@ async function expectSafeRasterEdges(assetDirectory: string) {
 }
 
 const validMantleGeometry = {
-  viewBox: '0 0 96 96',
+  viewBox: '0 0 120 80',
   wordmark: 'Mantle',
   colors: {
     lime: '#B9FF3D',
@@ -372,18 +372,21 @@ const validMantleGeometry = {
     cream: '#F4F5F1',
   },
   mark: {
-    path: 'M20 67C33 41 47 37 58 50C69 63 76 58 87 37',
-    strokeWidth: 14,
+    paths: [
+      'M25 51C37 43 44 26 56 27C63 27 65 33 70 32',
+      'M51 54C62 65 74 66 84 53C92 42 97 34 101 32',
+    ],
+    strokeWidth: 20,
     nodes: [
-      { cx: 11, cy: 77, r: 9 },
-      { cx: 91, cy: 24, r: 9 },
+      { cx: 11.5, cy: 68, r: 11.5 },
+      { cx: 108.5, cy: 12, r: 11.5 },
     ],
   },
 };
 
 describe('Mantle brand geometry contract', () => {
   it('defines the approved canvas, colors, and wordmark capitalization', () => {
-    expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 96');
+    expect(BRAND_GEOMETRY.viewBox).toBe('0 0 120 80');
     expect(BRAND_GEOMETRY.colors).toEqual({
       lime: '#B9FF3D',
       supportingLime: '#7FAF1C',
@@ -393,15 +396,20 @@ describe('Mantle brand geometry contract', () => {
     expect(BRAND_WORDMARK).toBe('Mantle');
   });
 
-  it('contains one rounded path connecting exactly two nodes', () => {
+  it('matches the approved two-ribbon silhouette and two endpoint nodes', () => {
     expect(BRAND_GEOMETRY.mark).toEqual({
-      path: 'M20 67C33 41 47 37 58 50C69 63 76 58 87 37',
-      strokeWidth: 14,
+      paths: [
+        'M25 51C37 43 44 26 56 27C63 27 65 33 70 32',
+        'M51 54C62 65 74 66 84 53C92 42 97 34 101 32',
+      ],
+      strokeWidth: 20,
       nodes: [
-        { cx: 11, cy: 77, r: 9 },
-        { cx: 91, cy: 24, r: 9 },
+        { cx: 11.5, cy: 68, r: 11.5 },
+        { cx: 108.5, cy: 12, r: 11.5 },
       ],
     });
+    expect(BRAND_GEOMETRY.mark.paths).toHaveLength(2);
+    expect(new Set(BRAND_GEOMETRY.mark.paths).size).toBe(2);
     expect(BRAND_GEOMETRY.mark).not.toHaveProperty('primaryPath');
     expect(BRAND_GEOMETRY.mark).not.toHaveProperty('accentPath');
   });
@@ -411,7 +419,7 @@ describe('Mantle brand geometry contract', () => {
       ' ',
     ).map(Number);
 
-    expect(BRAND_GEOMETRY.viewBox).toBe('0 0 96 96');
+    expect(BRAND_GEOMETRY.viewBox).toBe('0 0 120 80');
     for (const node of BRAND_GEOMETRY.mark.nodes) {
       expect(node.cx - node.r).toBeGreaterThan(x);
       expect(node.cx + node.r).toBeLessThan(x + width);
@@ -436,7 +444,10 @@ describe('Mantle brand geometry contract', () => {
         strokeWidth: validMantleGeometry.mark.strokeWidth,
         nodes: validMantleGeometry.mark.nodes,
       },
-      { ...validMantleGeometry.mark, path: '' },
+      { ...validMantleGeometry.mark, paths: [] },
+      { ...validMantleGeometry.mark, paths: [validMantleGeometry.mark.paths[0]] },
+      { ...validMantleGeometry.mark, paths: ['', validMantleGeometry.mark.paths[1]] },
+      { ...validMantleGeometry.mark, paths: [validMantleGeometry.mark.paths[0], ''] },
       { ...validMantleGeometry.mark, strokeWidth: 0 },
       { ...validMantleGeometry.mark, strokeWidth: -1 },
       { ...validMantleGeometry.mark, strokeWidth: Number.POSITIVE_INFINITY },
@@ -532,14 +543,15 @@ describe('Mantle brand geometry contract', () => {
     expect(generator).toContain("loadBrandGeometry('../src/ui/brandGeometry.ts')");
     expect(generator).toContain('BRAND_GENERAL_MARK_RENDER_VIEW_BOX');
     expect(generator).toContain('BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX');
-    expect(BRAND_GENERAL_MARK_RENDER_VIEW_BOX).toBe('-20 -20 140 140');
-    expect(BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX).toBe('-50 -50 200 200');
+    expect(BRAND_GENERAL_MARK_RENDER_VIEW_BOX).toBe('-24 -44 168 168');
+    expect(BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX).toBe('-65 -85 250 250');
     for (const duplicatedLiteral of [
       '#B9FF3D',
       '#111411',
       '#7FAF1C',
       '#F4F5F1',
-      'M20 67C33 41',
+      'M25 51C37 43',
+      'M51 54C62 65',
     ]) {
       expect(generator).not.toContain(duplicatedLiteral);
     }
@@ -696,7 +708,7 @@ describe('Mantle brand geometry contract', () => {
       expect(meaningful.bounds.right).toBeGreaterThanOrEqual(1);
       expect(meaningful.bounds.bottom).toBeGreaterThanOrEqual(1);
       expect(meaningful.bounds.width).toBeGreaterThan(size * 0.7);
-      expect(meaningful.bounds.height).toBeGreaterThan(size * 0.5);
+      expect(meaningful.bounds.height).toBeGreaterThan(size * 0.45);
       expect(meaningful.leftNodePixels).toBeGreaterThan(1);
       expect(meaningful.rightNodePixels).toBeGreaterThan(1);
     },

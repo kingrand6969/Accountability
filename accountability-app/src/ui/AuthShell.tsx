@@ -70,7 +70,7 @@ export function AuthShell({
           <View style={[styles.brand, welcome && styles.welcomeBrand]}>
             <View style={styles.lockup}>
               <BrandMark
-                size={welcome ? 64 : 52}
+                size={welcome ? 120 : 104}
                 color={theme.ink.action}
                 accessibilityLabel="Mantle logo"
               />
@@ -133,7 +133,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     alignSelf: 'center',
   },
   brand: { alignItems: 'center', gap: 4, marginBottom: spacing.xl },
-  lockup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  lockup: { alignItems: 'center', gap: spacing.xs },
   welcomeBrand: {
     marginTop: 52,
     marginBottom: 72,

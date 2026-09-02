@@ -89,8 +89,11 @@ function validateGeometry(geometry) {
     !isColor(geometry?.colors?.supportingLime) ||
     !isColor(geometry?.colors?.charcoal) ||
     !isColor(geometry?.colors?.cream) ||
-    typeof geometry?.mark?.path !== 'string' ||
-    geometry.mark.path.length === 0 ||
+    !Array.isArray(geometry?.mark?.paths) ||
+    geometry.mark.paths.length !== 2 ||
+    !geometry.mark.paths.every(
+      (path) => typeof path === 'string' && path.length > 0,
+    ) ||
     !isFiniteNumber(geometry.mark.strokeWidth) ||
     geometry.mark.strokeWidth <= 0 ||
     !Array.isArray(geometry.mark.nodes) ||
@@ -103,13 +106,19 @@ function validateGeometry(geometry) {
 }
 
 function markBody({ mark }, fill) {
+  const paths = mark.paths
+    .map(
+      (path) =>
+        `<path d="${path}" fill="none" stroke="${fill}" stroke-width="${mark.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`,
+    )
+    .join('');
   const nodes = mark.nodes
     .map(
       ({ cx, cy, r }) =>
         `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/>`,
     )
     .join('');
-  return `<path d="${mark.path}" fill="none" stroke="${fill}" stroke-width="${mark.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>${nodes}`;
+  return `${paths}${nodes}`;
 }
 
 function parseViewBox(viewBox) {
@@ -150,7 +159,7 @@ function createMarkup(geometry, renderViewBoxes) {
   }
 
   const wordmarkMark = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="300" viewBox="0 0 1400 300">
-    <g transform="translate(18 15) scale(2.72)">${markBody(geometry, colors.lime)}</g>
+    <g transform="translate(18 40) scale(2.2)">${markBody(geometry, colors.lime)}</g>
   </svg>`;
 
   return { adaptiveMark, appIcon, mark, wordmarkMark };
@@ -207,7 +216,7 @@ export async function generateBrandAssets(outputDirectory) {
   const wordmark = await renderWordmark(
     wordmarkMark,
     geometry.wordmark,
-    geometry.colors.charcoal,
+    geometry.colors.cream,
     brandFontPath,
   );
   await mkdir(outputDirectory, { recursive: true });

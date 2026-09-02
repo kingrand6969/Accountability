@@ -20,7 +20,7 @@ type BrandGeometry = {
     cream: string;
   };
   mark: {
-    path: string;
+    paths: [string, string];
     strokeWidth: number;
     nodes: [BrandNode, BrandNode];
   };
@@ -73,8 +73,9 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
     !isHexColor(value.colors.charcoal) ||
     !isHexColor(value.colors.cream) ||
     !isRecord(value.mark) ||
-    typeof value.mark.path !== 'string' ||
-    value.mark.path.length === 0 ||
+    !Array.isArray(value.mark.paths) ||
+    value.mark.paths.length !== 2 ||
+    !value.mark.paths.every((path) => typeof path === 'string' && path.length > 0) ||
     !isFiniteNumber(value.mark.strokeWidth) ||
     value.mark.strokeWidth <= 0 ||
     !Array.isArray(value.mark.nodes) ||
@@ -92,7 +93,7 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
  * Node asset generator. Keep it as JSON so neither runtime needs a transpiler.
  */
 export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
-  "viewBox": "0 0 96 96",
+  "viewBox": "0 0 120 80",
   "wordmark": "Mantle",
   "colors": {
     "lime": "#B9FF3D",
@@ -101,11 +102,14 @@ export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
     "cream": "#F4F5F1"
   },
   "mark": {
-    "path": "M20 67C33 41 47 37 58 50C69 63 76 58 87 37",
-    "strokeWidth": 14,
+    "paths": [
+      "M25 51C37 43 44 26 56 27C63 27 65 33 70 32",
+      "M51 54C62 65 74 66 84 53C92 42 97 34 101 32"
+    ],
+    "strokeWidth": 20,
     "nodes": [
-      { "cx": 11, "cy": 77, "r": 9 },
-      { "cx": 91, "cy": 24, "r": 9 }
+      { "cx": 11.5, "cy": 68, "r": 11.5 },
+      { "cx": 108.5, "cy": 12, "r": 11.5 }
     ]
   }
 }`));
@@ -113,11 +117,11 @@ export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
 /**
  * General/native framing keeps rasterized small marks clear of every canvas edge.
  */
-export const BRAND_GENERAL_MARK_RENDER_VIEW_BOX = '-20 -20 140 140';
+export const BRAND_GENERAL_MARK_RENDER_VIEW_BOX = '-24 -44 168 168';
 
 /**
  * Android adaptive foregrounds must fit the centered 66/108 circular safe zone.
  */
-export const BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX = '-50 -50 200 200';
+export const BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX = '-65 -85 250 250';
 
 export const BRAND_WORDMARK = BRAND_GEOMETRY.wordmark;

@@ -42,11 +42,11 @@ body {
 .shareHeader, .shareBody { padding: 22px 24px; }
 .shareHeader { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .brandLockup { display: inline-flex; align-items: center; gap: 9px; flex: none; }
-.brandMark { width: 34px; height: 34px; overflow: visible; }
+.brandMark { width: 48px; height: 32px; overflow: visible; }
 .brandMark path {
   fill: none;
   stroke: var(--mantle-lime);
-  stroke-width: 14;
+  stroke-width: 20;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

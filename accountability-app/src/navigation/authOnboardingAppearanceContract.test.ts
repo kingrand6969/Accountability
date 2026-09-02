@@ -27,6 +27,8 @@ describe('auth and onboarding appearance contract', () => {
     expect(authShell).toContain('color={theme.ink.action}');
     expect(authShell).toContain('fontFamily: font.brand');
     expect(authShell).toContain('color: theme.ink.primary');
+    expect(authShell).toContain('size={welcome ? 120 : 104}');
+    expect(authShell).toContain("lockup: { alignItems: 'center', gap: spacing.xs }");
     expect(authShell.match(/\{BRAND_WORDMARK\}<\/Text>/g)).toHaveLength(1);
     expect(authShell).not.toContain('AUTH_CANVAS');
     expect(authShell).not.toMatch(/backgroundColor:\s*['"]#(?:fff|FFFFFF|F4F5F1)['"]/);

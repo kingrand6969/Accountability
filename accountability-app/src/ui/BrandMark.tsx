@@ -28,14 +28,17 @@ export function BrandMark({
       accessibilityRole="image"
       accessibilityLabel={accessibilityLabel}
     >
-      <Path
-        d={BRAND_GEOMETRY.mark.path}
-        fill="none"
-        stroke={color}
-        strokeWidth={BRAND_GEOMETRY.mark.strokeWidth}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {BRAND_GEOMETRY.mark.paths.map((path) => (
+        <Path
+          key={path}
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeWidth={BRAND_GEOMETRY.mark.strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
       {BRAND_GEOMETRY.mark.nodes.map((node) => (
         <Circle
           key={`${node.cx}-${node.cy}`}
