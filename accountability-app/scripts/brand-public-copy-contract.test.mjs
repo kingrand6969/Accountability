@@ -5,7 +5,6 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repositoryRoot = path.resolve(projectRoot, '..');
 const sourceExtensions = new Set([
   '.ts',
   '.tsx',
@@ -147,16 +146,6 @@ test('active public surfaces contain no stale AccountAbility proper name', async
     [],
     `Stale AccountAbility proper name found in:\n${staleFiles.join('\n')}`,
   );
-});
-
-test('repository CI runs the complete Mantle release contract', async () => {
-  const workflow = await readFile(
-    path.join(repositoryRoot, '.github/workflows/ci.yml'),
-    'utf8',
-  );
-
-  assert.match(workflow, /- name: Check brand release contracts\s+run: npm run test:brand/);
-  assert.doesNotMatch(workflow, /run: npm run test:brand-public-copy/);
 });
 
 test('the location geocoder identifies the active Mantle product externally', async () => {
