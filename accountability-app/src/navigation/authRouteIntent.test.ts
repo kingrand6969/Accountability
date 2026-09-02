@@ -1,5 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import {
+  createAuthRouteIntentCoordinator,
   createAuthRouteIntentController,
   normalizeProtectedRouteIntent,
   routeIntentFromPath,
@@ -109,6 +110,37 @@ describe('protected Group 3 route intent validation', () => {
 });
 
 describe('one-shot authentication route intent lifecycle', () => {
+  test('does not turn the protected path left by sign-out into the next owner intent', () => {
+    const controller = createAuthRouteIntentController('owner-a');
+    const coordinator = createAuthRouteIntentCoordinator(controller, 'owner-a');
+
+    coordinator.synchronize('owner-a', '/compose');
+    coordinator.synchronize(null, '/compose');
+    coordinator.synchronize('owner-b', '/compose');
+
+    expect(controller.resumeForOwner('owner-b', true)).toBeNull();
+  });
+
+  test('transitions to a new owner before capturing its same-commit protected path', () => {
+    const controller = createAuthRouteIntentController();
+    const coordinator = createAuthRouteIntentCoordinator(controller);
+
+    coordinator.synchronize('owner-b', '/compose?photo=1');
+
+    expect(controller.resumeForOwner('owner-b', true)).toBe('/compose?photo=1');
+  });
+
+  test('replaces owner A state during a direct A-to-B transition without replaying it', () => {
+    const controller = createAuthRouteIntentController('owner-a');
+    const coordinator = createAuthRouteIntentCoordinator(controller, 'owner-a');
+
+    coordinator.synchronize('owner-a', '/groups');
+    coordinator.synchronize('owner-b', null);
+
+    expect(controller.resumeForOwner('owner-b', true)).toBeNull();
+    expect(controller.peek()).toBeNull();
+  });
+
   test('holds a Post comment intent through sign-in and onboarding, then resumes it once', () => {
     const destination = '/post/11111111-1111-4111-8111-111111111111?comment=1';
     const controller = createAuthRouteIntentController();

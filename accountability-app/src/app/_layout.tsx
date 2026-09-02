@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -38,6 +39,7 @@ import { LocationCollectorOwnerGate } from '../activity/LocationCollectorOwnerGa
 import '../notifications/handler';
 import '../activity/locationTask';
 import {
+  createAuthRouteIntentCoordinator,
   createAuthRouteIntentController,
   onboardingStorageKey,
   routeIntentFromPath,
@@ -61,12 +63,18 @@ const AuthRouteIntentContext = createContext<AuthRouteIntentController | null>(n
 function AuthRouteIntentProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
+  const pathname = usePathname();
+  const query = useGlobalSearchParams() as RouteQuery;
+  const currentIntent = routeIntentFromPath(pathname, query);
   const [intentController] = useState(() => createAuthRouteIntentController(ownerId));
+  const [intentCoordinator] = useState(() =>
+    createAuthRouteIntentCoordinator(intentController, ownerId),
+  );
   const initialLinkCaptureStartedRef = useRef(false);
 
-  useEffect(() => {
-    intentController.transitionToOwner(ownerId);
-  }, [intentController, ownerId]);
+  useLayoutEffect(() => {
+    intentCoordinator.synchronize(ownerId, currentIntent);
+  }, [currentIntent, intentCoordinator, ownerId]);
 
   useEffect(() => {
     if (initialLinkCaptureStartedRef.current) return;
@@ -122,7 +130,6 @@ function RootNavigator() {
   const { colors: theme } = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
-  const query = useGlobalSearchParams() as RouteQuery;
   const ownerId = session?.user.id ?? null;
   const ownerRef = useRef(ownerId);
   const intentController = useAuthRouteIntentController();
@@ -137,17 +144,6 @@ function RootNavigator() {
       ? ownerOnboardingState.complete
       : null
     : false;
-  const currentIntent = routeIntentFromPath(pathname, query);
-
-  useEffect(() => {
-    if (!session && currentIntent) intentController.capture(currentIntent);
-  }, [currentIntent, intentController, session]);
-
-  useEffect(() => {
-    if (!ownerId || onboarded === true || !currentIntent) return;
-    intentController.captureForOwner(ownerId, currentIntent);
-  }, [currentIntent, intentController, onboarded, ownerId]);
-
   useEffect(() => {
     ownerRef.current = ownerId;
   }, [ownerId]);
@@ -354,15 +350,19 @@ function ConsentPriorityRuntime() {
 
   return (
     <LocationCollectorOwnerGate enabled={locationGateEnabled}>
-      <ActivitySyncProvider>
-        <ProProvider>
-          <RootNavigator />
-          <ModerationGate />
-          <ToastHost />
-          <ConfirmHost />
-          <PostMenuHost />
-        </ProProvider>
-      </ActivitySyncProvider>
+      {consent.status === 'current' ? (
+        <ActivitySyncProvider>
+          <ProProvider>
+            <RootNavigator />
+            <ModerationGate />
+            <ToastHost />
+            <ConfirmHost />
+            <PostMenuHost />
+          </ProProvider>
+        </ActivitySyncProvider>
+      ) : (
+        <RootNavigator />
+      )}
     </LocationCollectorOwnerGate>
   );
 }

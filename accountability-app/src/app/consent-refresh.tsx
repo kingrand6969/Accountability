@@ -15,6 +15,7 @@ export default function ConsentRefresh() {
   const { colors: theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -29,8 +30,11 @@ export default function ConsentRefresh() {
 
   async function signOut() {
     setSigningOut(true);
+    setSignOutError(null);
     try {
       await supabase.auth.signOut();
+    } catch {
+      setSignOutError('We could not sign you out. Check your connection and try again.');
     } finally {
       setSigningOut(false);
     }
@@ -98,6 +102,9 @@ export default function ConsentRefresh() {
           loading={consent.accepting}
         />
       )}
+      {signOutError ? (
+        <Text accessibilityRole="alert" style={styles.error}>{signOutError}</Text>
+      ) : null}
       <Button
         title="Sign out"
         accessibilityLabel="Sign out instead"

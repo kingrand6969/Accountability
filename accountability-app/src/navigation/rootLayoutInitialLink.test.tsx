@@ -17,6 +17,8 @@ const mockGetMyProfile = jest.fn<() => Promise<{ display_name: string | null; ar
 const mockReconcileOwner = jest.fn<(ownerId: string | null) => Promise<'running' | 'paused'>>();
 let mockPostMenuHostMounts = 0;
 let mockPostMenuHostUnmounts = 0;
+let mockActivitySyncMounts = 0;
+let mockActivitySyncUnmounts = 0;
 const mockLaunchState = jest.fn((_props: {
   message: string;
   error?: boolean;
@@ -77,8 +79,15 @@ jest.mock('../auth/AuthProvider', () => {
 jest.mock('../activity/ActivitySyncProvider', () => {
   const ReactModule = require('react') as typeof React;
   return {
-    ActivitySyncProvider: ({ children }: { children?: React.ReactNode }) =>
-      ReactModule.createElement(ReactModule.Fragment, null, children),
+    ActivitySyncProvider: ({ children }: { children?: React.ReactNode }) => {
+      ReactModule.useEffect(() => {
+        mockActivitySyncMounts += 1;
+        return () => {
+          mockActivitySyncUnmounts += 1;
+        };
+      }, []);
+      return ReactModule.createElement(ReactModule.Fragment, null, children);
+    },
   };
 });
 
@@ -191,6 +200,8 @@ beforeEach(() => {
   mockLaunchState.mockClear();
   mockPostMenuHostMounts = 0;
   mockPostMenuHostUnmounts = 0;
+  mockActivitySyncMounts = 0;
+  mockActivitySyncUnmounts = 0;
 });
 
 describe('root launch-link capture lifecycle', () => {
@@ -205,6 +216,8 @@ describe('root launch-link capture lifecycle', () => {
       const renderer = await renderOrUpdate();
 
       expect(mockReconcileOwner).not.toHaveBeenCalled();
+      expect(mockActivitySyncMounts).toBe(0);
+      expect(mockPostMenuHostMounts).toBe(0);
       expect(mockProtectedGuards.slice(-4)).toEqual([true, false, false, false]);
       expect(mockLaunchState).not.toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Checking your agreement' }),
@@ -224,6 +237,26 @@ describe('root launch-link capture lifecycle', () => {
     await act(async () => renderer.unmount());
   });
 
+  test('unmounts protected services and modal hosts when current consent becomes required', async () => {
+    mockOwnerId = 'owner-a';
+    mockConsentStatus = 'current';
+    mockPathname = '/';
+    mockGetInitialURL.mockResolvedValue(null);
+    let renderer = await renderOrUpdate();
+
+    expect(mockActivitySyncMounts).toBe(1);
+    expect(mockPostMenuHostMounts).toBe(1);
+
+    mockConsentStatus = 'required';
+    mockPathname = '/consent-refresh';
+    renderer = await renderOrUpdate(renderer);
+
+    expect(mockActivitySyncUnmounts).toBe(1);
+    expect(mockPostMenuHostUnmounts).toBe(1);
+    expect(mockProtectedGuards.slice(-4)).toEqual([true, false, false, false]);
+    await act(async () => renderer.unmount());
+  });
+
   test('preserves a held protected intent while consent unlock waits for location reconciliation', async () => {
     let resolveLocation!: (status: 'running') => void;
     const locationResult = new Promise<'running'>((resolve) => {
@@ -235,7 +268,7 @@ describe('root launch-link capture lifecycle', () => {
     mockGetInitialURL.mockResolvedValue(null);
     mockGetMyProfile.mockResolvedValue({ display_name: null, area: null });
     let renderer = await renderOrUpdate();
-    expect(mockPostMenuHostMounts).toBe(1);
+    expect(mockPostMenuHostMounts).toBe(0);
 
     mockPathname = '/consent-refresh';
     mockConsentStatus = 'current';
@@ -245,7 +278,7 @@ describe('root launch-link capture lifecycle', () => {
     expect(mockLaunchState).toHaveBeenLastCalledWith(
       expect.objectContaining({ message: 'Checking activity tracking' }),
     );
-    expect(mockPostMenuHostUnmounts).toBe(1);
+    expect(mockPostMenuHostUnmounts).toBe(0);
     expect(mockReplace).not.toHaveBeenCalledWith('/compose');
 
     await act(async () => {
@@ -253,7 +286,7 @@ describe('root launch-link capture lifecycle', () => {
       await locationResult;
       await Promise.resolve();
     });
-    expect(mockPostMenuHostMounts).toBe(2);
+    expect(mockPostMenuHostMounts).toBe(1);
     await act(async () => {
       notifyOnboardingComplete('owner-a');
       await Promise.resolve();
@@ -280,7 +313,7 @@ describe('root launch-link capture lifecycle', () => {
     mockConsentStatus = 'current';
     mockReconcileOwner.mockReturnValueOnce(ownerAResult);
     renderer = await renderOrUpdate(renderer);
-    expect(mockPostMenuHostUnmounts).toBe(1);
+    expect(mockPostMenuHostUnmounts).toBe(0);
 
     mockOwnerId = null;
     mockConsentStatus = 'signed-out';

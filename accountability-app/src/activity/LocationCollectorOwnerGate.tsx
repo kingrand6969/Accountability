@@ -26,6 +26,12 @@ type Result = Readonly<{
   phase: 'ready' | 'error';
 }>;
 
+function reconciliationPhase(status: ReconciliationStatus): Result['phase'] {
+  return status === 'running' || status === 'paused' || status === 'closing'
+    ? 'ready'
+    : 'error';
+}
+
 export function LocationCollectorOwnerGate({
   children,
   enabled = true,
@@ -76,10 +82,7 @@ export function LocationCollectorOwnerGate({
         : {
             key: expectedKey,
             intent: expectedIntent,
-            phase:
-              status === 'running' || status === 'paused' || status === 'closing'
-                ? 'ready'
-                : 'error',
+            phase: reconciliationPhase(status),
           });
     });
   }, [reconcile]);
@@ -95,10 +98,7 @@ export function LocationCollectorOwnerGate({
         setResult({
           key,
           intent,
-          phase:
-            status === 'running' || status === 'paused' || status === 'closing'
-              ? 'ready'
-              : 'error',
+          phase: reconciliationPhase(status),
         });
       })
       .catch(() => {

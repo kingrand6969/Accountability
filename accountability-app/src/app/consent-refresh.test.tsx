@@ -118,4 +118,36 @@ describe('consent refresh wall', () => {
     expect(mockAccept).not.toHaveBeenCalled();
     await act(async () => renderer.unmount());
   });
+
+  test('keeps the wall actionable and explains when sign-out fails', async () => {
+    mockStatus = 'required';
+    mockSignOut.mockRejectedValueOnce(new Error('offline'));
+    const renderer = await renderScreen();
+
+    await act(async () => {
+      renderer.root.findAllByProps({ accessibilityLabel: 'Sign out instead' })[0].props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findAllByProps({ accessibilityRole: 'alert' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          props: expect.objectContaining({
+            children: 'We could not sign you out. Check your connection and try again.',
+          }),
+        }),
+      ]),
+    );
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Sign out instead' }).length)
+      .toBeGreaterThan(0);
+
+    mockSignOut.mockResolvedValueOnce(undefined);
+    await act(async () => {
+      renderer.root.findAllByProps({ accessibilityLabel: 'Sign out instead' })[0].props.onPress();
+      await Promise.resolve();
+    });
+    expect(mockSignOut).toHaveBeenCalledTimes(2);
+    await act(async () => renderer.unmount());
+  });
 });

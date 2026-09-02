@@ -155,6 +155,53 @@ export type AuthRouteIntentController = {
   peek: () => string | null;
 };
 
+export type AuthRouteIntentCoordinator = Readonly<{
+  synchronize: (ownerId: string | null, intent: string | null) => void;
+}>;
+
+export function createAuthRouteIntentCoordinator(
+  controller: AuthRouteIntentController,
+  initialOwnerId: string | null = null,
+): AuthRouteIntentCoordinator {
+  let previousOwnerId = initialOwnerId;
+  let previousIntent: string | null = null;
+  let signedOutResidualIntent: string | null = null;
+
+  return {
+    synchronize(ownerId, intent) {
+      const ownerChanged = ownerId !== previousOwnerId;
+      controller.transitionToOwner(ownerId);
+
+      if (ownerId === null) {
+        if (ownerChanged && previousOwnerId !== null) {
+          // A protected path can remain visible for one render after sign-out.
+          // Remember it so a subsequent account cannot inherit it as a new intent.
+          signedOutResidualIntent = intent;
+        } else if (
+          intent &&
+          intent !== previousIntent &&
+          intent !== signedOutResidualIntent
+        ) {
+          controller.capture(intent);
+        }
+        if (!intent) signedOutResidualIntent = null;
+      } else if (intent && (ownerChanged || intent !== previousIntent)) {
+        const inheritedFromSignedOutOwner =
+          previousOwnerId === null && intent === signedOutResidualIntent;
+        if (!inheritedFromSignedOutOwner) {
+          controller.captureForOwner(ownerId, intent);
+        }
+        signedOutResidualIntent = null;
+      } else if (ownerId !== null) {
+        signedOutResidualIntent = null;
+      }
+
+      previousOwnerId = ownerId;
+      previousIntent = intent;
+    },
+  };
+}
+
 export function createAuthRouteIntentController(
   initialOwnerId: string | null = null,
 ): AuthRouteIntentController {
