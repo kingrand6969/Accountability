@@ -13,7 +13,9 @@ describe('root layout contract', () => {
       '<LocationCollectorBootGate>',
       '<AuthProvider>',
       '<LegalConsentProvider>',
+      '<AuthRouteIntentProvider>',
       '<ConsentPriorityRuntime />',
+      '</AuthRouteIntentProvider>',
       '</LegalConsentProvider>',
       '</AuthProvider>',
       '</LocationCollectorBootGate>',
@@ -97,6 +99,14 @@ describe('root layout contract', () => {
   });
 
   test('keeps stale consent on its own route and requires current consent for protected app use', () => {
+    const rootNavigatorStart = layoutSource.indexOf('function RootNavigator()');
+    const rootNavigatorEnd = layoutSource.indexOf('function ConsentPriorityRuntime()', rootNavigatorStart);
+    const rootNavigatorSource = layoutSource.slice(rootNavigatorStart, rootNavigatorEnd);
+
+    expect(layoutSource).toContain('const intentController = useAuthRouteIntentController()');
+    expect(rootNavigatorSource).not.toContain(
+      'useState(() => createAuthRouteIntentController(ownerId))',
+    );
     expect(layoutSource).toMatch(
       /<Stack\.Protected guard=\{!!session && consent\.status !== 'current'\}>\s*<Stack\.Screen\s+name="consent-refresh"\s+options=\{\{ gestureEnabled: false \}\}\s*\/>\s*<\/Stack\.Protected>/,
     );

@@ -1,9 +1,7 @@
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { font, radius, spacing, type AppThemeColors } from './theme';
 import { useAppTheme } from './AppThemeProvider';
-
-const LOGO_MARK = require('../../assets/images/logo-mark.png');
-const WORDMARK = require('../../assets/images/wordmark.png');
+import { BrandWordmark } from './BrandWordmark';
 
 type AppLaunchStateProps = Readonly<{
   message: string;
@@ -23,8 +21,7 @@ export function AppLaunchState({ message, error = false, actionLabel, onAction }
       accessibilityLiveRegion="polite"
     >
       <View style={styles.brand} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Image source={LOGO_MARK} style={styles.mark} resizeMode="contain" />
-        <Image source={WORDMARK} style={styles.wordmark} resizeMode="contain" />
+        <BrandWordmark />
       </View>
       <View style={[styles.status, error && styles.errorStatus]}>
         {!error ? <ActivityIndicator color={theme.ink.action} size="small" /> : null}
@@ -54,16 +51,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   brand: {
     alignItems: 'center',
-    gap: spacing.md,
-  },
-  mark: {
-    width: 72,
-    height: 72,
-  },
-  wordmark: {
-    width: 176,
-    height: 42,
-    tintColor: theme.ink.primary,
   },
   status: {
     minHeight: 48,

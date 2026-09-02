@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
@@ -45,15 +45,28 @@ function ChildScreen() {
 }
 
 let mockStatefulChildMounts = 0;
+let mockModalHostMounts = 0;
+let mockModalHostUnmounts = 0;
+
+function ModalHostSentinel() {
+  React.useEffect(() => {
+    mockModalHostMounts += 1;
+    return () => {
+      mockModalHostUnmounts += 1;
+    };
+  }, []);
+  return null;
+}
 
 function StatefulChildScreen() {
   const [instance] = React.useState(() => ++mockStatefulChildMounts);
   const [count, setCount] = React.useState(0);
-  return (
+  return <>
     <Pressable accessibilityLabel="Stateful child" onPress={() => setCount((value) => value + 1)}>
       <Text>{`instance:${instance}:count:${count}`}</Text>
     </Pressable>
-  );
+    <ModalHostSentinel />
+  </>;
 }
 
 function deferred<T>() {
@@ -93,6 +106,8 @@ beforeEach(() => {
   mockReconcileOwner.mockReset();
   mockLaunchState.mockClear();
   mockStatefulChildMounts = 0;
+  mockModalHostMounts = 0;
+  mockModalHostUnmounts = 0;
 });
 
 describe('LocationCollectorOwnerGate', () => {
@@ -113,7 +128,7 @@ describe('LocationCollectorOwnerGate', () => {
     expect(renderer.root.findAllByType(ChildScreen)).toHaveLength(1);
   });
 
-  test('keeps a disabled child mounted and inert while enabling waits for owner reconciliation', async () => {
+  test('unmounts disabled children and modal hosts while enabling waits for owner reconciliation', async () => {
     const result = deferred<'running'>();
     mockOwnerId = 'owner-a';
     mockReconcileOwner.mockReturnValue(result.promise);
@@ -129,6 +144,7 @@ describe('LocationCollectorOwnerGate', () => {
       renderer.root.findByProps({ accessibilityLabel: 'Stateful child' }).props.onPress();
     });
     expect(mockStatefulChildMounts).toBe(1);
+    expect(mockModalHostMounts).toBe(1);
     expect(renderer.root.findByType(Text).props.children).toBe('instance:1:count:1');
 
     await act(async () => {
@@ -140,21 +156,9 @@ describe('LocationCollectorOwnerGate', () => {
       await Promise.resolve();
     });
 
+    expect(renderer.root.findAllByType(StatefulChildScreen)).toHaveLength(0);
     expect(mockStatefulChildMounts).toBe(1);
-    expect(renderer.root.findByType(Text).props.children).toBe('instance:1:count:1');
-    const inertContent = renderer.root.findAllByProps({
-      pointerEvents: 'none',
-      accessibilityElementsHidden: true,
-      importantForAccessibility: 'no-hide-descendants',
-    })[0];
-    expect(inertContent).toBeDefined();
-    expect(StyleSheet.flatten(inertContent.props.style)).toEqual(
-      expect.objectContaining({ opacity: 0 }),
-    );
-    expect(renderer.root.findAllByProps({
-      pointerEvents: 'auto',
-      accessibilityViewIsModal: true,
-    }).length).toBeGreaterThan(0);
+    expect(mockModalHostUnmounts).toBe(1);
     expect(mockLaunchState).toHaveBeenLastCalledWith(
       expect.objectContaining({ message: 'Checking activity tracking' }),
     );
@@ -164,12 +168,12 @@ describe('LocationCollectorOwnerGate', () => {
       await result.promise;
     });
 
-    expect(mockStatefulChildMounts).toBe(1);
-    expect(renderer.root.findByType(Text).props.children).toBe('instance:1:count:1');
-    expect(renderer.root.findAllByProps({ accessibilityElementsHidden: true })).toHaveLength(0);
+    expect(mockStatefulChildMounts).toBe(2);
+    expect(mockModalHostMounts).toBe(2);
+    expect(renderer.root.findByType(Text).props.children).toBe('instance:2:count:0');
   });
 
-  test('keeps a previously mounted child inert behind the retry overlay after an error', async () => {
+  test('keeps a previously mounted child and modal hosts unmounted behind the retry state', async () => {
     mockOwnerId = 'owner-a';
     mockReconcileOwner.mockResolvedValue('uncertain');
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -191,8 +195,8 @@ describe('LocationCollectorOwnerGate', () => {
     });
 
     expect(mockStatefulChildMounts).toBe(1);
-    expect(renderer.root.findAllByProps({ accessibilityElementsHidden: true }).length)
-      .toBeGreaterThan(0);
+    expect(mockModalHostUnmounts).toBe(1);
+    expect(renderer.root.findAllByType(StatefulChildScreen)).toHaveLength(0);
     expect(mockLaunchState).toHaveBeenLastCalledWith(
       expect.objectContaining({
         message: 'We could not verify activity tracking is safe',

@@ -15,6 +15,8 @@ const mockStorageGetItem = jest.fn<() => Promise<string | null>>();
 const mockStorageSetItem = jest.fn<() => Promise<void>>();
 const mockGetMyProfile = jest.fn<() => Promise<{ display_name: string | null; area: string | null } | null>>();
 const mockReconcileOwner = jest.fn<(ownerId: string | null) => Promise<'running' | 'paused'>>();
+let mockPostMenuHostMounts = 0;
+let mockPostMenuHostUnmounts = 0;
 const mockLaunchState = jest.fn((_props: {
   message: string;
   error?: boolean;
@@ -115,7 +117,20 @@ jest.mock('../pro/ProProvider', () => {
 jest.mock('../moderation/ModerationGate', () => ({ ModerationGate: () => null }));
 jest.mock('../ui/Toast', () => ({ ToastHost: () => null }));
 jest.mock('../ui/ConfirmDialog', () => ({ ConfirmHost: () => null }));
-jest.mock('../feed/PostMenu', () => ({ PostMenuHost: () => null }));
+jest.mock('../feed/PostMenu', () => {
+  const ReactModule = require('react') as typeof React;
+  return {
+    PostMenuHost: function MockPostMenuHost() {
+      ReactModule.useEffect(() => {
+        mockPostMenuHostMounts += 1;
+        return () => {
+          mockPostMenuHostUnmounts += 1;
+        };
+      }, []);
+      return null;
+    },
+  };
+});
 jest.mock('../ui/AppLaunchState', () => ({
   AppLaunchState: (props: {
     message: string;
@@ -174,6 +189,8 @@ beforeEach(() => {
   mockGetMyProfile.mockReset().mockResolvedValue({ display_name: 'Ready Member', area: 'Perth' });
   mockReconcileOwner.mockReset().mockResolvedValue('paused');
   mockLaunchState.mockClear();
+  mockPostMenuHostMounts = 0;
+  mockPostMenuHostUnmounts = 0;
 });
 
 describe('root launch-link capture lifecycle', () => {
@@ -218,6 +235,7 @@ describe('root launch-link capture lifecycle', () => {
     mockGetInitialURL.mockResolvedValue(null);
     mockGetMyProfile.mockResolvedValue({ display_name: null, area: null });
     let renderer = await renderOrUpdate();
+    expect(mockPostMenuHostMounts).toBe(1);
 
     mockPathname = '/consent-refresh';
     mockConsentStatus = 'current';
@@ -227,6 +245,7 @@ describe('root launch-link capture lifecycle', () => {
     expect(mockLaunchState).toHaveBeenLastCalledWith(
       expect.objectContaining({ message: 'Checking activity tracking' }),
     );
+    expect(mockPostMenuHostUnmounts).toBe(1);
     expect(mockReplace).not.toHaveBeenCalledWith('/compose');
 
     await act(async () => {
@@ -234,6 +253,7 @@ describe('root launch-link capture lifecycle', () => {
       await locationResult;
       await Promise.resolve();
     });
+    expect(mockPostMenuHostMounts).toBe(2);
     await act(async () => {
       notifyOnboardingComplete('owner-a');
       await Promise.resolve();
@@ -241,6 +261,45 @@ describe('root launch-link capture lifecycle', () => {
     });
 
     expect(mockReplace).toHaveBeenCalledWith('/compose');
+    await act(async () => renderer.unmount());
+  });
+
+  test('does not replay an unmounted owner intent after sign-out and an owner switch', async () => {
+    let resolveOwnerA!: (status: 'running') => void;
+    const ownerAResult = new Promise<'running'>((resolve) => {
+      resolveOwnerA = resolve;
+    });
+    mockOwnerId = 'owner-a';
+    mockConsentStatus = 'required';
+    mockPathname = '/compose';
+    mockGetInitialURL.mockResolvedValue(null);
+    mockGetMyProfile.mockResolvedValue({ display_name: null, area: null });
+    let renderer = await renderOrUpdate();
+
+    mockPathname = '/consent-refresh';
+    mockConsentStatus = 'current';
+    mockReconcileOwner.mockReturnValueOnce(ownerAResult);
+    renderer = await renderOrUpdate(renderer);
+    expect(mockPostMenuHostUnmounts).toBe(1);
+
+    mockOwnerId = null;
+    mockConsentStatus = 'signed-out';
+    renderer = await renderOrUpdate(renderer);
+    mockOwnerId = 'owner-b';
+    mockConsentStatus = 'current';
+    mockGetMyProfile.mockResolvedValue({ display_name: 'Owner B', area: 'Perth' });
+    renderer = await renderOrUpdate(renderer);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockReplace).not.toHaveBeenCalledWith('/compose');
+    await act(async () => {
+      resolveOwnerA('running');
+      await ownerAResult;
+    });
+    expect(mockReplace).not.toHaveBeenCalledWith('/compose');
     await act(async () => renderer.unmount());
   });
 

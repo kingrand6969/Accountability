@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
 import { AppLaunchState } from '../ui/AppLaunchState';
 import {
@@ -26,12 +26,6 @@ type Result = Readonly<{
   phase: 'ready' | 'error';
 }>;
 
-function reconciliationPhase(status: ReconciliationStatus): Result['phase'] {
-  return status === 'running' || status === 'paused' || status === 'closing'
-    ? 'ready'
-    : 'error';
-}
-
 export function LocationCollectorOwnerGate({
   children,
   enabled = true,
@@ -48,7 +42,6 @@ export function LocationCollectorOwnerGate({
   const [result, setResult] = useState<Result | null>(
     Platform.OS === 'web' ? { key, intent, phase: 'ready' } : null,
   );
-  const [keepChildrenMounted, setKeepChildrenMounted] = useState(!enabled);
   const inFlightRef = useRef(
     new Map<Readonly<{ key: string }>, Promise<ReconciliationStatus>>(),
   );
@@ -78,14 +71,15 @@ export function LocationCollectorOwnerGate({
   ) => {
     const expectedKey = ownerKey(expectedOwnerId);
     return reconcile(expectedOwnerId, expectedIntent).then((status) => {
-      const phase = reconciliationPhase(status);
-      if (phase === 'ready') setKeepChildrenMounted(true);
       setResult((current) => current && current.intent !== expectedIntent
         ? current
         : {
             key: expectedKey,
             intent: expectedIntent,
-            phase,
+            phase:
+              status === 'running' || status === 'paused' || status === 'closing'
+                ? 'ready'
+                : 'error',
           });
     });
   }, [reconcile]);
@@ -98,12 +92,13 @@ export function LocationCollectorOwnerGate({
     void reconcile(ownerId, intent)
       .then((status) => {
         if (!active) return;
-        const phase = reconciliationPhase(status);
-        if (phase === 'ready') setKeepChildrenMounted(true);
         setResult({
           key,
           intent,
-          phase,
+          phase:
+            status === 'running' || status === 'paused' || status === 'closing'
+              ? 'ready'
+              : 'error',
         });
       })
       .catch(() => {
@@ -114,80 +109,42 @@ export function LocationCollectorOwnerGate({
     };
   }, [enabled, intent, key, loading, ownerId, reconcile]);
 
-  const ready = Platform.OS === 'web' || (
+  if (!enabled || Platform.OS === 'web') return children;
+  if (
     !loading &&
     result?.key === key &&
     result.intent === intent &&
     result.phase === 'ready'
-  );
+  ) return children;
 
-  const failed = (
+  if (
     !loading &&
     result?.key === key &&
     result.intent === intent &&
     result.phase === 'error'
-  );
-  const blocked = enabled && !ready;
-  const shouldRenderChildren = !enabled || ready || keepChildrenMounted;
+  ) {
+    return (
+      <AppLaunchState
+        message="We could not verify activity tracking is safe"
+        error
+        actionLabel="Try again"
+        onAction={() => {
+          const expectedKey = key;
+          const expectedIntent = intent;
+          setResult(null);
+          void begin(ownerId, expectedIntent).catch(() => {
+            setResult((current) => current && current.intent !== expectedIntent
+              ? current
+              : {
+                  key: expectedKey,
+                  intent: expectedIntent,
+                  phase: 'error',
+                });
+          });
+        }}
+      />
+    );
+  }
 
-  const gate = failed ? (
-    <AppLaunchState
-      message="We could not verify activity tracking is safe"
-      error
-      actionLabel="Try again"
-      onAction={() => {
-        const expectedKey = key;
-        const expectedIntent = intent;
-        setResult(null);
-        void begin(ownerId, expectedIntent).catch(() => {
-          setResult((current) => current && current.intent !== expectedIntent
-            ? current
-            : {
-                key: expectedKey,
-                intent: expectedIntent,
-                phase: 'error',
-              });
-        });
-      }}
-    />
-  ) : (
-    <AppLaunchState message="Checking activity tracking" />
-  );
-
-  return (
-    <View style={styles.root}>
-      {shouldRenderChildren ? (
-        <View
-          style={[styles.content, blocked && styles.hidden]}
-          pointerEvents={blocked ? 'none' : 'auto'}
-          accessibilityElementsHidden={blocked}
-          importantForAccessibility={blocked ? 'no-hide-descendants' : 'auto'}
-        >
-          {children}
-        </View>
-      ) : null}
-      {blocked ? (
-        <View
-          style={styles.overlay}
-          pointerEvents="auto"
-          accessibilityViewIsModal
-        >
-          {gate}
-        </View>
-      ) : null}
-    </View>
-  );
+  return <AppLaunchState message="Checking activity tracking" />;
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { flex: 1 },
-  hidden: { opacity: 0 },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-  },
-});

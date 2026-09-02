@@ -19,6 +19,7 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile } from '../profiles/api';
 import { useAppTheme } from '../ui/AppThemeProvider';
+import { BrandMark } from '../ui/BrandMark';
 import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import {
   font,
@@ -108,7 +109,7 @@ export default function InviteCard() {
           <View style={styles.orbOne} />
           <View style={styles.orbTwo} />
           <View style={styles.brandRow}>
-            <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
+            <BrandMark size={28} color="#B9FF3D" accessibilityLabel="Mantle logo" />
             <Text style={styles.brand}>Mantle</Text>
           </View>
 
@@ -248,8 +249,7 @@ const createStyles = (theme: AppThemeColors) => {
     bottom: 30,
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  logo: { width: 28, height: 28, resizeMode: 'contain' },
-  brand: { color: '#fff', fontFamily: font.extrabold, fontSize: 18 },
+  brand: { color: '#fff', fontFamily: font.brand, fontSize: 18 },
   inviter: {
     flexDirection: 'row',
     alignItems: 'center',

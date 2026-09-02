@@ -54,7 +54,7 @@ describe('Feed manual appearance contract', () => {
     expect(brandHeaderSource).toContain('backgroundColor: theme.surface.canvas');
     expect(brandHeaderSource).not.toContain('borderBottomWidth');
     expect(brandHeaderSource).toContain('color={theme.ink.action}');
-    expect(brandHeaderSource).toContain('color: theme.ink.primary');
+    expect(brandHeaderSource).toContain('<BrandWordmark compact />');
   });
 
   test('uses the theme canvas for flat posts and a muted pre-image fallback', () => {

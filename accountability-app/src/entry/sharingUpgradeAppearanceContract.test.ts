@@ -41,7 +41,10 @@ describe('sharing and upgrade appearance contract', () => {
     expect(inviteCardSource).toContain("colors={['#111411', '#263223', '#446B00']}");
     expect(inviteCardSource).toContain("brand: { color: '#fff'");
     expect(inviteCardSource).toContain("avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#fff' }");
-    expect(inviteCardSource).toContain("require('../../assets/images/logo.png')");
+    expect(inviteCardSource).toContain("import { BrandMark } from '../ui/BrandMark'");
+    expect(inviteCardSource).toContain('<BrandMark size={28}');
+    expect(inviteCardSource).toContain('fontFamily: font.brand');
+    expect(inviteCardSource).not.toContain("require('../../assets/images/logo.png')");
     expect(inviteCardSource).toContain("dialogTitle: 'Invite a buddy to Mantle'");
     expect(inviteCardSource).toContain('backgroundColor: palette.action');
   });

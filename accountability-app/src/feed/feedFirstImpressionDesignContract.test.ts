@@ -7,10 +7,11 @@ const storyRail = readFileSync(require.resolve('../stories/StoryRail'), 'utf8');
 
 describe('Feed first-impression design', () => {
   test('renders the approved Mantle lockup instead of the legacy casing', () => {
-    expect(header).toContain("import { BRAND_WORDMARK } from '../ui/brandGeometry'");
-    expect(header).toContain('{BRAND_WORDMARK}');
+    expect(header).toContain("import { BrandWordmark } from '../ui/BrandWordmark'");
+    expect(header).toContain('<BrandWordmark compact />');
+    expect(header).not.toContain("import { BrandMark } from '../ui/BrandMark'");
     expect(header).not.toContain('styles.ability');
-    expect(header).not.toContain('accessibilityLabel="Mantle"');
+    expect(header).not.toContain('font.extrabold');
   });
 
   test('starts the Feed with My Day and no boxed composer', () => {

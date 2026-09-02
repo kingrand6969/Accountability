@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Stack, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { Linking, Platform, Pressable } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,6 +42,7 @@ import {
   onboardingStorageKey,
   routeIntentFromPath,
   subscribeToOnboardingCompletion,
+  type AuthRouteIntentController,
   type RouteQuery,
 } from '../navigation/authRouteIntent';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
@@ -47,6 +55,45 @@ type OnboardingState = Readonly<{
   complete: boolean;
   failed?: boolean;
 }>;
+
+const AuthRouteIntentContext = createContext<AuthRouteIntentController | null>(null);
+
+function AuthRouteIntentProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const [intentController] = useState(() => createAuthRouteIntentController(ownerId));
+  const initialLinkCaptureStartedRef = useRef(false);
+
+  useEffect(() => {
+    intentController.transitionToOwner(ownerId);
+  }, [intentController, ownerId]);
+
+  useEffect(() => {
+    if (initialLinkCaptureStartedRef.current) return;
+    initialLinkCaptureStartedRef.current = true;
+    if (ownerId) return;
+    const ticket = intentController.beginAsyncCapture();
+    Linking.getInitialURL()
+      .then((href) => {
+        if (href) intentController.completeAsyncCapture(ticket, href);
+      })
+      .catch(() => {});
+  }, [intentController, ownerId]);
+
+  return (
+    <AuthRouteIntentContext.Provider value={intentController}>
+      {children}
+    </AuthRouteIntentContext.Provider>
+  );
+}
+
+function useAuthRouteIntentController(): AuthRouteIntentController {
+  const intentController = useContext(AuthRouteIntentContext);
+  if (!intentController) {
+    throw new Error('AuthRouteIntentProvider is required.');
+  }
+  return intentController;
+}
 
 /**
  * A back control that never dead-ends: it pops the stack when there's somewhere
@@ -78,8 +125,7 @@ function RootNavigator() {
   const query = useGlobalSearchParams() as RouteQuery;
   const ownerId = session?.user.id ?? null;
   const ownerRef = useRef(ownerId);
-  const initialLinkCaptureStartedRef = useRef(false);
-  const [intentController] = useState(() => createAuthRouteIntentController(ownerId));
+  const intentController = useAuthRouteIntentController();
   const [onboardingState, setOnboardingState] = useState<OnboardingState | null>(null);
   const [onboardingAttempt, setOnboardingAttempt] = useState(0);
   const ownerOnboardingState = ownerId && onboardingState?.ownerId === ownerId
@@ -103,22 +149,8 @@ function RootNavigator() {
   }, [currentIntent, intentController, onboarded, ownerId]);
 
   useEffect(() => {
-    if (initialLinkCaptureStartedRef.current) return;
-    initialLinkCaptureStartedRef.current = true;
-    if (ownerRef.current) return;
-    const controller = intentController;
-    const ticket = controller.beginAsyncCapture();
-    Linking.getInitialURL()
-      .then((href) => {
-        if (href) controller.completeAsyncCapture(ticket, href);
-      })
-      .catch(() => {});
-  }, [intentController]);
-
-  useEffect(() => {
     ownerRef.current = ownerId;
-    intentController.transitionToOwner(ownerId);
-  }, [intentController, ownerId]);
+  }, [ownerId]);
 
   useEffect(() => {
     if (!ownerId || consent.status !== 'current') return;
@@ -348,7 +380,9 @@ export default function RootLayout() {
       <LocationCollectorBootGate>
         <AuthProvider>
           <LegalConsentProvider>
-            <ConsentPriorityRuntime />
+            <AuthRouteIntentProvider>
+              <ConsentPriorityRuntime />
+            </AuthRouteIntentProvider>
           </LegalConsentProvider>
         </AuthProvider>
       </LocationCollectorBootGate>
