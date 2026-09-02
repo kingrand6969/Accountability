@@ -1,5 +1,7 @@
+/* eslint-disable @next/next/no-img-element -- the controlled share endpoint supplies dynamic card dimensions */
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BrandLockup } from "../../BrandLockup";
 
 type SharePreview = {
   title: string;
@@ -71,7 +73,7 @@ export default async function PublicShare({
     return (
       <main className="shareShell">
         <section className="shareCard missing">
-          <div className="brand">Mantle</div>
+          <BrandLockup />
           <h1>This update is no longer available</h1>
           <p>It may have expired or been removed by its owner.</p>
           <div className="storeRow">
@@ -87,7 +89,7 @@ export default async function PublicShare({
     <main className="shareShell">
       <article className="shareCard">
         <header className="shareHeader">
-          <div className="brand">Mantle</div>
+          <BrandLockup />
           <span className="secure">Shared with permission</span>
         </header>
         <img
