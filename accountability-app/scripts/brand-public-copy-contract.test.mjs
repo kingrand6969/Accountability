@@ -5,40 +5,61 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.html', '.bat']);
+const sourceExtensions = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.mjs',
+  '.json',
+  '.html',
+  '.bat',
+  '.md',
+  '.sql',
+]);
 const staleProperName = /AccountAbility|ACCOUNTABILITY|Accountability App/g;
 const splitJsxProperName = /Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/gs;
 const splitInlineProperName =
   /\bAccount\s*(?:<\/?(?:b|strong|span|em|i|small|mark|u|s)\b[^>]*>\s*)+\s*Ability\b/gis;
 const historicalAttribution = 'OpenAI generated for AccountAbility';
-const historicalAttributionLines = new Map([
+const exactLegacyCopyLines = new Map([
   [
     'src/progress/workoutPhotoLibrary.test.ts',
-    `    expect(all.every((photo) => photo.licenseSource === '${historicalAttribution}')).toBe(true);`,
+    [
+      `    expect(all.every((photo) => photo.licenseSource === '${historicalAttribution}')).toBe(true);`,
+    ],
   ],
   [
     'src/progress/workoutPhotoLibrary.ts',
-    `const LICENSE_SOURCE = '${historicalAttribution}';`,
+    [`const LICENSE_SOURCE = '${historicalAttribution}';`],
+  ],
+  [
+    'supabase/migrations/0118_reconcile_mantle_public_share_descriptions.sql',
+    [
+      "  and description = 'Shared from AccountAbility';",
+      "  and description = 'A progress update shared with permission from AccountAbility.';",
+    ],
   ],
 ]);
 
 function publicCopyContents(relativePath, contents) {
-  const allowedLine = historicalAttributionLines.get(relativePath);
-  if (!allowedLine) {
+  const allowedLines = exactLegacyCopyLines.get(relativePath);
+  if (!allowedLines) {
     return contents;
   }
 
   const lineBreak = contents.includes('\r\n') ? '\r\n' : '\n';
   const lines = contents.split(/\r?\n/);
-  const matchingLines = lines
-    .map((line, index) => line === allowedLine ? index : -1)
-    .filter((index) => index >= 0);
+  for (const allowedLine of allowedLines) {
+    const matchingLines = lines
+      .map((line, index) => (line === allowedLine ? index : -1))
+      .filter((index) => index >= 0);
 
-  if (matchingLines.length !== 1) {
-    return contents;
+    if (matchingLines.length !== 1) {
+      continue;
+    }
+
+    lines[matchingLines[0]] = '';
   }
-
-  lines[matchingLines[0]] = '';
   return lines.join(lineBreak);
 }
 
@@ -73,9 +94,28 @@ async function collectFiles(relativeDirectory) {
 
 test('active public surfaces contain no stale AccountAbility proper name', async () => {
   const sourceFiles = await Promise.all(
-    ['src', 'admin', 'admin-site/app', 'admin-site/public', 'share-site/app'].map(collectFiles),
+    [
+      'src',
+      'admin',
+      'admin-site/app',
+      'admin-site/public',
+      'share-site/app',
+      'legal-web',
+    ].map(collectFiles),
   );
-  const files = [...sourceFiles.flat(), 'app.json', 'app.config.js'];
+  const migrationFiles = (await collectFiles('supabase/migrations')).filter(
+    (relativePath) => {
+      const migrationNumber = Number.parseInt(path.basename(relativePath), 10);
+      return Number.isFinite(migrationNumber) && migrationNumber >= 117;
+    },
+  );
+  const files = [
+    ...sourceFiles.flat(),
+    ...migrationFiles,
+    'app.json',
+    'app.config.js',
+    'LAUNCH.md',
+  ];
   const staleFiles = [];
 
   for (const relativePath of files) {
@@ -96,7 +136,7 @@ test('active public surfaces contain no stale AccountAbility proper name', async
 
 test('historical attribution exemption is exact and does not hide other stale proper names', () => {
   const attributionPath = 'src/progress/workoutPhotoLibrary.ts';
-  const declarationLine = historicalAttributionLines.get(attributionPath);
+  const declarationLine = exactLegacyCopyLines.get(attributionPath)?.[0];
   assert.equal(typeof declarationLine, 'string');
 
   assert.equal(publicCopyContents(attributionPath, declarationLine), '');
@@ -119,6 +159,38 @@ test('historical attribution exemption is exact and does not hide other stale pr
   assert.equal(
     containsStaleProperName(
       publicCopyContents(attributionPath, `${declarationLine} AccountAbility member`),
+    ),
+    true,
+  );
+});
+
+test('the Mantle reconciliation migration exempts only its two exact legacy predicates', () => {
+  const migrationPath =
+    'supabase/migrations/0118_reconcile_mantle_public_share_descriptions.sql';
+  const legacyPredicates = exactLegacyCopyLines.get(migrationPath);
+  assert.equal(legacyPredicates?.length, 2);
+
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(migrationPath, legacyPredicates.join('\n')),
+    ),
+    false,
+  );
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(
+        migrationPath,
+        `${legacyPredicates.join('\n')}\n-- AccountAbility ships here`,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(
+        migrationPath,
+        `${legacyPredicates.join('\n')}\n${legacyPredicates[0]}`,
+      ),
     ),
     true,
   );
