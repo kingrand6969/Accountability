@@ -31,6 +31,10 @@
 /accountability-app/admin-site-deploy.tar.gz
 /accountability-app/supabase/
 /accountability-app/docs/
+/accountability-app/.release-evidence/
+/accountability-app/.release-evidence/**
+/accountability-app/.tmp/
+/accountability-app/.tmp/**
 /accountability-app/.superpowers/
 /accountability-app/.claude/
 /accountability-app/.vscode/
