@@ -14,14 +14,13 @@ const mockProtectedGuards: boolean[] = [];
 const mockStorageGetItem = jest.fn<() => Promise<string | null>>();
 const mockStorageSetItem = jest.fn<() => Promise<void>>();
 const mockGetMyProfile = jest.fn<() => Promise<{ display_name: string | null; area: string | null } | null>>();
+const mockReconcileOwner = jest.fn<(ownerId: string | null) => Promise<'running' | 'paused'>>();
 const mockLaunchState = jest.fn((_props: {
   message: string;
   error?: boolean;
   actionLabel?: string;
   onAction?: () => void;
 }) => null);
-const mockLocationOwnerGate = jest.fn(({ children }: { children?: React.ReactNode }) =>
-  React.createElement(React.Fragment, null, children));
 
 jest.mock('expo-router', () => {
   const ReactModule = require('react') as typeof React;
@@ -105,12 +104,6 @@ jest.mock('../activity/LocationCollectorBootGate', () => {
       ReactModule.createElement(ReactModule.Fragment, null, children),
   };
 });
-jest.mock('../activity/LocationCollectorOwnerGate', () => {
-  return {
-    LocationCollectorOwnerGate: (props: { children?: React.ReactNode }) =>
-      mockLocationOwnerGate(props),
-  };
-});
 jest.mock('../pro/ProProvider', () => {
   const ReactModule = require('react') as typeof React;
   return {
@@ -149,7 +142,9 @@ jest.mock('../activity/runMediaCache', () => ({
   cleanupAbandonedRunMedia: jest.fn(async () => undefined),
 }));
 jest.mock('../notifications/handler', () => ({}));
-jest.mock('../activity/locationTask', () => ({}));
+jest.mock('../activity/locationTask', () => ({
+  reconcileLocationCollectorForOwner: (ownerId: string | null) => mockReconcileOwner(ownerId),
+}));
 
 const RootLayout = require('../app/_layout').default as React.ComponentType;
 const { notifyOnboardingComplete } = require('./authRouteIntent') as {
@@ -177,8 +172,8 @@ beforeEach(() => {
   mockStorageGetItem.mockReset().mockResolvedValue(null);
   mockStorageSetItem.mockReset().mockResolvedValue(undefined);
   mockGetMyProfile.mockReset().mockResolvedValue({ display_name: 'Ready Member', area: 'Perth' });
+  mockReconcileOwner.mockReset().mockResolvedValue('paused');
   mockLaunchState.mockClear();
-  mockLocationOwnerGate.mockClear();
 });
 
 describe('root launch-link capture lifecycle', () => {
@@ -192,9 +187,7 @@ describe('root launch-link capture lifecycle', () => {
 
       const renderer = await renderOrUpdate();
 
-      expect(mockLocationOwnerGate).toHaveBeenLastCalledWith(
-        expect.objectContaining({ enabled: false }),
-      );
+      expect(mockReconcileOwner).not.toHaveBeenCalled();
       expect(mockProtectedGuards.slice(-4)).toEqual([true, false, false, false]);
       expect(mockLaunchState).not.toHaveBeenCalledWith(
         expect.objectContaining({ message: 'Checking your agreement' }),
@@ -210,9 +203,44 @@ describe('root launch-link capture lifecycle', () => {
 
     const renderer = await renderOrUpdate();
 
-    expect(mockLocationOwnerGate).toHaveBeenLastCalledWith(
-      expect.objectContaining({ enabled: true }),
+    expect(mockReconcileOwner).toHaveBeenCalledWith('owner-a');
+    await act(async () => renderer.unmount());
+  });
+
+  test('preserves a held protected intent while consent unlock waits for location reconciliation', async () => {
+    let resolveLocation!: (status: 'running') => void;
+    const locationResult = new Promise<'running'>((resolve) => {
+      resolveLocation = resolve;
+    });
+    mockOwnerId = 'owner-a';
+    mockConsentStatus = 'required';
+    mockPathname = '/compose';
+    mockGetInitialURL.mockResolvedValue(null);
+    mockGetMyProfile.mockResolvedValue({ display_name: null, area: null });
+    let renderer = await renderOrUpdate();
+
+    mockPathname = '/consent-refresh';
+    mockConsentStatus = 'current';
+    mockReconcileOwner.mockReturnValueOnce(locationResult);
+    renderer = await renderOrUpdate(renderer);
+
+    expect(mockLaunchState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'Checking activity tracking' }),
     );
+    expect(mockReplace).not.toHaveBeenCalledWith('/compose');
+
+    await act(async () => {
+      resolveLocation('running');
+      await locationResult;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      notifyOnboardingComplete('owner-a');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith('/compose');
     await act(async () => renderer.unmount());
   });
 

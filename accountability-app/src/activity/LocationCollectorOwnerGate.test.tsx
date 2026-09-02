@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
@@ -43,6 +44,18 @@ function ChildScreen() {
   return null;
 }
 
+let mockStatefulChildMounts = 0;
+
+function StatefulChildScreen() {
+  const [instance] = React.useState(() => ++mockStatefulChildMounts);
+  const [count, setCount] = React.useState(0);
+  return (
+    <Pressable accessibilityLabel="Stateful child" onPress={() => setCount((value) => value + 1)}>
+      <Text>{`instance:${instance}:count:${count}`}</Text>
+    </Pressable>
+  );
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -79,6 +92,7 @@ beforeEach(() => {
   mockOwnerId = null;
   mockReconcileOwner.mockReset();
   mockLaunchState.mockClear();
+  mockStatefulChildMounts = 0;
 });
 
 describe('LocationCollectorOwnerGate', () => {
@@ -97,6 +111,95 @@ describe('LocationCollectorOwnerGate', () => {
     expect(mockReconcileOwner).not.toHaveBeenCalled();
     expect(mockLaunchState).not.toHaveBeenCalled();
     expect(renderer.root.findAllByType(ChildScreen)).toHaveLength(1);
+  });
+
+  test('keeps a disabled child mounted and inert while enabling waits for owner reconciliation', async () => {
+    const result = deferred<'running'>();
+    mockOwnerId = 'owner-a';
+    mockReconcileOwner.mockReturnValue(result.promise);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <LocationCollectorOwnerGate enabled={false}>
+          <StatefulChildScreen />
+        </LocationCollectorOwnerGate>,
+      );
+    });
+    await act(async () => {
+      renderer.root.findByProps({ accessibilityLabel: 'Stateful child' }).props.onPress();
+    });
+    expect(mockStatefulChildMounts).toBe(1);
+    expect(renderer.root.findByType(Text).props.children).toBe('instance:1:count:1');
+
+    await act(async () => {
+      renderer.update(
+        <LocationCollectorOwnerGate enabled>
+          <StatefulChildScreen />
+        </LocationCollectorOwnerGate>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(mockStatefulChildMounts).toBe(1);
+    expect(renderer.root.findByType(Text).props.children).toBe('instance:1:count:1');
+    const inertContent = renderer.root.findAllByProps({
+      pointerEvents: 'none',
+      accessibilityElementsHidden: true,
+      importantForAccessibility: 'no-hide-descendants',
+    })[0];
+    expect(inertContent).toBeDefined();
+    expect(StyleSheet.flatten(inertContent.props.style)).toEqual(
+      expect.objectContaining({ opacity: 0 }),
+    );
+    expect(renderer.root.findAllByProps({
+      pointerEvents: 'auto',
+      accessibilityViewIsModal: true,
+    }).length).toBeGreaterThan(0);
+    expect(mockLaunchState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'Checking activity tracking' }),
+    );
+
+    await act(async () => {
+      result.resolve('running');
+      await result.promise;
+    });
+
+    expect(mockStatefulChildMounts).toBe(1);
+    expect(renderer.root.findByType(Text).props.children).toBe('instance:1:count:1');
+    expect(renderer.root.findAllByProps({ accessibilityElementsHidden: true })).toHaveLength(0);
+  });
+
+  test('keeps a previously mounted child inert behind the retry overlay after an error', async () => {
+    mockOwnerId = 'owner-a';
+    mockReconcileOwner.mockResolvedValue('uncertain');
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <LocationCollectorOwnerGate enabled={false}>
+          <StatefulChildScreen />
+        </LocationCollectorOwnerGate>,
+      );
+    });
+    await act(async () => {
+      renderer.update(
+        <LocationCollectorOwnerGate enabled>
+          <StatefulChildScreen />
+        </LocationCollectorOwnerGate>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockStatefulChildMounts).toBe(1);
+    expect(renderer.root.findAllByProps({ accessibilityElementsHidden: true }).length)
+      .toBeGreaterThan(0);
+    expect(mockLaunchState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        message: 'We could not verify activity tracking is safe',
+        error: true,
+        actionLabel: 'Try again',
+      }),
+    );
   });
 
   test('waits for auth before reconciling the collector', async () => {
