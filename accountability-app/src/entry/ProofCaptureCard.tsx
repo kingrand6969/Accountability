@@ -86,7 +86,7 @@ export function ProofCaptureCard({ context, backgroundUri }: { context: ProofCap
         accessibilityElementsHidden
       >
         <View style={styles.brandRow}>
-          <BrandMark size={24} color="#FFFFFF" accessibilityLabel="Mantle" />
+          <BrandMark size={24} color="#B9FF3D" accessibilityLabel="Mantle logo" />
           <Text allowFontScaling={false} style={styles.brandTop}>{BRAND_WORDMARK}</Text>
         </View>
 
@@ -147,8 +147,8 @@ const styles = StyleSheet.create({
   cardContent: { flex: 1, padding: 16, justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   brandTop: {
-    color: 'rgba(255,255,255,0.95)',
-    fontFamily: 'Inter_800ExtraBold',
+    color: '#F4F5F1',
+    fontFamily: font.brand,
     fontSize: 14,
     letterSpacing: 1,
   },

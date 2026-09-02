@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Image, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
 
 import {
@@ -12,6 +12,7 @@ import {
 } from './ProgressShareCard';
 import type { ShareStudioResult } from '../share/shareStudioDraft';
 import { BrandMark } from '../ui/BrandMark';
+import { font } from '../ui/theme';
 
 jest.mock('../ui/AppThemeProvider', () => {
   const { themeColors } = jest.requireActual<typeof import('../ui/theme')>('../ui/theme');
@@ -84,6 +85,14 @@ describe('ProgressShareCard', () => {
 
     expect(renderer.root.findAllByType(BrandMark)).toHaveLength(2);
     expect(renderer.root.findAllByType(Text).some((node) => node.props.children === 'A')).toBe(false);
+    const wordmarks = renderer.root.findAllByType(Text).filter((node) => node.props.children === 'Mantle');
+    expect(wordmarks).toHaveLength(1);
+    expect(StyleSheet.flatten(wordmarks[0].props.style)).toEqual(expect.objectContaining({
+      color: '#F4F5F1',
+      fontFamily: font.brand,
+    }));
+    expect(renderer.root.findAllByType(BrandMark).map((node) => node.props.color))
+      .toEqual(['#B9FF3D', '#B9FF3D']);
   });
 
   test('renders only the exact reviewed context and keeps hidden body stats out', () => {

@@ -68,12 +68,14 @@ export function AuthShell({
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.brand, welcome && styles.welcomeBrand]}>
-            <BrandMark
-              size={welcome ? 112 : 76}
-              color={theme.ink.primary}
-              accessibilityLabel="Mantle logo"
-            />
-            <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>{BRAND_WORDMARK}</Text>
+            <View style={styles.lockup}>
+              <BrandMark
+                size={welcome ? 64 : 52}
+                color={theme.ink.action}
+                accessibilityLabel="Mantle logo"
+              />
+              <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>{BRAND_WORDMARK}</Text>
+            </View>
             <Text style={styles.tagline}>Build consistency. Together.</Text>
           </View>
           {glass ? (
@@ -131,12 +133,13 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     alignSelf: 'center',
   },
   brand: { alignItems: 'center', gap: 4, marginBottom: spacing.xl },
+  lockup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   welcomeBrand: {
     marginTop: 52,
     marginBottom: 72,
   },
   wordmark: {
-    fontFamily: font.extrabold,
+    fontFamily: font.brand,
     fontSize: 29,
     color: theme.ink.primary,
     letterSpacing: -1.1,

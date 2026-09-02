@@ -24,6 +24,10 @@ describe('auth and onboarding appearance contract', () => {
     expect(authShell).toContain('backgroundColor: theme.surface.canvas');
     expect(authShell).toContain('backgroundColor: theme.surface.card');
     expect(authShell).toContain('tint="dark"');
+    expect(authShell).toContain('color={theme.ink.action}');
+    expect(authShell).toContain('fontFamily: font.brand');
+    expect(authShell).toContain('color: theme.ink.primary');
+    expect(authShell.match(/\{BRAND_WORDMARK\}<\/Text>/g)).toHaveLength(1);
     expect(authShell).not.toContain('AUTH_CANVAS');
     expect(authShell).not.toMatch(/backgroundColor:\s*['"]#(?:fff|FFFFFF|F4F5F1)['"]/);
   });

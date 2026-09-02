@@ -22,7 +22,7 @@ export const ExternalShareCard = forwardRef<View, { title: string; author: strin
         <View style={styles.orbitOne} />
         <View style={styles.orbitTwo} />
         <View style={styles.brand}>
-          <BrandMark size={28} color="#FFFFFF" accessibilityLabel="Mantle" />
+          <BrandMark size={28} color="#B9FF3D" accessibilityLabel="Mantle logo" />
           <Text style={styles.wordmark}>{BRAND_WORDMARK}</Text>
         </View>
         <View style={styles.copy}>
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   orbitOne: { position: 'absolute', width: 560, height: 560, borderRadius: 280, borderWidth: 2, borderColor: 'rgba(255,255,255,0.12)', right: -130, top: -210 },
   orbitTwo: { position: 'absolute', width: 360, height: 360, borderRadius: 180, borderWidth: 2, borderColor: 'rgba(255,255,255,0.16)', right: -20, top: -100 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  wordmark: { color: '#FFFFFF', fontFamily: font.extrabold, fontSize: 28 },
+  wordmark: { color: '#F4F5F1', fontFamily: font.brand, fontSize: 28 },
   copy: { maxWidth: 900 },
   eyebrow: { color: '#DDE8D7', fontFamily: font.bold, fontSize: 18, letterSpacing: 2.2 },
   title: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 68, lineHeight: 76, marginTop: 18 },

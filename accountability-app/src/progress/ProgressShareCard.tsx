@@ -4,6 +4,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import type { ShareStudioContext, ShareStudioResult } from '../share/shareStudioDraft';
 import { useAppTheme } from '../ui/AppThemeProvider';
 import { BrandMark } from '../ui/BrandMark';
+import { BRAND_WORDMARK } from '../ui/brandGeometry';
 import { font, type AppThemeColors } from '../ui/theme';
 
 export const PROGRESS_SHARE_WIDTH = 1080;
@@ -163,7 +164,7 @@ export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
         </View>
       ) : (
         <View style={styles.emptyVisual}>
-          <BrandMark size={210} color="rgba(255,255,255,0.18)" accessibilityLabel="Mantle logo" />
+          <BrandMark size={210} color="#B9FF3D" accessibilityLabel="Mantle logo" />
           <Text maxFontSizeMultiplier={1.25} style={styles.emptyCopy}>SHOWING UP, ONE DAY AT A TIME</Text>
         </View>
       )}
@@ -174,7 +175,7 @@ export function ProgressShareCard({ model, onMediaStateChange }: Readonly<{
           <View style={styles.brandMark}>
             <BrandMark size={21} color="#B9FF3D" accessibilityLabel="Mantle logo" />
           </View>
-          <Text maxFontSizeMultiplier={1.2} style={styles.brand}>MANTLE</Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.brand}>{BRAND_WORDMARK}</Text>
         </View>
         <View style={styles.copyBlock}>
           <Text maxFontSizeMultiplier={1.35} style={styles.eyebrow}>{model.periodLabel} · {model.date}</Text>
@@ -232,13 +233,13 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   photoLabel: { position: 'absolute', top: '6%', left: '7%', paddingHorizontal: '5%', paddingVertical: '2%', backgroundColor: 'rgba(17,20,17,0.72)' },
   photoLabelText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },
   photoDateText: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 9, marginTop: 2 },
-  emptyVisual: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ink.action },
+  emptyVisual: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surface.inverse },
   emptyCopy: { color: 'rgba(255,255,255,0.68)', fontFamily: font.bold, fontSize: 11, letterSpacing: 2 },
   shade: { position: 'absolute', inset: 0, backgroundColor: 'rgba(17,20,17,0.42)' },
   content: { flex: 1, justifyContent: 'space-between', paddingHorizontal: '7%', paddingTop: '7%', paddingBottom: '7%' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandMark: { width: 29, height: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  brand: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.7 },
+  brandMark: { width: 29, height: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,20,17,0.76)' },
+  brand: { color: '#F4F5F1', fontFamily: font.brand, fontSize: 11, letterSpacing: 0.2 },
   copyBlock: { gap: 10 },
   eyebrow: { color: '#EAF2E5', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },
   title: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 37, lineHeight: 43 },

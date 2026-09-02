@@ -25,14 +25,19 @@ describe('theme-aware Mantle wordmark', () => {
   });
 
   test.each([
-    ['auth shell', require.resolve('./AuthShell'), "import { BRAND_WORDMARK } from './brandGeometry'"],
-    ['proof capture card', require.resolve('../entry/ProofCaptureCard'), "import { BRAND_WORDMARK } from '../ui/brandGeometry'"],
-    ['external share card', require.resolve('../feed/ExternalShareCard'), "import { BRAND_WORDMARK } from '../ui/brandGeometry'"],
-  ])('%s renders the canonical Mantle wordmark as one text node', (_surface, sourcePath, expectedImport) => {
+    ['auth shell', require.resolve('./AuthShell'), "import { BRAND_WORDMARK } from './brandGeometry'", 'color={theme.ink.action}', "wordmark: {\n    fontFamily: font.brand", 'color: theme.ink.primary'],
+    ['proof capture card', require.resolve('../entry/ProofCaptureCard'), "import { BRAND_WORDMARK } from '../ui/brandGeometry'", 'color="#B9FF3D"', "color: '#F4F5F1'", 'fontFamily: font.brand'],
+    ['external share card', require.resolve('../feed/ExternalShareCard'), "import { BRAND_WORDMARK } from '../ui/brandGeometry'", 'color="#B9FF3D"', "color: '#F4F5F1'", 'fontFamily: font.brand'],
+    ['progress share card', require.resolve('../progress/ProgressShareCard'), "import { BRAND_WORDMARK } from '../ui/brandGeometry'", 'color="#B9FF3D"', "color: '#F4F5F1'", 'fontFamily: font.brand'],
+  ])('%s renders one canonical Mantle lockup', (_surface, sourcePath, expectedImport, markColor, wordColor, brandFont) => {
     const source = readFileSync(sourcePath, 'utf8');
 
     expect(source).toContain(expectedImport);
-    expect(source).toContain('{BRAND_WORDMARK}</Text>');
+    expect(source.match(/\{BRAND_WORDMARK\}<\/Text>/g)).toHaveLength(1);
+    expect(source).toContain(markColor);
+    expect(source).toContain(wordColor);
+    expect(source).toContain(brandFont);
+    expect(source).not.toMatch(/>MANTLE<|>MANTLE<\/Text>/);
     expect(source).not.toMatch(/Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/s);
   });
 });
