@@ -12,7 +12,7 @@ const canonicalDashboard = await readFile(
   "utf8",
 );
 
-async function renderRoot() {
+async function renderPath(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -22,7 +22,7 @@ async function renderRoot() {
       : new Response("Not found", { status: 404 }) },
   };
   const ctx = { waitUntil() {}, passThroughOnException() {} };
-  let response = await worker.fetch(new Request("http://localhost/", { headers: { accept: "text/html" } }), env, ctx);
+  let response = await worker.fetch(new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }), env, ctx);
   if(response.status>=300&&response.status<400&&response.headers.get("location")) {
     response = await worker.fetch(new Request(new URL(response.headers.get("location"), "http://localhost/"), { headers: { accept: "text/html" } }), env, ctx);
   }
@@ -85,10 +85,24 @@ function moderationHarness({ reports = [], flags = [], invoke } = {}) {
 }
 
 test("server-rendered admin route remains healthy", async () => {
-  const response = await renderRoot();
+  const response = await renderPath();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   assert.match(await response.text(), /<html|<!doctype html>/i);
+});
+
+test("public share route renders canonical safe app download links", async () => {
+  const response = await renderPath("/s/11111111-1111-4111-8111-111111111111");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  assert.match(html, /href="https:\/\/joinaccountability\.app\/#get-the-app"/);
+  assert.match(html, />Get the Android app<\/a>/);
+  assert.match(html, />Join the iPhone waitlist<\/a>/);
+  assert.doesNotMatch(html, /com\.kingrand\.accountability/);
+  assert.doesNotMatch(html, /apps\.apple\.com\/app\/accountability/);
+  assert.doesNotMatch(html, /com\.awldesk\.accountability\.staging/);
+  assert.doesNotMatch(html, />Get it on Google Play<|>Download on the App Store</);
 });
 
 test("canonical and hosted admin sources use the same Mantle product copy", () => {

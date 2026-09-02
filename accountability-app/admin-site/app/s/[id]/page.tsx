@@ -55,12 +55,11 @@ export default async function PublicShare({
   const { id } = await params;
   const share = await getShare(id);
   const appLink = `accountabilityapp://share/${encodeURIComponent(id)}`;
-  const androidStore =
-    process.env.NEXT_PUBLIC_ANDROID_STORE_URL ??
-    "https://play.google.com/store/apps/details?id=com.kingrand.accountability";
-  const appleStore =
-    process.env.NEXT_PUBLIC_APPLE_STORE_URL ??
-    "https://apps.apple.com/app/accountability";
+  // Until official store listings are configured, use the canonical Mantle
+  // download page rather than guessing a package or App Store listing.
+  const downloadPage = "https://joinaccountability.app/#get-the-app";
+  const androidStore = process.env.NEXT_PUBLIC_ANDROID_STORE_URL ?? downloadPage;
+  const appleStore = process.env.NEXT_PUBLIC_APPLE_STORE_URL ?? downloadPage;
 
   if (!share) {
     return (
@@ -70,8 +69,8 @@ export default async function PublicShare({
           <h1>This update is no longer available</h1>
           <p>It may have expired or been removed by its owner.</p>
           <div className="storeRow">
-            <Link href={androidStore}>Get it on Google Play</Link>
-            <Link href={appleStore}>Download on the App Store</Link>
+            <Link href={androidStore}>Get the Android app</Link>
+            <Link href={appleStore}>Join the iPhone waitlist</Link>
           </div>
         </section>
       </main>
@@ -99,8 +98,8 @@ export default async function PublicShare({
           </a>
           <p className="fallback">Don&apos;t have the app yet?</p>
           <div className="storeRow">
-            <Link href={androidStore}>Google Play</Link>
-            <Link href={appleStore}>App Store</Link>
+            <Link href={androidStore}>Android</Link>
+            <Link href={appleStore}>iPhone</Link>
           </div>
         </div>
       </article>
