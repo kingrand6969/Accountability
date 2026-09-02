@@ -27,6 +27,7 @@ test("canonical public share surfaces use Mantle identity without changing link 
   ]);
 
   assert.match(layout, /title:\s*"Mantle — Build consistency together"/);
+  assert.match(layout, /icons:\s*\{\s*icon:\s*"\/favicon\.svg"\s*\}/);
   assert.match(page, /"Mantle update"/);
   assert.match(page, /Open in Mantle/);
   assert.match(page, /alt="Branded Mantle progress card"/);
@@ -51,5 +52,24 @@ test("canonical public share surfaces use Mantle identity without changing link 
   assert.doesNotMatch(css, /font-family:\s*ui-sans-serif/);
   assert.match(favicon, /fill="#111411"/i);
   assert.match(favicon, /stroke="#B9FF3D"/i);
+  assert.match(favicon, /viewBox="-20 -20 140 140"/);
+  assert.match(favicon, /<rect x="-20" y="-20" width="140" height="140"/);
   assert.doesNotMatch(favicon, /#68C4FF|#0C79D8|#2E9EFF/i);
+});
+
+test("built root HTML explicitly selects the canonical favicon", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("favicon-test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const response = await worker.fetch(
+    new Request("http://localhost/", { headers: { accept: "text/html" } }),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+
+  assert.equal(response.status, 200);
+  assert.match(
+    await response.text(),
+    /<link[^>]+rel="icon"[^>]+href="(?:https:\/\/joinaccountability\.app)?\/favicon\.svg"/i,
+  );
 });
