@@ -5,6 +5,7 @@ import { describe, expect, test } from '@jest/globals';
 const migrationsDirectory = resolve(process.cwd(), 'supabase/migrations');
 const creatorName = '0117_mantle_public_share_metadata.sql';
 const reconciliationName = '0118_reconcile_mantle_public_share_descriptions.sql';
+const titleReconciliationName = '0120_reconcile_mantle_public_share_fallback_titles.sql';
 const oldBrand = ['Account', 'Ability'].join('');
 
 function readMigration(name: string): string {
@@ -79,6 +80,7 @@ function sqlStatements(sql: string): string[] {
 
 const creatorMigration = readMigration(creatorName);
 const reconciliationMigration = readMigration(reconciliationName);
+const titleReconciliationMigration = readMigration(titleReconciliationName);
 const creatorNormalized = normalize(creatorMigration);
 const creatorBody = creatorMigration.match(
   /create\s+or\s+replace\s+function\s+public\.create_public_post_share\s*\([\s\S]*?\)\s*returns\s+uuid[\s\S]*?as\s+\$\$([\s\S]*?)\$\$;/i,
@@ -170,5 +172,58 @@ describe('Mantle public-share metadata migrations', () => {
       expect(update).not.toMatch(/\btitle\b/i);
     });
     expect(normalize(reconciliationMigration)).not.toMatch(/\bset\s+title\b/i);
+  });
+
+  test('0120 follows the description repair in a separate bounded writer-draining transaction', () => {
+    const names = readdirSync(migrationsDirectory)
+      .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+      .sort();
+    const statements = sqlStatements(titleReconciliationMigration).map(normalizeStatement);
+    const postsLock = 'lock table public.posts in share mode;';
+    const sharesLock = 'lock table public.public_shares in share row exclusive mode;';
+
+    expect(names.indexOf(titleReconciliationName)).toBeGreaterThan(names.indexOf(reconciliationName));
+    expect(statements[0]).toBe('begin;');
+    expect(statements).toContain("set local lock_timeout = '5s';");
+    expect(statements).toContain("set local statement_timeout = '30s';");
+    expect(statements).toContain(postsLock);
+    expect(statements).toContain(sharesLock);
+    expect(statements.indexOf(postsLock)).toBeLessThan(statements.indexOf(sharesLock));
+    expect(statements.at(-1)).toBe('commit;');
+  });
+
+  test('0120 updates only provable active legacy fallback titles and is idempotent', () => {
+    const updates = sqlStatements(titleReconciliationMigration)
+      .map(normalizeStatement)
+      .filter((statement) => /^update public\.public_shares\b/i.test(statement));
+    const update = updates[0] ?? '';
+    const whereClause = update.slice(update.indexOf('where'));
+    const expectedDescriptions = [
+      `Shared from ${oldBrand}`,
+      'Shared from Mantle',
+      `A progress update shared with permission from ${oldBrand}.`,
+      'A progress update shared with permission from Mantle.',
+    ];
+    const expectedDescriptionPredicate =
+      `s.description in ( ${expectedDescriptions.map((description) => `'${description}'`).join(', ')} )`;
+
+    expect(updates).toHaveLength(1);
+    expect(update).toContain("set title = 'A win from Mantle'");
+    expect(update).toContain('from public.posts as p');
+    expect(whereClause).toContain('p.id = s.post_id');
+    expect(whereClause).toContain('p.user_id = s.owner_id');
+    expect(whereClause).toContain('s.revoked_at is null');
+    expect(whereClause).toContain('s.expires_at > now()');
+    expect(whereClause).toContain(`s.title = 'A win from ${oldBrand}'`);
+    expect(whereClause).toContain("nullif(trim(p.body), '') is null");
+    expect(whereClause).toContain(expectedDescriptionPredicate);
+    expect(whereClause.match(/s\.description in \(/g)).toHaveLength(1);
+    expectedDescriptions.forEach((description) => {
+      expect(whereClause).toContain(`'${description}'`);
+    });
+    expect(whereClause).not.toContain("s.title = 'A win from Mantle'");
+    expect(whereClause).not.toMatch(/\bor\b|\blike\b|regexp_replace|\breplace\s*\(/i);
+    expect(update).not.toMatch(/\bset\s+description\b/i);
+    expect(normalize(titleReconciliationMigration)).not.toMatch(/\bset\s+description\b/i);
   });
 });

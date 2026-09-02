@@ -41,6 +41,14 @@ const exactLegacyCopyLines = new Map([
       "  and description = 'A progress update shared with permission from AccountAbility.';",
     ],
   ],
+  [
+    'supabase/migrations/0120_reconcile_mantle_public_share_fallback_titles.sql',
+    [
+      "  and s.title = 'A win from AccountAbility'",
+      "    'Shared from AccountAbility',",
+      "    'A progress update shared with permission from AccountAbility.',",
+    ],
+  ],
 ]);
 
 function publicCopyContents(relativePath, contents) {
@@ -193,6 +201,38 @@ test('the Mantle reconciliation migration exempts only its two exact legacy pred
     'supabase/migrations/0118_reconcile_mantle_public_share_descriptions.sql';
   const legacyPredicates = exactLegacyCopyLines.get(migrationPath);
   assert.equal(legacyPredicates?.length, 2);
+
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(migrationPath, legacyPredicates.join('\n')),
+    ),
+    false,
+  );
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(
+        migrationPath,
+        `${legacyPredicates.join('\n')}\n-- AccountAbility ships here`,
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    containsStaleProperName(
+      publicCopyContents(
+        migrationPath,
+        `${legacyPredicates.join('\n')}\n${legacyPredicates[0]}`,
+      ),
+    ),
+    true,
+  );
+});
+
+test('the Mantle fallback-title migration exemption is exact and duplicate-sensitive', () => {
+  const migrationPath =
+    'supabase/migrations/0120_reconcile_mantle_public_share_fallback_titles.sql';
+  const legacyPredicates = exactLegacyCopyLines.get(migrationPath);
+  assert.equal(legacyPredicates?.length, 3);
 
   assert.equal(
     containsStaleProperName(
