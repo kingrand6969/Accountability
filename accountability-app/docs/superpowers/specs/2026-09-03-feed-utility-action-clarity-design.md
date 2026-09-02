@@ -22,7 +22,7 @@ The action row remains divided by purpose:
 - Use an outline bookmark when the post is not saved.
 - Use a filled bookmark when the post is saved.
 - Display the micro-label `Save` beneath the icon in both states.
-- Preserve the existing save/unsave behavior and feedback.
+- Preserve the existing one-way save behavior and feedback.
 
 ### Shared styling
 
@@ -43,7 +43,7 @@ This change does not alter navigation, persistence, share-sheet behavior, memory
 
 - The visible labels must match the accessible action names.
 - Share opens the existing system share behavior.
-- Save toggles the existing Memories state.
+- Save records the post in Memories using the existing behavior.
 - Saved state must remain distinguishable through the filled bookmark, without relying only on color.
 - Touch targets must remain at least 44 by 44 px.
 
