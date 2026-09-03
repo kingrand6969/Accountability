@@ -197,7 +197,8 @@ export function FeedProofCard({
           <Action
             theme={theme}
             styles={styles}
-            icon="paper-plane-outline"
+            icon="share-outline"
+            shortLabel="Share"
             accessibilityLabel="Share this post"
             onPress={onShare}
           />
@@ -256,6 +257,7 @@ function Action({
   styles,
   icon,
   count,
+  shortLabel,
   accessibilityLabel,
   active,
   onPress,
@@ -264,6 +266,7 @@ function Action({
   styles: ProofCardStyles;
   icon: 'cheer' | keyof typeof Ionicons.glyphMap;
   count?: number;
+  shortLabel?: string;
   accessibilityLabel: string;
   active?: boolean;
   onPress: () => void;
@@ -274,7 +277,11 @@ function Action({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={active === undefined ? undefined : { selected: active }}
-      style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.action,
+        shortLabel && styles.labeledAction,
+        pressed && styles.pressed,
+      ]}
     >
       {icon === 'cheer' ? (
         <Ionicons
@@ -292,6 +299,7 @@ function Action({
       {count != null && count > 0 ? (
         <Text style={[styles.actionText, active && styles.active]}>{count}</Text>
       ) : null}
+      {shortLabel ? <Text style={styles.utilityActionText}>{shortLabel}</Text> : null}
     </Pressable>
   );
 }
@@ -407,7 +415,14 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
   },
+  labeledAction: { flexDirection: 'column', gap: 3 },
   actionText: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 11 },
+  utilityActionText: {
+    color: theme.ink.muted,
+    fontFamily: font.semibold,
+    fontSize: 9.5,
+    lineHeight: 11,
+  },
   active: { color: theme.ink.action },
   supporters: {
     minHeight: 44,
