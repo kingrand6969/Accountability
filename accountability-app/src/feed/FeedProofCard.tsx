@@ -204,7 +204,7 @@ export function FeedProofCard({
           />
           {post.image_url && post.post_type !== 'video' ? (
             <View style={styles.memoryAction}>
-              <SaveToMemories url={post.image_url} inline iconOnly />
+              <SaveToMemories url={post.image_url} feedAction />
             </View>
           ) : null}
         </View>

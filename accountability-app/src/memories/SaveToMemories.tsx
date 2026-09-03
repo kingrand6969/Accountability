@@ -9,11 +9,11 @@ import { colors, font } from '../ui/theme';
 export function SaveToMemories({
   url,
   inline = false,
-  iconOnly = false,
+  feedAction = false,
 }: {
   url: string;
   inline?: boolean;
-  iconOnly?: boolean;
+  feedAction?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -34,7 +34,10 @@ export function SaveToMemories({
 
   return (
     <Pressable
-      style={({ pressed }) => [inline ? styles.inlineBtn : styles.btn, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        feedAction ? styles.feedAction : inline ? styles.inlineBtn : styles.btn,
+        pressed && styles.pressed,
+      ]}
       onPress={onSave}
       hitSlop={8}
       accessibilityLabel={saved ? 'Saved to Memories' : 'Save to Memories'}
@@ -42,25 +45,24 @@ export function SaveToMemories({
       accessibilityState={{ disabled: busy || saved, busy }}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={inline ? colors.textMuted : '#fff'} />
-      ) : iconOnly ? (
-        <Ionicons
-          name={saved ? 'albums' : 'albums-outline'}
-          size={21}
-          color={inline ? (saved ? colors.primaryDark : colors.textMuted) : '#fff'}
-        />
+        <ActivityIndicator size="small" color={inline || feedAction ? colors.textMuted : '#fff'} />
       ) : (
-        <>
-          <Ionicons
-            name={saved ? 'bookmark' : 'bookmark-outline'}
-            size={17}
-            color={inline ? (saved ? colors.primaryDark : colors.textMuted) : '#fff'}
-          />
-          {inline && !iconOnly ? (
-            <Text style={[styles.inlineText, saved && styles.inlineSaved]}>{saved ? 'Saved' : 'Save'}</Text>
-          ) : null}
-        </>
+        <Ionicons
+          name={saved ? 'bookmark' : 'bookmark-outline'}
+          size={feedAction ? 21 : 17}
+          color={inline || feedAction ? (saved ? colors.primaryDark : colors.textMuted) : '#fff'}
+        />
       )}
+      {inline || feedAction ? (
+        <Text
+          style={[
+            feedAction ? styles.feedActionText : styles.inlineText,
+            saved && !feedAction && styles.inlineSaved,
+          ]}
+        >
+          {feedAction ? 'Save' : saved ? 'Saved' : 'Save'}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -89,4 +91,18 @@ const styles = StyleSheet.create({
   },
   inlineText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
   inlineSaved: { color: colors.primaryDark },
+  feedAction: {
+    width: 48,
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  feedActionText: {
+    color: colors.textMuted,
+    fontFamily: font.semibold,
+    fontSize: 9.5,
+    lineHeight: 11,
+  },
 });
