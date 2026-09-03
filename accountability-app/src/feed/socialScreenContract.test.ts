@@ -242,6 +242,10 @@ describe('Group 3 social Feed contract', () => {
       'function Action(',
       'type ProofCardStyles',
     );
+    expect(actionComponent).toMatch(/shortLabel\s*&&\s*styles\.labeledAction/);
+    expect(actionComponent).toMatch(
+      /\{shortLabel\s*\?\s*<Text\s+style=\{styles\.utilityActionText\}>\{shortLabel\}<\/Text>\s*:\s*null\}/,
+    );
     expect(actionComponent).toContain("name={active ? 'thumbs-up' : 'thumbs-up-outline'}");
     expect(actionComponent).toContain('accessibilityState={active === undefined ? undefined : { selected: active }}');
     expect(actionComponent).toMatch(
@@ -296,10 +300,13 @@ describe('Group 3 social Feed contract', () => {
       'const styles = StyleSheet.create',
     );
 
-    expect(memoryComponent).toMatch(/name=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\}/);
-    expect(memoryComponent).toContain("feedAction ? 'Save' : saved ? 'Saved' : 'Save'");
-    expect(memoryComponent).not.toContain("'albums-outline'");
-    expect(memoryComponent).not.toContain("'albums'");
+    expect(memoryComponent).toMatch(
+      /<Ionicons\b(?=[^>]*\bname=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\})(?=[^>]*\bsize=\{feedAction\s*\?\s*21\s*:\s*17\})[^>]*\/>/,
+    );
+    expect(memoryComponent).toMatch(
+      /\{inline\s*\|\|\s*feedAction\s*\?\s*\(\s*<Text[\s\S]*?feedAction\s*\?\s*styles\.feedActionText\s*:\s*styles\.inlineText[\s\S]*?>\s*\{feedAction\s*\?\s*['"]Save['"]\s*:\s*saved\s*\?\s*['"]Saved['"]\s*:\s*['"]Save['"]\}\s*<\/Text>/,
+    );
+    expect(memoryComponent).not.toMatch(/['"]albums(?:-outline)?['"]/);
 
     const feedActionStyle = styleBlock(memorySource, 'feedAction');
     expect(feedActionStyle).toMatch(/\bminWidth:\s*48\b/);

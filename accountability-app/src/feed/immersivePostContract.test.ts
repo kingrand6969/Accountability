@@ -288,9 +288,15 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain('viewGeneration.current += 1');
     expect(componentSource).toContain('label="Cheer this post"');
     expect(componentSource).toContain('label="Comment on this post"');
-    expect(componentSource).toContain('label="Share this post"');
-    expect(componentSource).toContain('icon="share-outline"');
-    expect(componentSource).toContain('shortLabel="Share"');
+    const shareActions = jsxCalls(componentSource, 'Action').filter((call) =>
+      call.includes('onPress={onShare}'),
+    );
+    expect(shareActions).toHaveLength(2);
+    for (const shareAction of shareActions) {
+      expect(shareAction).toMatch(/\bicon=["']share-outline["']/);
+      expect(shareAction).toMatch(/\blabel=["']Share this post["']/);
+      expect(shareAction).toMatch(/\bshortLabel=["']Share["']/);
+    }
     expect(componentSource).not.toContain('paper-plane-outline');
     expect(componentSource).toContain('accessibilityLabel={label}');
   });
