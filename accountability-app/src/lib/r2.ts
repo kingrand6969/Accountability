@@ -16,8 +16,8 @@ export const R2_UPLOAD_MAX_BYTES: Readonly<Record<R2Kind, number>> = {
   post: 12 * 1024 * 1024,
   video: 50 * 1024 * 1024,
   voice: 1024 * 1024,
-  // A share card is a rendered, sanitized derivative. It never contains the
-  // private source-media URL and remains in the private bucket.
+  // The app renders share cards from approved display copy without passing the
+  // source-media URL. The signer separately enforces PNG structure and size.
   share: 4 * 1024 * 1024,
 };
 
@@ -31,125 +31,6 @@ const R2_FOLDER: Readonly<Record<R2Kind, string>> = {
 };
 
 const R2_CONDITIONAL_CONFLICT_RETRIES = 2;
-const R2_DIAGNOSTIC_BODY_LIMIT = 4096;
-const R2_DIAGNOSTIC_PROVIDER_CODES: ReadonlySet<string> = new Set([
-  'AccessDenied',
-  'SignatureDoesNotMatch',
-]);
-const R2_DIAGNOSTIC_SIGNED_HEADERS: ReadonlySet<string> = new Set([
-  'content-length',
-  'content-type',
-  'host',
-  'if-none-match',
-  'x-amz-content-sha256',
-  'x-amz-meta-operation-id',
-]);
-
-function signedHeaderNames(uploadUrl: string): string[] {
-  try {
-    const url = new URL(uploadUrl);
-    let signedHeaders: string | undefined;
-    url.searchParams.forEach((value, name) => {
-      if (name.toLowerCase() === 'x-amz-signedheaders') signedHeaders = value;
-    });
-    return [...new Set((signedHeaders ?? '')
-      .split(';')
-      .map((name) => name.trim().toLowerCase())
-      .filter((name) => R2_DIAGNOSTIC_SIGNED_HEADERS.has(name)))]
-      .sort()
-      .slice(0, R2_DIAGNOSTIC_SIGNED_HEADERS.size);
-  } catch {
-    return [];
-  }
-}
-
-function providerCodeFromBody(body: string): string | undefined {
-  const code = body.match(/<Code>([^<]*)<\/Code>/)?.[1]?.trim();
-  return code && R2_DIAGNOSTIC_PROVIDER_CODES.has(code) ? code : undefined;
-}
-
-function utf8ByteLength(value: string): number {
-  let byteLength = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (codeUnit <= 0x7f) {
-      byteLength += 1;
-    } else if (codeUnit <= 0x7ff) {
-      byteLength += 2;
-    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff &&
-      index + 1 < value.length &&
-      value.charCodeAt(index + 1) >= 0xdc00 && value.charCodeAt(index + 1) <= 0xdfff) {
-      byteLength += 4;
-      index += 1;
-    } else {
-      byteLength += 3;
-    }
-  }
-  return byteLength;
-}
-
-async function readDiagnosticBody(response: Response): Promise<string | undefined> {
-  const stream = response.body;
-  if (!stream || typeof stream.getReader !== 'function') {
-    let contentLength: string | null;
-    try {
-      contentLength = response.headers?.get('content-length') ?? null;
-    } catch {
-      return undefined;
-    }
-    if (!contentLength || !/^\d+$/.test(contentLength)) return undefined;
-    const declaredLength = Number(contentLength);
-    if (!Number.isSafeInteger(declaredLength) || declaredLength > R2_DIAGNOSTIC_BODY_LIMIT) return undefined;
-    try {
-      const body = await response.text();
-      if (body.length > R2_DIAGNOSTIC_BODY_LIMIT || utf8ByteLength(body) !== declaredLength) return undefined;
-      return body.slice(0, R2_DIAGNOSTIC_BODY_LIMIT);
-    } catch {
-      return undefined;
-    }
-  }
-
-  let reader: ReadableStreamDefaultReader<Uint8Array>;
-  try {
-    reader = stream.getReader();
-  } catch {
-    return undefined;
-  }
-
-  let cancelled = false;
-  const cancel = async () => {
-    if (cancelled) return;
-    cancelled = true;
-    await reader.cancel();
-  };
-  try {
-    const decoder = new TextDecoder();
-    let body = '';
-    let bytesRead = 0;
-    while (bytesRead < R2_DIAGNOSTIC_BODY_LIMIT) {
-      const result = await reader.read();
-      if (result.done) return body + decoder.decode();
-      if (!(result.value instanceof Uint8Array)) throw new Error('Unexpected response chunk.');
-      const remaining = R2_DIAGNOSTIC_BODY_LIMIT - bytesRead;
-      const chunk = result.value.subarray(0, remaining);
-      body += decoder.decode(chunk, { stream: true });
-      bytesRead += chunk.byteLength;
-      if (bytesRead === R2_DIAGNOSTIC_BODY_LIMIT) {
-        await cancel();
-        return body + decoder.decode();
-      }
-    }
-    return body;
-  } catch {
-    try {
-      await cancel();
-    } catch {
-      // Diagnostics must never replace the original upload failure.
-    }
-    return undefined;
-  }
-}
-
 function extensionForContentType(contentType: string): string | null {
   switch (contentType) {
     case 'image/jpeg': return 'jpg';
@@ -204,12 +85,11 @@ export function isExpectedOperationDigestMediaRef(
 }
 
 /**
- * Upload a base64 image straight to Cloudflare R2 (zero-egress delivery).
+ * Upload base64 media to Cloudflare R2.
  *
- * Flow: ask the `r2-sign` Edge Function for a one-time signed URL (it authorizes
- * the caller and holds the R2 credentials server-side), PUT the bytes directly to
- * R2, and return an opaque private reference to store in Postgres. The bytes never pass through
- * Supabase, so this move takes serving those images off Supabase's metered egress.
+ * Normal media receives a one-time signed PUT URL. Share-card bytes instead pass
+ * through `r2-sign`, which validates and stores that bounded derivative without
+ * exposing an R2 URL. Both paths return an opaque private reference for Postgres.
  *
  * Upload flows use this R2 path first and only fall back when policy permits.
  * Remote activation still requires the `r2-sign` function and R2 secrets.
@@ -302,7 +182,8 @@ async function uploadArrayBufferToR2(
     if (!expectedReference) {
       throw new Error('Upload service is out of date. Please try again shortly.');
     }
-    if (kind === 'share' && uploaded === true) {
+    if (kind === 'share') {
+      if (uploaded !== true) throw new Error('Could not complete the upload.');
       return { mediaRef, sha256 };
     }
     if (!uploadUrl) throw new Error('Could not get an upload URL.');
@@ -324,23 +205,7 @@ async function uploadArrayBufferToR2(
     if (options.operationId && put.status === 409 && attempt + 1 < maxAttempts) {
       continue;
     }
-    if (kind !== 'share' || put.status !== 403) {
-      throw new Error(`Upload failed (${put.status}).`);
-    }
-    const responseBody = await readDiagnosticBody(put);
-    const providerCode = responseBody === undefined ? undefined : providerCodeFromBody(responseBody);
-    console.warn('R2 upload failed', {
-      status: put.status,
-      byteLength: bytes.byteLength,
-      kind,
-      keyClass: options.keyMode === 'operation' ? 'operation-digest' : options.operationId ? 'digest' : 'mutable',
-      operationIdPresent: Boolean(options.operationId),
-      signedHeaders: signedHeaderNames(uploadUrl),
-      providerCode: providerCode ?? 'unknown',
-    });
-    throw new Error(providerCode
-      ? `Upload failed (${put.status}: ${providerCode}).`
-      : `Upload failed (${put.status}).`);
+    throw new Error(`Upload failed (${put.status}).`);
   }
   throw new Error('Upload failed after conditional conflict retries.');
 }

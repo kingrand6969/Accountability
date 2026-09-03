@@ -59,7 +59,14 @@ const REQUEST_BODY_MAX_BYTES = SHARE_BASE64_MAX_CHARS + 4096;
 const SHARE_PNG_MAX_DIMENSION = 8192;
 const SHARE_PNG_MAX_PIXELS = 16_000_000;
 const DIRECT_UPLOAD_CONFLICT_ATTEMPTS = 3;
+const DIRECT_UPLOAD_TIMEOUT_MS = 10_000;
+const DIRECT_UPLOAD_CONFLICT_BACKOFF_MS = 75;
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const;
+const CRC32_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
+  let crc = value;
+  for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  return crc >>> 0;
+});
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -112,14 +119,82 @@ async function readBoundedJson(req: Request): Promise<
   }
 }
 
-function isBoundedSharePng(bytes: Uint8Array): boolean {
-  if (bytes.byteLength < 24 || PNG_SIGNATURE.some((value, index) => bytes[index] !== value)) return false;
-  if (bytes[8] !== 0 || bytes[9] !== 0 || bytes[10] !== 0 || bytes[11] !== 13 ||
-    bytes[12] !== 73 || bytes[13] !== 72 || bytes[14] !== 68 || bytes[15] !== 82) return false;
-  const width = bytes[16] * 0x1000000 + bytes[17] * 0x10000 + bytes[18] * 0x100 + bytes[19];
-  const height = bytes[20] * 0x1000000 + bytes[21] * 0x10000 + bytes[22] * 0x100 + bytes[23];
+function readUint32(bytes: Uint8Array, offset: number): number {
+  return (bytes[offset] * 0x1000000 + bytes[offset + 1] * 0x10000 + bytes[offset + 2] * 0x100 +
+    bytes[offset + 3]) >>> 0;
+}
+
+function hasValidPngCrc(bytes: Uint8Array, typeOffset: number, crcOffset: number): boolean {
+  let crc = 0xffffffff;
+  for (let index = typeOffset; index < crcOffset; index += 1) {
+    crc = CRC32_TABLE[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  }
+  return ((crc ^ 0xffffffff) >>> 0) === readUint32(bytes, crcOffset);
+}
+
+function hasValidIhdr(bytes: Uint8Array, dataOffset: number): boolean {
+  const width = readUint32(bytes, dataOffset);
+  const height = readUint32(bytes, dataOffset + 4);
+  const bitDepth = bytes[dataOffset + 8];
+  const colorType = bytes[dataOffset + 9];
+  const validDepths: Record<number, readonly number[]> = {
+    0: [1, 2, 4, 8, 16],
+    2: [8, 16],
+    3: [1, 2, 4, 8],
+    4: [8, 16],
+    6: [8, 16],
+  };
   return width > 0 && height > 0 && width <= SHARE_PNG_MAX_DIMENSION && height <= SHARE_PNG_MAX_DIMENSION &&
-    width * height <= SHARE_PNG_MAX_PIXELS;
+    width * height <= SHARE_PNG_MAX_PIXELS && Boolean(validDepths[colorType]?.includes(bitDepth)) &&
+    bytes[dataOffset + 10] === 0 && bytes[dataOffset + 11] === 0 &&
+    (bytes[dataOffset + 12] === 0 || bytes[dataOffset + 12] === 1);
+}
+
+function isBoundedSharePng(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 57 || PNG_SIGNATURE.some((value, index) => bytes[index] !== value)) return false;
+  let offset = PNG_SIGNATURE.length;
+  let sawIhdr = false;
+  let sawIdat = false;
+  let idatClosed = false;
+
+  while (offset < bytes.byteLength) {
+    if (bytes.byteLength - offset < 12) return false;
+    const length = readUint32(bytes, offset);
+    const typeOffset = offset + 4;
+    const dataOffset = typeOffset + 4;
+    if (length > bytes.byteLength - dataOffset - 4) return false;
+    const crcOffset = dataOffset + length;
+    for (let index = typeOffset; index < dataOffset; index += 1) {
+      const code = bytes[index];
+      if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122))) return false;
+    }
+    if (!hasValidPngCrc(bytes, typeOffset, crcOffset)) return false;
+
+    const isIhdr = bytes[typeOffset] === 73 && bytes[typeOffset + 1] === 72 &&
+      bytes[typeOffset + 2] === 68 && bytes[typeOffset + 3] === 82;
+    const isIdat = bytes[typeOffset] === 73 && bytes[typeOffset + 1] === 68 &&
+      bytes[typeOffset + 2] === 65 && bytes[typeOffset + 3] === 84;
+    const isIend = bytes[typeOffset] === 73 && bytes[typeOffset + 1] === 69 &&
+      bytes[typeOffset + 2] === 78 && bytes[typeOffset + 3] === 68;
+
+    if (!sawIhdr) {
+      if (!isIhdr || length !== 13 || !hasValidIhdr(bytes, dataOffset)) return false;
+      sawIhdr = true;
+    } else if (isIhdr) {
+      return false;
+    }
+    if (isIdat) {
+      if (idatClosed) return false;
+      sawIdat = true;
+    } else if (sawIdat && !isIend) {
+      idatClosed = true;
+    }
+    if (isIend) {
+      return length === 0 && sawIdat && crcOffset + 4 === bytes.byteLength;
+    }
+    offset = crcOffset + 4;
+  }
+  return false;
 }
 
 function hasStrictBase64Shape(value: string): boolean {
@@ -192,8 +267,11 @@ Deno.serve(async (req) => {
     if (expectedOwnerId && expectedOwnerId !== user.id) {
       return json({ error: 'account changed' }, 403);
     }
-    const cfg = KINDS[kind ?? ''];
-    if (!cfg) return json({ error: 'invalid kind' }, 400);
+    const kindKey = kind ?? '';
+    if (!Object.hasOwn(KINDS, kindKey) || !Object.hasOwn(MAX_BYTES, kindKey)) {
+      return json({ error: 'invalid kind' }, 400);
+    }
+    const cfg = KINDS[kindKey];
     if (!contentType || !ALLOWED_TYPES.has(contentType)) {
       return json({ error: 'unsupported file type' }, 415);
     }
@@ -348,13 +426,26 @@ Deno.serve(async (req) => {
       try {
         let stored: Response | undefined;
         for (let attempt = 0; attempt < DIRECT_UPLOAD_CONFLICT_ATTEMPTS; attempt += 1) {
-          stored = await aws.fetch(endpoint, {
-            method: 'PUT',
-            headers: directHeaders,
-            body: directUploadBytes!,
-            aws: { allHeaders: true },
-          });
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), DIRECT_UPLOAD_TIMEOUT_MS);
+          try {
+            stored = await aws.fetch(endpoint, {
+              method: 'PUT',
+              headers: directHeaders,
+              body: directUploadBytes!,
+              signal: controller.signal,
+              aws: { allHeaders: true },
+            });
+          } finally {
+            clearTimeout(timeout);
+          }
           if (stored.status !== 409) break;
+          if (attempt + 1 < DIRECT_UPLOAD_CONFLICT_ATTEMPTS) {
+            await new Promise((resolve) => setTimeout(
+              resolve,
+              DIRECT_UPLOAD_CONFLICT_BACKOFF_MS * (attempt + 1),
+            ));
+          }
         }
         if (!stored || (!stored.ok && stored.status !== 412)) {
           return json({ error: 'media upload failed' }, 502);

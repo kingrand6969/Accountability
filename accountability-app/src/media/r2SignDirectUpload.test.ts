@@ -9,14 +9,14 @@ import * as ts from 'typescript';
 
 const operationId = '123e4567-e89b-42d3-a456-426614174000';
 const memberId = '00000000-0000-4000-8000-000000000001';
-const sharePngBytes = new Uint8Array([
-  137, 80, 78, 71, 13, 10, 26, 10,
-  0, 0, 0, 13, 73, 72, 68, 82,
-  0, 0, 4, 176, 0, 0, 2, 118,
-]);
+const sharePngBytes = new Uint8Array(Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+));
 const requestBodyMaxBytes = 4 * Math.ceil((4 * 1024 * 1024) / 3) + 4096;
 
 type R2Call = { url: string; init: RequestInit };
+type R2Responder = Response | ((callIndex: number, init: RequestInit) => Promise<Response>);
 type Harness = {
   handler: (request: Request) => Promise<Response>;
   insert: jest.Mock;
@@ -28,7 +28,33 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function loadHandler(r2Response = new Response(null, { status: 200 })): Harness {
+function crc32(bytes: Uint8Array, start: number, end: number): number {
+  let crc = 0xffffffff;
+  for (let index = start; index < end; index += 1) {
+    crc ^= bytes[index];
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function withIhdrField(offset: number, value: number): Uint8Array {
+  const bytes = Buffer.from(sharePngBytes);
+  bytes[offset] = value;
+  bytes.writeUInt32BE(crc32(bytes, 12, 29), 29);
+  return new Uint8Array(bytes);
+}
+
+function withNonEmptyIend(): Uint8Array {
+  const bytes = Buffer.alloc(69);
+  Buffer.from(sharePngBytes.slice(0, 56)).copy(bytes);
+  bytes.writeUInt32BE(1, 56);
+  bytes.write('IEND', 60, 'ascii');
+  bytes[64] = 0;
+  bytes.writeUInt32BE(crc32(bytes, 60, 65), 65);
+  return new Uint8Array(bytes);
+}
+
+function loadHandler(r2Response: R2Responder = new Response(null, { status: 200 })): Harness {
   const sourcePath = resolve(process.cwd(), 'supabase/functions/r2-sign/index.ts');
   const source = readFileSync(sourcePath, 'utf8')
     .replace(/^import \{ createClient \}.*;\r?\n/m, 'const createClient = globalThis.__createClient;\n')
@@ -52,7 +78,9 @@ function loadHandler(r2Response = new Response(null, { status: 200 })): Harness 
 
     async fetch(url: string, init: RequestInit): Promise<Response> {
       r2Calls.push({ url, init });
-      return r2Response;
+      return typeof r2Response === 'function'
+        ? r2Response(r2Calls.length - 1, init)
+        : r2Response;
     }
   }
   const sandbox: Record<string, unknown> = {
@@ -65,6 +93,9 @@ function loadHandler(r2Response = new Response(null, { status: 200 })): Harness 
     atob: (value: string) => Buffer.from(value, 'base64').toString('binary'),
     btoa: (value: string) => Buffer.from(value, 'binary').toString('base64'),
     crypto: { subtle: webcrypto.subtle, randomUUID: () => operationId },
+    AbortController,
+    setTimeout,
+    clearTimeout,
     __envGet: (name: string) => ({
       SUPABASE_URL: 'https://supabase.example',
       SUPABASE_ANON_KEY: 'anon-key',
@@ -253,9 +284,9 @@ describe('R2 direct share upload', () => {
 
   test('rejects base64 with non-canonical padding bits', async () => {
     const harness = loadHandler();
-    const bytes = new Uint8Array([...sharePngBytes, 0]);
+    const bytes = sharePngBytes;
     const canonical = Buffer.from(bytes).toString('base64');
-    const nonCanonical = `${canonical.slice(0, -3)}B==`;
+    const nonCanonical = `${canonical.slice(0, -2)}J=`;
 
     const response = await harness.handler(directUploadRequest({
       bytes: bytes.byteLength,
@@ -270,8 +301,64 @@ describe('R2 direct share upload', () => {
 
   test.each([
     { name: 'wrong signature', bytes: new Uint8Array(sharePngBytes).fill(0, 0, 8) },
-    { name: 'excessive dimensions', bytes: new Uint8Array([...sharePngBytes.slice(0, 16), 0, 0, 32, 1, ...sharePngBytes.slice(20)]) },
+    { name: 'excessive dimensions', bytes: withIhdrField(18, 32) },
   ])('rejects a PNG with $name', async ({ bytes }) => {
+    const harness = loadHandler();
+
+    const response = await harness.handler(directUploadRequest({
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+      base64: Buffer.from(bytes).toString('base64'),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid upload payload' });
+    expect(harness.r2Calls).toHaveLength(0);
+  });
+
+  test('rejects a PNG whose IDAT CRC does not match its bytes', async () => {
+    const harness = loadHandler();
+    const bytes = new Uint8Array(sharePngBytes);
+    bytes[41] ^= 1;
+
+    const response = await harness.handler(directUploadRequest({
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+      base64: Buffer.from(bytes).toString('base64'),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid upload payload' });
+    expect(harness.r2Calls).toHaveLength(0);
+  });
+
+  test.each([
+    { name: 'is truncated', bytes: sharePngBytes.slice(0, -1) },
+    { name: 'has trailing bytes', bytes: new Uint8Array([...sharePngBytes, 0]) },
+    { name: 'declares chunk data beyond EOF', bytes: new Uint8Array([...sharePngBytes.slice(0, 33), 0x7f, 0xff, 0xff, 0xff, ...sharePngBytes.slice(37)]) },
+    { name: 'has no IDAT', bytes: new Uint8Array([...sharePngBytes.slice(0, 33), ...sharePngBytes.slice(56)]) },
+    { name: 'has a non-empty IEND', bytes: withNonEmptyIend() },
+  ])('rejects a PNG that $name', async ({ bytes }) => {
+    const harness = loadHandler();
+
+    const response = await harness.handler(directUploadRequest({
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+      base64: Buffer.from(bytes).toString('base64'),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid upload payload' });
+    expect(harness.r2Calls).toHaveLength(0);
+  });
+
+  test.each([
+    { name: 'bit depth', bytes: withIhdrField(24, 3) },
+    { name: 'color type', bytes: withIhdrField(25, 1) },
+    { name: 'compression method', bytes: withIhdrField(26, 1) },
+    { name: 'filter method', bytes: withIhdrField(27, 1) },
+    { name: 'interlace method', bytes: withIhdrField(28, 2) },
+  ])('rejects an invalid IHDR $name even when its CRC is valid', async ({ bytes }) => {
     const harness = loadHandler();
 
     const response = await harness.handler(directUploadRequest({
@@ -297,6 +384,64 @@ describe('R2 direct share upload', () => {
     expect(harness.r2Calls).toHaveLength(status === 409 ? 3 : 1);
   });
 
+  test('aborts a stalled R2 PUT after the bounded per-attempt timeout', async () => {
+    jest.useFakeTimers();
+    let markFetchStarted: (() => void) | undefined;
+    const fetchStarted = new Promise<void>((resolve) => { markFetchStarted = resolve; });
+    const harness = loadHandler(async (_callIndex, init) => {
+      markFetchStarted?.();
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new Error('private timeout detail')));
+      });
+    });
+
+    try {
+      const pendingResponse = harness.handler(directUploadRequest());
+      await fetchStarted;
+      await jest.advanceTimersByTimeAsync(9_999);
+      expect(harness.r2Calls).toHaveLength(1);
+
+      await jest.advanceTimersByTimeAsync(1);
+      const response = await pendingResponse;
+
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: 'media upload failed' });
+      expect(harness.r2Calls[0]?.init.signal?.aborted).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('waits a small bounded interval before retrying an R2 409', async () => {
+    jest.useFakeTimers();
+    let markFirstCall: (() => void) | undefined;
+    const firstCall = new Promise<void>((resolve) => { markFirstCall = resolve; });
+    const harness = loadHandler(async (callIndex) => {
+      if (callIndex === 0) {
+        markFirstCall?.();
+        return new Response(null, { status: 409 });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+    try {
+      const pendingResponse = harness.handler(directUploadRequest());
+      await firstCall;
+      await Promise.resolve();
+      expect(harness.r2Calls).toHaveLength(1);
+
+      await jest.advanceTimersByTimeAsync(74);
+      expect(harness.r2Calls).toHaveLength(1);
+
+      await jest.advanceTimersByTimeAsync(1);
+      const response = await pendingResponse;
+      expect(response.status).toBe(200);
+      expect(harness.r2Calls).toHaveLength(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('keeps exact Content-Length in the non-share presigned contract', async () => {
     const harness = loadHandler();
     const response = await harness.handler(directUploadRequest({
@@ -314,5 +459,22 @@ describe('R2 direct share upload', () => {
     expect(signedRequest.headers.get('content-length')).toBe(String(sharePngBytes.byteLength));
     expect(signedRequest.headers.get('content-type')).toBe('image/jpeg');
     expect(signedRequest.headers.get('x-amz-content-sha256')).toBe(sha256(sharePngBytes));
+  });
+
+  test.each(['__proto__', 'constructor'])('rejects inherited kind key %s', async (kind) => {
+    const harness = loadHandler();
+
+    const response = await harness.handler(directUploadRequest({
+      action: undefined,
+      base64: undefined,
+      kind,
+      operationId: undefined,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid kind' });
+    expect(harness.insert).not.toHaveBeenCalled();
+    expect(harness.sign).not.toHaveBeenCalled();
+    expect(harness.r2Calls).toHaveLength(0);
   });
 });
