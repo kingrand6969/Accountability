@@ -416,7 +416,7 @@ export function ImmersivePost({
         <View style={immersiveStyles.actionBar}>
           <Action icon="cheer" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
-          <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
+          <Action icon="share-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
         </View>
       </View>
     </View>
@@ -525,7 +525,7 @@ function CompactPostSurface({
         <View style={immersiveStyles.actionBar}>
           <Action icon="cheer" label="Cheer this post" shortLabel="Cheer" active={post.liked_by_me} onPress={onEncourage} />
           <Action icon="chatbubble-outline" label="Comment on this post" shortLabel="Comment" onPress={onComment} />
-          <Action icon="paper-plane-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
+          <Action icon="share-outline" label="Share this post" shortLabel="Share" onPress={onShare} />
         </View>
       </View>
     </View>
