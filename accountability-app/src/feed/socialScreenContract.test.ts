@@ -211,7 +211,7 @@ describe('Group 3 social Feed contract', () => {
     expect(styleBlock(metricSource, 'label')).toContain("color: 'rgba(255,255,255,.72)'");
   });
 
-  test('uses icon-only Feed actions with visible counts and an icon-only memory affordance', () => {
+  test('uses grouped Feed actions with explicit Share and Save utility labels', () => {
     const actions = jsxCalls(proofCardSource, 'Action');
     const cheerAction = callWith(actions, 'onPress={onToggleLike}');
     const commentAction = callWith(actions, 'onPress={onComment}');
@@ -222,15 +222,17 @@ describe('Group 3 social Feed contract', () => {
     expect(commentAction).toMatch(/\bicon=["']chatbubble-outline["']/);
     expect(commentAction).toMatch(/\bcount=\{post\.comment_count\}/);
     expect(commentAction).not.toMatch(/\blabel=\{`Comment/);
-    expect(shareAction).toMatch(/\bicon=["']paper-plane-outline["']/);
+    expect(shareAction).toMatch(/\bicon=["']share-outline["']/);
+    expect(shareAction).toMatch(/\bshortLabel=["']Share["']/);
+    expect(proofCardSource).not.toContain('paper-plane-outline');
     for (const action of [cheerAction, commentAction, shareAction]) {
       expect(action).toMatch(/\baccessibilityLabel=/);
     }
 
     const memoryAction = jsxCalls(proofCardSource, 'SaveToMemories')[0] ?? '';
     expect(memoryAction).toMatch(/\burl=\{post\.image_url\}/);
-    expect(hasBooleanProp(memoryAction, 'inline')).toBe(true);
-    expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(true);
+    expect(hasBooleanProp(memoryAction, 'feedAction')).toBe(true);
+    expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(false);
     const actionStyle = styleBlock(proofCardSource, 'action');
     expect(actionStyle).toMatch(/\bminWidth:\s*48\b/);
     expect(actionStyle).toMatch(/\bminHeight:\s*48\b/);
@@ -275,7 +277,7 @@ describe('Group 3 social Feed contract', () => {
     );
   });
 
-  test('keeps the memory control accessible, stateful, and label-free in icon-only mode', () => {
+  test('keeps the memory control accessible and stateful', () => {
     const memoryComponent = sourceSection(
       memorySource,
       'export function SaveToMemories(',
@@ -285,25 +287,23 @@ describe('Group 3 social Feed contract', () => {
     expect(memoryComponent).toMatch(
       /accessibilityState=\{\{\s*disabled:\s*busy\s*\|\|\s*saved,\s*busy\s*\}\}/,
     );
-    expect(memoryComponent).toMatch(/inline\s*&&\s*!iconOnly\s*\?/);
   });
 
-  test.each([
-    [
-      'icon-only Memories uses the album glyph at 21',
-      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*name=\{saved\s*\?\s*['"]albums['"]\s*:\s*['"]albums-outline['"]\}[\s\S]*size=\{21\}/,
-    ],
-    [
-      'legacy Memories retains the bookmark glyph at 17',
-      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*:[\s\S]*name=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\}[\s\S]*size=\{17\}/,
-    ],
-  ])('%s', (_name, contract) => {
+  test('renders the Feed memory action as a labeled stateful bookmark', () => {
     const memoryComponent = sourceSection(
       memorySource,
       'export function SaveToMemories(',
       'const styles = StyleSheet.create',
     );
-    expect(memoryComponent).toMatch(contract);
+
+    expect(memoryComponent).toMatch(/name=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\}/);
+    expect(memoryComponent).toContain("feedAction ? 'Save' : saved ? 'Saved' : 'Save'");
+    expect(memoryComponent).not.toContain("'albums-outline'");
+    expect(memoryComponent).not.toContain("'albums'");
+
+    const feedActionStyle = styleBlock(memorySource, 'feedAction');
+    expect(feedActionStyle).toMatch(/\bminWidth:\s*48\b/);
+    expect(feedActionStyle).toMatch(/\bminHeight:\s*48\b/);
   });
 
   test('preserves one FlatList and an honest unified Feed offset contract', () => {

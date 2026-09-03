@@ -289,6 +289,9 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(componentSource).toContain('label="Cheer this post"');
     expect(componentSource).toContain('label="Comment on this post"');
     expect(componentSource).toContain('label="Share this post"');
+    expect(componentSource).toContain('icon="share-outline"');
+    expect(componentSource).toContain('shortLabel="Share"');
+    expect(componentSource).not.toContain('paper-plane-outline');
     expect(componentSource).toContain('accessibilityLabel={label}');
   });
 
