@@ -380,25 +380,82 @@ git commit -m "fix(feed): align immersive Share icon"
 **Files:**
 - Create: `.release-evidence/feed-utility-action-clarity/phone-unsaved.png`
 - Create: `.release-evidence/feed-utility-action-clarity/phone-saved.png`
+- Create: `.release-evidence/feed-utility-action-clarity/eas-update-<revision>.json`
 
 - [ ] **Step 1: Publish only to the staging preview channel**
 
 Run from `accountability-app`. `eas update --environment preview` does not inherit
-`build.preview.env.APP_VARIANT` from `eas.json`, so set the staging identity and
-disable EAS VCS upload explicitly for this publish. Resolve the public Expo config
-and fail before publishing if any staging identity or runtime value is wrong:
+`build.preview.env.APP_VARIANT` from `eas.json`. The commands below preserve the
+caller's environment, prove the publish source and delivery isolation, resolve the
+public Expo config, and inspect the EAS account, immutable channel mappings, and
+latest compatible Android build. They use the pinned official EAS CLI 23.2.0 and
+fail closed before publishing if any value is missing or wrong. Do not run any
+channel-edit command.
 
 ```powershell
-$env:APP_VARIANT = 'staging'
-$env:EAS_NO_VCS = '1'
+$appVariantEntry = Get-Item Env:APP_VARIANT -ErrorAction SilentlyContinue
+$appVariantExisted = $null -ne $appVariantEntry
+$originalAppVariant = if ($appVariantExisted) { $appVariantEntry.Value } else { $null }
+$easNoVcsEntry = Get-Item Env:EAS_NO_VCS -ErrorAction SilentlyContinue
+$easNoVcsExisted = $null -ne $easNoVcsEntry
+$originalEasNoVcs = if ($easNoVcsExisted) { $easNoVcsEntry.Value } else { $null }
 
 try {
-  $configJson = npx expo config --type public --json
+  $env:APP_VARIANT = 'staging'
+
+  $revision = (& git rev-parse --verify HEAD).Trim()
+  if ($LASTEXITCODE -ne 0 -or $revision -notmatch '^[0-9a-f]{40}$') {
+    throw 'Could not resolve an exact 40-character source HEAD.'
+  }
+  Write-Host "Source revision: $revision"
+
+  # These are the local inputs that can affect the app archive or Metro bundle.
+  # Evidence and docs are excluded by .easignore and are intentionally not listed.
+  $publishInputPaths = @(
+    '.easignore', 'app', 'app.config.js', 'app.json', 'assets', 'babel.config.js',
+    'components', 'constants', 'eas.json', 'expo-env.d.ts', 'hooks', 'infra',
+    'lib', 'metro.config.js', 'modules', 'package.json', 'package-lock.json',
+    'patches', 'scripts', 'src', 'tsconfig.json', 'types', 'yarn.lock',
+    'pnpm-lock.yaml', 'bun.lock', 'bun.lockb', 'android', 'ios'
+  )
+  $publishInputChanges = @(
+    & git status --porcelain=v1 --untracked-files=all -- @publishInputPaths
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Could not inspect local app-source/config/dependency changes.'
+  }
+  if ($publishInputChanges.Count -gt 0) {
+    throw ("Publish inputs differ from committed HEAD ${revision}:`n - " +
+      ($publishInputChanges -join "`n - "))
+  }
+
+  # The feature may change app source, but it must not change delivery identity,
+  # dependency manifests/locks, or native projects relative to its approved base.
+  $deliveryIsolationPaths = @(
+    'app.json', 'app.config.js', 'eas.json', 'package.json', 'package-lock.json',
+    'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb', 'android', 'ios'
+  )
+  $deliveryIsolationChanges = @(
+    & git diff --name-only "e81136a..$revision" -- @deliveryIsolationPaths
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Could not prove the feature delivery-isolation range from e81136a.'
+  }
+  if ($deliveryIsolationChanges.Count -gt 0) {
+    throw ("Feature range e81136a..${revision} changes protected delivery files:`n - " +
+      ($deliveryIsolationChanges -join "`n - "))
+  }
+
+  $configJson = npx.cmd expo config --type public --json
   if ($LASTEXITCODE -ne 0) {
     throw "Expo public config resolution failed with exit code $LASTEXITCODE."
   }
 
-  $config = $configJson | ConvertFrom-Json
+  try {
+    $config = $configJson | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw "Expo public config did not return valid JSON: $($_.Exception.Message)"
+  }
   $effectiveRuntimeVersion = if ($config.runtimeVersion -is [string]) {
     $config.runtimeVersion
   } elseif ($config.runtimeVersion.policy -eq 'appVersion') {
@@ -409,21 +466,29 @@ try {
 
   $expected = [ordered]@{
     'name' = 'Mantle Staging'
+    'owner' = 'kingrand'
+    'slug' = 'accountability-app'
     'scheme' = 'accountabilityapp-staging'
     'android.package' = 'com.awldesk.accountability.staging'
     'ios.bundleIdentifier' = 'com.awldesk.accountability.staging'
     'extra.appVariant' = 'preview'
     'extra.eas.projectId' = 'f91c0791-4a6e-4080-88fd-5cc9a4e720bf'
+    'updates.url' = 'https://u.expo.dev/f91c0791-4a6e-4080-88fd-5cc9a4e720bf'
+    'runtimeVersion.policy' = 'appVersion'
     'version' = '1.0.1'
     'effectiveRuntimeVersion' = '1.0.1'
   }
   $actual = [ordered]@{
     'name' = $config.name
+    'owner' = $config.owner
+    'slug' = $config.slug
     'scheme' = $config.scheme
     'android.package' = $config.android.package
     'ios.bundleIdentifier' = $config.ios.bundleIdentifier
     'extra.appVariant' = $config.extra.appVariant
     'extra.eas.projectId' = $config.extra.eas.projectId
+    'updates.url' = $config.updates.url
+    'runtimeVersion.policy' = $config.runtimeVersion.policy
     'version' = $config.version
     'effectiveRuntimeVersion' = $effectiveRuntimeVersion
   }
@@ -436,22 +501,182 @@ try {
     }
   )
   if ($mismatches.Count -gt 0) {
-    $mismatches | ForEach-Object { Write-Error $_ }
-    exit 1
+    throw ("Staging public-config preflight failed:`n - " +
+      ($mismatches -join "`n - "))
   }
 
-  Write-Host 'Staging public-config preflight passed.'
-  npx eas update --channel preview --environment preview --message "Clarify Feed Share and Save actions (staging identity + share fix)"
+  $whoamiOutput = @(& npx.cmd eas-cli@23.2.0 whoami)
   if ($LASTEXITCODE -ne 0) {
-    throw "EAS preview update failed with exit code $LASTEXITCODE."
+    throw "EAS whoami failed with exit code $LASTEXITCODE."
   }
+  $whoamiLines = @(
+    $whoamiOutput | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+  )
+  if ($whoamiLines.Count -lt 1 -or $whoamiLines[0] -cne 'kingrand') {
+    throw "Expected EAS account 'kingrand'; got '$($whoamiLines -join ' | ')'."
+  }
+
+  $approvedChannelBranches = [ordered]@{
+    'preview' = 'preview'
+    'production' = 'production'
+  }
+  $channelBindings = [ordered]@{}
+  foreach ($channelName in $approvedChannelBranches.Keys) {
+    $channelJson = & npx.cmd eas-cli@23.2.0 channel:view $channelName --limit 100 --json --non-interactive
+    if ($LASTEXITCODE -ne 0) {
+      throw "EAS channel:view failed for required '$channelName' channel."
+    }
+    try {
+      $channelDocument = $channelJson | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      throw "EAS channel:view returned invalid JSON for '$channelName'."
+    }
+    $channelMatches = @($channelDocument.currentPage)
+    if ($channelMatches.Count -ne 1) {
+      throw "Expected exactly one EAS '$channelName' channel; found $($channelMatches.Count)."
+    }
+
+    $channel = $channelMatches[0]
+    if ($channel.name -cne $channelName -or $channel.isPaused -isnot [bool] -or
+        $channel.isPaused -or [string]::IsNullOrWhiteSpace($channel.id)) {
+      throw "EAS channel '$channelName' is missing, misnamed, or paused."
+    }
+    try {
+      $mapping = $channel.branchMapping | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      throw "Channel '$channelName' has an unreadable branch mapping."
+    }
+    $mappingRules = @($mapping.data)
+    if ($mapping.version -ne 0 -or $mappingRules.Count -ne 1 -or
+        $mappingRules[0].branchMappingLogic -cne 'true') {
+      throw "Channel '$channelName' is not a single unconditional version-0 mapping."
+    }
+
+    $mappedBranches = @(
+      $channel.updateBranches |
+        Where-Object { $_.id -ceq $mappingRules[0].branchId }
+    )
+    if ($mappedBranches.Count -ne 1) {
+      throw "Channel '$channelName' mapping does not resolve to exactly one branch."
+    }
+    $mappedBranch = $mappedBranches[0]
+    if ([string]::IsNullOrWhiteSpace($mappedBranch.id) -or
+        $mappedBranch.name -cne $approvedChannelBranches[$channelName]) {
+      throw "Channel '$channelName' maps to unapproved branch '$($mappedBranch.name)'."
+    }
+    $channelBindings[$channelName] = [ordered]@{
+      channelId = $channel.id
+      branchId = $mappedBranch.id
+      branchName = $mappedBranch.name
+    }
+  }
+  if ($channelBindings.preview.branchId -ceq $channelBindings.production.branchId -or
+      $channelBindings.preview.branchName -ceq $channelBindings.production.branchName) {
+    throw 'Preview and production channels must map to distinct approved branches.'
+  }
+
+  $buildsJson = & npx.cmd eas-cli@23.2.0 build:list --platform android --status finished --channel preview --limit 1 --json --non-interactive
+  if ($LASTEXITCODE -ne 0) {
+    throw "EAS build:list failed with exit code $LASTEXITCODE."
+  }
+  try {
+    $builds = @($buildsJson | ConvertFrom-Json -ErrorAction Stop)
+  } catch {
+    throw "EAS build:list did not return valid JSON: $($_.Exception.Message)"
+  }
+  if ($builds.Count -ne 1) {
+    throw "Expected one latest finished Android preview build; found $($builds.Count)."
+  }
+  $latestBuild = $builds[0]
+  $expectedBuild = [ordered]@{
+    'status' = 'FINISHED'
+    'platform' = 'ANDROID'
+    'buildProfile' = 'preview'
+    'updateChannel.name' = 'preview'
+    'appVersion' = '1.0.1'
+    'runtime.version' = '1.0.1'
+    'appIdentifier' = 'com.awldesk.accountability.staging'
+    'app.id' = 'f91c0791-4a6e-4080-88fd-5cc9a4e720bf'
+  }
+  $actualBuild = [ordered]@{
+    'status' = $latestBuild.status
+    'platform' = $latestBuild.platform
+    'buildProfile' = $latestBuild.buildProfile
+    'updateChannel.name' = $latestBuild.updateChannel.name
+    'appVersion' = $latestBuild.appVersion
+    'runtime.version' = $latestBuild.runtime.version
+    'appIdentifier' = $latestBuild.appIdentifier
+    'app.id' = $latestBuild.app.id
+  }
+  $buildMismatches = @(
+    foreach ($key in $expectedBuild.Keys) {
+      if ([string]$actualBuild[$key] -cne [string]$expectedBuild[$key]) {
+        "${key}: expected '$($expectedBuild[$key])', got '$($actualBuild[$key])'"
+      }
+    }
+  )
+  if ($buildMismatches.Count -gt 0) {
+    throw ("Latest Android preview build is incompatible:`n - " +
+      ($buildMismatches -join "`n - "))
+  }
+
+  # Recheck HEAD and local publish inputs immediately before enabling no-VCS mode.
+  $recheckedRevision = (& git rev-parse --verify HEAD).Trim()
+  $recheckedInputChanges = @(
+    & git status --porcelain=v1 --untracked-files=all -- @publishInputPaths
+  )
+  if ($LASTEXITCODE -ne 0 -or $recheckedRevision -cne $revision -or
+      $recheckedInputChanges.Count -gt 0) {
+    throw 'Source HEAD or local publish inputs changed during preflight.'
+  }
+
+  $env:EAS_NO_VCS = '1'
+  $updateMessage = "Clarify Feed Share and Save actions (staging identity + share fix; HEAD $revision)"
+  $updateJson = & npx.cmd eas-cli@23.2.0 update --channel preview --environment preview --platform android --non-interactive --json --message $updateMessage
+  if ($LASTEXITCODE -ne 0) {
+    throw "EAS Android preview update failed with exit code $LASTEXITCODE."
+  }
+  try {
+    $updateResult = $updateJson | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw "EAS update did not return valid JSON: $($_.Exception.Message)"
+  }
+
+  $shortRevision = $revision.Substring(0, 12)
+  $evidenceDirectory = '.release-evidence/feed-utility-action-clarity'
+  $evidencePath = Join-Path $evidenceDirectory "eas-update-$shortRevision.json"
+  New-Item -ItemType Directory -Force $evidenceDirectory | Out-Null
+  [ordered]@{
+    sourceRevision = $revision
+    message = $updateMessage
+    platform = 'android'
+    channel = 'preview'
+    environment = 'preview'
+    channelBindings = $channelBindings
+    compatibleBuildId = $latestBuild.id
+    easUpdate = $updateResult
+  } | ConvertTo-Json -Depth 100 | Set-Content -Encoding utf8 $evidencePath
+  Write-Host "Published Android preview update from $revision; evidence: $evidencePath"
 } finally {
-  Remove-Item Env:APP_VARIANT -ErrorAction SilentlyContinue
-  Remove-Item Env:EAS_NO_VCS -ErrorAction SilentlyContinue
+  if ($appVariantExisted) {
+    $env:APP_VARIANT = $originalAppVariant
+  } else {
+    Remove-Item Env:APP_VARIANT -ErrorAction SilentlyContinue
+  }
+  if ($easNoVcsExisted) {
+    $env:EAS_NO_VCS = $originalEasNoVcs
+  } else {
+    Remove-Item Env:EAS_NO_VCS -ErrorAction SilentlyContinue
+  }
 }
 ```
 
-Expected: the staging public-config preflight passes, followed by a successful Android preview update group. Never use the production profile, production environment, or production channel.
+Expected: every fail-closed preflight passes, then exactly one Android preview update
+group is published and its JSON evidence names the exact source revision. Never use
+the production profile, production environment, production branch, or production
+channel. If the production channel is absent or either channel mapping is not the
+approved `preview` → `preview`, `production` → `production` isolation, stop; do not
+create or repair mappings as part of this task.
 
 - [ ] **Step 2: Reload `com.awldesk.accountability.staging` on device `FY24068108E6`**
 
