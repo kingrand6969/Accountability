@@ -226,10 +226,8 @@ async function uploadArrayBufferToR2(
       continue;
     }
     let providerCode: string | undefined;
-    let responseBodyRead = false;
     try {
       providerCode = providerCodeFromBody(await put.text());
-      responseBodyRead = true;
     } catch {
       // Some native fetch implementations do not expose a readable error body.
     }
@@ -252,8 +250,8 @@ async function uploadArrayBufferToR2(
       ...(requestId ? { requestId } : {}),
       ...(cfRay ? { cfRay } : {}),
     });
-    throw new Error(responseBodyRead
-      ? `Upload failed (${put.status}: ${providerCode ?? 'unknown'}).`
+    throw new Error(providerCode
+      ? `Upload failed (${put.status}: ${providerCode}).`
       : `Upload failed (${put.status}).`);
   }
   throw new Error('Upload failed after conditional conflict retries.');

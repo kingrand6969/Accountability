@@ -186,6 +186,54 @@ describe('immutable R2 uploads', () => {
     expect(serializedWarning).not.toContain('private-body-details');
   });
 
+  test.each([
+    {
+      caseName: 'the response has no Code element',
+      responseBody: '<Error><Message>private-missing-code</Message><Details>private-missing-detail</Details></Error>',
+      privateDetail: 'private-missing-detail',
+    },
+    {
+      caseName: 'the Code contains unsafe characters',
+      responseBody: '<Error><Code>Signature Does Not Match!</Code><Details>private-unsafe-detail</Details></Error>',
+      privateDetail: 'private-unsafe-detail',
+    },
+    {
+      caseName: 'the Code appears after the 4096-character analysis limit',
+      responseBody: `${'x'.repeat(4096)}<Code>SignatureDoesNotMatch</Code><Details>private-late-detail</Details>`,
+      privateDetail: 'private-late-detail',
+    },
+  ])('keeps the user-facing R2 error status-only when $caseName', async ({ responseBody, privateDetail }) => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    invoke.mockResolvedValue({
+      data: {
+        uploadUrl: 'https://uploads.example/share-card?X-Amz-Signature=private-signature',
+        mediaRef,
+      },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 403,
+      text: jest.fn(async () => responseBody),
+      headers: { get: jest.fn(() => null) },
+    })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId }))
+      .rejects.toMatchObject({ message: 'Upload failed (403).' });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('R2 upload failed', expect.objectContaining({
+      status: 403,
+      providerCode: 'unknown',
+    }));
+    const serializedWarning = JSON.stringify(warn.mock.calls);
+    expect(serializedWarning).not.toContain(responseBody);
+    expect(serializedWarning).not.toContain(privateDetail);
+    expect(serializedWarning).not.toContain(mediaRef);
+    expect(serializedWarning).not.toContain('private-signature');
+  });
+
   test('safely reuses an immutable object only when its digest-addressed key already exists', async () => {
     global.fetch = jest.fn(async () => ({ ok: false, status: 412 })) as unknown as typeof fetch;
 
