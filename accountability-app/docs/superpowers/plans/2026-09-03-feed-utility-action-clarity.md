@@ -383,14 +383,75 @@ git commit -m "fix(feed): align immersive Share icon"
 
 - [ ] **Step 1: Publish only to the staging preview channel**
 
-Run from `accountability-app` with EAS VCS upload disabled:
+Run from `accountability-app`. `eas update --environment preview` does not inherit
+`build.preview.env.APP_VARIANT` from `eas.json`, so set the staging identity and
+disable EAS VCS upload explicitly for this publish. Resolve the public Expo config
+and fail before publishing if any staging identity or runtime value is wrong:
 
 ```powershell
+$env:APP_VARIANT = 'staging'
 $env:EAS_NO_VCS = '1'
-npx eas update --channel preview --environment preview --message "Clarify Feed Share and Save actions"
+
+try {
+  $configJson = npx expo config --type public --json
+  if ($LASTEXITCODE -ne 0) {
+    throw "Expo public config resolution failed with exit code $LASTEXITCODE."
+  }
+
+  $config = $configJson | ConvertFrom-Json
+  $effectiveRuntimeVersion = if ($config.runtimeVersion -is [string]) {
+    $config.runtimeVersion
+  } elseif ($config.runtimeVersion.policy -eq 'appVersion') {
+    $config.version
+  } else {
+    $null
+  }
+
+  $expected = [ordered]@{
+    'name' = 'Mantle Staging'
+    'scheme' = 'accountabilityapp-staging'
+    'android.package' = 'com.awldesk.accountability.staging'
+    'ios.bundleIdentifier' = 'com.awldesk.accountability.staging'
+    'extra.appVariant' = 'preview'
+    'extra.eas.projectId' = 'f91c0791-4a6e-4080-88fd-5cc9a4e720bf'
+    'version' = '1.0.1'
+    'effectiveRuntimeVersion' = '1.0.1'
+  }
+  $actual = [ordered]@{
+    'name' = $config.name
+    'scheme' = $config.scheme
+    'android.package' = $config.android.package
+    'ios.bundleIdentifier' = $config.ios.bundleIdentifier
+    'extra.appVariant' = $config.extra.appVariant
+    'extra.eas.projectId' = $config.extra.eas.projectId
+    'version' = $config.version
+    'effectiveRuntimeVersion' = $effectiveRuntimeVersion
+  }
+
+  $mismatches = @(
+    foreach ($key in $expected.Keys) {
+      if ([string]$actual[$key] -cne [string]$expected[$key]) {
+        "${key}: expected '$($expected[$key])', got '$($actual[$key])'"
+      }
+    }
+  )
+  if ($mismatches.Count -gt 0) {
+    $mismatches | ForEach-Object { Write-Error $_ }
+    exit 1
+  }
+
+  Write-Host 'Staging public-config preflight passed.'
+  npx eas update --channel preview --environment preview --message "Clarify Feed Share and Save actions (staging identity + share fix)"
+  if ($LASTEXITCODE -ne 0) {
+    throw "EAS preview update failed with exit code $LASTEXITCODE."
+  }
+} finally {
+  Remove-Item Env:APP_VARIANT -ErrorAction SilentlyContinue
+  Remove-Item Env:EAS_NO_VCS -ErrorAction SilentlyContinue
+}
 ```
 
-Expected: a successful Android preview update group. Never use the production profile or production channel.
+Expected: the staging public-config preflight passes, followed by a successful Android preview update group. Never use the production profile, production environment, or production channel.
 
 - [ ] **Step 2: Reload `com.awldesk.accountability.staging` on device `FY24068108E6`**
 
