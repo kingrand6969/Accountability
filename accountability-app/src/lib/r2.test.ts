@@ -57,7 +57,7 @@ describe('immutable R2 uploads', () => {
     jest.restoreAllMocks();
   });
 
-  test('binds exact bytes and a one-time precondition to a deterministic upload', async () => {
+  test('binds the content digest and one-time precondition to a deterministic upload', async () => {
     global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
 
     await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', {
@@ -81,14 +81,15 @@ describe('immutable R2 uploads', () => {
     });
     expect(global.fetch).toHaveBeenCalledWith('https://uploads.example/signed', expect.objectContaining({
       method: 'PUT',
-      headers: expect.objectContaining({
-        'Content-Type': 'image/jpeg',
-        'Content-Length': '3',
-        'If-None-Match': '*',
-        'x-amz-content-sha256': sha256,
-        'x-amz-meta-operation-id': operationId,
-      }),
     }));
+    const uploadInit = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0]?.[1];
+    expect(uploadInit?.headers).toEqual({
+      'Content-Type': 'image/jpeg',
+      'x-amz-content-sha256': sha256,
+      'If-None-Match': '*',
+      'x-amz-meta-operation-id': operationId,
+      'Cache-Control': 'private, max-age=0, no-store',
+    });
   });
 
   test('digests typed share-card bytes before signing and preserves the final PUT', async () => {
@@ -123,16 +124,17 @@ describe('immutable R2 uploads', () => {
     });
     expect(global.fetch).toHaveBeenCalledWith('https://uploads.example/share-card', expect.objectContaining({
       method: 'PUT',
-      headers: expect.objectContaining({
-        'Content-Type': 'image/png',
-        'Content-Length': '3',
-        'If-None-Match': '*',
-        'x-amz-content-sha256': sha256,
-        'x-amz-meta-operation-id': operationId,
-      }),
       body: expect.any(ArrayBuffer),
     }));
-    const uploadBody = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0]?.[1]?.body;
+    const uploadInit = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0]?.[1];
+    expect(uploadInit?.headers).toEqual({
+      'Content-Type': 'image/png',
+      'x-amz-content-sha256': sha256,
+      'If-None-Match': '*',
+      'x-amz-meta-operation-id': operationId,
+      'Cache-Control': 'private, max-age=0, no-store',
+    });
+    const uploadBody = uploadInit?.body;
     expect(Array.from(new Uint8Array(uploadBody as ArrayBuffer))).toEqual([1, 2, 3]);
   });
 

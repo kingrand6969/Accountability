@@ -300,7 +300,6 @@ async function uploadArrayBufferToR2(
       method: 'PUT',
       headers: {
         'Content-Type': contentType,
-        'Content-Length': String(bytes.byteLength),
         'x-amz-content-sha256': sha256,
         ...(options.operationId ? { 'If-None-Match': '*' } : {}),
         ...(options.operationId ? { 'x-amz-meta-operation-id': options.operationId } : {}),

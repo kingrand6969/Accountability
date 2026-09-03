@@ -214,13 +214,13 @@ Deno.serve(async (req) => {
     const endpoint = `https://${Deno.env.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com/${Deno.env.get(
       'R2_BUCKET',
     )}/${key}`;
-    // Bind type, exact length and content digest into the signature. A client
-    // cannot request approval for a small JPEG then PUT larger or different
-    // bytes. Deterministic retries are also create-only: digest-addressing plus
-    // If-None-Match makes an existing object safe to reuse without overwriting.
+    // Bind application-controlled type and digest into the signature. Content-Length
+    // is transport-managed by native HTTP stacks and must not be signed; `bytes`
+    // remains a declared-size issuance guard rather than an on-wire length constraint.
+    // Deterministic retries are create-only: digest-addressing plus If-None-Match
+    // makes an existing object safe to reuse without overwriting.
     const uploadHeaders = {
       'content-type': contentType,
-      'content-length': String(bytes),
       'x-amz-content-sha256': sha256,
       ...(operationId ? { 'if-none-match': '*' } : {}),
       ...(operationId ? { 'x-amz-meta-operation-id': operationId } : {}),
