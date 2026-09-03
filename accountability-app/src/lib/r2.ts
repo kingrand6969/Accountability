@@ -68,6 +68,26 @@ function providerCodeFromBody(body: string): string | undefined {
   return code && R2_DIAGNOSTIC_PROVIDER_CODES.has(code) ? code : undefined;
 }
 
+function utf8ByteLength(value: string): number {
+  let byteLength = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) {
+      byteLength += 1;
+    } else if (codeUnit <= 0x7ff) {
+      byteLength += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff &&
+      index + 1 < value.length &&
+      value.charCodeAt(index + 1) >= 0xdc00 && value.charCodeAt(index + 1) <= 0xdfff) {
+      byteLength += 4;
+      index += 1;
+    } else {
+      byteLength += 3;
+    }
+  }
+  return byteLength;
+}
+
 async function readDiagnosticBody(response: Response): Promise<string | undefined> {
   const stream = response.body;
   if (!stream || typeof stream.getReader !== 'function') {
@@ -82,7 +102,7 @@ async function readDiagnosticBody(response: Response): Promise<string | undefine
     if (!Number.isSafeInteger(declaredLength) || declaredLength > R2_DIAGNOSTIC_BODY_LIMIT) return undefined;
     try {
       const body = await response.text();
-      if (body.length > declaredLength || body.length > R2_DIAGNOSTIC_BODY_LIMIT) return undefined;
+      if (body.length > R2_DIAGNOSTIC_BODY_LIMIT || utf8ByteLength(body) !== declaredLength) return undefined;
       return body.slice(0, R2_DIAGNOSTIC_BODY_LIMIT);
     } catch {
       return undefined;

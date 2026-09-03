@@ -364,6 +364,65 @@ describe('immutable R2 uploads', () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain('private-mismatched-detail');
   });
 
+  test('rejects native response text that is shorter than its declared Content-Length', async () => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    const responseBody = '<Error><Code>AccessDenied</Code><Details>private-short-detail</Details></Error>';
+    const text = jest.fn(async () => responseBody);
+    invoke.mockResolvedValue({
+      data: { uploadUrl: 'https://uploads.example/share-card', mediaRef },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 403,
+      body: null,
+      headers: { get: jest.fn(() => String(responseBody.length + 1)) },
+      text,
+    })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId }))
+      .rejects.toMatchObject({ message: 'Upload failed (403).' });
+
+    expect(text).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('R2 upload failed', expect.objectContaining({ providerCode: 'unknown' }));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private-short-detail');
+  });
+
+  test.each([
+    { caseName: 'matches UTF-8 bytes', lengthAdjustment: 1, expectedCode: 'AccessDenied' },
+    { caseName: 'matches only UTF-16 code units', lengthAdjustment: 0, expectedCode: 'unknown' },
+  ])('validates multibyte native response length when Content-Length $caseName', async ({
+    lengthAdjustment,
+    expectedCode,
+  }) => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    const responseBody = '<Error><Message>é</Message><Code>AccessDenied</Code><Details>private-utf8-detail</Details></Error>';
+    const text = jest.fn(async () => responseBody);
+    invoke.mockResolvedValue({
+      data: { uploadUrl: 'https://uploads.example/share-card', mediaRef },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 403,
+      body: null,
+      headers: { get: jest.fn(() => String(responseBody.length + lengthAdjustment)) },
+      text,
+    })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const expectedMessage = expectedCode === 'unknown'
+      ? 'Upload failed (403).'
+      : `Upload failed (403: ${expectedCode}).`;
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId }))
+      .rejects.toMatchObject({ message: expectedMessage });
+
+    expect(text).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('R2 upload failed', expect.objectContaining({ providerCode: expectedCode }));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private-utf8-detail');
+  });
+
   test('keeps the native fallback generic when its bounded text read fails', async () => {
     const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
     const text = jest.fn(async () => { throw new Error('private native read failure'); });
