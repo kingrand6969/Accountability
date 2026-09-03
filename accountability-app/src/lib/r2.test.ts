@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import * as Crypto from 'expo-crypto';
 
 import { supabase } from './supabase';
@@ -30,6 +30,17 @@ const sha256 = Array.from({ length: 32 }, (_, index) => index.toString(16).padSt
 const invoke = supabase.functions.invoke as jest.MockedFunction<typeof supabase.functions.invoke>;
 const digest = Crypto.digest as jest.MockedFunction<typeof Crypto.digest>;
 
+function asciiBytes(value: string): Uint8Array {
+  return Uint8Array.from([...value], (character) => character.charCodeAt(0));
+}
+
+function createResponseStream(...chunks: string[]) {
+  const pending = chunks.map((value) => ({ done: false as const, value: asciiBytes(value) }));
+  const read = jest.fn(async () => pending.shift() ?? { done: true as const, value: undefined });
+  const cancel = jest.fn(async () => undefined);
+  return { body: { getReader: () => ({ read, cancel }) }, read, cancel };
+}
+
 describe('immutable R2 uploads', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -40,6 +51,10 @@ describe('immutable R2 uploads', () => {
       },
       error: null,
     } as never);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   test('binds exact bytes and a one-time precondition to a deterministic upload', async () => {
@@ -126,7 +141,8 @@ describe('immutable R2 uploads', () => {
     const uploadUrl = 'https://uploads.example/share-card'
       + '?X-Amz-Credential=AKIA_PRIVATE%2F20260827%2Fauto%2Fs3%2Faws4_request'
       + '&X-Amz-Signature=private-signature'
-      + '&X-Amz-SignedHeaders=content-type%3Bhost%3Bif-none-match%3Bx-amz-content-sha256%3Bx-amz-meta-operation-id';
+      + '&X-Amz-SignedHeaders=x-private-auth-token%3Bhost%3Bcontent-type%3Bhost%3Bif-none-match'
+      + '%3Bx-amz-content-sha256%3Bx-amz-meta-operation-id%3Bcontent-length';
     const responseBody = [
       '<Error>',
       '<Code>SignatureDoesNotMatch</Code>',
@@ -136,17 +152,17 @@ describe('immutable R2 uploads', () => {
       '<Details>private-body-details</Details>',
       '</Error>',
     ].join('');
+    const stream = createResponseStream(responseBody);
+    const responseHeaderGet = jest.fn((name: string) => ({
+      'x-amz-request-id': 'safe-request-id_123',
+      'cf-ray': 'safe-ray.456-SYD',
+    }[name.toLowerCase()] ?? null));
     invoke.mockResolvedValue({ data: { uploadUrl, mediaRef }, error: null } as never);
     global.fetch = jest.fn(async () => ({
       ok: false,
       status: 403,
-      text: jest.fn(async () => responseBody),
-      headers: {
-        get: jest.fn((name: string) => ({
-          'x-amz-request-id': 'safe-request-id_123',
-          'cf-ray': 'safe-ray.456-SYD',
-        }[name.toLowerCase()] ?? null)),
-      },
+      body: stream.body,
+      headers: { get: responseHeaderGet },
     })) as unknown as typeof fetch;
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
@@ -161,6 +177,7 @@ describe('immutable R2 uploads', () => {
       keyClass: 'digest',
       operationIdPresent: true,
       signedHeaders: [
+        'content-length',
         'content-type',
         'host',
         'if-none-match',
@@ -168,9 +185,9 @@ describe('immutable R2 uploads', () => {
         'x-amz-meta-operation-id',
       ],
       providerCode: 'SignatureDoesNotMatch',
-      requestId: 'safe-request-id_123',
-      cfRay: 'safe-ray.456-SYD',
     });
+    expect(responseHeaderGet).not.toHaveBeenCalled();
+    expect(stream.read).toHaveBeenCalledTimes(2);
     const serializedWarning = JSON.stringify(warn.mock.calls);
     expect(serializedWarning).not.toContain(uploadUrl);
     expect(serializedWarning).not.toContain('private-signature');
@@ -184,6 +201,9 @@ describe('immutable R2 uploads', () => {
     expect(serializedWarning).not.toContain('private-body-request-id');
     expect(serializedWarning).not.toContain('private-body-host-id');
     expect(serializedWarning).not.toContain('private-body-details');
+    expect(serializedWarning).not.toContain('safe-request-id_123');
+    expect(serializedWarning).not.toContain('safe-ray.456-SYD');
+    expect(serializedWarning).not.toContain('x-private-auth-token');
   });
 
   test.each([
@@ -198,12 +218,14 @@ describe('immutable R2 uploads', () => {
       privateDetail: 'private-unsafe-detail',
     },
     {
-      caseName: 'the Code appears after the 4096-character analysis limit',
-      responseBody: `${'x'.repeat(4096)}<Code>SignatureDoesNotMatch</Code><Details>private-late-detail</Details>`,
-      privateDetail: 'private-late-detail',
+      caseName: 'the alphanumeric Code is not on the finite allowlist',
+      responseBody: '<Error><Code>AKIAPRIVATE123456789</Code><Details>private-secret-detail</Details></Error>',
+      privateDetail: 'private-secret-detail',
     },
   ])('keeps the user-facing R2 error status-only when $caseName', async ({ responseBody, privateDetail }) => {
     const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    const stream = createResponseStream(responseBody);
+    const text = jest.fn(async () => responseBody);
     invoke.mockResolvedValue({
       data: {
         uploadUrl: 'https://uploads.example/share-card?X-Amz-Signature=private-signature',
@@ -214,7 +236,8 @@ describe('immutable R2 uploads', () => {
     global.fetch = jest.fn(async () => ({
       ok: false,
       status: 403,
-      text: jest.fn(async () => responseBody),
+      body: stream.body,
+      text,
       headers: { get: jest.fn(() => null) },
     })) as unknown as typeof fetch;
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -232,6 +255,91 @@ describe('immutable R2 uploads', () => {
     expect(serializedWarning).not.toContain(privateDetail);
     expect(serializedWarning).not.toContain(mediaRef);
     expect(serializedWarning).not.toContain('private-signature');
+    expect(serializedWarning).not.toContain('AKIAPRIVATE123456789');
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  test('accepts AccessDenied as a finite diagnostic code', async () => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    const stream = createResponseStream('<Error><Code>AccessDenied</Code><Details>private-detail</Details></Error>');
+    invoke.mockResolvedValue({
+      data: { uploadUrl: 'https://uploads.example/share-card', mediaRef },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({ ok: false, status: 403, body: stream.body })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId }))
+      .rejects.toMatchObject({ message: 'Upload failed (403: AccessDenied).' });
+    expect(warn).toHaveBeenCalledWith('R2 upload failed', expect.objectContaining({ providerCode: 'AccessDenied' }));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private-detail');
+  });
+
+  test('stops reading and cancels a share 403 body at the 4096-byte diagnostic limit', async () => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    const stream = createResponseStream(
+      `${'x'.repeat(4096)}<Code>SignatureDoesNotMatch</Code>`,
+      '<Details>private-unconsumed-detail</Details>',
+    );
+    invoke.mockResolvedValue({
+      data: { uploadUrl: 'https://uploads.example/share-card', mediaRef },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({ ok: false, status: 403, body: stream.body })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId }))
+      .rejects.toMatchObject({ message: 'Upload failed (403).' });
+
+    expect(stream.read).toHaveBeenCalledTimes(1);
+    expect(stream.cancel).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('R2 upload failed', expect.objectContaining({ providerCode: 'unknown' }));
+    const serializedWarning = JSON.stringify(warn.mock.calls);
+    expect(serializedWarning).not.toContain('SignatureDoesNotMatch');
+    expect(serializedWarning).not.toContain('private-unconsumed-detail');
+  });
+
+  test('keeps a share 403 status-only and cancels when its response stream fails', async () => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    const read = jest.fn(async () => { throw new Error('private stream failure'); });
+    const cancel = jest.fn(async () => undefined);
+    invoke.mockResolvedValue({
+      data: { uploadUrl: 'https://uploads.example/share-card', mediaRef },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 403,
+      body: { getReader: () => ({ read, cancel }) },
+    })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId }))
+      .rejects.toMatchObject({ message: 'Upload failed (403).' });
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('R2 upload failed', expect.objectContaining({ providerCode: 'unknown' }));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private stream failure');
+  });
+
+  test.each([
+    { kind: 'post' as const, status: 403 },
+    { kind: 'share' as const, status: 500 },
+  ])('does not read or warn for a $kind upload that fails with $status', async ({ kind, status }) => {
+    const folder = kind === 'share' ? 'share-cards' : 'post-images';
+    const mediaRef = `r2://${folder}/${memberId}/${sha256}.${kind === 'share' ? 'png' : 'jpg'}`;
+    const stream = createResponseStream('<Error><Code>AccessDenied</Code></Error>');
+    invoke.mockResolvedValue({ data: { uploadUrl: 'https://uploads.example/signed', mediaRef }, error: null } as never);
+    global.fetch = jest.fn(async () => ({ ok: false, status, body: stream.body })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(uploadToR2WithDigest('AQID', kind, kind === 'share' ? 'png' : 'jpg'))
+      .rejects.toMatchObject({ message: `Upload failed (${status}).` });
+
+    expect(stream.read).not.toHaveBeenCalled();
+    expect(stream.cancel).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   test('safely reuses an immutable object only when its digest-addressed key already exists', async () => {

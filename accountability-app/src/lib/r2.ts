@@ -32,13 +32,18 @@ const R2_FOLDER: Readonly<Record<R2Kind, string>> = {
 
 const R2_CONDITIONAL_CONFLICT_RETRIES = 2;
 const R2_DIAGNOSTIC_BODY_LIMIT = 4096;
-const R2_DIAGNOSTIC_CODE_LIMIT = 64;
-const R2_DIAGNOSTIC_HEADER_LIMIT = 128;
-
-function sanitizeDiagnosticToken(value: string | null, maxLength: number): string | undefined {
-  if (!value || value.length > maxLength || !/^[A-Za-z0-9/._-]+$/.test(value)) return undefined;
-  return value;
-}
+const R2_DIAGNOSTIC_PROVIDER_CODES: ReadonlySet<string> = new Set([
+  'AccessDenied',
+  'SignatureDoesNotMatch',
+]);
+const R2_DIAGNOSTIC_SIGNED_HEADERS: ReadonlySet<string> = new Set([
+  'content-length',
+  'content-type',
+  'host',
+  'if-none-match',
+  'x-amz-content-sha256',
+  'x-amz-meta-operation-id',
+]);
 
 function signedHeaderNames(uploadUrl: string): string[] {
   try {
@@ -47,18 +52,63 @@ function signedHeaderNames(uploadUrl: string): string[] {
     url.searchParams.forEach((value, name) => {
       if (name.toLowerCase() === 'x-amz-signedheaders') signedHeaders = value;
     });
-    return (signedHeaders ?? '')
+    return [...new Set((signedHeaders ?? '')
       .split(';')
-      .map((name) => sanitizeDiagnosticToken(name, R2_DIAGNOSTIC_CODE_LIMIT))
-      .filter((name): name is string => Boolean(name));
+      .map((name) => name.trim().toLowerCase())
+      .filter((name) => R2_DIAGNOSTIC_SIGNED_HEADERS.has(name)))]
+      .sort()
+      .slice(0, R2_DIAGNOSTIC_SIGNED_HEADERS.size);
   } catch {
     return [];
   }
 }
 
 function providerCodeFromBody(body: string): string | undefined {
-  const code = body.slice(0, R2_DIAGNOSTIC_BODY_LIMIT).match(/<Code>([^<]*)<\/Code>/)?.[1]?.trim() ?? null;
-  return sanitizeDiagnosticToken(code, R2_DIAGNOSTIC_CODE_LIMIT);
+  const code = body.match(/<Code>([^<]*)<\/Code>/)?.[1]?.trim();
+  return code && R2_DIAGNOSTIC_PROVIDER_CODES.has(code) ? code : undefined;
+}
+
+async function readDiagnosticBody(response: Response): Promise<string | undefined> {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    reader = response.body?.getReader();
+  } catch {
+    return undefined;
+  }
+  if (!reader) return undefined;
+
+  let cancelled = false;
+  const cancel = async () => {
+    if (cancelled) return;
+    cancelled = true;
+    await reader.cancel();
+  };
+  try {
+    const decoder = new TextDecoder();
+    let body = '';
+    let bytesRead = 0;
+    while (bytesRead < R2_DIAGNOSTIC_BODY_LIMIT) {
+      const result = await reader.read();
+      if (result.done) return body + decoder.decode();
+      if (!(result.value instanceof Uint8Array)) throw new Error('Unexpected response chunk.');
+      const remaining = R2_DIAGNOSTIC_BODY_LIMIT - bytesRead;
+      const chunk = result.value.subarray(0, remaining);
+      body += decoder.decode(chunk, { stream: true });
+      bytesRead += chunk.byteLength;
+      if (bytesRead === R2_DIAGNOSTIC_BODY_LIMIT) {
+        await cancel();
+        return body + decoder.decode();
+      }
+    }
+    return body;
+  } catch {
+    try {
+      await cancel();
+    } catch {
+      // Diagnostics must never replace the original upload failure.
+    }
+    return undefined;
+  }
 }
 
 function extensionForContentType(contentType: string): string | null {
@@ -225,20 +275,11 @@ async function uploadArrayBufferToR2(
     if (options.operationId && put.status === 409 && attempt + 1 < maxAttempts) {
       continue;
     }
-    let providerCode: string | undefined;
-    try {
-      providerCode = providerCodeFromBody(await put.text());
-    } catch {
-      // Some native fetch implementations do not expose a readable error body.
+    if (kind !== 'share' || put.status !== 403) {
+      throw new Error(`Upload failed (${put.status}).`);
     }
-    const requestId = sanitizeDiagnosticToken(
-      put.headers?.get('x-amz-request-id') ?? null,
-      R2_DIAGNOSTIC_HEADER_LIMIT,
-    );
-    const cfRay = sanitizeDiagnosticToken(
-      put.headers?.get('cf-ray') ?? null,
-      R2_DIAGNOSTIC_HEADER_LIMIT,
-    );
+    const responseBody = await readDiagnosticBody(put);
+    const providerCode = responseBody === undefined ? undefined : providerCodeFromBody(responseBody);
     console.warn('R2 upload failed', {
       status: put.status,
       byteLength: bytes.byteLength,
@@ -247,8 +288,6 @@ async function uploadArrayBufferToR2(
       operationIdPresent: Boolean(options.operationId),
       signedHeaders: signedHeaderNames(uploadUrl),
       providerCode: providerCode ?? 'unknown',
-      ...(requestId ? { requestId } : {}),
-      ...(cfRay ? { cfRay } : {}),
     });
     throw new Error(providerCode
       ? `Upload failed (${put.status}: ${providerCode}).`
