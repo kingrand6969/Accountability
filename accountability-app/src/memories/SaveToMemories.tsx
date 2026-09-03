@@ -47,22 +47,24 @@ export function SaveToMemories({
       {busy ? (
         <ActivityIndicator size="small" color={inline || feedAction ? colors.textMuted : '#fff'} />
       ) : (
-        <Ionicons
-          name={saved ? 'bookmark' : 'bookmark-outline'}
-          size={feedAction ? 21 : 17}
-          color={inline || feedAction ? (saved ? colors.primaryDark : colors.textMuted) : '#fff'}
-        />
+        <>
+          <Ionicons
+            name={saved ? 'bookmark' : 'bookmark-outline'}
+            size={feedAction ? 21 : 17}
+            color={inline || feedAction ? (saved ? colors.primaryDark : colors.textMuted) : '#fff'}
+          />
+          {inline || feedAction ? (
+            <Text
+              style={[
+                feedAction ? styles.feedActionText : styles.inlineText,
+                saved && styles.inlineSaved,
+              ]}
+            >
+              {feedAction ? 'Save' : saved ? 'Saved' : 'Save'}
+            </Text>
+          ) : null}
+        </>
       )}
-      {inline || feedAction ? (
-        <Text
-          style={[
-            feedAction ? styles.feedActionText : styles.inlineText,
-            saved && !feedAction && styles.inlineSaved,
-          ]}
-        >
-          {feedAction ? 'Save' : saved ? 'Saved' : 'Save'}
-        </Text>
-      ) : null}
     </Pressable>
   );
 }

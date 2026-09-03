@@ -306,11 +306,24 @@ describe('Group 3 social Feed contract', () => {
     expect(memoryComponent).toMatch(
       /\{inline\s*\|\|\s*feedAction\s*\?\s*\(\s*<Text[\s\S]*?feedAction\s*\?\s*styles\.feedActionText\s*:\s*styles\.inlineText[\s\S]*?>\s*\{feedAction\s*\?\s*['"]Save['"]\s*:\s*saved\s*\?\s*['"]Saved['"]\s*:\s*['"]Save['"]\}\s*<\/Text>/,
     );
+    expect(memoryComponent).toMatch(/\bsaved\s*&&\s*styles\.inlineSaved\b/);
     expect(memoryComponent).not.toMatch(/['"]albums(?:-outline)?['"]/);
 
     const feedActionStyle = styleBlock(memorySource, 'feedAction');
     expect(feedActionStyle).toMatch(/\bminWidth:\s*48\b/);
     expect(feedActionStyle).toMatch(/\bminHeight:\s*48\b/);
+  });
+
+  test('keeps memory labels out of the loading state', () => {
+    const memoryComponent = sourceSection(
+      memorySource,
+      'export function SaveToMemories(',
+      'const styles = StyleSheet.create',
+    );
+
+    expect(memoryComponent).toMatch(
+      /\{busy\s*\?\s*\(\s*<ActivityIndicator\b[\s\S]*?\/>\s*\)\s*:\s*\(\s*<>\s*<Ionicons\b[\s\S]*?\/>\s*\{inline\s*\|\|\s*feedAction\s*\?\s*\(\s*<Text\b[\s\S]*?<\/Text>\s*\)\s*:\s*null\}\s*<\/>\s*\)\}/,
+    );
   });
 
   test('preserves one FlatList and an honest unified Feed offset contract', () => {
