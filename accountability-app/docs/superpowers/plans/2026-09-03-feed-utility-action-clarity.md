@@ -387,7 +387,7 @@ git commit -m "fix(feed): align immersive Share icon"
 Run from `accountability-app`. `eas update --environment preview` does not inherit
 `build.preview.env.APP_VARIANT` from `eas.json`. The commands below preserve the
 caller's environment, prove the publish source and delivery isolation, resolve the
-public Expo config, and inspect the EAS account, immutable channel mappings, and
+public Expo config, and inspect the EAS account, current remote channel mappings, and
 latest compatible Android build. They use the pinned official EAS CLI 23.2.0 and
 fail closed before publishing if any value is missing or wrong. Do not run any
 channel-edit command.
@@ -432,8 +432,9 @@ try {
   # The feature may change app source, but it must not change delivery identity,
   # dependency manifests/locks, or native projects relative to its approved base.
   $deliveryIsolationPaths = @(
-    'app.json', 'app.config.js', 'eas.json', 'package.json', 'package-lock.json',
-    'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb', 'android', 'ios'
+    '.easignore', 'app.json', 'app.config.js', 'eas.json', 'package.json',
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb',
+    'patches', 'scripts/location-drain-bridge-patch.test.mjs', 'android', 'ios'
   )
   $deliveryIsolationChanges = @(
     & git diff --name-only "e81136a..$revision" -- @deliveryIsolationPaths
@@ -516,63 +517,144 @@ try {
     throw "Expected EAS account 'kingrand'; got '$($whoamiLines -join ' | ')'."
   }
 
-  $approvedChannelBranches = [ordered]@{
-    'preview' = 'preview'
-    'production' = 'production'
-  }
-  $channelBindings = [ordered]@{}
-  foreach ($channelName in $approvedChannelBranches.Keys) {
-    $channelJson = & npx.cmd eas-cli@23.2.0 channel:view $channelName --limit 100 --json --non-interactive
+  # Enumerate every current channel so no second channel can alias preview.
+  $channelPageSize = 25
+  $channelOffset = 0
+  $allChannels = @()
+  do {
+    $channelJson = & npx.cmd eas-cli@23.2.0 channel:list --offset $channelOffset --limit $channelPageSize --json --non-interactive
     if ($LASTEXITCODE -ne 0) {
-      throw "EAS channel:view failed for required '$channelName' channel."
+      throw "EAS channel:list failed at offset $channelOffset."
     }
     try {
       $channelDocument = $channelJson | ConvertFrom-Json -ErrorAction Stop
     } catch {
-      throw "EAS channel:view returned invalid JSON for '$channelName'."
+      throw "EAS channel:list returned invalid JSON at offset $channelOffset."
     }
-    $channelMatches = @($channelDocument.currentPage)
-    if ($channelMatches.Count -ne 1) {
-      throw "Expected exactly one EAS '$channelName' channel; found $($channelMatches.Count)."
+    $channelPage = @($channelDocument.currentPage)
+    if ($channelPage.Count -gt $channelPageSize) {
+      throw "EAS channel:list exceeded the requested page size at offset $channelOffset."
     }
+    $allChannels += $channelPage
+    $channelOffset += $channelPage.Count
+    if ($channelOffset -gt 1000) {
+      throw 'Refusing to inspect more than 1000 EAS channels.'
+    }
+  } while ($channelPage.Count -eq $channelPageSize)
 
-    $channel = $channelMatches[0]
-    if ($channel.name -cne $channelName -or $channel.isPaused -isnot [bool] -or
-        $channel.isPaused -or [string]::IsNullOrWhiteSpace($channel.id)) {
-      throw "EAS channel '$channelName' is missing, misnamed, or paused."
-    }
+  $uniqueChannelIds = @(
+    $allChannels.id |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+      Sort-Object -Unique
+  )
+  if ($allChannels.Count -lt 1 -or $uniqueChannelIds.Count -ne $allChannels.Count) {
+    throw 'EAS channel enumeration is empty or contains missing/duplicate IDs.'
+  }
+
+  $previewMatches = @($allChannels | Where-Object { $_.name -ceq 'preview' })
+  if ($previewMatches.Count -ne 1) {
+    throw "Expected exactly one EAS 'preview' channel; found $($previewMatches.Count)."
+  }
+  $previewChannel = $previewMatches[0]
+  if ($previewChannel.isPaused -isnot [bool] -or $previewChannel.isPaused) {
+    throw "EAS channel 'preview' must exist and be active."
+  }
+  try {
+    $previewMapping = $previewChannel.branchMapping | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw "Channel 'preview' has an unreadable branch mapping."
+  }
+  $previewRules = @($previewMapping.data)
+  if ($previewMapping.version -ne 0 -or $previewRules.Count -ne 1 -or
+      $previewRules[0].branchMappingLogic -cne 'true' -or
+      [string]::IsNullOrWhiteSpace($previewRules[0].branchId)) {
+    throw "Channel 'preview' must have one unconditional version-0 mapping."
+  }
+  $previewBranches = @(
+    $previewChannel.updateBranches |
+      Where-Object { $_.id -ceq $previewRules[0].branchId }
+  )
+  if ($previewBranches.Count -ne 1 -or $previewBranches[0].name -cne 'preview') {
+    throw "Channel 'preview' must map only to branch 'preview'."
+  }
+  $previewBranch = $previewBranches[0]
+
+  # Every other existing channel must resolve without using preview's branch ID
+  # or branch name. Unknown mapping schemas fail closed.
+  foreach ($candidate in @($allChannels | Where-Object { $_.id -cne $previewChannel.id })) {
     try {
-      $mapping = $channel.branchMapping | ConvertFrom-Json -ErrorAction Stop
+      $candidateMapping = $candidate.branchMapping | ConvertFrom-Json -ErrorAction Stop
     } catch {
-      throw "Channel '$channelName' has an unreadable branch mapping."
+      throw "Channel '$($candidate.name)' has an unreadable branch mapping."
     }
-    $mappingRules = @($mapping.data)
-    if ($mapping.version -ne 0 -or $mappingRules.Count -ne 1 -or
-        $mappingRules[0].branchMappingLogic -cne 'true') {
-      throw "Channel '$channelName' is not a single unconditional version-0 mapping."
+    $candidateRules = @($candidateMapping.data)
+    if ($candidateMapping.version -ne 0 -or $candidateRules.Count -lt 1) {
+      throw "Channel '$($candidate.name)' uses an unsupported mapping schema."
     }
-
-    $mappedBranches = @(
-      $channel.updateBranches |
-        Where-Object { $_.id -ceq $mappingRules[0].branchId }
-    )
-    if ($mappedBranches.Count -ne 1) {
-      throw "Channel '$channelName' mapping does not resolve to exactly one branch."
-    }
-    $mappedBranch = $mappedBranches[0]
-    if ([string]::IsNullOrWhiteSpace($mappedBranch.id) -or
-        $mappedBranch.name -cne $approvedChannelBranches[$channelName]) {
-      throw "Channel '$channelName' maps to unapproved branch '$($mappedBranch.name)'."
-    }
-    $channelBindings[$channelName] = [ordered]@{
-      channelId = $channel.id
-      branchId = $mappedBranch.id
-      branchName = $mappedBranch.name
+    foreach ($candidateRule in $candidateRules) {
+      if ([string]::IsNullOrWhiteSpace($candidateRule.branchId)) {
+        throw "Channel '$($candidate.name)' has a mapping rule without a branch ID."
+      }
+      $resolvedBranches = @(
+        $candidate.updateBranches |
+          Where-Object { $_.id -ceq $candidateRule.branchId }
+      )
+      if ($resolvedBranches.Count -ne 1) {
+        throw "Channel '$($candidate.name)' has a mapping rule that does not resolve exactly once."
+      }
+      if ($candidateRule.branchId -ceq $previewBranch.id -or
+          $resolvedBranches[0].name -ceq 'preview') {
+        throw "Channel '$($candidate.name)' aliases the protected preview branch."
+      }
     }
   }
-  if ($channelBindings.preview.branchId -ceq $channelBindings.production.branchId -or
-      $channelBindings.preview.branchName -ceq $channelBindings.production.branchName) {
-    throw 'Preview and production channels must map to distinct approved branches.'
+
+  $channelBindings = [ordered]@{
+    preview = [ordered]@{
+      present = $true
+      channelId = $previewChannel.id
+      branchId = $previewBranch.id
+      branchName = $previewBranch.name
+    }
+  }
+  $productionMatches = @($allChannels | Where-Object { $_.name -ceq 'production' })
+  if ($productionMatches.Count -gt 1) {
+    throw "Expected at most one EAS 'production' channel; found $($productionMatches.Count)."
+  }
+  if ($productionMatches.Count -eq 0) {
+    $channelBindings.production = [ordered]@{ present = $false }
+    Write-Host "No production channel exists; recorded as safe and leaving it absent."
+  } else {
+    $productionChannel = $productionMatches[0]
+    if ($productionChannel.isPaused -isnot [bool] -or $productionChannel.isPaused) {
+      throw "Existing EAS channel 'production' must be active."
+    }
+    try {
+      $productionMapping = $productionChannel.branchMapping | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      throw "Channel 'production' has an unreadable branch mapping."
+    }
+    $productionRules = @($productionMapping.data)
+    if ($productionMapping.version -ne 0 -or $productionRules.Count -ne 1 -or
+        $productionRules[0].branchMappingLogic -cne 'true' -or
+        [string]::IsNullOrWhiteSpace($productionRules[0].branchId)) {
+      throw "Channel 'production' must have one unconditional version-0 mapping."
+    }
+    $productionBranches = @(
+      $productionChannel.updateBranches |
+        Where-Object { $_.id -ceq $productionRules[0].branchId }
+    )
+    if ($productionBranches.Count -ne 1 -or
+        $productionBranches[0].name -cne 'production' -or
+        $productionBranches[0].id -ceq $previewBranch.id) {
+      throw "Channel 'production' must map only to a distinct 'production' branch."
+    }
+    $channelBindings.production = [ordered]@{
+      present = $true
+      channelId = $productionChannel.id
+      branchId = $productionBranches[0].id
+      branchName = $productionBranches[0].name
+    }
   }
 
   $buildsJson = & npx.cmd eas-cli@23.2.0 build:list --platform android --status finished --channel preview --limit 1 --json --non-interactive
@@ -645,7 +727,7 @@ try {
   $shortRevision = $revision.Substring(0, 12)
   $evidenceDirectory = '.release-evidence/feed-utility-action-clarity'
   $evidencePath = Join-Path $evidenceDirectory "eas-update-$shortRevision.json"
-  New-Item -ItemType Directory -Force $evidenceDirectory | Out-Null
+  New-Item -ItemType Directory -Force $evidenceDirectory -ErrorAction Stop | Out-Null
   [ordered]@{
     sourceRevision = $revision
     message = $updateMessage
@@ -655,7 +737,11 @@ try {
     channelBindings = $channelBindings
     compatibleBuildId = $latestBuild.id
     easUpdate = $updateResult
-  } | ConvertTo-Json -Depth 100 | Set-Content -Encoding utf8 $evidencePath
+  } | ConvertTo-Json -Depth 100 |
+    Set-Content -LiteralPath $evidencePath -Encoding utf8 -ErrorAction Stop
+  if (-not (Test-Path -LiteralPath $evidencePath -PathType Leaf -ErrorAction Stop)) {
+    throw "EAS update evidence was not written to '$evidencePath'."
+  }
   Write-Host "Published Android preview update from $revision; evidence: $evidencePath"
 } finally {
   if ($appVariantExisted) {
@@ -674,9 +760,11 @@ try {
 Expected: every fail-closed preflight passes, then exactly one Android preview update
 group is published and its JSON evidence names the exact source revision. Never use
 the production profile, production environment, production branch, or production
-channel. If the production channel is absent or either channel mapping is not the
-approved `preview` → `preview`, `production` → `production` isolation, stop; do not
-create or repair mappings as part of this task.
+channel. The active `preview` channel must map only to the `preview` branch, and no
+other existing channel may map to that branch or branch ID. If `production` exists,
+it must map only to a distinct `production` branch. If it is absent, record that
+safe fact and proceed without creating it. Never create or repair mappings as part
+of this task.
 
 - [ ] **Step 2: Reload `com.awldesk.accountability.staging` on device `FY24068108E6`**
 
