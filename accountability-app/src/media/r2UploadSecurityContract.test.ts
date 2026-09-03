@@ -5,12 +5,13 @@ import { describe, expect, test } from '@jest/globals';
 describe('R2 signer security contract', () => {
   const source = readFileSync(resolve(process.cwd(), 'supabase/functions/r2-sign/index.ts'), 'utf8');
 
-  test('validates the declared byte count while signing transport-stable upload headers', () => {
+  test('retains exact signed length for every presigned non-share upload', () => {
     const uploadHeaders = source.match(/const uploadHeaders = \{([\s\S]*?)\n    \};/)?.[1];
 
     expect(source).toContain("typeof bytes !== 'number'");
     expect(source).toContain('bytes > MAX_BYTES[kind!]');
-    expect(uploadHeaders).not.toContain("'content-length'");
+    expect(source).toMatch(/if \(action === 'direct-upload'\)[\s\S]*?return json\(\{ uploaded: true,[\s\S]*?const uploadHeaders/);
+    expect(uploadHeaders).toContain("'content-length': String(bytes)");
     expect(uploadHeaders).toContain("'content-type': contentType");
     expect(uploadHeaders).toContain("'x-amz-content-sha256': sha256");
     expect(uploadHeaders).toContain("'if-none-match': '*'");

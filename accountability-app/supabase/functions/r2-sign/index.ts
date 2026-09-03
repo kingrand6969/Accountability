@@ -1,10 +1,9 @@
 // Supabase Edge Function: r2-sign
 //
-// Returns a short-lived, one-time signed URL that lets the CURRENT logged-in
-// user upload a single image straight to Cloudflare R2 (zero-egress delivery),
-// plus an opaque private reference to store in Postgres. All R2 credentials live only in this
-// function's secrets — never in the mobile app — so the client can't leak them
-// and switching to a custom domain later is a server-only change.
+// Authorizes one media upload for the CURRENT logged-in user. Normal media gets
+// a short-lived signed URL; bounded public-share derivatives are verified and
+// stored here. The response includes an opaque private reference for Postgres.
+// R2 credentials remain only in this function's secrets.
 //
 // Secrets required (set in the Supabase dashboard → Edge Functions → Secrets):
 //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
@@ -55,12 +54,90 @@ const ALLOWED_TYPES = new Set([
 const OPERATION_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
+const SHARE_BASE64_MAX_CHARS = 4 * Math.ceil(MAX_BYTES.share / 3);
+const REQUEST_BODY_MAX_BYTES = SHARE_BASE64_MAX_CHARS + 4096;
+const SHARE_PNG_MAX_DIMENSION = 8192;
+const SHARE_PNG_MAX_PIXELS = 16_000_000;
+const DIRECT_UPLOAD_CONFLICT_ATTEMPTS = 3;
+const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...cors, 'Content-Type': 'application/json' },
   });
+}
+
+async function readBoundedJson(req: Request): Promise<
+  { value: unknown; error?: never } | {
+    value?: never;
+    error: 'invalid request' | 'request too large' | 'unsupported content encoding';
+    status: 400 | 413 | 415;
+  }
+> {
+  const contentEncoding = req.headers.get('content-encoding');
+  if (contentEncoding && contentEncoding.toLowerCase() !== 'identity') {
+    return { error: 'unsupported content encoding', status: 415 };
+  }
+  const declaredLength = req.headers.get('content-length');
+  if (declaredLength !== null) {
+    if (!/^\d+$/.test(declaredLength)) return { error: 'invalid request', status: 400 };
+    if (Number(declaredLength) > REQUEST_BODY_MAX_BYTES) return { error: 'request too large', status: 413 };
+  }
+  if (!req.body) return { error: 'invalid request', status: 400 };
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalLength += value.byteLength;
+      if (totalLength > REQUEST_BODY_MAX_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return { error: 'request too large', status: 413 };
+      }
+      chunks.push(value);
+    }
+    const body = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { value: JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)) };
+  } catch {
+    return { error: 'invalid request', status: 400 };
+  }
+}
+
+function isBoundedSharePng(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 24 || PNG_SIGNATURE.some((value, index) => bytes[index] !== value)) return false;
+  if (bytes[8] !== 0 || bytes[9] !== 0 || bytes[10] !== 0 || bytes[11] !== 13 ||
+    bytes[12] !== 73 || bytes[13] !== 72 || bytes[14] !== 68 || bytes[15] !== 82) return false;
+  const width = bytes[16] * 0x1000000 + bytes[17] * 0x10000 + bytes[18] * 0x100 + bytes[19];
+  const height = bytes[20] * 0x1000000 + bytes[21] * 0x10000 + bytes[22] * 0x100 + bytes[23];
+  return width > 0 && height > 0 && width <= SHARE_PNG_MAX_DIMENSION && height <= SHARE_PNG_MAX_DIMENSION &&
+    width * height <= SHARE_PNG_MAX_PIXELS;
+}
+
+function hasStrictBase64Shape(value: string): boolean {
+  if (!value || value.length % 4 !== 0) return false;
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  for (let index = 0; index < value.length - padding; index += 1) {
+    const code = value.charCodeAt(index);
+    if (!(
+      (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      code === 43 || code === 47
+    )) return false;
+  }
+  for (let index = value.length - padding; index < value.length; index += 1) {
+    if (value.charCodeAt(index) !== 61) return false;
+  }
+  return true;
 }
 
 Deno.serve(async (req) => {
@@ -94,8 +171,13 @@ Deno.serve(async (req) => {
     if (authErr || !user) return json({ error: 'unauthorized' }, 401);
 
     // 2) Validate the request.
-    const { action, kind, ext, bytes, contentType, sha256, operationId, expectedOwnerId, mediaRef, keyMode } = (await req.json().catch(() => ({}))) as {
-      action?: 'delete';
+    const parsedBody = await readBoundedJson(req);
+    if ('error' in parsedBody) return json({ error: parsedBody.error }, parsedBody.status);
+    if (!parsedBody.value || typeof parsedBody.value !== 'object' || Array.isArray(parsedBody.value)) {
+      return json({ error: 'invalid request' }, 400);
+    }
+    const { action, kind, ext, bytes, contentType, sha256, operationId, expectedOwnerId, mediaRef, keyMode, base64 } = parsedBody.value as {
+      action?: 'delete' | 'direct-upload';
       kind?: string;
       ext?: string;
       bytes?: number;
@@ -105,6 +187,7 @@ Deno.serve(async (req) => {
       expectedOwnerId?: string;
       mediaRef?: string;
       keyMode?: 'operation';
+      base64?: string;
     };
     if (expectedOwnerId && expectedOwnerId !== user.id) {
       return json({ error: 'account changed' }, 403);
@@ -144,6 +227,9 @@ Deno.serve(async (req) => {
     if (keyMode !== undefined && (
       keyMode !== 'operation' || kind !== 'post' || !operationId || !OPERATION_ID.test(operationId)
     )) return json({ error: 'invalid key mode' }, 400);
+    if (action !== undefined && action !== 'delete' && action !== 'direct-upload') {
+      return json({ error: 'invalid action' }, 400);
+    }
 
     if (action === 'delete') {
       if (kind !== 'post' || expectedOwnerId !== user.id || !operationId || !OPERATION_ID.test(operationId)) {
@@ -185,13 +271,51 @@ Deno.serve(async (req) => {
       return json({ error: 'bytes required' }, 400);
     }
     if (bytes > MAX_BYTES[kind!]) return json({ error: 'file too large' }, 413);
+    if (action === 'direct-upload') {
+      if (kind !== 'share' || contentType !== 'image/png' || ext?.toLowerCase() !== 'png' ||
+        !operationId || typeof base64 !== 'string') {
+        return json({ error: 'invalid direct upload' }, 400);
+      }
+      if (base64.length > SHARE_BASE64_MAX_CHARS) return json({ error: 'file too large' }, 413);
+      if (!hasStrictBase64Shape(base64)) {
+        return json({ error: 'invalid upload payload' }, 400);
+      }
+      const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+      const decodedLength = Math.floor(base64.length / 4) * 3 - padding;
+      if (decodedLength !== bytes) return json({ error: 'upload payload mismatch' }, 400);
+    } else if (kind === 'share') {
+      return json({ error: 'invalid direct upload' }, 400);
+    }
 
-    // 3) Rate-limit: log this sign; a per-user BEFORE-INSERT trigger (migration
+    // 3) Rate-limit: log this upload authorization; a per-user BEFORE-INSERT trigger (migration
     //    0057) rejects the write once the hourly cap is hit → we return 429
     //    instead of handing out another upload URL.
     const { error: rlErr } = await supabase.from('r2_sign_log').insert({ kind });
     if (rlErr) {
       return json({ error: 'Too many uploads — please slow down and try again shortly.' }, 429);
+    }
+
+    let directUploadBytes: Uint8Array | undefined;
+    if (action === 'direct-upload') {
+      try {
+        const binary = atob(base64!);
+        directUploadBytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          directUploadBytes[index] = binary.charCodeAt(index);
+        }
+        if (btoa(binary) !== base64 || !isBoundedSharePng(directUploadBytes)) {
+          return json({ error: 'invalid upload payload' }, 400);
+        }
+        if (directUploadBytes.byteLength !== bytes) {
+          return json({ error: 'upload payload mismatch' }, 400);
+        }
+        const actualDigest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', directUploadBytes))]
+          .map((value) => value.toString(16).padStart(2, '0'))
+          .join('');
+        if (actualDigest !== sha256) return json({ error: 'upload payload mismatch' }, 400);
+      } catch {
+        return json({ error: 'media upload failed' }, 502);
+      }
     }
 
     // 4) Build the object key, scoped to this user's folder (their own space).
@@ -204,7 +328,7 @@ Deno.serve(async (req) => {
         : `${crypto.randomUUID()}.${safeExt}`;
     const key = `${cfg.folder}/${user.id}/${filename}`;
 
-    // 5) Presign a PUT to the R2 S3 endpoint (valid 5 minutes).
+    // 5) Store bounded share derivatives here; all other media uses a presigned PUT.
     const aws = new AwsClient({
       accessKeyId: Deno.env.get('R2_ACCESS_KEY_ID')!,
       secretAccessKey: Deno.env.get('R2_SECRET_ACCESS_KEY')!,
@@ -214,13 +338,39 @@ Deno.serve(async (req) => {
     const endpoint = `https://${Deno.env.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com/${Deno.env.get(
       'R2_BUCKET',
     )}/${key}`;
-    // Bind application-controlled type and digest into the signature. Content-Length
-    // is transport-managed by native HTTP stacks and must not be signed; `bytes`
-    // remains a declared-size issuance guard rather than an on-wire length constraint.
+    if (action === 'direct-upload') {
+      const directHeaders = {
+        'content-type': contentType,
+        'x-amz-content-sha256': sha256,
+        'if-none-match': '*',
+        'x-amz-meta-operation-id': operationId!,
+      };
+      try {
+        let stored: Response | undefined;
+        for (let attempt = 0; attempt < DIRECT_UPLOAD_CONFLICT_ATTEMPTS; attempt += 1) {
+          stored = await aws.fetch(endpoint, {
+            method: 'PUT',
+            headers: directHeaders,
+            body: directUploadBytes!,
+            aws: { allHeaders: true },
+          });
+          if (stored.status !== 409) break;
+        }
+        if (!stored || (!stored.ok && stored.status !== 412)) {
+          return json({ error: 'media upload failed' }, 502);
+        }
+        return json({ uploaded: true, mediaRef: `r2://${key}` });
+      } catch {
+        return json({ error: 'media upload failed' }, 502);
+      }
+    }
+
+    // Bind exact length, type, and digest for presigned non-share uploads.
     // Deterministic retries are create-only: digest-addressing plus If-None-Match
     // makes an existing object safe to reuse without overwriting.
     const uploadHeaders = {
       'content-type': contentType,
+      'content-length': String(bytes),
       'x-amz-content-sha256': sha256,
       ...(operationId ? { 'if-none-match': '*' } : {}),
       ...(operationId ? { 'x-amz-meta-operation-id': operationId } : {}),
@@ -234,7 +384,7 @@ Deno.serve(async (req) => {
     );
 
     return json({ uploadUrl: signed.url, mediaRef: `r2://${key}`, key });
-  } catch (e) {
-    return json({ error: String((e as Error).message ?? e) }, 500);
+  } catch {
+    return json({ error: 'internal error' }, 500);
   }
 });

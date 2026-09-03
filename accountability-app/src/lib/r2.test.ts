@@ -57,7 +57,7 @@ describe('immutable R2 uploads', () => {
     jest.restoreAllMocks();
   });
 
-  test('binds the content digest and one-time precondition to a deterministic upload', async () => {
+  test('binds length, digest, and one-time precondition for a non-share upload', async () => {
     global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
 
     await expect(uploadToR2WithDigest('AQID', 'post', 'jpg', {
@@ -85,6 +85,7 @@ describe('immutable R2 uploads', () => {
     const uploadInit = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0]?.[1];
     expect(uploadInit?.headers).toEqual({
       'Content-Type': 'image/jpeg',
+      'Content-Length': '3',
       'x-amz-content-sha256': sha256,
       'If-None-Match': '*',
       'x-amz-meta-operation-id': operationId,
@@ -92,13 +93,13 @@ describe('immutable R2 uploads', () => {
     });
   });
 
-  test('digests typed share-card bytes before signing and preserves the final PUT', async () => {
+  test('digests typed share-card bytes and delegates the bounded upload without a client PUT', async () => {
     const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
     invoke.mockResolvedValue({
-      data: { uploadUrl: 'https://uploads.example/share-card', mediaRef },
+      data: { uploaded: true, mediaRef },
       error: null,
     } as never);
-    global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
+    global.fetch = jest.fn() as unknown as typeof fetch;
 
     await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId })).resolves.toEqual({
       mediaRef,
@@ -120,22 +121,11 @@ describe('immutable R2 uploads', () => {
         contentType: 'image/png',
         sha256,
         operationId,
+        action: 'direct-upload',
+        base64: 'AQID',
       },
     });
-    expect(global.fetch).toHaveBeenCalledWith('https://uploads.example/share-card', expect.objectContaining({
-      method: 'PUT',
-      body: expect.any(ArrayBuffer),
-    }));
-    const uploadInit = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0]?.[1];
-    expect(uploadInit?.headers).toEqual({
-      'Content-Type': 'image/png',
-      'x-amz-content-sha256': sha256,
-      'If-None-Match': '*',
-      'x-amz-meta-operation-id': operationId,
-      'Cache-Control': 'private, max-age=0, no-store',
-    });
-    const uploadBody = uploadInit?.body;
-    expect(Array.from(new Uint8Array(uploadBody as ArrayBuffer))).toEqual([1, 2, 3]);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test('surfaces only sanitized provider diagnostics when a share-card PUT is forbidden', async () => {

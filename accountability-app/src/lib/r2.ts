@@ -234,7 +234,7 @@ export async function uploadToR2WithDigest(
   if (body.byteLength > R2_UPLOAD_MAX_BYTES[kind]) {
     throw Object.assign(new Error('That image is too large to upload.'), { status: 413 });
   }
-  return uploadArrayBufferToR2(body, kind, contentType, ext, options);
+  return uploadArrayBufferToR2(body, kind, contentType, ext, options, base64);
 }
 
 export async function uploadBytesToR2(
@@ -266,6 +266,7 @@ async function uploadArrayBufferToR2(
   contentType: string,
   ext: string,
   options: R2UploadOptions,
+  directUploadBase64?: string,
 ): Promise<R2UploadedMedia> {
   const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, new Uint8Array(bytes));
   const sha256 = [...new Uint8Array(digest)]
@@ -283,11 +284,16 @@ async function uploadArrayBufferToR2(
         operationId: options.operationId,
         expectedOwnerId: options.expectedOwnerId,
         keyMode: options.keyMode,
+        ...(kind === 'share' ? { action: 'direct-upload', base64: directUploadBase64 } : {}),
       },
     });
     if (error) throw error;
-    const { uploadUrl, mediaRef } = (data ?? {}) as { uploadUrl?: string; mediaRef?: string };
-    if (!uploadUrl || !mediaRef) throw new Error('Could not get an upload URL.');
+    const { uploadUrl, mediaRef, uploaded } = (data ?? {}) as {
+      uploadUrl?: string;
+      mediaRef?: string;
+      uploaded?: boolean;
+    };
+    if (!mediaRef) throw new Error('Could not get an upload URL.');
     const expectedReference = options.keyMode === 'operation'
       ? Boolean(options.operationId && isExpectedOperationDigestMediaRef(
         mediaRef, kind, options.operationId, sha256, contentType, options.expectedOwnerId,
@@ -296,10 +302,15 @@ async function uploadArrayBufferToR2(
     if (!expectedReference) {
       throw new Error('Upload service is out of date. Please try again shortly.');
     }
+    if (kind === 'share' && uploaded === true) {
+      return { mediaRef, sha256 };
+    }
+    if (!uploadUrl) throw new Error('Could not get an upload URL.');
     const put = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': contentType,
+        'Content-Length': String(bytes.byteLength),
         'x-amz-content-sha256': sha256,
         ...(options.operationId ? { 'If-None-Match': '*' } : {}),
         ...(options.operationId ? { 'x-amz-meta-operation-id': options.operationId } : {}),
