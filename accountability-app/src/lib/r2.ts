@@ -149,7 +149,7 @@ async function uploadArrayBufferToR2(
   ext: string,
   options: R2UploadOptions,
 ): Promise<R2UploadedMedia> {
-  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
+  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, new Uint8Array(bytes));
   const sha256 = [...new Uint8Array(digest)]
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('');

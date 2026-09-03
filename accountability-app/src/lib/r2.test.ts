@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import * as Crypto from 'expo-crypto';
 
 import { supabase } from './supabase';
 import { isExpectedDigestMediaRef, isExpectedOperationDigestMediaRef, uploadToR2WithDigest } from './r2';
@@ -11,7 +12,12 @@ jest.mock('./supabase', () => ({
 
 jest.mock('expo-crypto', () => ({
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
-  digest: jest.fn(async () => Uint8Array.from({ length: 32 }, (_, index) => index).buffer),
+  digest: jest.fn(async (_algorithm: string, bytes: ArrayBuffer | ArrayBufferView) => {
+    if (!ArrayBuffer.isView(bytes)) {
+      throw new Error("[digest] Cannot convert '[object ArrayBuffer]' to a Kotlin type. no ArrayBuffer attached");
+    }
+    return Uint8Array.from({ length: 32 }, (_, index) => index).buffer;
+  }),
 }));
 
 jest.mock('base64-arraybuffer', () => ({
@@ -22,6 +28,7 @@ const operationId = '123e4567-e89b-42d3-a456-426614174000';
 const memberId = '00000000-0000-4000-8000-000000000001';
 const sha256 = Array.from({ length: 32 }, (_, index) => index.toString(16).padStart(2, '0')).join('');
 const invoke = supabase.functions.invoke as jest.MockedFunction<typeof supabase.functions.invoke>;
+const digest = Crypto.digest as jest.MockedFunction<typeof Crypto.digest>;
 
 describe('immutable R2 uploads', () => {
   beforeEach(() => {
@@ -67,6 +74,48 @@ describe('immutable R2 uploads', () => {
         'x-amz-meta-operation-id': operationId,
       }),
     }));
+  });
+
+  test('digests typed share-card bytes before signing and preserves the final PUT', async () => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    invoke.mockResolvedValue({
+      data: { uploadUrl: 'https://uploads.example/share-card', mediaRef },
+      error: null,
+    } as never);
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png')).resolves.toEqual({
+      mediaRef,
+      sha256,
+    });
+
+    expect(digest).toHaveBeenCalledWith(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      expect.any(Uint8Array),
+    );
+    const digestBytes = digest.mock.calls[0]?.[1];
+    expect(Array.from(digestBytes as Uint8Array)).toEqual([1, 2, 3]);
+    expect(digest.mock.invocationCallOrder[0]).toBeLessThan(invoke.mock.invocationCallOrder[0] ?? 0);
+    expect(invoke).toHaveBeenCalledWith('r2-sign', {
+      body: {
+        kind: 'share',
+        ext: 'png',
+        bytes: 3,
+        contentType: 'image/png',
+        sha256,
+      },
+    });
+    expect(global.fetch).toHaveBeenCalledWith('https://uploads.example/share-card', expect.objectContaining({
+      method: 'PUT',
+      headers: expect.objectContaining({
+        'Content-Type': 'image/png',
+        'Content-Length': '3',
+        'x-amz-content-sha256': sha256,
+      }),
+      body: expect.any(ArrayBuffer),
+    }));
+    const uploadBody = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0]?.[1]?.body;
+    expect(Array.from(new Uint8Array(uploadBody as ArrayBuffer))).toEqual([1, 2, 3]);
   });
 
   test('safely reuses an immutable object only when its digest-addressed key already exists', async () => {
