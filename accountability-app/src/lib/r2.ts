@@ -31,6 +31,35 @@ const R2_FOLDER: Readonly<Record<R2Kind, string>> = {
 };
 
 const R2_CONDITIONAL_CONFLICT_RETRIES = 2;
+const R2_DIAGNOSTIC_BODY_LIMIT = 4096;
+const R2_DIAGNOSTIC_CODE_LIMIT = 64;
+const R2_DIAGNOSTIC_HEADER_LIMIT = 128;
+
+function sanitizeDiagnosticToken(value: string | null, maxLength: number): string | undefined {
+  if (!value || value.length > maxLength || !/^[A-Za-z0-9/._-]+$/.test(value)) return undefined;
+  return value;
+}
+
+function signedHeaderNames(uploadUrl: string): string[] {
+  try {
+    const url = new URL(uploadUrl);
+    let signedHeaders: string | undefined;
+    url.searchParams.forEach((value, name) => {
+      if (name.toLowerCase() === 'x-amz-signedheaders') signedHeaders = value;
+    });
+    return (signedHeaders ?? '')
+      .split(';')
+      .map((name) => sanitizeDiagnosticToken(name, R2_DIAGNOSTIC_CODE_LIMIT))
+      .filter((name): name is string => Boolean(name));
+  } catch {
+    return [];
+  }
+}
+
+function providerCodeFromBody(body: string): string | undefined {
+  const code = body.slice(0, R2_DIAGNOSTIC_BODY_LIMIT).match(/<Code>([^<]*)<\/Code>/)?.[1]?.trim() ?? null;
+  return sanitizeDiagnosticToken(code, R2_DIAGNOSTIC_CODE_LIMIT);
+}
 
 function extensionForContentType(contentType: string): string | null {
   switch (contentType) {
@@ -196,7 +225,36 @@ async function uploadArrayBufferToR2(
     if (options.operationId && put.status === 409 && attempt + 1 < maxAttempts) {
       continue;
     }
-    throw new Error(`Upload failed (${put.status}).`);
+    let providerCode: string | undefined;
+    let responseBodyRead = false;
+    try {
+      providerCode = providerCodeFromBody(await put.text());
+      responseBodyRead = true;
+    } catch {
+      // Some native fetch implementations do not expose a readable error body.
+    }
+    const requestId = sanitizeDiagnosticToken(
+      put.headers?.get('x-amz-request-id') ?? null,
+      R2_DIAGNOSTIC_HEADER_LIMIT,
+    );
+    const cfRay = sanitizeDiagnosticToken(
+      put.headers?.get('cf-ray') ?? null,
+      R2_DIAGNOSTIC_HEADER_LIMIT,
+    );
+    console.warn('R2 upload failed', {
+      status: put.status,
+      byteLength: bytes.byteLength,
+      kind,
+      keyClass: options.keyMode === 'operation' ? 'operation-digest' : options.operationId ? 'digest' : 'mutable',
+      operationIdPresent: Boolean(options.operationId),
+      signedHeaders: signedHeaderNames(uploadUrl),
+      providerCode: providerCode ?? 'unknown',
+      ...(requestId ? { requestId } : {}),
+      ...(cfRay ? { cfRay } : {}),
+    });
+    throw new Error(responseBodyRead
+      ? `Upload failed (${put.status}: ${providerCode ?? 'unknown'}).`
+      : `Upload failed (${put.status}).`);
   }
   throw new Error('Upload failed after conditional conflict retries.');
 }

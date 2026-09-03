@@ -84,7 +84,7 @@ describe('immutable R2 uploads', () => {
     } as never);
     global.fetch = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
 
-    await expect(uploadToR2WithDigest('AQID', 'share', 'png')).resolves.toEqual({
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId })).resolves.toEqual({
       mediaRef,
       sha256,
     });
@@ -103,6 +103,7 @@ describe('immutable R2 uploads', () => {
         bytes: 3,
         contentType: 'image/png',
         sha256,
+        operationId,
       },
     });
     expect(global.fetch).toHaveBeenCalledWith('https://uploads.example/share-card', expect.objectContaining({
@@ -110,12 +111,79 @@ describe('immutable R2 uploads', () => {
       headers: expect.objectContaining({
         'Content-Type': 'image/png',
         'Content-Length': '3',
+        'If-None-Match': '*',
         'x-amz-content-sha256': sha256,
+        'x-amz-meta-operation-id': operationId,
       }),
       body: expect.any(ArrayBuffer),
     }));
     const uploadBody = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0]?.[1]?.body;
     expect(Array.from(new Uint8Array(uploadBody as ArrayBuffer))).toEqual([1, 2, 3]);
+  });
+
+  test('surfaces only sanitized provider diagnostics when a share-card PUT is forbidden', async () => {
+    const mediaRef = `r2://share-cards/${memberId}/${sha256}.png`;
+    const uploadUrl = 'https://uploads.example/share-card'
+      + '?X-Amz-Credential=AKIA_PRIVATE%2F20260827%2Fauto%2Fs3%2Faws4_request'
+      + '&X-Amz-Signature=private-signature'
+      + '&X-Amz-SignedHeaders=content-type%3Bhost%3Bif-none-match%3Bx-amz-content-sha256%3Bx-amz-meta-operation-id';
+    const responseBody = [
+      '<Error>',
+      '<Code>SignatureDoesNotMatch</Code>',
+      '<Message>private user content and Bearer private-auth-token must never be logged</Message>',
+      '<RequestId>private-body-request-id</RequestId>',
+      '<HostId>private-body-host-id</HostId>',
+      '<Details>private-body-details</Details>',
+      '</Error>',
+    ].join('');
+    invoke.mockResolvedValue({ data: { uploadUrl, mediaRef }, error: null } as never);
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 403,
+      text: jest.fn(async () => responseBody),
+      headers: {
+        get: jest.fn((name: string) => ({
+          'x-amz-request-id': 'safe-request-id_123',
+          'cf-ray': 'safe-ray.456-SYD',
+        }[name.toLowerCase()] ?? null)),
+      },
+    })) as unknown as typeof fetch;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(uploadToR2WithDigest('AQID', 'share', 'png', { operationId }))
+      .rejects.toThrow('Upload failed (403: SignatureDoesNotMatch).');
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('R2 upload failed', {
+      status: 403,
+      byteLength: 3,
+      kind: 'share',
+      keyClass: 'digest',
+      operationIdPresent: true,
+      signedHeaders: [
+        'content-type',
+        'host',
+        'if-none-match',
+        'x-amz-content-sha256',
+        'x-amz-meta-operation-id',
+      ],
+      providerCode: 'SignatureDoesNotMatch',
+      requestId: 'safe-request-id_123',
+      cfRay: 'safe-ray.456-SYD',
+    });
+    const serializedWarning = JSON.stringify(warn.mock.calls);
+    expect(serializedWarning).not.toContain(uploadUrl);
+    expect(serializedWarning).not.toContain('private-signature');
+    expect(serializedWarning).not.toContain('AKIA_PRIVATE');
+    expect(serializedWarning).not.toContain(mediaRef);
+    expect(serializedWarning).not.toContain('<Message>');
+    expect(serializedWarning).not.toContain(responseBody);
+    expect(serializedWarning).not.toContain('private user content');
+    expect(serializedWarning).not.toContain('AQID');
+    expect(serializedWarning).not.toContain('private-auth-token');
+    expect(serializedWarning).not.toContain('private-body-request-id');
+    expect(serializedWarning).not.toContain('private-body-host-id');
+    expect(serializedWarning).not.toContain('private-body-details');
   });
 
   test('safely reuses an immutable object only when its digest-addressed key already exists', async () => {
