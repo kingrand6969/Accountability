@@ -69,13 +69,32 @@ function providerCodeFromBody(body: string): string | undefined {
 }
 
 async function readDiagnosticBody(response: Response): Promise<string | undefined> {
-  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const stream = response.body;
+  if (!stream || typeof stream.getReader !== 'function') {
+    let contentLength: string | null;
+    try {
+      contentLength = response.headers?.get('content-length') ?? null;
+    } catch {
+      return undefined;
+    }
+    if (!contentLength || !/^\d+$/.test(contentLength)) return undefined;
+    const declaredLength = Number(contentLength);
+    if (!Number.isSafeInteger(declaredLength) || declaredLength > R2_DIAGNOSTIC_BODY_LIMIT) return undefined;
+    try {
+      const body = await response.text();
+      if (body.length > declaredLength || body.length > R2_DIAGNOSTIC_BODY_LIMIT) return undefined;
+      return body.slice(0, R2_DIAGNOSTIC_BODY_LIMIT);
+    } catch {
+      return undefined;
+    }
+  }
+
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
   try {
-    reader = response.body?.getReader();
+    reader = stream.getReader();
   } catch {
     return undefined;
   }
-  if (!reader) return undefined;
 
   let cancelled = false;
   const cancel = async () => {
