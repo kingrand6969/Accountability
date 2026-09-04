@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { RouteTrace } from '../activity/RouteTrace';
 import { formatDuration, formatKm, formatPace, type Pt } from '../activity/geo';
-import { font, spacing } from '../ui/theme';
+import { font, spacing, type } from '../ui/theme';
 
 export const RUN_ROUTE_LARGE_OVERLAY_HEIGHT = 286;
 
@@ -34,7 +34,7 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
       style={[styles.overlay, isLargeText && styles.overlayLarge]}
       pointerEvents="none"
     >
-      <LinearGradient colors={['transparent', 'rgba(2,8,20,.88)']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['transparent', 'rgba(11,13,11,.92)']} style={StyleSheet.absoluteFill} />
       {points.length > 1 ? (
         <RouteTrace
           points={points}
@@ -47,7 +47,7 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
         />
       ) : null}
       <View testID="run-route-metrics" style={[styles.stats, isLargeText && styles.statsLarge]}>
-        <Metric value={formatKm(distance)} label="km" largeText={isLargeText} />
+        <Metric value={formatKm(distance)} label="km" primary largeText={isLargeText} />
         <Metric value={formatDuration(duration)} label="time" largeText={isLargeText} />
         <Metric value={formatPace(distance, duration)} label="pace /km" largeText={isLargeText} />
       </View>
@@ -55,13 +55,28 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
   );
 }
 
-function Metric({ value, label, largeText }: { value: string; label: string; largeText: boolean }) {
+function Metric({
+  value,
+  label,
+  primary = false,
+  largeText,
+}: {
+  value: string;
+  label: string;
+  primary?: boolean;
+  largeText: boolean;
+}) {
   return (
     <View
       testID={`run-route-metric-${label}`}
-      style={[styles.metric, largeText && styles.metricLarge]}
+      style={[styles.metric, primary && styles.primaryMetric, largeText && styles.metricLarge]}
     >
-      <Text style={styles.value}>{value}</Text>
+      <Text
+        testID={`run-route-metric-value-${label}`}
+        style={[styles.value, primary && styles.primaryValue]}
+      >
+        {value}
+      </Text>
       <Text style={styles.label}>{label}</Text>
     </View>
   );
@@ -102,6 +117,9 @@ const styles = StyleSheet.create({
   metric: {
     minWidth: 68,
   },
+  primaryMetric: {
+    minWidth: 96,
+  },
   metricLarge: {
     minWidth: 0,
     minHeight: 46,
@@ -111,10 +129,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   value: {
+    ...type.metric,
     color: '#FFFFFF',
     fontFamily: font.extrabold,
-    fontSize: 20,
-    lineHeight: 23,
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  primaryValue: {
+    ...type.heroMetric,
+    color: '#FFFFFF',
+    fontFamily: font.display,
+    fontSize: 42,
+    lineHeight: 44,
+    letterSpacing: -1.2,
   },
   label: {
     marginTop: 2,

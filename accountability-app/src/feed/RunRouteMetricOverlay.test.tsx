@@ -66,10 +66,21 @@ describe('RunRouteMetricOverlay responsive layout', () => {
       renderer.root.findByProps({ testID: 'run-route-metrics' }).props.style,
     );
     const route = renderer.root.findByProps({ testID: 'run-overlay-route' });
+    const primaryValue = StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'run-route-metric-value-km' }).props.style,
+    );
+    const timeValue = StyleSheet.flatten(
+      renderer.root.findByProps({ testID: 'run-route-metric-value-time' }).props.style,
+    );
+    const gradient = renderer.root.findByProps({ testID: 'run-overlay-gradient' });
 
     expect(mockWindowDimensions).toHaveBeenCalled();
     expect(overlay.height).toBe(138);
     expect(stats.flexDirection).toBe('row');
+    expect(primaryValue.fontSize).toBe(42);
+    expect(primaryValue.fontVariant).toEqual(expect.arrayContaining(['tabular-nums']));
+    expect(timeValue.fontSize).toBe(18);
+    expect(gradient.props.colors).toEqual(['transparent', 'rgba(11,13,11,.92)']);
     expect(StyleSheet.flatten(route.props.style).position).toBe('absolute');
     expect(route.props).toEqual(expect.objectContaining({ height: 76 }));
     expect(renderer.root.findAllByType(Text).map((node) => node.props.children))
