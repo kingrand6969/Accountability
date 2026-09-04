@@ -11,7 +11,7 @@ type BrandWordmarkProps = Readonly<{
 /** Theme-aware lockup used anywhere app chrome displays the Mantle name. */
 export function BrandWordmark({ compact = false }: BrandWordmarkProps) {
   const { colors: theme } = useAppTheme();
-  const markSize = compact ? 24 : 30;
+  const markSize = compact ? 32 : 38;
 
   return (
     <View
@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
     minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 6,
   },
   wordmark: {
     fontFamily: font.brand,

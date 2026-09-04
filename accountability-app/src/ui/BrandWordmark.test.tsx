@@ -17,6 +17,15 @@ describe('theme-aware Mantle wordmark', () => {
     expect(source).not.toContain('wordmark.png');
   });
 
+  test('uses the approved compact horizontal lockup proportions', () => {
+    const source = readFileSync(require.resolve('./BrandWordmark'), 'utf8');
+
+    expect(source).toContain('const markSize = compact ? 32 : 38');
+    expect(source).toContain('gap: 6');
+    expect(source).toContain('fontSize: 21');
+    expect(source).toContain('fontSize: 18');
+  });
+
   test('is used by the Feed header so Dark mode never receives a dark fixed-image wordmark', () => {
     const source = readFileSync(require.resolve('../app/(app)/_layout'), 'utf8');
 

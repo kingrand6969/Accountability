@@ -93,7 +93,7 @@ export function parseBrandGeometry(value: unknown): BrandGeometryContract {
  * Node asset generator. Keep it as JSON so neither runtime needs a transpiler.
  */
 export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
-  "viewBox": "0 0 120 80",
+  "viewBox": "0 0 124 80",
   "wordmark": "Mantle",
   "colors": {
     "lime": "#B9FF3D",
@@ -103,25 +103,29 @@ export const BRAND_GEOMETRY = parseBrandGeometry(JSON.parse(String.raw`{
   },
   "mark": {
     "paths": [
-      "M25 51C37 43 44 26 56 27C63 27 65 33 70 32",
-      "M51 54C62 65 74 66 84 53C92 42 97 34 101 32"
+      "M13 49C28 49 31 27 45 27C56 27 60 42 70 42",
+      "M53 48C63 58 76 57 84 44C93 30 99 25 111 25"
     ],
-    "strokeWidth": 20,
+    "strokeWidth": 12,
     "nodes": [
-      { "cx": 11.5, "cy": 68, "r": 11.5 },
-      { "cx": 108.5, "cy": 12, "r": 11.5 }
+      { "cx": 13, "cy": 49, "r": 6 },
+      { "cx": 111, "cy": 25, "r": 6 }
     ]
   }
 }`));
 
+export const BRAND_LOCKUP_MARK_ASPECT_RATIO = 1.55;
+
+export const BRAND_LOCKUP_MARK_RENDER_VIEW_BOX = '0 0 124 80';
+
 /**
  * General/native framing keeps rasterized small marks clear of every canvas edge.
  */
-export const BRAND_GENERAL_MARK_RENDER_VIEW_BOX = '-24 -44 168 168';
+export const BRAND_GENERAL_MARK_RENDER_VIEW_BOX = '-18 -40 160 160';
 
 /**
  * Android adaptive foregrounds must fit the centered 66/108 circular safe zone.
  */
-export const BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX = '-65 -85 250 250';
+export const BRAND_ADAPTIVE_ICON_RENDER_VIEW_BOX = '-63 -85 250 250';
 
 export const BRAND_WORDMARK = BRAND_GEOMETRY.wordmark;

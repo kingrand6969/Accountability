@@ -1,8 +1,9 @@
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import {
-  BRAND_GENERAL_MARK_RENDER_VIEW_BOX,
   BRAND_GEOMETRY,
+  BRAND_LOCKUP_MARK_ASPECT_RATIO,
+  BRAND_LOCKUP_MARK_RENDER_VIEW_BOX,
   BRAND_WORDMARK,
 } from './brandGeometry';
 
@@ -23,8 +24,9 @@ export function BrandMark({
   return (
     <Svg
       width={size}
-      height={size}
-      viewBox={BRAND_GENERAL_MARK_RENDER_VIEW_BOX}
+      height={size / BRAND_LOCKUP_MARK_ASPECT_RATIO}
+      viewBox={BRAND_LOCKUP_MARK_RENDER_VIEW_BOX}
+      preserveAspectRatio="xMidYMid meet"
       accessibilityRole="image"
       accessibilityLabel={accessibilityLabel}
     >
