@@ -5,8 +5,11 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { PostImage } from './PostImage';
 import { CachedImage } from '../ui/CachedImage';
 
+let mockResolvedImageUrl: string | null = null;
+
+jest.mock('@expo/vector-icons/Ionicons', () => jest.fn(() => null));
 jest.mock('../media/useResolvedImageUrl', () => ({
-  useResolvedImageUrl: (url: string) => url,
+  useResolvedImageUrl: () => mockResolvedImageUrl,
 }));
 jest.mock('../ui/CachedImage', () => ({
   CachedImage: jest.fn(() => null),
@@ -15,6 +18,19 @@ jest.mock('../ui/CachedImage', () => ({
 describe('PostImage presentation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockResolvedImageUrl = 'photo.jpg';
+  });
+
+  test('shows an intentional placeholder when private media cannot be resolved', () => {
+    mockResolvedImageUrl = null;
+
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(<PostImage url="private/photo.jpg" />);
+    });
+
+    expect(renderer.root.findByProps({ testID: 'post-image-placeholder' })).toBeTruthy();
+    expect(CachedImage).not.toHaveBeenCalled();
   });
 
   test('fits the full photo when opened instead of zooming and cropping it', () => {

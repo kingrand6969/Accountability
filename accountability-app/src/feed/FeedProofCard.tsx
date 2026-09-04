@@ -109,9 +109,37 @@ export function FeedProofCard({
         </Pressable>
       </View>
 
+      {post.image_url ? (
+            <Pressable
+              testID="feed-post-media"
+              onPress={onOpenMedia ?? onOpen}
+              accessibilityRole="link"
+              accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
+              accessibilityHint="Opens the full post, comments, and Cheers"
+              style={({ pressed }) => [
+                styles.media,
+                needsLargeRunMedia && styles.runMediaLarge,
+                pressed && styles.pressed,
+              ]}
+            >
+          {post.post_type === 'video' ? (
+            <PostVideo url={post.image_url} active={mediaActive} />
+          ) : (
+            <PostImage url={post.image_url} capTall />
+          )}
+              {post.post_type === 'run' ? (
+                <>
+                  <View style={styles.topScrim} pointerEvents="none" />
+                  {post.body.trim() ? <ProofHeadlineOverlay headline={post.body.trim()} /> : null}
+                  <RunRouteMetricOverlay data={post.share_data} />
+                </>
+          ) : null}
+        </Pressable>
+      ) : null}
+
       {post.body && post.post_type !== 'run' ? (
         <Pressable onPress={onOpen} accessibilityRole="link" accessibilityLabel="Open post">
-          <Text style={styles.body}>{post.body}</Text>
+          <Text testID="feed-post-body" style={styles.body}>{post.body}</Text>
         </Pressable>
       ) : null}
 
@@ -144,33 +172,6 @@ export function FeedProofCard({
             <Text style={styles.attendText}>{attending ? 'Going ✓' : 'Attend'}</Text>
           </Pressable>
         </View>
-      ) : null}
-
-      {post.image_url ? (
-            <Pressable
-              onPress={onOpenMedia ?? onOpen}
-              accessibilityRole="link"
-              accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
-              accessibilityHint="Opens the full post, comments, and Cheers"
-              style={({ pressed }) => [
-                styles.media,
-                needsLargeRunMedia && styles.runMediaLarge,
-                pressed && styles.pressed,
-              ]}
-            >
-          {post.post_type === 'video' ? (
-            <PostVideo url={post.image_url} active={mediaActive} />
-          ) : (
-            <PostImage url={post.image_url} capTall />
-          )}
-              {post.post_type === 'run' ? (
-                <>
-                  <View style={styles.topScrim} pointerEvents="none" />
-                  {post.body.trim() ? <ProofHeadlineOverlay headline={post.body.trim()} /> : null}
-                  <RunRouteMetricOverlay data={post.share_data} />
-                </>
-          ) : null}
-        </Pressable>
       ) : null}
 
       <View style={styles.actions}>
@@ -326,7 +327,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     fontSize: 11.5,
   },
   authorHeader: {
-    minHeight: 56,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -334,9 +335,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     backgroundColor: theme.surface.canvas,
   },
   authorCopy: { flex: 1 },
-  author: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 14 },
+  author: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 15 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  time: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5 },
+  time: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 11 },
   type: {
     color: theme.ink.action,
     fontFamily: font.bold,
@@ -351,7 +352,15 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  body: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, color: theme.ink.primary, fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
+  body: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    color: theme.ink.primary,
+    fontFamily: font.regular,
+    fontSize: 14,
+    lineHeight: 20,
+  },
   event: {
     minHeight: 64,
     marginHorizontal: spacing.md,
@@ -396,12 +405,14 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     backgroundColor: 'rgba(3,11,26,.32)',
   },
   actions: {
-    minHeight: 48,
+    minHeight: spacing.touch,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     backgroundColor: theme.surface.canvas,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border.subtle,
   },
   socialActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   utilityActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

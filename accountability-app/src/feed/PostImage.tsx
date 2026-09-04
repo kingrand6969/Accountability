@@ -47,7 +47,18 @@ export function PostImage({
           backgroundColor: colors.surface,
         }}
         contentFit={immersive || detail ? 'contain' : 'cover'}
-      /> : <View style={[styles.privatePlaceholder, immersive && styles.immersivePlaceholder, { aspectRatio: shown }]} />}
+      /> : (
+        <View
+          testID="post-image-placeholder"
+          style={[
+            styles.privatePlaceholder,
+            immersive && styles.immersivePlaceholder,
+            { aspectRatio: shown },
+          ]}
+        >
+          {!immersive ? <Ionicons name="image-outline" size={26} color={colors.textMuted} /> : null}
+        </View>
+      )}
       {capped ? (
         <View style={styles.hint} pointerEvents="none">
           <Ionicons name="expand-outline" size={12} color="#fff" />
@@ -60,7 +71,13 @@ export function PostImage({
 
 const styles = StyleSheet.create({
   wrap: { alignSelf: 'stretch', width: '100%' },
-  privatePlaceholder: { width: '100%', borderRadius: radius.sm, backgroundColor: colors.surface },
+  privatePlaceholder: {
+    width: '100%',
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   immersivePlaceholder: { borderRadius: 0, backgroundColor: colors.navy },
   hint: {
     position: 'absolute',
