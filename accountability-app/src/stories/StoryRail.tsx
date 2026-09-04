@@ -344,9 +344,11 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   rail: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
     backgroundColor: theme.surface.canvas,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border.subtle,
   },
   pressed: { opacity: 0.85 },
   storyItem: {
@@ -425,8 +427,8 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   createLabel: {
     marginTop: 4,
     width: '100%',
-    color: theme.ink.muted,
-    fontFamily: font.medium,
+    color: theme.ink.secondary,
+    fontFamily: font.semibold,
     fontSize: 10,
     lineHeight: 14,
     textAlign: 'center',

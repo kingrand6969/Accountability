@@ -4,6 +4,18 @@ import { describe, expect, test } from '@jest/globals';
 
 const source = fs.readFileSync(path.join(__dirname, 'StoryRail.tsx'), 'utf8');
 
+function styleBlock(name: string): string {
+  return source.match(new RegExp(`${name}:\\s*\\{([\\s\\S]*?)\\n  \\},`))?.[1] ?? '';
+}
+
+test('uses one quiet divider and preserves the 52dp story image', () => {
+  expect(source).toContain('const STORY_BUBBLE = 52');
+  expect(styleBlock('rail')).toContain('borderBottomWidth: StyleSheet.hairlineWidth');
+  expect(styleBlock('rail')).toContain('borderBottomColor: theme.border.subtle');
+  expect(styleBlock('createLabel')).toContain('color: theme.ink.secondary');
+  expect(styleBlock('storyName')).toContain('color: theme.ink.muted');
+});
+
 describe('StoryRail large-text layout', () => {
   test('grows circular story items and buddy suggestions without limiting font scaling', () => {
     expect(source).toContain('storyTileSizeForFontScale(fontScale)');
