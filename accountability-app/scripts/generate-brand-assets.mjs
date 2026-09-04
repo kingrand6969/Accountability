@@ -159,7 +159,7 @@ function createMarkup(geometry, renderViewBoxes) {
   }
 
   const wordmarkMark = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="300" viewBox="0 0 1400 300">
-    <g transform="translate(18 40) scale(2.2)">${markBody(geometry, colors.lime)}</g>
+    <g transform="translate(18 20) scale(2.15)">${markBody(geometry, colors.lime)}</g>
   </svg>`;
 
   return { adaptiveMark, appIcon, mark, wordmarkMark };

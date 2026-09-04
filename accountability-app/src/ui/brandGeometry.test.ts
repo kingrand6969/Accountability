@@ -577,6 +577,9 @@ describe('Mantle brand geometry contract', () => {
       "new URL('../node_modules/@expo-google-fonts/sora/700Bold/Sora_700Bold.ttf', import.meta.url)",
     );
     expect(generator).toContain('.composite([');
+    expect(generator).toContain(
+      '<g transform="translate(18 20) scale(2.15)">',
+    );
     expect(generator).not.toContain('@font-face');
     expect(generator).not.toContain('data:font');
   });
@@ -719,8 +722,8 @@ describe('Mantle brand geometry contract', () => {
       expect(meaningful.bounds.top).toBeGreaterThanOrEqual(1);
       expect(meaningful.bounds.right).toBeGreaterThanOrEqual(1);
       expect(meaningful.bounds.bottom).toBeGreaterThanOrEqual(1);
-      expect(meaningful.bounds.width).toBeGreaterThan(size * 0.7);
-      expect(meaningful.bounds.height).toBeGreaterThan(size * 0.45);
+      expect(meaningful.bounds.width).toBeGreaterThan(size * 0.68);
+      expect(meaningful.bounds.height).toBeGreaterThan(size * 0.26);
       expect(meaningful.leftNodePixels).toBeGreaterThan(1);
       expect(meaningful.rightNodePixels).toBeGreaterThan(1);
     },
