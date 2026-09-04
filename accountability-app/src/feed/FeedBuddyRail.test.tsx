@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { FeedBuddyRail } from './FeedBuddyRail';
 import type { Candidate } from '../buddy/api';
+import { themeColors } from '../ui/theme';
 
 jest.mock('../ui/AppThemeProvider', () => ({
   useAppTheme: () => ({ colors: jest.requireActual<typeof import('../ui/theme')>('../ui/theme').themeColors('dark') }),
@@ -88,13 +89,15 @@ describe('FeedBuddyRail', () => {
     expect(onSeeAll).toHaveBeenCalledTimes(1);
   });
 
-  test('keeps the rail flat without card border or elevation', () => {
+  test('uses the dark canvas as a flat rail without card framing', () => {
     const { renderer } = renderRail();
     const root = renderer.root.findByProps({ testID: 'feed-buddy-rail' });
     const styles = Array.isArray(root.props.style) ? root.props.style : [root.props.style];
     const resolved = Object.assign({}, ...styles);
 
+    expect(resolved.backgroundColor).toBe(themeColors('dark').surface.canvas);
     expect(resolved.borderWidth).toBeUndefined();
+    expect(resolved.borderRadius).toBeUndefined();
     expect(resolved.elevation).toBeUndefined();
   });
 
@@ -115,6 +118,6 @@ describe('FeedBuddyRail', () => {
 
     expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(44);
     expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(44);
-    expect(visualStyle).toEqual(expect.objectContaining({ width: 32, height: 32 }));
+    expect(visualStyle).toEqual(expect.objectContaining({ width: 28, height: 28, borderRadius: 14 }));
   });
 });

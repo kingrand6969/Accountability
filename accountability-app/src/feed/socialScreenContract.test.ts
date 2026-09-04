@@ -60,17 +60,20 @@ function sourceSection(
 }
 
 describe('Group 3 social Feed contract', () => {
-  test('renders offline and refresh failures as full-width semantic status bands', () => {
+  test('renders offline and refresh failures as compact semantic recovery states', () => {
     const offline = styleBlock(feedSource, 'offlineNotice');
     const error = styleBlock(feedSource, 'inlineError');
 
-    expect(offline).toContain('backgroundColor: theme.surface.muted');
+    expect(offline).toContain('backgroundColor: theme.surface.canvas');
     expect(offline).not.toContain('margin');
-    expect(offline).not.toContain('border');
+    expect(offline).toContain('borderBottomWidth: StyleSheet.hairlineWidth');
+    expect(offline).toContain('borderBottomColor: theme.border.subtle');
     expect(error).toContain('backgroundColor: theme.status.dangerSoft');
-    expect(error).not.toContain('margin');
-    expect(error).not.toContain('border');
-    expect(error).not.toContain('borderRadius');
+    expect(error).toContain('marginHorizontal: spacing.lg');
+    expect(error).toContain('marginVertical: spacing.sm');
+    expect(error).toContain('borderRadius: radius.md');
+    expect(error).toContain('borderWidth: StyleSheet.hairlineWidth');
+    expect(error).toContain('borderColor: theme.border.danger');
   });
 
   test('preserves cursor pagination and request-generation guards', () => {
@@ -206,7 +209,7 @@ describe('Group 3 social Feed contract', () => {
     expect(styleBlock(metricSource, 'routeLarge')).toContain("position: 'relative'");
     expect(styleBlock(metricSource, 'metric')).toContain('minWidth: 68');
     expect(styleBlock(metricSource, 'value')).toContain("color: '#FFFFFF'");
-    expect(styleBlock(metricSource, 'value')).toContain('lineHeight: 23');
+    expect(styleBlock(metricSource, 'value')).toContain('lineHeight: 22');
     expect(styleBlock(metricSource, 'label')).toContain('marginTop: 2');
     expect(styleBlock(metricSource, 'label')).toContain("color: 'rgba(255,255,255,.72)'");
   });
