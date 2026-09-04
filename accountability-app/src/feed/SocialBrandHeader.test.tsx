@@ -19,10 +19,13 @@ jest.mock('../ui/AppThemeProvider', () => ({
 jest.mock('../ui/BrandMark', () => ({ BrandMark: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => {
   const React = jest.requireActual<typeof import('react')>('react');
-  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
-  return ({ name, color }: { name: string; color: string }) => (
-    <View testID={`header-icon-${name}`} style={{ color }} />
-  );
+  const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+
+  function MockIonicons({ name, color }: { name: string; color: string }) {
+    return <Text testID={`header-icon-${name}`} style={{ color }} />;
+  }
+
+  return MockIonicons;
 });
 
 test('reserves chartreuse for Create while Search and Notifications stay quiet', () => {

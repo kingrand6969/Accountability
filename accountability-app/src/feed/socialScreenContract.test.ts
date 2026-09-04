@@ -160,14 +160,14 @@ describe('Group 3 social Feed contract', () => {
     expect(brandHeaderSource).toContain('accessibilityLabel="Search"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Create"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Notifications"');
-    expect(brandHeaderSource).toContain('minWidth: 44');
+    expect(brandHeaderSource).toContain('width: spacing.touch');
     expect(modeSelectorSource).not.toContain('accessibilityRole="tablist"');
   });
 
   test('keeps the social brand mark accessible without large-text wordmark clipping', () => {
     expect(brandHeaderSource).not.toContain('useWindowDimensions');
-    expect(brandHeaderSource).toContain('minWidth: 44');
-    expect(brandHeaderSource).toContain('minHeight: 44');
+    expect(brandHeaderSource).toContain('width: spacing.touch');
+    expect(brandHeaderSource).toContain('height: spacing.touch');
   });
 
   test('uses approved proof typography, metrics, actions, and supporter summary', () => {
