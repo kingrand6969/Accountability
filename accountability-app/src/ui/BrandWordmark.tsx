@@ -16,6 +16,7 @@ export function BrandWordmark({ compact = false }: BrandWordmarkProps) {
   return (
     <View
       style={styles.row}
+      accessible
       accessibilityRole="image"
       accessibilityLabel="Mantle"
     >

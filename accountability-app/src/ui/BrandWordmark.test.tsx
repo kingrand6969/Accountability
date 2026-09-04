@@ -10,6 +10,12 @@ describe('theme-aware Mantle wordmark', () => {
     expect(source).toContain('Mantle');
     expect(source).toContain('font.brand');
     expect(source).toContain('accessibilityLabel="Mantle"');
+    expect(source).toMatch(
+      /<View\s+style=\{styles\.row\}\s+accessible\s+accessibilityRole="image"\s+accessibilityLabel="Mantle"/,
+    );
+    expect(source).toMatch(
+      /accessibilityLabel="Mantle"\s*>\s*<BrandMark[\s\S]*?<Text[\s\S]*?<\/Text>\s*<\/View>/,
+    );
     expect(source).toContain('theme.border.action');
     expect(source).toContain('theme.ink.primary');
     expect(source).not.toContain('Account<Text');

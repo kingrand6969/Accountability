@@ -18,6 +18,9 @@ describe('Mantle brand mark', () => {
     expect(source).toContain('width="100%"');
     expect(source).toContain('height="100%"');
     expect(source).toContain('preserveAspectRatio="xMidYMid meet"');
+    expect(source).toMatch(
+      /<View\s+style=\{\{ width: size, aspectRatio: BRAND_LOCKUP_MARK_ASPECT_RATIO \}\}\s+accessible\s+accessibilityRole="image"\s+accessibilityLabel=\{accessibilityLabel\}/,
+    );
     expect(source).toContain('color = BRAND_GEOMETRY.colors.lime');
     expect(source).toContain('stroke={color}');
     expect(source).toContain('fill={color}');

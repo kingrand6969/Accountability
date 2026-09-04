@@ -25,6 +25,7 @@ export function BrandMark({
   return (
     <View
       style={{ width: size, aspectRatio: BRAND_LOCKUP_MARK_ASPECT_RATIO }}
+      accessible
       accessibilityRole="image"
       accessibilityLabel={accessibilityLabel}
     >
