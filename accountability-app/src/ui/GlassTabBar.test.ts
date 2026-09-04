@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { createElement } from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { PixelRatio, Text } from 'react-native';
+import { PixelRatio, StyleSheet, Text } from 'react-native';
 
 import { GlassTabBar, VISIBLE_TAB_LABELS } from './GlassTabBar';
 import {
@@ -355,6 +355,17 @@ describe('GlassTabBar contract', () => {
       ).toBe(visualLabel);
     }
     expect(renderer.root.findAllByProps({ testID: 'tab-label-Run' })).toHaveLength(0);
+  });
+
+  it('uses compact dock typography while preserving the Feed accessible name', () => {
+    const { renderer } = renderTabBar();
+    const feed = pressableByLabel(renderer, 'Feed');
+    const label = renderer.root.findByProps({ testID: 'tab-label-Feed' });
+
+    expect(StyleSheet.flatten(label.props.style)).toEqual(
+      expect.objectContaining({ fontSize: 11, lineHeight: 14 }),
+    );
+    expect(feed.props.accessibilityLabel).toBe('Feed');
   });
 
   it('preserves tabPress prevention, navigation, and haptics', () => {

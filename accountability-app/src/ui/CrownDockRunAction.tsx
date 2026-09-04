@@ -34,8 +34,8 @@ export function CrownDockRunAction({ focused }: CrownDockRunActionProps) {
         ]}
       />
       <Svg
-        width={88}
-        height={92}
+        width={76}
+        height={80}
         viewBox="0 0 88 92"
         style={styles.hex}
       >
@@ -45,7 +45,7 @@ export function CrownDockRunAction({ focused }: CrownDockRunActionProps) {
       <View style={styles.highlight} />
       <Ionicons
         name="walk"
-        size={38}
+        size={31}
         color={theme.ink.inverse}
         style={styles.icon}
       />
@@ -56,22 +56,22 @@ export function CrownDockRunAction({ focused }: CrownDockRunActionProps) {
 const styles = StyleSheet.create({
   root: {
     position: 'absolute',
-    top: -34,
-    width: 92,
-    height: 100,
+    top: -24,
+    width: 80,
+    height: 88,
     alignItems: 'center',
     justifyContent: 'flex-start',
     zIndex: 4,
-    elevation: 14,
+    elevation: 12,
   },
   glow: {
     position: 'absolute',
-    left: 17,
-    right: 17,
+    left: 16,
+    right: 16,
     bottom: 2,
-    height: 22,
+    height: 16,
     borderRadius: 999,
-    transform: [{ scaleX: 1.25 }],
+    transform: [{ scaleX: 1.18 }],
   },
   hex: {
     position: 'absolute',
@@ -83,15 +83,14 @@ const styles = StyleSheet.create({
   },
   highlight: {
     position: 'absolute',
-    top: 11,
-    width: 45,
-    height: 2,
+    top: 10,
+    width: 38,
+    height: 1,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.34)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   icon: {
     position: 'absolute',
-    top: 26,
+    top: 23,
   },
 });
-

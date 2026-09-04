@@ -10,7 +10,7 @@ import {
 } from './floatingTabBar';
 import { useAppTheme } from './AppThemeProvider';
 import { hapticSelect } from './haptics';
-import { spacing, type } from './theme';
+import { font, spacing } from './theme';
 
 // Minimal shape of the props Expo Router's <Tabs tabBar={...}> passes — avoids a
 // direct dependency on @react-navigation/bottom-tabs' (nested) type declarations.
@@ -220,8 +220,9 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.72 },
   label: {
-    ...type.caption,
-    lineHeight: 16,
+    fontFamily: font.medium,
+    fontSize: 11,
+    lineHeight: 14,
     textAlign: 'center',
     flexShrink: 1,
   },
