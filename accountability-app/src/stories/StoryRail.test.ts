@@ -10,9 +10,13 @@ function styleBlock(name: string): string {
 
 test('uses one quiet divider and preserves the 52dp story image', () => {
   expect(source).toContain('const STORY_BUBBLE = 52');
+  expect(styleBlock('rail')).toContain('paddingBottom: spacing.md');
+  expect(styleBlock('rail')).toContain('gap: spacing.md');
   expect(styleBlock('rail')).toContain('borderBottomWidth: StyleSheet.hairlineWidth');
   expect(styleBlock('rail')).toContain('borderBottomColor: theme.border.subtle');
+  expect(styleBlock('rail')).not.toContain('borderTopWidth');
   expect(styleBlock('createLabel')).toContain('color: theme.ink.secondary');
+  expect(styleBlock('createLabel')).toContain('fontFamily: font.semibold');
   expect(styleBlock('storyName')).toContain('color: theme.ink.muted');
 });
 
