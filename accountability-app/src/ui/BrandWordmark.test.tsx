@@ -1,5 +1,21 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, test } from '@jest/globals';
+
+function runtimeSourceFiles(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) return runtimeSourceFiles(entryPath);
+    if (
+      !entry.isFile() ||
+      !/\.tsx?$/.test(entry.name) ||
+      /\.(?:test|spec)\.tsx?$/.test(entry.name)
+    ) {
+      return [];
+    }
+    return [entryPath];
+  });
+}
 
 describe('theme-aware Mantle wordmark', () => {
   test('uses the active semantic ink and neon mark instead of a fixed blue image', () => {
@@ -57,17 +73,58 @@ describe('theme-aware Mantle wordmark', () => {
   });
 
   test.each([
-    ['feed header', require.resolve('../app/(app)/_layout')],
-    ['auth shell', require.resolve('./AuthShell')],
-    ['proof capture card', require.resolve('../entry/ProofCaptureCard')],
-    ['external share card', require.resolve('../feed/ExternalShareCard')],
-    ['progress share card', require.resolve('../progress/ProgressShareCard')],
-    ['glass tab bar', require.resolve('./GlassTabBar')],
-  ])('%s consumes the shared Mantle mark', (_surface, sourcePath) => {
+    [
+      'feed header',
+      require.resolve('../app/(app)/_layout'),
+      "import { BrandWordmark } from '../../ui/BrandWordmark'",
+      '<BrandWordmark',
+    ],
+    [
+      'auth shell',
+      require.resolve('./AuthShell'),
+      "import { BrandMark } from './BrandMark'",
+      '<BrandMark',
+    ],
+    [
+      'proof capture card',
+      require.resolve('../entry/ProofCaptureCard'),
+      "import { BrandMark } from '../ui/BrandMark'",
+      '<BrandMark',
+    ],
+    [
+      'external share card',
+      require.resolve('../feed/ExternalShareCard'),
+      "import { BrandMark } from '../ui/BrandMark'",
+      '<BrandMark',
+    ],
+    [
+      'progress share card',
+      require.resolve('../progress/ProgressShareCard'),
+      "import { BrandMark } from '../ui/BrandMark'",
+      '<BrandMark',
+    ],
+    [
+      'glass tab bar',
+      require.resolve('./GlassTabBar'),
+      "import { BrandMark } from './BrandMark'",
+      '<BrandMark',
+    ],
+  ])('%s consumes the shared Mantle mark', (_surface, sourcePath, expectedImport, expectedJsx) => {
     const source = readFileSync(sourcePath, 'utf8');
 
-    expect(source).toMatch(/BrandMark|BrandWordmark/);
+    expect(source).toContain(expectedImport);
+    expect(source).toContain(expectedJsx);
     expect(source).not.toMatch(/primaryPath|accentPath/);
     expect(source).not.toMatch(/M25 51C37 43|M51 54C62 65/);
+  });
+
+  test('runtime source contains no retired geometry or fixed logo assets', () => {
+    const runtimeFiles = runtimeSourceFiles(path.resolve(__dirname, '..'));
+
+    for (const sourcePath of runtimeFiles) {
+      const source = readFileSync(sourcePath, 'utf8');
+      expect(source).not.toMatch(/M25 51C37 43|M51 54C62 65/);
+      expect(source).not.toMatch(/wordmark\.png|logo-mark\.png/);
+    }
   });
 });
