@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import {
@@ -22,34 +23,39 @@ export function BrandMark({
   accessibilityLabel = `${BRAND_WORDMARK} logo`,
 }: BrandMarkProps) {
   return (
-    <Svg
-      width={size}
-      height={size / BRAND_LOCKUP_MARK_ASPECT_RATIO}
-      viewBox={BRAND_LOCKUP_MARK_RENDER_VIEW_BOX}
-      preserveAspectRatio="xMidYMid meet"
+    <View
+      style={{ width: size, aspectRatio: BRAND_LOCKUP_MARK_ASPECT_RATIO }}
       accessibilityRole="image"
       accessibilityLabel={accessibilityLabel}
     >
-      {BRAND_GEOMETRY.mark.paths.map((path) => (
-        <Path
-          key={path}
-          d={path}
-          fill="none"
-          stroke={color}
-          strokeWidth={BRAND_GEOMETRY.mark.strokeWidth}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-      {BRAND_GEOMETRY.mark.nodes.map((node) => (
-        <Circle
-          key={`${node.cx}-${node.cy}`}
-          cx={node.cx}
-          cy={node.cy}
-          r={node.r}
-          fill={color}
-        />
-      ))}
-    </Svg>
+      <Svg
+        width="100%"
+        height="100%"
+        viewBox={BRAND_LOCKUP_MARK_RENDER_VIEW_BOX}
+        preserveAspectRatio="xMidYMid meet"
+        accessible={false}
+      >
+        {BRAND_GEOMETRY.mark.paths.map((path) => (
+          <Path
+            key={path}
+            d={path}
+            fill="none"
+            stroke={color}
+            strokeWidth={BRAND_GEOMETRY.mark.strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+        {BRAND_GEOMETRY.mark.nodes.map((node) => (
+          <Circle
+            key={`${node.cx}-${node.cy}`}
+            cx={node.cx}
+            cy={node.cy}
+            r={node.r}
+            fill={color}
+          />
+        ))}
+      </Svg>
+    </View>
   );
 }
