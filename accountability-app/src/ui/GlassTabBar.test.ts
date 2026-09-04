@@ -248,7 +248,10 @@ describe('GlassTabBar contract', () => {
     const mark = renderer.root.findByProps({ testID: 'approved-brand-mark' });
     const idleStyles = journey.props.style({ pressed: false });
 
-    expect(mark.props.accessibilityLabel).toBe('Journey');
+    expect(mark.props.accessible).toBe(false);
+    expect(mark.props.accessibilityLabel).toBeUndefined();
+    expect(journey.props.accessibilityRole).toBe('tab');
+    expect(journey.props.accessibilityLabel).toBe('Journey');
     expect(mark.props.color).toBe(dark.ink.action);
     expect(idleStyles).not.toEqual(
       expect.arrayContaining([

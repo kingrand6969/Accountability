@@ -23,7 +23,7 @@ export function BrandWordmark({ compact = false }: BrandWordmarkProps) {
       <BrandMark
         size={markSize}
         color={theme.border.action}
-        accessibilityLabel="Mantle logo"
+        accessible={false}
       />
       <Text
         maxFontSizeMultiplier={1.25}

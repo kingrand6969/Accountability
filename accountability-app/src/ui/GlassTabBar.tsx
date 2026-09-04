@@ -128,7 +128,7 @@ export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarPr
                   <BrandMark
                     size={27}
                     color={isFocused ? theme.ink.action : theme.ink.muted}
-                    accessibilityLabel="Journey"
+                    accessible={false}
                   />
                 ) : (
                   options.tabBarIcon?.({

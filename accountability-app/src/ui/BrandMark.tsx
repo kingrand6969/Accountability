@@ -12,6 +12,7 @@ type BrandMarkProps = {
   size?: number;
   color?: string;
   accessibilityLabel?: string;
+  accessible?: boolean;
 };
 
 /**
@@ -21,13 +22,16 @@ export function BrandMark({
   size = 28,
   color = BRAND_GEOMETRY.colors.lime,
   accessibilityLabel = `${BRAND_WORDMARK} logo`,
+  accessible = true,
 }: BrandMarkProps) {
   return (
     <View
       style={{ width: size, aspectRatio: BRAND_LOCKUP_MARK_ASPECT_RATIO }}
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={accessibilityLabel}
+      accessible={accessible}
+      importantForAccessibility={accessible ? 'yes' : 'no-hide-descendants'}
+      accessibilityRole={accessible ? 'image' : undefined}
+      accessibilityLabel={accessible ? accessibilityLabel : undefined}
+      accessibilityElementsHidden={!accessible}
     >
       <Svg
         width="100%"

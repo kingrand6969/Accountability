@@ -32,6 +32,10 @@ describe('theme-aware Mantle wordmark', () => {
     expect(source).toMatch(
       /accessibilityLabel="Mantle"\s*>\s*<BrandMark[\s\S]*?<Text[\s\S]*?<\/Text>\s*<\/View>/,
     );
+    expect(source).toMatch(
+      /<BrandMark\s+size=\{markSize\}\s+color=\{theme\.border\.action\}\s+accessible=\{false\}\s*\/>/,
+    );
+    expect(source).not.toMatch(/<BrandMark[^>]*accessibilityLabel=/);
     expect(source).toContain('theme.border.action');
     expect(source).toContain('theme.ink.primary');
     expect(source).not.toContain('Account<Text');
