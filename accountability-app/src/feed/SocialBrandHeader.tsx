@@ -28,7 +28,7 @@ export function SocialBrandHeader({
         <BrandWordmark compact />
       </View>
       <View style={styles.actions}>
-        <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearch} styles={styles} color={theme.ink.action} />
+        <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearch} styles={styles} color={theme.ink.secondary} />
         <IconButton icon="add-circle-outline" accessibilityLabel="Create" onPress={onCreate} styles={styles} color={theme.ink.action} />
         <View>
           <IconButton
@@ -36,7 +36,7 @@ export function SocialBrandHeader({
             accessibilityLabel="Notifications"
             onPress={onNotifications}
             styles={styles}
-            color={theme.ink.action}
+            color={theme.ink.secondary}
           />
           {unread > 0 ? <View style={styles.dot} accessibilityElementsHidden /> : null}
         </View>
@@ -74,7 +74,7 @@ type BrandHeaderStyles = ReturnType<typeof createStyles>;
 
 const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   header: {
-    minHeight: 54,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
@@ -84,13 +84,17 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  actions: { flexDirection: 'row', alignItems: 'center' },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   iconButton: {
-    minWidth: 44,
-    minHeight: 44,
+    width: spacing.touch,
+    height: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 22,
+    borderRadius: spacing.touch / 2,
   },
   dot: {
     position: 'absolute',
@@ -103,5 +107,5 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.surface.card,
   },
-  pressed: { opacity: 0.62 },
+  pressed: { opacity: 0.68 },
 });

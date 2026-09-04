@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
 import { expect, jest, test } from '@jest/globals';
 
 import { SocialBrandHeader } from './SocialBrandHeader';
@@ -16,7 +17,26 @@ jest.mock('../ui/AppThemeProvider', () => ({
 }));
 
 jest.mock('../ui/BrandMark', () => ({ BrandMark: () => null }));
-jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('@expo/vector-icons/Ionicons', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return ({ name, color }: { name: string; color: string }) => (
+    <View testID={`header-icon-${name}`} style={{ color }} />
+  );
+});
+
+test('reserves chartreuse for Create while Search and Notifications stay quiet', () => {
+  const theme = jest.requireActual<typeof import('../ui/theme')>('../ui/theme').themeColors('dark');
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <SocialBrandHeader unread={0} onSearch={jest.fn()} onCreate={jest.fn()} onNotifications={jest.fn()} />,
+    );
+  });
+  expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'header-icon-search-outline' }).props.style).color).toBe(theme.ink.secondary);
+  expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'header-icon-add-circle-outline' }).props.style).color).toBe(theme.ink.action);
+  expect(StyleSheet.flatten(renderer.root.findByProps({ testID: 'header-icon-notifications-outline' }).props.style).color).toBe(theme.ink.secondary);
+});
 
 test('keeps the notification bell as the final header action without a profile initial', () => {
   let renderer!: TestRenderer.ReactTestRenderer;
