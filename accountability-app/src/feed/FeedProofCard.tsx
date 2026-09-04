@@ -110,29 +110,30 @@ export function FeedProofCard({
       </View>
 
       {post.image_url ? (
-            <Pressable
-              testID="feed-post-media"
-              onPress={onOpenMedia ?? onOpen}
-              accessibilityRole="link"
-              accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
-              accessibilityHint="Opens the full post, comments, and Cheers"
-              style={({ pressed }) => [
-                styles.media,
-                needsLargeRunMedia && styles.runMediaLarge,
-                pressed && styles.pressed,
-              ]}
-            >
+        <Pressable
+          testID="feed-post-media"
+          onPress={onOpenMedia ?? onOpen}
+          accessibilityRole="link"
+          accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
+          accessibilityHint="Opens the full post, comments, and Cheers"
+          style={({ pressed }) => [
+            styles.media,
+            post.post_type === 'run' && styles.runMedia,
+            needsLargeRunMedia && styles.runMediaLarge,
+            pressed && styles.pressed,
+          ]}
+        >
           {post.post_type === 'video' ? (
             <PostVideo url={post.image_url} active={mediaActive} />
           ) : (
             <PostImage url={post.image_url} capTall />
           )}
-              {post.post_type === 'run' ? (
-                <>
-                  <View style={styles.topScrim} pointerEvents="none" />
-                  {post.body.trim() ? <ProofHeadlineOverlay headline={post.body.trim()} /> : null}
-                  <RunRouteMetricOverlay data={post.share_data} />
-                </>
+          {post.post_type === 'run' ? (
+            <>
+              <View style={styles.topScrim} pointerEvents="none" />
+              {post.body.trim() ? <ProofHeadlineOverlay headline={post.body.trim()} /> : null}
+              <RunRouteMetricOverlay data={post.share_data} />
+            </>
           ) : null}
         </Pressable>
       ) : null}
@@ -389,9 +390,11 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   attending: { backgroundColor: theme.ink.muted },
   attendText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 12 },
   media: {
-    minHeight: 220,
     backgroundColor: theme.surface.muted,
     overflow: 'hidden',
+  },
+  runMedia: {
+    minHeight: 220,
   },
   runMediaLarge: {
     minHeight: RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
@@ -441,8 +444,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.border.subtle,
   },
   supporterAvatars: { flexDirection: 'row', alignItems: 'center', paddingLeft: 2 },
   supporterAvatar: {

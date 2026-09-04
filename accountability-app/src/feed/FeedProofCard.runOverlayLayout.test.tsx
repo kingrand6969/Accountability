@@ -141,7 +141,7 @@ describe('FeedProofCard run overlay allocation', () => {
     ).height).toBe(138);
   });
 
-  test('keeps large-text video media on the standard wrapper and renders no run overlay', () => {
+  test('keeps large-text video media at natural height and renders no run overlay', () => {
     const renderer = renderCard({
       ...basePost,
       id: 'video-post',
@@ -150,7 +150,7 @@ describe('FeedProofCard run overlay allocation', () => {
       share_data: {},
     }, 2, 320);
 
-    expect(mediaStyle(renderer).minHeight).toBe(220);
+    expect(mediaStyle(renderer).minHeight).toBeUndefined();
     expect(renderer.root.findAll(
       (node) => node.type === View && node.props.testID === 'feed-post-video',
     )).toHaveLength(1);
