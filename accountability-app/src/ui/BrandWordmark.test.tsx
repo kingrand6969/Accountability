@@ -55,4 +55,19 @@ describe('theme-aware Mantle wordmark', () => {
     expect(source).not.toMatch(/>MANTLE<|>MANTLE<\/Text>/);
     expect(source).not.toMatch(/Account\s*<Text\b[^>]*>\s*Ability\s*<\/Text>/s);
   });
+
+  test.each([
+    ['feed header', require.resolve('../app/(app)/_layout')],
+    ['auth shell', require.resolve('./AuthShell')],
+    ['proof capture card', require.resolve('../entry/ProofCaptureCard')],
+    ['external share card', require.resolve('../feed/ExternalShareCard')],
+    ['progress share card', require.resolve('../progress/ProgressShareCard')],
+    ['glass tab bar', require.resolve('./GlassTabBar')],
+  ])('%s consumes the shared Mantle mark', (_surface, sourcePath) => {
+    const source = readFileSync(sourcePath, 'utf8');
+
+    expect(source).toMatch(/BrandMark|BrandWordmark/);
+    expect(source).not.toMatch(/primaryPath|accentPath/);
+    expect(source).not.toMatch(/M25 51C37 43|M51 54C62 65/);
+  });
 });
