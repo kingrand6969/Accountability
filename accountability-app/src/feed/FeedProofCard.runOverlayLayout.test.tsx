@@ -47,7 +47,6 @@ jest.mock('./PostImage', () => ({
 jest.mock('./PostVideo', () => ({
   PostVideo: () => mockReact.createElement(mockView, { testID: 'feed-post-video' }),
 }));
-jest.mock('./ProofHeadlineOverlay', () => ({ ProofHeadlineOverlay: () => null }));
 jest.mock('./SocialModeSelector', () => ({
   deriveFeedCardPresentation: () => ({
     ownerLabel: 'Alex',
@@ -122,20 +121,28 @@ describe('FeedProofCard run overlay allocation', () => {
   });
 
   test.each([
-    [2, 292],
-    [3, 380],
+    [2, 498, 292],
+    [3, 679, 380],
   ])(
-    'allocates the full run overlay inside media at %sx text (%idp)',
-    (fontScale, expectedHeight) => {
+    'keeps a three-line headline at least 8dp above metrics at %sx text',
+    (fontScale, expectedMediaHeight, expectedOverlayHeight) => {
       const renderer = renderCard(basePost, fontScale, 320);
       const media = mediaStyle(renderer);
       const overlay = StyleSheet.flatten(
         renderer.root.findByProps({ testID: 'run-route-metric-overlay' }).props.style,
       );
+      const headline = renderer.root.findByProps({ children: 'Morning run' });
+      const headlineStyle = StyleSheet.flatten(headline.props.style);
+      const headlineOverlayStyle = StyleSheet.flatten(headline.parent?.props.style);
+      const headlineBottom = headlineOverlayStyle.top
+        + (headlineStyle.lineHeight * headline.props.numberOfLines * fontScale);
+      const metricOverlayTop = media.minHeight - overlay.height;
 
       expect(mockWindowDimensions).toHaveBeenCalled();
-      expect(overlay.height).toBe(expectedHeight);
-      expect(media.minHeight).toBe(expectedHeight);
+      expect(overlay.height).toBe(expectedOverlayHeight);
+      expect(media.minHeight).toBe(expectedMediaHeight);
+      expect(headline.props.numberOfLines).toBe(3);
+      expect(headlineBottom + spacing.sm).toBeLessThanOrEqual(metricOverlayTop);
       expect(renderer.root.findAll(
         (node) => node.type === View && node.props.testID === 'feed-post-image',
       )).toHaveLength(1);

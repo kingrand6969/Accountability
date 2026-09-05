@@ -2,10 +2,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 import { font, spacing } from '../ui/theme';
 
+export const PROOF_HEADLINE_MAX_LINES = 3;
+export const PROOF_HEADLINE_LINE_HEIGHT = 31;
+
 export function ProofHeadlineOverlay({ headline }: { headline: string }) {
   return (
     <View style={styles.overlay} pointerEvents="none">
-      <Text style={styles.headline} numberOfLines={3}>{headline}</Text>
+      <Text style={styles.headline} numberOfLines={PROOF_HEADLINE_MAX_LINES}>{headline}</Text>
       <View style={styles.verified}>
         <Text style={styles.verifiedText}>Verified</Text>
         <Ionicons name="checkmark-circle-outline" size={25} color="#B9FF3D" />
@@ -29,7 +32,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: font.serif,
     fontSize: 28,
-    lineHeight: 31,
+    lineHeight: PROOF_HEADLINE_LINE_HEIGHT,
     textShadowColor: 'rgba(0,0,0,.62)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,

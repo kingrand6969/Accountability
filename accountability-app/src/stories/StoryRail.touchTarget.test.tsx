@@ -118,23 +118,50 @@ describe('StoryRail My Day add target', () => {
     expect(targetLeft + visualLeft).toBe((itemWidth - 52) / 2 + 32);
   });
 
-  test('uses an actual 48dp hint-dismiss target around the unchanged close icon', async () => {
-    mockGetItem.mockResolvedValueOnce(null);
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => {
-      renderer = TestRenderer.create(<StoryRail meName="Alex" />);
-      await Promise.resolve();
-    });
+  test.each([
+    [1, 64, 76, 120],
+    [2, 104, 104, 160],
+  ])(
+    'separates discovery and dismiss targets by 8dp at %sx text',
+    async (fontScale, discoveryWidth, targetHeight, hintWidth) => {
+      mockWindowDimensions.mockReturnValue({
+        width: 360,
+        height: 640,
+        scale: 1,
+        fontScale,
+      });
+      mockGetItem.mockResolvedValueOnce(null);
+      let renderer!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        renderer = TestRenderer.create(<StoryRail meName="Alex" />);
+        await Promise.resolve();
+      });
 
-    const dismiss = renderer.root.findByProps({
-      accessibilityLabel: 'Dismiss My Day suggestion',
-    });
-    const dismissStyle = StyleSheet.flatten(dismiss.props.style);
-    const close = renderer.root.findByProps({ name: 'close' });
+      const discovery = renderer.root.findByProps({
+        accessibilityLabel: 'Find accountability buddies',
+      });
+      const dismiss = renderer.root.findByProps({
+        accessibilityLabel: 'Dismiss My Day suggestion',
+      });
+      const hintStyle = StyleSheet.flatten(discovery.parent?.props.style);
+      const discoveryStyle = StyleSheet.flatten(discovery.props.style({ pressed: false }));
+      const dismissStyle = StyleSheet.flatten(dismiss.props.style);
+      const close = renderer.root.findByProps({ name: 'close' });
 
-    expect(dismissStyle.width).toBe(spacing.touch);
-    expect(dismissStyle.height).toBe(spacing.touch);
-    expect(dismiss.props.hitSlop).toBeUndefined();
-    expect(close.props.size).toBe(16);
-  });
+      expect(hintStyle).toEqual(expect.objectContaining({
+        width: hintWidth,
+        height: targetHeight,
+        flexDirection: 'row',
+        gap: spacing.sm,
+      }));
+      expect(discoveryStyle.width).toBe(discoveryWidth);
+      expect(discoveryStyle.height).toBe(targetHeight);
+      expect(dismissStyle.width).toBe(spacing.touch);
+      expect(dismissStyle.height).toBe(spacing.touch);
+      expect(dismissStyle.position).toBeUndefined();
+      expect(discoveryWidth + spacing.sm + dismissStyle.width).toBeLessThanOrEqual(hintWidth);
+      expect(dismiss.props.hitSlop).toBeUndefined();
+      expect(close.props.size).toBe(16);
+    },
+  );
 });

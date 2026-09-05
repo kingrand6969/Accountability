@@ -42,9 +42,15 @@ const STORY_ADD_TARGET = spacing.touch;
 const STORY_ADD_VISUAL = 22;
 
 export function storyTileSizeForFontScale(fontScale: number) {
-  if (fontScale >= 1.75) return { tileWidth: 104, tileHeight: 104, hintWidth: 104 };
-  if (fontScale >= 1.25) return { tileWidth: 80, tileHeight: 88, hintWidth: 80 };
-  return { tileWidth: STORY_ITEM, tileHeight: 76, hintWidth: STORY_ITEM };
+  const tile = fontScale >= 1.75
+    ? { tileWidth: 104, tileHeight: 104 }
+    : fontScale >= 1.25
+      ? { tileWidth: 80, tileHeight: 88 }
+      : { tileWidth: STORY_ITEM, tileHeight: 76 };
+  return {
+    ...tile,
+    hintWidth: tile.tileWidth + spacing.sm + spacing.touch,
+  };
 }
 
 /** Compact, photo-first My Day rail. It supports the feed without becoming the feed. */
@@ -278,7 +284,11 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
       {others.length === 0 && showHint ? (
         <View style={[styles.hintTile, { width: hintWidth, height: tileHeight }]}>
           <Pressable
-            style={({ pressed }) => [styles.hintContent, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.hintContent,
+              { width: tileWidth, height: tileHeight },
+              pressed && styles.pressed,
+            ]}
             onPress={() => router.push('/discover')}
             accessibilityLabel="Find accountability buddies"
             accessibilityRole="button"
@@ -435,6 +445,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   hintTile: {
     width: STORY_ITEM,
     height: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   retryTile: {
     width: 112,
@@ -455,25 +468,22 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     textAlign: 'center',
   },
   hintContent: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 2,
     paddingHorizontal: 6,
-    paddingVertical: spacing.md,
+    paddingVertical: 1,
   },
   hintClose: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
     width: spacing.touch,
     height: spacing.touch,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   hintIcon: {
     width: 40,
-    height: 40,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },

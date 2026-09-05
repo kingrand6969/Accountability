@@ -8,7 +8,11 @@ import { Avatar } from './Avatar';
 import { authorLabel, postTimestampLabel, taggedLabel } from './format';
 import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
-import { ProofHeadlineOverlay } from './ProofHeadlineOverlay';
+import {
+  PROOF_HEADLINE_LINE_HEIGHT,
+  PROOF_HEADLINE_MAX_LINES,
+  ProofHeadlineOverlay,
+} from './ProofHeadlineOverlay';
 import {
   runRouteOverlayHeight,
   RunRouteMetricOverlay,
@@ -32,6 +36,20 @@ type Props = {
   onShare: () => void;
   onOpenEncouragement: () => void;
 };
+
+const RUN_MEDIA_NORMAL_HEIGHT = 220;
+
+export function runProofMediaHeight(fontScale: number, hasHeadline: boolean): number {
+  if (fontScale < 1.75) return RUN_MEDIA_NORMAL_HEIGHT;
+  const metricOverlayHeight = runRouteOverlayHeight(fontScale);
+  if (!hasHeadline) return metricOverlayHeight;
+  return Math.ceil(
+    spacing.md
+    + (PROOF_HEADLINE_MAX_LINES * PROOF_HEADLINE_LINE_HEIGHT * fontScale)
+    + spacing.sm
+    + metricOverlayHeight,
+  );
+}
 
 function postTypeLabel(post: FeedPost): string | null {
   if (post.post_type === 'run') {
@@ -69,9 +87,8 @@ export function FeedProofCard({
   const isVerifiedRun = post.post_type === 'run' && post.share_data.verified === true;
   const presentation = deriveFeedCardPresentation(post, currentUserId);
   const suggestionLabel = post.suggested ? 'Suggested for you' : null;
-  const needsLargeRunMedia = post.post_type === 'run' && fontScale >= 1.75;
-  const largeRunMediaHeight = needsLargeRunMedia
-    ? runRouteOverlayHeight(fontScale)
+  const runMediaHeight = post.post_type === 'run'
+    ? runProofMediaHeight(fontScale, post.body.trim().length > 0)
     : undefined;
   const mediaOpensPreview = onOpenMedia !== undefined;
   // Preserve the established accessibilityLabel="View comments" wording before adding the count.
@@ -132,7 +149,7 @@ export function FeedProofCard({
           style={({ pressed }) => [
             styles.media,
             post.post_type === 'run' && styles.runMedia,
-            largeRunMediaHeight === undefined ? null : { minHeight: largeRunMediaHeight },
+            runMediaHeight === undefined ? null : { minHeight: runMediaHeight },
             pressed && styles.pressed,
           ]}
         >
