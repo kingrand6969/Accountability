@@ -94,6 +94,12 @@ describe('Feed manual appearance contract', () => {
     expect(styleBlock(feedSource, 'skeletonCard')).not.toContain('borderWidth');
     expect(styleBlock(feedSource, 'emptyCard')).not.toContain('borderWidth');
     expect(styleBlock(feedSource, 'adWrap')).not.toContain('borderRadius');
+    expect(feedSource).toContain(
+      '<Ionicons name="people-outline" size={38} color={theme.ink.muted} />',
+    );
+    expect(feedSource).not.toContain(
+      '<Ionicons name="people-outline" size={38} color={theme.ink.action} />',
+    );
   });
 
   test('keeps dashboard recovery states compact and editorial', () => {

@@ -294,7 +294,6 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
               setShowHint(false);
               AsyncStorage.setItem('story-buddy-hint-dismissed', '1').catch(() => {});
             }}
-            hitSlop={6}
             accessibilityLabel="Dismiss My Day suggestion"
             accessibilityRole="button"
           >
@@ -465,10 +464,10 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   hintClose: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 36,
-    height: 36,
+    top: 0,
+    right: 0,
+    width: spacing.touch,
+    height: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
   },

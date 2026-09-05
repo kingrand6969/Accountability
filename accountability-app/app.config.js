@@ -1,5 +1,9 @@
 module.exports = ({ config }) => {
-  const isStaging = process.env.APP_VARIANT === 'staging';
+  const variant = process.env.APP_VARIANT || 'staging';
+  if (variant !== 'staging' && variant !== 'production') {
+    throw new Error('APP_VARIANT must be either "staging" or "production"');
+  }
+  const isStaging = variant === 'staging';
   const appVariant = isStaging ? 'preview' : 'production';
 
   return {

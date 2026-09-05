@@ -736,7 +736,7 @@ export default function Feed() {
                 <FeedLoadingSkeleton />
               ) : (
                 <View style={styles.emptyCard}>
-                  <Ionicons name="people-outline" size={38} color={theme.ink.action} />
+                  <Ionicons name="people-outline" size={38} color={theme.ink.muted} />
                   <Text style={styles.emptyTitle}>Your Feed is ready</Text>
                   <Text style={styles.emptySub}>Share a win or discover people and communities to follow.</Text>
                   <View style={styles.emptyActions}>

@@ -19,6 +19,7 @@ describe('Editorial Motion post canvas', () => {
     expect(proof).toContain('{post.image_url ? (');
     expect(proof).toContain("{post.body && post.post_type !== 'run' ? (");
     expect(styleBlock(proof, 'body')).not.toContain('minHeight');
+    expect(styleBlock(proof, 'bodyLink')).toContain('minHeight: spacing.touch');
   });
   test('lets generic media use its natural height while reserving route space for runs', () => {
     expect(styleBlock(proof, 'media')).not.toContain('minHeight');
@@ -29,6 +30,8 @@ describe('Editorial Motion post canvas', () => {
     expect(styleBlock(proof, 'action')).not.toContain('backgroundColor');
     expect(styleBlock(proof, 'action')).not.toContain('borderWidth');
     expect(styleBlock(proof, 'supporters')).not.toContain('borderTopWidth');
+    expect(styleBlock(proof, 'socialActions')).toContain('gap: spacing.sm');
+    expect(styleBlock(proof, 'utilityActions')).toContain('gap: spacing.sm');
   });
   test('uses an intentional unresolved-media placeholder instead of a dead blank block', () => {
     expect(postImage).toContain('testID="post-image-placeholder"');

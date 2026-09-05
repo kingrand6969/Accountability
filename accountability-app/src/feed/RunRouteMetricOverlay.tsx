@@ -3,8 +3,24 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { RouteTrace } from '../activity/RouteTrace';
 import { formatDuration, formatKm, formatPace, type Pt } from '../activity/geo';
 import { font, spacing, type } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export const RUN_ROUTE_LARGE_OVERLAY_HEIGHT = 286;
+const RUN_ROUTE_NORMAL_OVERLAY_HEIGHT = 138;
+
+export function runRouteOverlayHeight(fontScale: number): number {
+  if (fontScale < 1.75) return RUN_ROUTE_NORMAL_OVERLAY_HEIGHT;
+  return Math.max(
+    RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
+    Math.ceil(
+      76
+      + spacing.sm
+      + (2 * spacing.xs)
+      + (2 * spacing.md)
+      + (88 * fontScale),
+    ),
+  );
+}
 
 function numberValue(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -21,6 +37,7 @@ function routeValue(value: unknown): Pt[] {
 }
 
 export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> }) {
+  const { colors: theme } = useAppTheme();
   const distance = numberValue(data.distance_m);
   const duration = numberValue(data.duration_s);
   const points = routeValue(data.route);
@@ -31,7 +48,7 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
   return (
     <View
       testID="run-route-metric-overlay"
-      style={[styles.overlay, isLargeText && styles.overlayLarge]}
+      style={[styles.overlay, { height: runRouteOverlayHeight(fontScale) }]}
       pointerEvents="none"
     >
       <LinearGradient colors={['transparent', 'rgba(11,13,11,.92)']} style={StyleSheet.absoluteFill} />
@@ -41,7 +58,7 @@ export function RunRouteMetricOverlay({ data }: { data: Record<string, unknown> 
           width={traceWidth}
           height={76}
           stroke={3}
-          accent="#B9FF3D"
+          accent={theme.ink.action}
           pad={8}
           style={StyleSheet.flatten([styles.route, isLargeText && styles.routeLarge])}
         />
@@ -88,12 +105,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 138,
+    height: RUN_ROUTE_NORMAL_OVERLAY_HEIGHT,
     justifyContent: 'flex-end',
     padding: spacing.md,
-  },
-  overlayLarge: {
-    height: RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
   },
   route: { position: 'absolute', right: spacing.sm, top: 5 },
   routeLarge: {

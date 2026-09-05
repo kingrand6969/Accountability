@@ -1007,7 +1007,10 @@ npx eas-cli@latest update --channel preview --environment preview --platform and
 
 Expected: the preflight resolves the complete staging identity and a successful
 update is published for project `f91c0791-4a6e-4080-88fd-5cc9a4e720bf` on
-channel/environment `preview`. The remote `preview` environment must also have
+channel/environment `preview`. The executable config guard accepts only
+`staging` or `production`, defaults a missing value to staging, rejects invalid
+non-empty values, and requires explicit `APP_VARIANT=production` for production
+identity. The remote `preview` environment must also have
 project-scoped plain-text `APP_VARIANT=staging`. Do not use or modify the
 production environment, profile, or channel.
 

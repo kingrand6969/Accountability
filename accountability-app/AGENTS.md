@@ -20,6 +20,9 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
   `EAS_NO_VCS=1` so unrelated projects and repository history are not uploaded.
 - The EAS `preview` environment must define the project-scoped plain-text
   variable `APP_VARIANT=staging`; never assign it to `production` for staging.
+- `app.config.js` accepts only `staging` or `production`, defaults a missing
+  value to staging, rejects invalid non-empty values, and requires explicit
+  `APP_VARIANT=production` for the production public identity.
 - Before every preview update, also set local `APP_VARIANT=staging`, resolve the
   public Expo config, and fail closed unless name=`Mantle Staging`,
   scheme=`accountabilityapp-staging`, Android/iOS IDs both equal

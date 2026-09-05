@@ -10,7 +10,7 @@ import { PostImage } from './PostImage';
 import { PostVideo } from './PostVideo';
 import { ProofHeadlineOverlay } from './ProofHeadlineOverlay';
 import {
-  RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
+  runRouteOverlayHeight,
   RunRouteMetricOverlay,
 } from './RunRouteMetricOverlay';
 import type { FeedPost } from './types';
@@ -34,8 +34,10 @@ type Props = {
 };
 
 function postTypeLabel(post: FeedPost): string | null {
+  if (post.post_type === 'run') {
+    return post.share_data.verified === true ? 'Verified run' : 'Run';
+  }
   const labels: Partial<Record<FeedPost['post_type'], string>> = {
-    run: 'Verified run',
     video: 'Video',
     workout: 'Workout',
     milestone: 'Milestone',
@@ -64,9 +66,14 @@ export function FeedProofCard({
   const { fontScale } = useWindowDimensions();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const typeLabel = postTypeLabel(post);
+  const isVerifiedRun = post.post_type === 'run' && post.share_data.verified === true;
   const presentation = deriveFeedCardPresentation(post, currentUserId);
   const suggestionLabel = post.suggested ? 'Suggested for you' : null;
   const needsLargeRunMedia = post.post_type === 'run' && fontScale >= 1.75;
+  const largeRunMediaHeight = needsLargeRunMedia
+    ? runRouteOverlayHeight(fontScale)
+    : undefined;
+  const mediaOpensPreview = onOpenMedia !== undefined;
   // Preserve the established accessibilityLabel="View comments" wording before adding the count.
   const viewCommentsLabel = 'View comments';
   return (
@@ -96,7 +103,11 @@ export function FeedProofCard({
               {post.tagged.length > 0 ? ` · ${taggedLabel(post.tagged)}` : ''}
             </Text>
             <Text style={styles.audience}>{presentation.audienceLabel}</Text>
-            {typeLabel ? <Text style={styles.type}>{typeLabel}</Text> : null}
+            {typeLabel ? (
+              <Text style={[styles.type, isVerifiedRun && styles.typeVerified]}>
+                {typeLabel}
+              </Text>
+            ) : null}
           </View>
         </View>
         <Pressable
@@ -114,12 +125,14 @@ export function FeedProofCard({
           testID="feed-post-media"
           onPress={onOpenMedia ?? onOpen}
           accessibilityRole="link"
-          accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. Open post details`}
-          accessibilityHint="Opens the full post, comments, and Cheers"
+          accessibilityLabel={`${typeLabel ?? 'Photo post'} by ${authorLabel(post.author_name)}. ${mediaOpensPreview ? 'Open full-screen photo preview' : 'Open post details'}`}
+          accessibilityHint={mediaOpensPreview
+            ? 'Opens a full-screen photo preview'
+            : 'Opens the full post, comments, and Cheers'}
           style={({ pressed }) => [
             styles.media,
             post.post_type === 'run' && styles.runMedia,
-            needsLargeRunMedia && styles.runMediaLarge,
+            largeRunMediaHeight === undefined ? null : { minHeight: largeRunMediaHeight },
             pressed && styles.pressed,
           ]}
         >
@@ -139,7 +152,12 @@ export function FeedProofCard({
       ) : null}
 
       {post.body && post.post_type !== 'run' ? (
-        <Pressable onPress={onOpen} accessibilityRole="link" accessibilityLabel="Open post">
+        <Pressable
+          onPress={onOpen}
+          accessibilityRole="link"
+          accessibilityLabel="Open post"
+          style={styles.bodyLink}
+        >
           <Text testID="feed-post-body" style={styles.body}>{post.body}</Text>
         </Pressable>
       ) : null}
@@ -340,11 +358,12 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   time: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 11 },
   type: {
-    color: theme.ink.action,
+    color: theme.ink.muted,
     fontFamily: font.bold,
     fontSize: 9.5,
     textTransform: 'uppercase',
   },
+  typeVerified: { color: theme.ink.action },
   audience: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 9.5 },
   iconButton: {
     width: spacing.touch,
@@ -361,6 +380,10 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     fontFamily: font.regular,
     fontSize: 14,
     lineHeight: 20,
+  },
+  bodyLink: {
+    minHeight: spacing.touch,
+    justifyContent: 'center',
   },
   event: {
     minHeight: 64,
@@ -396,9 +419,6 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   runMedia: {
     minHeight: 220,
   },
-  runMediaLarge: {
-    minHeight: RUN_ROUTE_LARGE_OVERLAY_HEIGHT,
-  },
   topScrim: {
     position: 'absolute',
     left: 0,
@@ -417,8 +437,8 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.border.subtle,
   },
-  socialActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  utilityActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  socialActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  utilityActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   memoryAction: { width: 48, height: 48 },
   action: {
     width: 48,

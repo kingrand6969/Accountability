@@ -200,7 +200,7 @@ describe('Group 3 social Feed contract', () => {
     expect(metricSource.match(/<LinearGradient/g)).toHaveLength(1);
     expect(metricSource).not.toContain('styles.rule');
     expect(metricSource).toContain('const isLargeText = fontScale >= 1.75');
-    expect(metricSource).toContain('styles.overlayLarge');
+    expect(metricSource).toContain('runRouteOverlayHeight(fontScale)');
     expect(metricSource).toContain('styles.routeLarge');
     expect(metricSource).toContain('styles.statsLarge');
     expect(styleBlock(metricSource, 'stats')).toContain("alignItems: 'flex-end'");
@@ -266,7 +266,7 @@ describe('Group 3 social Feed contract', () => {
     const proofCardCall = jsxCalls(feedSource, 'FeedProofCard')[0] ?? '';
     expect(proofCardSource).toContain('onComment: () => void');
     expect(proofCardSource).toContain('onPress={onComment}');
-    expect(proofCardSource).toContain('<Pressable onPress={onOpen}');
+    expect(proofCardSource).toContain('onPress={onOpen}');
     expect(proofCardSource).toContain('onPress={onOpenMedia ?? onOpen}');
     expect(proofCardCall).toContain("onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}");
     expect(proofCardCall).toContain("onComment={() => router.push({ pathname: '/post/[id]', params: { id: item.id, comment: '1' } } as never)}");

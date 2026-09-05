@@ -3,7 +3,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { RunRouteMetricOverlay } from './RunRouteMetricOverlay';
+import {
+  runRouteOverlayHeight,
+  RunRouteMetricOverlay,
+} from './RunRouteMetricOverlay';
+import { themeColors } from '../ui/theme';
 
 const mockReact = React;
 const mockView = View;
@@ -31,6 +35,11 @@ jest.mock('../activity/RouteTrace', () => ({
     mockView,
     { testID: 'run-overlay-route', ...props },
   ),
+}));
+jest.mock('../ui/AppThemeProvider', () => ({
+  useAppTheme: () => ({
+    colors: jest.requireActual<typeof import('../ui/theme')>('../ui/theme').themeColors('dark'),
+  }),
 }));
 
 const run = {
@@ -83,6 +92,7 @@ describe('RunRouteMetricOverlay responsive layout', () => {
     expect(gradient.props.colors).toEqual(['transparent', 'rgba(11,13,11,.92)']);
     expect(StyleSheet.flatten(route.props.style).position).toBe('absolute');
     expect(route.props).toEqual(expect.objectContaining({ height: 76 }));
+    expect(route.props.accent).toBe(themeColors('dark').ink.action);
     expect(renderer.root.findAllByType(Text).map((node) => node.props.children))
       .toEqual(['5.00', 'km', '25:00', 'time', '5:00', 'pace /km']);
   });
@@ -114,8 +124,21 @@ describe('RunRouteMetricOverlay responsive layout', () => {
       expect(metricStyles).toEqual(expect.arrayContaining([
         expect.objectContaining({ flexDirection: 'row', minWidth: 0 }),
       ]));
-      expect(overlay.height).toBeGreaterThanOrEqual(270);
+      expect(overlay.height).toBe(292);
       expect(renderer.root.findAllByType(Text)).toHaveLength(6);
     },
   );
+
+  test.each([
+    [1, 138],
+    [2, 292],
+    [3, 380],
+  ])('uses deterministic overlay height %i at %sx text', (fontScale, expectedHeight) => {
+    expect(runRouteOverlayHeight(fontScale)).toBe(expectedHeight);
+    expect(StyleSheet.flatten(
+      renderAt(fontScale, 360).root.findByProps({
+        testID: 'run-route-metric-overlay',
+      }).props.style,
+    ).height).toBe(expectedHeight);
+  });
 });

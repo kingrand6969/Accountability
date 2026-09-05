@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { describe, expect, jest, test } from '@jest/globals';
 
@@ -24,6 +24,9 @@ const mockWindowDimensions = jest.fn(() => ({
   scale: 1,
   fontScale: 1,
 }));
+const mockReact = React;
+const mockView = View;
+const mockGetItem = jest.fn(async (_key: string) => '1' as string | null);
 
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
@@ -36,7 +39,7 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(async () => '1'),
+  getItem: (key: string) => mockGetItem(key),
   setItem: jest.fn(async () => undefined),
 }));
 
@@ -45,7 +48,9 @@ jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(),
 }));
 
-jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('@expo/vector-icons/Ionicons', () => (
+  props: Record<string, unknown>,
+) => mockReact.createElement(mockView, { testID: 'story-ionicon', ...props }));
 jest.mock('../ui/CachedImage', () => ({ CachedImage: () => null }));
 jest.mock('../media/PhotoEditor', () => ({ PhotoEditor: () => null }));
 jest.mock('./api', () => ({
@@ -111,5 +116,25 @@ describe('StoryRail My Day add target', () => {
     expect(targetLeft + targetWidth).toBeLessThanOrEqual(itemWidth);
     expect(visualStyle).toEqual(expect.objectContaining({ width: 22, height: 22 }));
     expect(targetLeft + visualLeft).toBe((itemWidth - 52) / 2 + 32);
+  });
+
+  test('uses an actual 48dp hint-dismiss target around the unchanged close icon', async () => {
+    mockGetItem.mockResolvedValueOnce(null);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(<StoryRail meName="Alex" />);
+      await Promise.resolve();
+    });
+
+    const dismiss = renderer.root.findByProps({
+      accessibilityLabel: 'Dismiss My Day suggestion',
+    });
+    const dismissStyle = StyleSheet.flatten(dismiss.props.style);
+    const close = renderer.root.findByProps({ name: 'close' });
+
+    expect(dismissStyle.width).toBe(spacing.touch);
+    expect(dismissStyle.height).toBe(spacing.touch);
+    expect(dismiss.props.hitSlop).toBeUndefined();
+    expect(close.props.size).toBe(16);
   });
 });

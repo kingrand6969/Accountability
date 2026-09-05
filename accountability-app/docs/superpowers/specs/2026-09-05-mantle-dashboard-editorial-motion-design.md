@@ -1,7 +1,7 @@
 # Mantle Dashboard — Editorial Motion Design
 
-**Status:** Approved visual direction  
-**Date:** 2026-09-05  
+**Status:** Approved visual direction
+**Date:** 2026-09-05
 **Scope:** Dashboard/Feed appearance only
 
 ## Objective
@@ -262,4 +262,3 @@ The final comparison must use connected-phone captures against the approved Edit
 - The Run action remains elevated and prominent without dominating the entire dashboard.
 - No accessibility regression is introduced.
 - Automated checks pass and the result is verified on the connected staging phone.
-

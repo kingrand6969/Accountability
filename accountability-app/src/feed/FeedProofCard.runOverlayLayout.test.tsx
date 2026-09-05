@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { FeedProofCard } from './FeedProofCard';
 import type { FeedPost } from './types';
-import { spacing } from '../ui/theme';
+import { spacing, themeColors } from '../ui/theme';
 
 const mockReact = React;
 const mockView = View;
@@ -121,18 +121,21 @@ describe('FeedProofCard run overlay allocation', () => {
     mockWindowDimensions.mockClear();
   });
 
-  test.each([320, 360])(
-    'allocates the full 286dp overlay inside production run media at 2.0 scale on %idp',
-    (width) => {
-      const renderer = renderCard(basePost, 2, width);
+  test.each([
+    [2, 292],
+    [3, 380],
+  ])(
+    'allocates the full run overlay inside media at %sx text (%idp)',
+    (fontScale, expectedHeight) => {
+      const renderer = renderCard(basePost, fontScale, 320);
       const media = mediaStyle(renderer);
       const overlay = StyleSheet.flatten(
         renderer.root.findByProps({ testID: 'run-route-metric-overlay' }).props.style,
       );
 
       expect(mockWindowDimensions).toHaveBeenCalled();
-      expect(overlay.height).toBe(286);
-      expect(media.minHeight).toBeGreaterThanOrEqual(overlay.height);
+      expect(overlay.height).toBe(expectedHeight);
+      expect(media.minHeight).toBe(expectedHeight);
       expect(renderer.root.findAll(
         (node) => node.type === View && node.props.testID === 'feed-post-image',
       )).toHaveLength(1);
@@ -205,5 +208,80 @@ describe('FeedProofCard run overlay allocation', () => {
     expect(attend.minHeight).toBeGreaterThanOrEqual(spacing.touch);
     expect(supporters.minWidth).toBeGreaterThanOrEqual(spacing.touch);
     expect(supporters.minHeight).toBeGreaterThanOrEqual(spacing.touch);
+  });
+
+  test('gives a one-line generic body link a 48dp target without forcing text height', () => {
+    const renderer = renderCard({
+      ...basePost,
+      id: 'text-post',
+      image_url: null,
+      body: 'One concise line',
+      post_type: 'post',
+      share_data: {},
+      activity_id: null,
+    }, 1, 360);
+    const link = renderer.root.findByProps({ accessibilityLabel: 'Open post' });
+    const linkStyle = StyleSheet.flatten(link.props.style);
+    const body = renderer.root.findByProps({ testID: 'feed-post-body' });
+
+    expect(linkStyle.minHeight).toBe(spacing.touch);
+    expect(StyleSheet.flatten(body.props.style).minHeight).toBeUndefined();
+  });
+
+  test('reserves chartreuse only for a verified run type label', () => {
+    const theme = themeColors('dark');
+    const verified = renderCard(basePost, 1, 360);
+
+    expect(StyleSheet.flatten(
+      verified.root.findByProps({ children: 'Verified run' }).props.style,
+    ).color).toBe(theme.ink.action);
+
+    for (const [postType, label] of [
+      ['video', 'Video'],
+      ['workout', 'Workout'],
+      ['milestone', 'Milestone'],
+      ['event', 'Event'],
+      ['memory', 'Memory'],
+    ] as const) {
+      const ordinary = renderCard({
+        ...basePost,
+        id: `${postType}-post`,
+        post_type: postType,
+        share_data: {},
+      }, 1, 360);
+      expect(StyleSheet.flatten(
+        ordinary.root.findByProps({ children: label }).props.style,
+      ).color).toBe(theme.ink.muted);
+    }
+  });
+
+  test('announces an available full-screen photo preview accurately', () => {
+    const renderer = renderCard({
+      ...basePost,
+      id: 'photo-post',
+      post_type: 'photo',
+      share_data: {},
+      activity_id: null,
+    }, 1, 360, { onOpenMedia: jest.fn() });
+    const media = renderer.root.findByProps({ testID: 'feed-post-media' });
+
+    expect(media.props.accessibilityLabel).toBe(
+      'Photo post by Alex. Open full-screen photo preview',
+    );
+    expect(media.props.accessibilityHint).toBe('Opens a full-screen photo preview');
+  });
+
+  test('announces post details when media has no preview callback', () => {
+    const renderer = renderCard({
+      ...basePost,
+      id: 'video-post',
+      post_type: 'video',
+      share_data: {},
+      activity_id: null,
+    }, 1, 360);
+    const media = renderer.root.findByProps({ testID: 'feed-post-media' });
+
+    expect(media.props.accessibilityLabel).toBe('Video by Alex. Open post details');
+    expect(media.props.accessibilityHint).toBe('Opens the full post, comments, and Cheers');
   });
 });
