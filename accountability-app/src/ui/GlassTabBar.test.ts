@@ -204,7 +204,7 @@ describe('GlassTabBar contract', () => {
     );
   });
 
-  it('uses muted ink for inactive Menu and action ink when Menu represents the selected destination', () => {
+  it('keeps Menu unselected and muted when a hidden Notifications route is focused', () => {
     const dark = themeColors('dark');
     const inactive = renderTabBar({ focusedIndex: 0 });
     const inactiveMenu = pressableByLabel(inactive.renderer, 'Menu');
@@ -219,18 +219,19 @@ describe('GlassTabBar contract', () => {
       inactive.renderer.root.findByProps({ testID: 'tab-label-Menu' }).props.style,
     ).toEqual(expect.arrayContaining([expect.objectContaining({ color: dark.ink.muted })]));
 
-    const selected = renderTabBar({ focusedIndex: 4 });
-    const selectedMenu = pressableByLabel(selected.renderer, 'Menu');
+    const notifications = renderTabBar({ focusedIndex: 4 });
+    const notificationsMenu = pressableByLabel(notifications.renderer, 'Menu');
 
-    expect(selectedMenu.props.accessibilityState).toEqual({ selected: true });
+    expect(notificationsMenu.props.accessibilityState).toEqual({ selected: false });
     expect(
       StyleSheet.flatten(
-        selected.renderer.root.findByProps({ testID: 'ionicon-menu-outline' }).props.style,
+        notifications.renderer.root.findByProps({ testID: 'ionicon-menu-outline' }).props
+          .style,
       ).color,
-    ).toBe(dark.ink.action);
+    ).toBe(dark.ink.muted);
     expect(
-      selected.renderer.root.findByProps({ testID: 'tab-label-Menu' }).props.style,
-    ).toEqual(expect.arrayContaining([expect.objectContaining({ color: dark.ink.action })]));
+      notifications.renderer.root.findByProps({ testID: 'tab-label-Menu' }).props.style,
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ color: dark.ink.muted })]));
   });
 
   it('renders the permanent dark surface, border, ink, and indicator roles', () => {

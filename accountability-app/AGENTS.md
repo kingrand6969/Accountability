@@ -23,5 +23,6 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
 - Before every preview update, also set local `APP_VARIANT=staging`, resolve the
   public Expo config, and fail closed unless name=`Mantle Staging`,
   scheme=`accountabilityapp-staging`, Android/iOS IDs both equal
-  `com.awldesk.accountability.staging`, and `extra.appVariant=preview`. Publish
-  only with `--channel preview --environment preview`.
+  `com.awldesk.accountability.staging`, `extra.appVariant=preview`, and
+  `extra.eas.projectId=f91c0791-4a6e-4080-88fd-5cc9a4e720bf`. Publish only
+  with `--channel preview --environment preview`.

@@ -999,7 +999,8 @@ $identityMatches =
   $config.scheme -eq 'accountabilityapp-staging' -and
   $config.android.package -eq 'com.awldesk.accountability.staging' -and
   $config.ios.bundleIdentifier -eq 'com.awldesk.accountability.staging' -and
-  $config.extra.appVariant -eq 'preview'
+  $config.extra.appVariant -eq 'preview' -and
+  $config.extra.eas.projectId -eq 'f91c0791-4a6e-4080-88fd-5cc9a4e720bf'
 if (-not $identityMatches) { throw 'Refusing preview publish: resolved Expo identity is not staging.' }
 npx eas-cli@latest update --channel preview --environment preview --platform android --message "Editorial Motion dashboard"
 ```
