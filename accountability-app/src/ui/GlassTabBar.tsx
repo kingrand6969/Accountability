@@ -72,6 +72,7 @@ export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarPr
       visibleTabLabels.has(options.title ?? route.name)
     );
   });
+  const isMenuFocused = !items.some((route) => route.key === focusedKey);
   return (
     <View
       style={[
@@ -168,14 +169,22 @@ export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarPr
               onMenu();
             }}
             accessibilityRole="tab"
-            accessibilityState={{ selected: false }}
+            accessibilityState={{ selected: isMenuFocused }}
             accessibilityLabel="Menu"
             style={({ pressed }) => [styles.item, pressed && styles.pressed]}
           >
-            <Ionicons name="menu-outline" size={24} color={theme.ink.action} />
+            <Ionicons
+              name="menu-outline"
+              size={24}
+              color={isMenuFocused ? theme.ink.action : theme.ink.muted}
+            />
             <Text
               testID="tab-label-Menu"
-              style={[styles.label, { color: theme.ink.muted }]}
+              style={[
+                styles.label,
+                { color: theme.ink.muted },
+                isMenuFocused && { color: theme.ink.action },
+              ]}
               numberOfLines={2}
             >
               {fontScale >= 1.25 ? compactTabLabels.Menu : 'Menu'}

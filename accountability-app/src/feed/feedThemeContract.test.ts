@@ -103,5 +103,7 @@ describe('Feed manual appearance contract', () => {
     expect(styleBlock(feedSource, 'inlineError')).toContain('borderRadius: radius.md');
     expect(styleBlock(feedSource, 'feedDivider')).toContain('marginHorizontal: spacing.lg');
     expect(styleBlock(feedSource, 'emptyCard')).not.toContain('borderWidth');
+    expect(feedSource).toContain('emptyPrimary: { minHeight: spacing.touch');
+    expect(feedSource).toContain('emptySecondary: { minHeight: spacing.touch');
   });
 });

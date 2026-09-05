@@ -41,6 +41,7 @@ describe('StoryRail receipt and retry presentation', () => {
     expect(source).toContain('onPress={() => void load()}');
     expect(source).toContain('generation !== loadGeneration.current');
     expect(source).toContain('mountedRef.current');
+    expect(styleBlock('retryTile')).toContain('minHeight: spacing.touch');
   });
 
   test('drops editor and posting results when the rail loses focus or ownership', () => {

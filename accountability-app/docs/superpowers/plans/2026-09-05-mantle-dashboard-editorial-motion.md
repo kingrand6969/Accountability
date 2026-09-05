@@ -991,11 +991,24 @@ Expected: TypeScript exits 0; lint has 0 errors; the complete Jest suite passes.
 Run from `accountability-app`:
 
 ```powershell
+$env:APP_VARIANT = 'staging'
 $env:EAS_NO_VCS = '1'
+$config = npx expo config --type public --json | ConvertFrom-Json
+$identityMatches =
+  $config.name -eq 'Mantle Staging' -and
+  $config.scheme -eq 'accountabilityapp-staging' -and
+  $config.android.package -eq 'com.awldesk.accountability.staging' -and
+  $config.ios.bundleIdentifier -eq 'com.awldesk.accountability.staging' -and
+  $config.extra.appVariant -eq 'preview'
+if (-not $identityMatches) { throw 'Refusing preview publish: resolved Expo identity is not staging.' }
 npx eas-cli@latest update --channel preview --environment preview --platform android --message "Editorial Motion dashboard"
 ```
 
-Expected: a successful update for project `f91c0791-4a6e-4080-88fd-5cc9a4e720bf` on channel `preview`. Do not use the production profile or channel.
+Expected: the preflight resolves the complete staging identity and a successful
+update is published for project `f91c0791-4a6e-4080-88fd-5cc9a4e720bf` on
+channel/environment `preview`. The remote `preview` environment must also have
+project-scoped plain-text `APP_VARIANT=staging`. Do not use or modify the
+production environment, profile, or channel.
 
 - [ ] **Step 4: Restart the installed staging app without clearing data**
 

@@ -36,10 +36,10 @@ jest.mock('./haptics', () => ({
 
 jest.mock('@expo/vector-icons/Ionicons', () => {
   const mockReact = jest.requireActual<typeof import('react')>('react');
-  const { View: MockView } = jest.requireActual<typeof import('react-native')>('react-native');
-  return ({ name }: { name: string; color: string }) => mockReact.createElement(
-    MockView,
-    { testID: `ionicon-${name}` },
+  const { Text: MockText } = jest.requireActual<typeof import('react-native')>('react-native');
+  return ({ name, color, size }: { name: string; color: string; size: number }) => mockReact.createElement(
+    MockText,
+    { testID: `ionicon-${name}`, style: { color, width: size, height: size } },
   );
 });
 
@@ -204,6 +204,35 @@ describe('GlassTabBar contract', () => {
     );
   });
 
+  it('uses muted ink for inactive Menu and action ink when Menu represents the selected destination', () => {
+    const dark = themeColors('dark');
+    const inactive = renderTabBar({ focusedIndex: 0 });
+    const inactiveMenu = pressableByLabel(inactive.renderer, 'Menu');
+
+    expect(inactiveMenu.props.accessibilityState).toEqual({ selected: false });
+    expect(
+      StyleSheet.flatten(
+        inactive.renderer.root.findByProps({ testID: 'ionicon-menu-outline' }).props.style,
+      ).color,
+    ).toBe(dark.ink.muted);
+    expect(
+      inactive.renderer.root.findByProps({ testID: 'tab-label-Menu' }).props.style,
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ color: dark.ink.muted })]));
+
+    const selected = renderTabBar({ focusedIndex: 4 });
+    const selectedMenu = pressableByLabel(selected.renderer, 'Menu');
+
+    expect(selectedMenu.props.accessibilityState).toEqual({ selected: true });
+    expect(
+      StyleSheet.flatten(
+        selected.renderer.root.findByProps({ testID: 'ionicon-menu-outline' }).props.style,
+      ).color,
+    ).toBe(dark.ink.action);
+    expect(
+      selected.renderer.root.findByProps({ testID: 'tab-label-Menu' }).props.style,
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ color: dark.ink.action })]));
+  });
+
   it('renders the permanent dark surface, border, ink, and indicator roles', () => {
     const dark = themeColors('dark');
     const { renderer } = renderTabBar({ focusedIndex: 0 });
@@ -269,7 +298,7 @@ describe('GlassTabBar contract', () => {
     );
   });
 
-  it('provides 44 by 44 targets and exposes selected state accessibly', () => {
+  it('provides 48 by 48 targets and exposes selected state accessibly', () => {
     const { renderer } = renderTabBar({ focusedIndex: 3 });
 
     expect(

@@ -38,7 +38,7 @@ type StoryRailProps = {
 
 const STORY_BUBBLE = 52;
 const STORY_ITEM = 64;
-const STORY_ADD_TARGET = 44;
+const STORY_ADD_TARGET = spacing.touch;
 const STORY_ADD_VISUAL = 22;
 
 export function storyTileSizeForFontScale(fontScale: number) {
@@ -407,7 +407,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
     position: 'absolute',
     top: 23,
     width: STORY_ADD_TARGET,
-    height: 44,
+    height: STORY_ADD_TARGET,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -439,7 +439,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   retryTile: {
     width: 112,
-    minHeight: 44,
+    minHeight: spacing.touch,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: theme.border.subtle,

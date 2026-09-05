@@ -916,8 +916,8 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   emptyTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18 },
   emptySub: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 14, textAlign: 'center' },
   emptyActions: { flexDirection: 'row', gap: spacing.sm },
-  emptyPrimary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: theme.ink.action },
+  emptyPrimary: { minHeight: spacing.touch, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: theme.ink.action },
   emptyPrimaryText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 13.5 },
-  emptySecondary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card },
+  emptySecondary: { minHeight: spacing.touch, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card },
   emptySecondaryText: { color: theme.ink.action, fontFamily: font.bold, fontSize: 13.5 },
 });

@@ -347,9 +347,9 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   audience: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 9.5 },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: spacing.touch,
+    height: spacing.touch,
+    borderRadius: spacing.touch / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -379,7 +379,7 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   eventTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13 },
   eventMeta: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5 },
   attend: {
-    minHeight: 44,
+    minHeight: spacing.touch,
     minWidth: 72,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.pill,
@@ -439,7 +439,8 @@ const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   },
   active: { color: theme.ink.action },
   supporters: {
-    minHeight: 44,
+    minWidth: spacing.touch,
+    minHeight: spacing.touch,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

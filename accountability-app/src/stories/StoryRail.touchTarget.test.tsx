@@ -4,7 +4,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { describe, expect, jest, test } from '@jest/globals';
 
 import { StoryRail } from './StoryRail';
-import { themeColors } from '../ui/theme';
+import { spacing, themeColors } from '../ui/theme';
 
 function luminance(hex: string): number {
   const channels = hex.slice(1).match(/.{2}/g)?.map((value) => parseInt(value, 16) / 255) ?? [];
@@ -74,8 +74,8 @@ describe('StoryRail My Day add target', () => {
 
     expect(initialStyle.color).toBe(theme.ink.inverse);
     expect(contrast(initialStyle.color, theme.ink.action)).toBeGreaterThanOrEqual(4.5);
-    expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(44);
-    expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(44);
+    expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(spacing.touch);
+    expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(spacing.touch);
   });
 
   test.each([
@@ -105,8 +105,8 @@ describe('StoryRail My Day add target', () => {
 
     expect(target.props.accessibilityLabel).toBe('Add to My Day');
     expect(itemWidth).toBe(expectedItemWidth);
-    expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(44);
-    expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(44);
+    expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(spacing.touch);
+    expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(spacing.touch);
     expect(targetLeft).toBeGreaterThanOrEqual(0);
     expect(targetLeft + targetWidth).toBeLessThanOrEqual(itemWidth);
     expect(visualStyle).toEqual(expect.objectContaining({ width: 22, height: 22 }));

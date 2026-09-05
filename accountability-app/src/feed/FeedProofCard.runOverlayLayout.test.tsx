@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { FeedProofCard } from './FeedProofCard';
 import type { FeedPost } from './types';
+import { spacing } from '../ui/theme';
 
 const mockReact = React;
 const mockView = View;
@@ -82,7 +83,12 @@ const basePost: FeedPost = {
   event: null,
 };
 
-function renderCard(post: FeedPost, fontScale: number, width: number) {
+function renderCard(
+  post: FeedPost,
+  fontScale: number,
+  width: number,
+  overrides: Partial<React.ComponentProps<typeof FeedProofCard>> = {},
+) {
   mockWindowDimensions.mockReturnValue({ width, height: 640, scale: 1, fontScale });
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
@@ -98,6 +104,7 @@ function renderCard(post: FeedPost, fontScale: number, width: number) {
         onToggleLike={jest.fn()}
         onShare={jest.fn()}
         onOpenEncouragement={jest.fn()}
+        {...overrides}
       />,
     );
   });
@@ -155,5 +162,48 @@ describe('FeedProofCard run overlay allocation', () => {
       (node) => node.type === View && node.props.testID === 'feed-post-video',
     )).toHaveLength(1);
     expect(renderer.root.findAllByProps({ testID: 'run-route-metric-overlay' })).toHaveLength(0);
+  });
+
+  test('keeps post options, Attend, and supporter summary targets at least 48dp', () => {
+    const eventPost: FeedPost = {
+      ...basePost,
+      id: 'event-post',
+      image_url: null,
+      body: 'Weekend long run',
+      post_type: 'event',
+      share_data: {},
+      activity_id: null,
+      event: {
+        id: 'event-1',
+        title: 'Saturday long run',
+        starts_at: '2026-09-12T07:00:00.000Z',
+        location: 'Kings Park',
+        group_id: 'group-1',
+      },
+    };
+    const renderer = renderCard(eventPost, 1, 360, {
+      preview: {
+        count: 1,
+        people: [{ id: 'buddy-1', name: 'Blair', avatar_url: null }],
+        voices: 0,
+      },
+    });
+
+    const postOptions = StyleSheet.flatten(
+      renderer.root.findByProps({ accessibilityLabel: 'Post options' }).props.style({ pressed: false }),
+    );
+    const attend = StyleSheet.flatten(
+      renderer.root.findByProps({ accessibilityLabel: 'Attend Saturday long run' }).props.style({ pressed: false }),
+    );
+    const supporters = StyleSheet.flatten(
+      renderer.root.findByProps({ accessibilityLabel: '1 buddy has cheered this post' }).props.style({ pressed: false }),
+    );
+
+    expect(postOptions.width ?? postOptions.minWidth).toBeGreaterThanOrEqual(spacing.touch);
+    expect(postOptions.height ?? postOptions.minHeight).toBeGreaterThanOrEqual(spacing.touch);
+    expect(attend.minWidth).toBeGreaterThanOrEqual(spacing.touch);
+    expect(attend.minHeight).toBeGreaterThanOrEqual(spacing.touch);
+    expect(supporters.minWidth).toBeGreaterThanOrEqual(spacing.touch);
+    expect(supporters.minHeight).toBeGreaterThanOrEqual(spacing.touch);
   });
 });

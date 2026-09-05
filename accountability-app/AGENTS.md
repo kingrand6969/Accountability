@@ -18,3 +18,10 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
   either location.
 - This is a multi-project Git workspace. Run EAS from `accountability-app` with
   `EAS_NO_VCS=1` so unrelated projects and repository history are not uploaded.
+- The EAS `preview` environment must define the project-scoped plain-text
+  variable `APP_VARIANT=staging`; never assign it to `production` for staging.
+- Before every preview update, also set local `APP_VARIANT=staging`, resolve the
+  public Expo config, and fail closed unless name=`Mantle Staging`,
+  scheme=`accountabilityapp-staging`, Android/iOS IDs both equal
+  `com.awldesk.accountability.staging`, and `extra.appVariant=preview`. Publish
+  only with `--channel preview --environment preview`.

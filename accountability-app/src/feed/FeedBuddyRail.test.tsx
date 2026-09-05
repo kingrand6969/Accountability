@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { FeedBuddyRail } from './FeedBuddyRail';
 import type { Candidate } from '../buddy/api';
-import { themeColors } from '../ui/theme';
+import { spacing, themeColors } from '../ui/theme';
 
 jest.mock('../ui/AppThemeProvider', () => ({
   useAppTheme: () => ({ colors: jest.requireActual<typeof import('../ui/theme')>('../ui/theme').themeColors('dark') }),
@@ -108,7 +108,7 @@ describe('FeedBuddyRail', () => {
     expect(action.props.accessibilityState).toEqual({ busy: true, disabled: true });
   });
 
-  test('resolves each add action to a 44 by 44 target around a compact visual', () => {
+  test('resolves each add action to a 48 by 48 target around a compact visual', () => {
     const { renderer } = renderRail();
     const action = renderer.root.findByProps({ accessibilityLabel: 'Add Alex as a buddy' });
     const targetStyle = StyleSheet.flatten(action.props.style({ pressed: false }));
@@ -116,8 +116,17 @@ describe('FeedBuddyRail', () => {
       renderer.root.findByProps({ testID: 'feed-buddy-add-visual-buddy-1' }).props.style,
     );
 
-    expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(44);
-    expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(44);
+    expect(targetStyle.width ?? targetStyle.minWidth).toBeGreaterThanOrEqual(spacing.touch);
+    expect(targetStyle.height ?? targetStyle.minHeight).toBeGreaterThanOrEqual(spacing.touch);
     expect(visualStyle).toEqual(expect.objectContaining({ width: 28, height: 28, borderRadius: 14 }));
+  });
+
+  test('gives See all a 48 by 48 minimum target', () => {
+    const { renderer } = renderRail();
+    const action = renderer.root.findByProps({ accessibilityLabel: 'See all suggested buddies' });
+    const targetStyle = StyleSheet.flatten(action.props.style({ pressed: false }));
+
+    expect(targetStyle.minWidth).toBeGreaterThanOrEqual(spacing.touch);
+    expect(targetStyle.minHeight).toBeGreaterThanOrEqual(spacing.touch);
   });
 });
