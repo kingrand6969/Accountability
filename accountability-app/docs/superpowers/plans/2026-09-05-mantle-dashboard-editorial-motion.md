@@ -289,7 +289,7 @@ createLabel: {
 },
 ```
 
-Keep `storyBubbleRingViewed` neutral and keep the current 44dp add target around its 22dp visual.
+Keep `storyBubbleRingViewed` neutral and use `spacing.touch` (48dp) for the add target around its unchanged 22dp visual.
 
 - [ ] **Step 4: Run the story behavior, scale, and target tests**
 
@@ -299,7 +299,7 @@ Run:
 npx jest src/stories/StoryRail.test.ts src/stories/StoryRail.touchTarget.test.tsx src/stories/StoryRail.navigation.test.tsx --runInBand
 ```
 
-Expected: PASS with the picker, navigation, viewed state, retry, large text, and 44dp target contracts intact.
+Expected: PASS with the picker, navigation, viewed state, retry, large text, and 48dp/`spacing.touch` target contracts intact.
 
 - [ ] **Step 5: Commit the rail**
 
@@ -721,7 +721,7 @@ addVisual: {
 },
 ```
 
-Keep the existing 44dp action target, four-person limit, callbacks, and busy/disabled semantics.
+Use `spacing.touch` (48dp) for the Add and See all targets while preserving the 28dp Add visual, four-person limit, callbacks, and busy/disabled semantics.
 
 - [ ] **Step 5: Apply compact Feed-state styles**
 
