@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentProps } from 'react';
+import { useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -8,7 +8,13 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import type {
   QueuedActivity,
   UploadStatus,
@@ -49,14 +55,6 @@ const STATUS_COPY: Record<UploadStatus, UploadStatusCopy> = {
     detail: 'This activity is still safely saved on this phone',
     icon: 'alert-circle-outline',
   },
-};
-
-const STATUS_COLOR: Record<UploadStatus, string> = {
-  saved: colors.primary,
-  uploading: colors.primary,
-  waiting_network: '#92400e',
-  needs_sign_in: '#6d28d9',
-  needs_attention: '#b91c1c',
 };
 
 export function uploadStatusCopy(status: UploadStatus): UploadStatusCopy {
@@ -215,15 +213,18 @@ export function ActivityUploadBadge({
   onPress,
   style,
 }: ActivityUploadBadgeProps) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const copy = uploadStatusCopy(status);
-  const iconColor = dark ? '#e2f78e' : STATUS_COLOR[status];
+  const statusColor = themedStatusColor(status, theme);
+  const iconColor = statusColor;
   const content = (
     <>
       <Ionicons name={copy.icon} size={17} color={iconColor} />
       <Text
         style={[
           styles.badgeText,
-          dark ? styles.badgeTextDark : { color: STATUS_COLOR[status] },
+          dark ? styles.badgeTextDark : { color: statusColor },
         ]}
       >
         {copy.title}
@@ -238,6 +239,7 @@ export function ActivityUploadBadge({
         accessibilityLiveRegion="polite"
         accessibilityLabel={`${copy.title}. ${copy.detail}.`}
         onPress={onPress}
+        hitSlop={2}
         style={({ pressed }) => [
           styles.badge,
           styles.badgeAction,
@@ -285,6 +287,9 @@ export function ActivityUploadsPanel({
   status,
   onRetryNow,
 }: ActivityUploadsPanelProps) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => createPalette(theme), [theme]);
   const [retrying, setRetrying] = useState(false);
   const retryingRef = useRef(false);
   const retryCopy = retryButtonCopy(retrying);
@@ -338,7 +343,7 @@ export function ActivityUploadsPanel({
           <Ionicons
             name="hourglass-outline"
             size={19}
-            color={colors.primary}
+            color={palette.action}
           />
           <Text style={styles.noticeText}>Checking saved activities…</Text>
         </View>
@@ -353,7 +358,7 @@ export function ActivityUploadsPanel({
           <Ionicons
             name="shield-checkmark-outline"
             size={19}
-            color={colors.danger}
+            color={palette.danger}
           />
           <View style={styles.noticeCopy}>
             <Text style={styles.noticeTitle}>
@@ -403,7 +408,7 @@ export function ActivityUploadsPanel({
           <Ionicons
             name="ellipsis-horizontal-circle-outline"
             size={19}
-            color={colors.primary}
+            color={palette.action}
           />
           <Text style={styles.remainingText}>
             {remainingUploadsCopy(preview.remainingCount)}
@@ -438,6 +443,7 @@ export function ActivityUploadsPanel({
           }}
           disabled={retryCopy.disabled}
           onPress={() => void retry()}
+          hitSlop={2}
           style={({ pressed }) => [
             styles.retryButton,
             pressed && styles.pressed,
@@ -447,7 +453,7 @@ export function ActivityUploadsPanel({
           <Ionicons
             name={retrying ? 'sync-outline' : 'refresh-outline'}
             size={18}
-            color={colors.onPrimary}
+            color={palette.onAction}
           />
           <Text style={styles.retryButtonText}>{retryCopy.label}</Text>
         </Pressable>
@@ -465,9 +471,12 @@ function AggregateNotice({
   title: string;
   detail: string;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => createPalette(theme), [theme]);
   return (
     <View style={styles.aggregateNotice}>
-      <Ionicons name={icon} size={19} color={colors.textSecondary} />
+      <Ionicons name={icon} size={19} color={palette.inkSecondary} />
       <View style={styles.noticeCopy}>
         <Text style={styles.noticeTitle}>{title}</Text>
         <Text style={styles.noticeDetail}>{detail}</Text>
@@ -476,7 +485,41 @@ function AggregateNotice({
   );
 }
 
-const styles = StyleSheet.create({
+function themedStatusColor(
+  status: UploadStatus,
+  theme: AppThemeColors,
+): string {
+  if (status === 'waiting_network') return theme.status.attention;
+  if (status === 'needs_attention') return theme.status.danger;
+  return theme.ink.action;
+}
+
+function createPalette(theme: AppThemeColors) {
+  return {
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.secondary,
+    inkPrimary: theme.ink.primary,
+    inkSecondary: theme.ink.secondary,
+    inkMuted: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    actionSoft: theme.surface.raised,
+    actionBorder: theme.border.action,
+    danger: theme.status.danger,
+    dangerSoft: theme.status.dangerSoft,
+    dangerBorder: theme.border.danger,
+    row: theme.surface.raised,
+    rowBorder: theme.border.subtle,
+    aggregate: theme.surface.card,
+    aggregateBorder: theme.border.subtle,
+    badge: theme.surface.card,
+    badgeBorder: theme.border.subtle,
+  };
+}
+
+function createStyles(theme: AppThemeColors) {
+  const palette = createPalette(theme);
+  return StyleSheet.create({
   badge: {
     minHeight: 30,
     flexDirection: 'row',
@@ -490,15 +533,15 @@ const styles = StyleSheet.create({
   },
   badgeAction: { minHeight: 44 },
   badgeLight: {
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderColor: 'rgba(30,27,75,0.14)',
+    backgroundColor: palette.badge,
+    borderColor: palette.badgeBorder,
   },
   badgeDark: {
-    backgroundColor: 'rgba(15,23,42,0.9)',
-    borderColor: 'rgba(226,247,142,0.42)',
+    backgroundColor: theme.surface.raised,
+    borderColor: theme.border.strong,
   },
   badgeText: { fontFamily: font.bold, fontSize: 12 },
-  badgeTextDark: { color: '#f8fafc' },
+  badgeTextDark: { color: theme.ink.primary },
   pressed: { opacity: 0.76 },
   disabled: { opacity: 0.6 },
   panel: { padding: spacing.lg, gap: spacing.md },
@@ -511,13 +554,13 @@ const styles = StyleSheet.create({
   },
   panelHeadingCopy: { flex: 1 },
   panelKicker: {
-    color: colors.ink,
+    color: palette.ink,
     fontFamily: font.extrabold,
     fontSize: 13,
     letterSpacing: 1.2,
   },
   panelTitle: {
-    color: colors.inkSoft,
+    color: palette.inkSoft,
     fontFamily: font.medium,
     fontSize: 12,
     marginTop: 2,
@@ -529,33 +572,33 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.actionSoft,
     borderWidth: 1,
-    borderColor: '#bfdbfe',
+    borderColor: palette.actionBorder,
   },
   errorNotice: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: '#fecaca',
+    backgroundColor: palette.dangerSoft,
+    borderColor: palette.dangerBorder,
   },
   noticeCopy: { flex: 1 },
   noticeText: {
-    color: colors.textSecondary,
+    color: palette.inkSecondary,
     fontFamily: font.semibold,
     fontSize: 13,
   },
   noticeTitle: {
-    color: colors.text,
+    color: palette.inkPrimary,
     fontFamily: font.bold,
     fontSize: 13,
   },
   noticeDetail: {
-    color: colors.textSecondary,
+    color: palette.inkSecondary,
     fontFamily: font.regular,
     fontSize: 12,
     marginTop: 2,
   },
   emptyText: {
-    color: colors.textMuted,
+    color: palette.inkMuted,
     fontFamily: font.medium,
     fontSize: 13,
   },
@@ -563,9 +606,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    backgroundColor: palette.row,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.rowBorder,
   },
   uploadRowTop: {
     minHeight: 32,
@@ -575,17 +618,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   activityType: {
-    color: colors.ink,
+    color: palette.ink,
     fontFamily: font.bold,
     fontSize: 15,
   },
   activityMeta: {
-    color: colors.textSecondary,
+    color: palette.inkSecondary,
     fontFamily: font.medium,
     fontSize: 12.5,
   },
   activityDetail: {
-    color: colors.textMuted,
+    color: palette.inkMuted,
     fontFamily: font.regular,
     fontSize: 12,
   },
@@ -597,13 +640,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.actionSoft,
     borderWidth: 1,
-    borderColor: '#bfdbfe',
+    borderColor: palette.actionBorder,
   },
   remainingText: {
     flex: 1,
-    color: colors.textSecondary,
+    color: palette.inkSecondary,
     fontFamily: font.semibold,
     fontSize: 12.5,
   },
@@ -614,9 +657,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: palette.aggregate,
     borderWidth: 1,
-    borderColor: 'rgba(30,27,75,0.12)',
+    borderColor: palette.aggregateBorder,
   },
   retryButton: {
     minHeight: 44,
@@ -626,11 +669,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
   },
   retryButtonText: {
-    color: colors.onPrimary,
+    color: palette.onAction,
     fontFamily: font.bold,
     fontSize: 14,
   },
-});
+  });
+}

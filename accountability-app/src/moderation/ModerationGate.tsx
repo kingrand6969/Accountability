@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +13,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { supabase } from '../lib/supabase';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { acknowledgeWarning, fetchModerationState, sessionPing, type ModerationState } from './api';
 
 const CONTACT_EMAIL = 'support@awldesk.com';
@@ -150,7 +157,7 @@ function AuthenticatedModerationGate() {
   return null;
 }
 
-function BanWall({
+export function BanWall({
   message,
   onSignOut,
   busy,
@@ -160,47 +167,70 @@ function BanWall({
   busy: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <View style={[styles.wall, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
-      <ScrollView
-        contentContainerStyle={styles.wallInner}
-        showsVerticalScrollIndicator={false}
+    <Modal
+      visible
+      transparent={false}
+      animationType="fade"
+      backdropColor={theme.surface.canvas}
+      accessibilityViewIsModal
+      statusBarTranslucent
+      onRequestClose={() => {}}
+    >
+      <View
+        style={[
+          styles.wall,
+          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
+        ]}
       >
-        <View style={styles.wallIcon}>
-          <Ionicons name="ban" size={38} color="#fca5a5" />
-        </View>
-        <Text style={styles.wallTitle}>Account banned</Text>
-        <Text style={styles.wallLede}>
-          Your access to AccountAbility has been removed for breaking our Community Rules.
-        </Text>
-        {message ? (
-          <View style={styles.wallCard}>
-            <Text style={styles.wallCardText}>{message}</Text>
-          </View>
-        ) : null}
-        <Text style={styles.wallAppeal}>
-          If you believe this is a mistake, you can appeal by emailing{'\n'}
-          <Text style={styles.wallEmail}>{CONTACT_EMAIL}</Text>
-        </Text>
-        <Pressable
-          onPress={onSignOut}
-          disabled={busy}
-          style={({ pressed }) => [styles.wallBtn, pressed && { opacity: 0.85 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
+        <ScrollView
+          contentContainerStyle={styles.wallInner}
+          showsVerticalScrollIndicator={false}
         >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.wallBtnText}>Sign out</Text>
-          )}
-        </Pressable>
-      </ScrollView>
-    </View>
+          <View style={styles.wallIcon}>
+            <Ionicons name="ban" size={38} color={theme.status.danger} />
+          </View>
+          <Text
+            accessibilityRole="header"
+            accessibilityLiveRegion="assertive"
+            style={styles.wallTitle}
+          >
+            Account banned
+          </Text>
+          <Text style={styles.wallLede}>
+            Your access to Mantle has been removed for breaking our Community Rules.
+          </Text>
+          {message ? (
+            <View style={styles.wallCard}>
+              <Text style={styles.wallCardText}>{message}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.wallAppeal}>
+            If you believe this is a mistake, you can appeal by emailing{'\n'}
+            <Text style={styles.wallEmail}>{CONTACT_EMAIL}</Text>
+          </Text>
+          <Pressable
+            onPress={onSignOut}
+            disabled={busy}
+            style={({ pressed }) => [styles.wallBtn, pressed && styles.wallBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            {busy ? (
+              <ActivityIndicator color={theme.ink.inverse} />
+            ) : (
+              <Text style={styles.wallBtnText}>Sign out</Text>
+            )}
+          </Pressable>
+        </ScrollView>
+      </View>
+    </Modal>
   );
 }
 
-function NoticeModal({
+export function NoticeModal({
   tone,
   icon,
   title,
@@ -215,32 +245,65 @@ function NoticeModal({
   cta: string;
   onClose: () => void;
 }) {
-  const accent = tone === 'warning' ? colors.accent : '#f97316';
-  const accentSoft = tone === 'warning' ? 'rgba(251,191,36,0.16)' : 'rgba(249,115,22,0.14)';
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const accent = tone === 'warning' ? theme.status.attention : theme.status.danger;
+  const accentSoft = tone === 'warning' ? theme.surface.muted : theme.status.dangerSoft;
   return (
-    <View style={styles.scrim}>
-      <View style={styles.sheet}>
-        <View style={[styles.sheetIcon, { backgroundColor: accentSoft }]}>
-          <Ionicons name={icon} size={28} color={accent} />
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      accessibilityViewIsModal
+      statusBarTranslucent
+      onRequestClose={() => {}}
+    >
+      <View style={styles.scrim}>
+        <View style={styles.sheet}>
+          <View style={[styles.sheetIcon, { backgroundColor: accentSoft }]}>
+            <Ionicons name={icon} size={28} color={accent} />
+          </View>
+          <Text
+            accessibilityRole="header"
+            accessibilityLiveRegion="assertive"
+            style={styles.sheetTitle}
+          >
+            {title}
+          </Text>
+          <ScrollView
+            style={styles.sheetBodyWrap}
+            contentContainerStyle={{ paddingVertical: 2 }}
+          >
+            <Text style={styles.sheetBody}>{body}</Text>
+          </ScrollView>
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [styles.sheetBtn, pressed && styles.sheetBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cta}
+          >
+            <Text style={styles.sheetBtnText}>{cta}</Text>
+          </Pressable>
         </View>
-        <Text style={styles.sheetTitle}>{title}</Text>
-        <ScrollView style={styles.sheetBodyWrap} contentContainerStyle={{ paddingVertical: 2 }}>
-          <Text style={styles.sheetBody}>{body}</Text>
-        </ScrollView>
-        <Pressable
-          onPress={onClose}
-          style={({ pressed }) => [styles.sheetBtn, { backgroundColor: colors.text }, pressed && { opacity: 0.9 }]}
-          accessibilityRole="button"
-          accessibilityLabel={cta}
-        >
-          <Text style={styles.sheetBtnText}>{cta}</Text>
-        </Pressable>
       </View>
-    </View>
+    </Modal>
   );
 }
 
-const styles = StyleSheet.create({
+function createPalette(theme: AppThemeColors) {
+  return {
+    sheet: theme.surface.card,
+    sheetInk: theme.ink.primary,
+    sheetSecondary: theme.ink.secondary,
+    sheetAction: theme.ink.action,
+    sheetOnAction: theme.ink.inverse,
+    scrim: theme.interaction.scrim,
+  };
+}
+
+function createStyles(theme: AppThemeColors) {
+  const palette = createPalette(theme);
+  return StyleSheet.create({
   // ---- ban wall ----
   wall: {
     position: 'absolute',
@@ -249,7 +312,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 9999,
-    backgroundColor: '#0b1220',
+    backgroundColor: theme.surface.canvas,
     paddingHorizontal: 26,
   },
   wallInner: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
@@ -257,17 +320,17 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: 'rgba(239,68,68,0.14)',
+    backgroundColor: theme.status.dangerSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 22,
   },
-  wallTitle: { fontFamily: font.extrabold, fontSize: 26, color: '#f8fafc', marginBottom: 10 },
+  wallTitle: { fontFamily: font.extrabold, fontSize: 26, color: theme.ink.primary, marginBottom: 10 },
   wallLede: {
     fontFamily: font.regular,
     fontSize: 15,
     lineHeight: 22,
-    color: '#cbd5e1',
+    color: theme.ink.secondary,
     textAlign: 'center',
     maxWidth: 360,
     marginBottom: 20,
@@ -275,32 +338,34 @@ const styles = StyleSheet.create({
   wallCard: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: theme.surface.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: theme.border.subtle,
     borderRadius: radius.lg,
     padding: 16,
     marginBottom: 22,
   },
-  wallCardText: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 22, color: '#e2e8f0' },
+  wallCardText: { fontFamily: font.regular, fontSize: 14.5, lineHeight: 22, color: theme.ink.secondary },
   wallAppeal: {
     fontFamily: font.regular,
     fontSize: 13.5,
     lineHeight: 21,
-    color: '#94a3b8',
+    color: theme.ink.muted,
     textAlign: 'center',
     marginBottom: 28,
   },
-  wallEmail: { fontFamily: font.semibold, color: '#93c5fd' },
+  wallEmail: { fontFamily: font.semibold, color: theme.ink.action },
   wallBtn: {
+    minHeight: spacing.touch,
     minWidth: 200,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingVertical: 14,
     paddingHorizontal: 28,
     alignItems: 'center',
   },
-  wallBtnText: { fontFamily: font.bold, fontSize: 16, color: '#fff' },
+  wallBtnPressed: { opacity: 0.85 },
+  wallBtnText: { fontFamily: font.bold, fontSize: 16, color: theme.ink.inverse },
 
   // ---- notice modal (warning / restriction) ----
   scrim: {
@@ -310,7 +375,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 9998,
-    backgroundColor: 'rgba(15,23,42,0.55)',
+    backgroundColor: palette.scrim,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
@@ -318,7 +383,7 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: colors.card,
+    backgroundColor: palette.sheet,
     borderRadius: radius.xl,
     padding: 24,
     alignItems: 'center',
@@ -334,7 +399,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: font.bold,
     fontSize: 19,
-    color: colors.text,
+    color: palette.sheetInk,
     textAlign: 'center',
     marginBottom: 10,
   },
@@ -343,15 +408,20 @@ const styles = StyleSheet.create({
     fontFamily: font.regular,
     fontSize: 15,
     lineHeight: 23,
-    color: colors.textSecondary,
+    color: palette.sheetSecondary,
     textAlign: 'center',
   },
   sheetBtn: {
+    minHeight: spacing.touch,
     alignSelf: 'stretch',
     borderRadius: radius.pill,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 20,
+    backgroundColor: palette.sheetAction,
   },
-  sheetBtnText: { fontFamily: font.bold, fontSize: 15.5, color: '#fff' },
-});
+  sheetBtnPressed: { opacity: 0.9 },
+  sheetBtnText: { fontFamily: font.bold, fontSize: 15.5, color: palette.sheetOnAction },
+  });
+}

@@ -7,6 +7,7 @@ import {
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { clearPrivateMediaCache } from '../media/privateMedia';
 
 type AuthContextValue = {
   session: Session | null;
@@ -23,16 +24,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    let alive = true;
+    let authEventSeen = false;
+
+    clearPrivateMediaCache();
+
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (alive && !authEventSeen) {
+          clearPrivateMediaCache();
+          setSession(data.session);
+        }
+      })
+      .catch(() => {
+        // A temporary storage/network failure must not leave the launch screen
+        // mounted forever. The auth subscription can still recover later.
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventSeen = true;
+      if (!alive) return;
+      clearPrivateMediaCache();
+      setSession(next);
       setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-    });
-
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   return (

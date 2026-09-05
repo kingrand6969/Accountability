@@ -8,37 +8,37 @@ import { font, typography } from './typography';
 export { font } from './typography';
 
 export const colors = {
-  // brand — logo blue, one language everywhere
-  primary: '#155EEF',
-  primaryDark: '#1d4ed8',
-  primarySoft: '#eff6ff',
-  navy: '#081A3A',
-  cream: '#F7F4EC',
-  success: '#16a34a',
-  successSoft: '#f0fdf4',
+  // Permanent dark foundation with one unmistakable neon signal.
+  primary: '#B9FF3D',
+  primaryDark: '#B9FF3D',
+  primarySoft: '#202520',
+  navy: '#0B0D0B',
+  cream: '#0B0D0B',
+  success: '#2E7D32',
+  successSoft: '#202520',
   danger: '#dc2626',
-  dangerSoft: '#fef2f2',
-  accent: '#fbbf24', // amber flame
-  cheer: '#ea580c', // flame orange — the Encourage reaction
-  pro: '#7c3aed',
-  proSoft: '#f5f3ff',
+  dangerSoft: '#202520',
+  accent: '#B9FF3D',
+  cheer: '#5F8F00',
+  pro: '#53634E',
+  proSoft: '#202520',
 
-  // glass ink — text on lavender glass surfaces
-  ink: '#1e1b4b',
-  inkSoft: 'rgba(30,27,75,0.72)',
-  inkFaint: 'rgba(30,27,75,0.12)',
+  // Compatibility ink tokens.
+  ink: '#F7F8F4',
+  inkSoft: '#CED4CB',
+  inkFaint: '#9DA59D',
 
-  // slate neutrals
-  text: '#0f172a',
-  textSecondary: '#334155',
-  textMuted: '#64748b',
-  textFaint: '#94a3b8',
-  border: '#e2e8f0',
-  surface: '#f1f5f9',
-  surfaceAlt: '#f8fafc',
-  card: '#ffffff',
-  background: '#ffffff',
-  onPrimary: '#ffffff',
+  // Dark neutral foundation.
+  text: '#F7F8F4',
+  textSecondary: '#CED4CB',
+  textMuted: '#9DA59D',
+  textFaint: '#9DA59D',
+  border: '#272D27',
+  surface: '#181C18',
+  surfaceAlt: '#202520',
+  card: '#121512',
+  background: '#0B0D0B',
+  onPrimary: '#0B0D0B',
 } as const;
 
 export const spacing = {
@@ -50,7 +50,7 @@ export const spacing = {
   xxl: 24,
   section: 32,
   screen: 16,
-  touch: 44,
+  touch: 48,
 } as const;
 
 export const radius = {
@@ -64,19 +64,19 @@ export const radius = {
 } as const;
 
 /**
- * Semantic roles for new foundation primitives. Existing flat color names
- * remain stable so current feature screens keep their established behavior.
+ * Semantic roles for the permanent dark foundation. Existing flat color names
+ * remain available so current feature screens keep compiling.
  */
 export const semanticColors = {
   surface: {
     canvas: colors.cream,
     card: colors.card,
-    raised: colors.background,
+    raised: colors.surface,
     muted: colors.surfaceAlt,
     inverse: colors.navy,
   },
   ink: {
-    primary: colors.navy,
+    primary: colors.text,
     secondary: colors.textSecondary,
     muted: colors.textMuted,
     inverse: colors.onPrimary,
@@ -84,7 +84,7 @@ export const semanticColors = {
   },
   border: {
     subtle: colors.border,
-    strong: colors.inkFaint,
+    strong: '#465046',
     action: colors.primary,
     danger: colors.danger,
   },
@@ -96,6 +96,38 @@ export const semanticColors = {
     attention: colors.accent,
   },
 } as const;
+
+export type AppThemeMode = 'light' | 'dark';
+
+const darkSemanticTheme = {
+  ...semanticColors,
+  status: {
+    success: '#87E38D',
+    successSoft: '#17351C',
+    danger: '#F87171',
+    dangerSoft: '#32151B',
+    attention: '#FBBF24',
+    attentionSoft: '#3B2B08',
+  },
+  interaction: {
+    pressedOverlay: 'rgba(255,255,255,0.10)',
+    disabledOpacity: 0.48,
+    skeleton: '#252B25',
+    scrim: 'rgba(0,0,0,0.64)',
+    touchTarget: spacing.touch,
+  },
+} as const;
+
+export type AppThemeColors = typeof darkSemanticTheme;
+
+/** Mantle intentionally uses one permanent dark appearance. */
+export function resolveAppThemeMode(_value: unknown): AppThemeMode {
+  return 'dark';
+}
+
+export function themeColors(_mode: AppThemeMode): AppThemeColors {
+  return darkSemanticTheme;
+}
 
 export const category = {
   body: semanticColors.status.success,
@@ -127,7 +159,7 @@ export const type = {
   },
   annotation: {
     ...typography.annotation,
-    color: colors.primary,
+    color: colors.primaryDark,
   },
   metric: {
     ...typography.metric,
@@ -148,7 +180,7 @@ export const contentMax = {
 
 export const shadow = {
   card: {
-    shadowColor: '#0f172a',
+    shadowColor: '#0B0D0B',
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },

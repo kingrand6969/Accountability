@@ -38,6 +38,8 @@ jobs:
         run: npm run lint
       - name: Type check
         run: npx tsc --noEmit
+      - name: Check brand release contracts
+        run: npm run test:brand
       - name: Test
         run: npm test -- --runInBand
       - name: Check update budget

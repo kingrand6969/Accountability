@@ -4,7 +4,7 @@ import type { BuddyCardAccessMode } from './buddyCardRelationship';
 import { pickBuddyCardEditorChanges } from './editorModel';
 
 /** Default card background — brand blue. Users can replace it with a photo. */
-export const CARD_BLUE: [string, string] = ['#60a5fa', '#1d4ed8'];
+export const CARD_BLUE: [string, string] = ['#B9FF3D', '#446B00'];
 
 export type BuddyCard = {
   bg_url?: string | null; // custom background photo (else the blue gradient)
@@ -305,19 +305,21 @@ export type CardPost = {
 };
 
 /**
- * Posts shown on a member's card. Buddies see their recent feed posts;
- * non-buddies see ONLY the posts the owner marked "Show on Buddy Card".
+ * Posts shown on a member's card use the same public opt-in for every viewer.
+ * Buddy relationships grant Feed access, not permission to place a private
+ * post on this public-facing profile surface.
  */
-export async function listCardPosts(userId: string, isBuddy: boolean): Promise<CardPost[]> {
-  let q = supabase
+export async function listCardPosts(userId: string, _isBuddy: boolean): Promise<CardPost[]> {
+  const q = supabase
     .from('posts')
     .select('id,body,image_url,post_type,created_at')
     .eq('user_id', userId)
     .is('group_id', null)
     .is('page_id', null)
+    .eq('audience', 'public')
+    .eq('show_on_card', true)
     .order('created_at', { ascending: false })
     .limit(6);
-  if (!isBuddy) q = q.eq('show_on_card', true);
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as CardPost[];

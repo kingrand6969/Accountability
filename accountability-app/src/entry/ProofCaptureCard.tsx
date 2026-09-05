@@ -1,11 +1,19 @@
-import { ImageBackground, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BrandMark } from '../ui/BrandMark';
+import { BRAND_WORDMARK } from '../ui/brandGeometry';
 import { font } from '../ui/theme';
 import type { ProofExport, RenderAssetHandle } from './proofExport';
 
-const PROOF_RUNNER_HERO = require('../../assets/images/proof-runner-hero-v1.webp');
+export const PROOF_RUNNER_HERO = require('../../assets/images/proof-runner-hero-v1.webp');
+
+export function proofBackgroundSource(uri: string | null | undefined): ImageSourcePropType {
+  return typeof uri === 'string' &&
+    (/^(?:file|content):\/\//iu.test(uri) || /^blob:/iu.test(uri))
+    ? { uri }
+    : PROOF_RUNNER_HERO;
+}
 
 function metricLabel(value: number, singular: string, plural = `${singular}s`): string {
   return `${value} ${value === 1 ? singular : plural}`;
@@ -18,6 +26,21 @@ export type ProofCaptureRendererContext = Readonly<{
   buddyPortraitImages: readonly RenderAssetHandle[];
   resolve: (handle: RenderAssetHandle) => string;
 }>;
+
+export type ProofShareRenderModel = Readonly<{
+  context: ProofCaptureRendererContext;
+  backgroundUri: string | null;
+}>;
+
+export function createProofShareRenderModel(
+  context: ProofCaptureRendererContext,
+  media: Readonly<{ kind: 'card' } | { kind: 'photo'; uri: string }>,
+): ProofShareRenderModel {
+  return Object.freeze({
+    context,
+    backgroundUri: media.kind === 'photo' ? media.uri : null,
+  });
+}
 
 export function buildProofCardSummary(model: ProofExport): string {
   const details = [
@@ -35,11 +58,12 @@ export function buildProofCardSummary(model: ProofExport): string {
   return details.filter(Boolean).join(' ');
 }
 
-export function ProofCaptureCard({ context }: { context: ProofCaptureRendererContext }) {
+export function ProofCaptureCard({ context, backgroundUri }: { context: ProofCaptureRendererContext; backgroundUri?: string | null }) {
   const cardModel = context.dto;
+  const backgroundSource = proofBackgroundSource(backgroundUri);
   return (
     <ImageBackground
-      source={PROOF_RUNNER_HERO}
+      source={backgroundSource}
       style={styles.card}
       resizeMode="cover"
       accessibilityIgnoresInvertColors
@@ -62,10 +86,8 @@ export function ProofCaptureCard({ context }: { context: ProofCaptureRendererCon
         accessibilityElementsHidden
       >
         <View style={styles.brandRow}>
-          <BrandMark size={24} color="#FFFFFF" accessibilityLabel="AccountAbility" />
-          <Text allowFontScaling={false} style={styles.brandTop}>
-            Account<Text allowFontScaling={false} style={styles.brandAbility}>Ability</Text>
-          </Text>
+          <BrandMark size={24} color="#B9FF3D" accessibilityLabel="Mantle logo" />
+          <Text allowFontScaling={false} style={styles.brandTop}>{BRAND_WORDMARK}</Text>
         </View>
 
         <View style={styles.bottomBlock}>
@@ -125,12 +147,11 @@ const styles = StyleSheet.create({
   cardContent: { flex: 1, padding: 16, justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   brandTop: {
-    color: 'rgba(255,255,255,0.95)',
-    fontFamily: 'Inter_800ExtraBold',
+    color: '#F4F5F1',
+    fontFamily: font.brand,
     fontSize: 14,
     letterSpacing: 1,
   },
-  brandAbility: { color: '#60A5FA' },
   bottomBlock: { gap: 8 },
   proofHeadline: {
     color: '#FFFFFF',

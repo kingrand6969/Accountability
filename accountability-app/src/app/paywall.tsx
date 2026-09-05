@@ -1,5 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -11,7 +20,14 @@ import {
 } from '../pro/billingAdapter';
 import { PRO_PRICING } from '../pro/monetization';
 import { Button } from '../ui/Button';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  font,
+  radius,
+  shadow,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
 
 const BENEFITS = [
   { icon: 'trending-up-outline' as const, text: 'Unlimited history + advanced insights' },
@@ -24,6 +40,9 @@ const BENEFITS = [
 
 export default function Paywall() {
   const { isPro, refresh } = useIsPro();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => paywallPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [plan, setPlan] = useState<ProPlan>('yearly');
   const [availability, setAvailability] = useState<BillingAvailability | null>(null);
   const [busy, setBusy] = useState<'purchase' | 'restore' | null>(null);
@@ -96,7 +115,7 @@ export default function Paywall() {
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.heroWrap}>
         <LinearGradient
-          colors={['#8b5cf6', '#7c3aed', '#5b21b6']}
+          colors={['#263223', '#53634E', '#111411']}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.8, y: 1 }}
           style={styles.hero}
@@ -104,12 +123,12 @@ export default function Paywall() {
           <View style={styles.heroIconWrap}>
             <BlurView
               intensity={24}
-              tint="light"
+              tint="dark"
               style={[StyleSheet.absoluteFill, { borderRadius: 36 }]}
             />
-            <Ionicons name="star" size={32} color="#fde68a" />
+            <Ionicons name="star" size={32} color={theme.ink.action} />
           </View>
-          <Text style={styles.title}>AccountAbility Pro</Text>
+          <Text style={styles.title}>Mantle Pro</Text>
           <Text style={styles.subtitle}>Get more out of every day.</Text>
         </LinearGradient>
       </View>
@@ -117,9 +136,9 @@ export default function Paywall() {
       <View style={styles.card}>
         {BENEFITS.map((benefit) => (
           <View key={benefit.text} style={styles.benefitRow}>
-            <Ionicons name={benefit.icon} size={18} color={colors.pro} />
+            <Ionicons name={benefit.icon} size={18} color={palette.proAccent} />
             <Text style={styles.benefit}>{benefit.text}</Text>
-            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <Ionicons name="checkmark-circle" size={18} color={palette.success} />
           </View>
         ))}
       </View>
@@ -146,7 +165,7 @@ export default function Paywall() {
 
       {isPro ? (
         <View style={styles.proActive}>
-          <Ionicons name="star" size={17} color={colors.pro} />
+          <Ionicons name="star" size={17} color={palette.proAccent} />
           <Text style={styles.proActiveText}>You&apos;re on Pro</Text>
         </View>
       ) : (
@@ -165,7 +184,7 @@ export default function Paywall() {
             />
           ) : (
             <View style={styles.unavailable} accessibilityRole="alert">
-              <Ionicons name="construct-outline" size={18} color={colors.pro} />
+              <Ionicons name="construct-outline" size={18} color={palette.proAccent} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.unavailableTitle}>
                   {availability?.message ?? 'Checking store availability…'}
@@ -178,12 +197,11 @@ export default function Paywall() {
               </View>
             </View>
           )}
-          <Button
+          <PaywallRestoreButton
             title="Restore purchases"
             onPress={onRestore}
-            loading={busy === 'restore'}
+            busy={busy === 'restore'}
             disabled={!!busy}
-            variant="ghost"
           />
         </>
       )}
@@ -210,6 +228,9 @@ function PlanCard({
   badge?: string;
   onPress: () => void;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -234,19 +255,91 @@ function PlanCard({
   );
 }
 
-const styles = StyleSheet.create({
+function PaywallRestoreButton({
+  title,
+  onPress,
+  busy,
+  disabled,
+}: {
+  title: string;
+  onPress: () => void;
+  busy: boolean;
+  disabled: boolean;
+}) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => paywallPalette(theme), [theme]);
+  const [scale] = useState(() => new Animated.Value(1));
+  const inactive = busy || disabled;
+
+  function pressTo(value: number) {
+    Animated.spring(scale, {
+      toValue: value,
+      speed: 40,
+      bounciness: value === 1 ? 8 : 0,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  return (
+    <Animated.View style={[styles.restoreWrap, { transform: [{ scale }] }]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => !inactive && pressTo(0.96)}
+        onPressOut={() => pressTo(1)}
+        disabled={inactive}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ busy, disabled: inactive }}
+        style={({ pressed }) => [
+          styles.restoreButton,
+          pressed && !inactive && styles.restorePressed,
+          inactive && styles.restoreDisabled,
+        ]}
+      >
+        {busy ? (
+          <ActivityIndicator color={palette.restoreText} />
+        ) : (
+          <Text style={styles.restoreText}>{title}</Text>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function paywallPalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    surface: theme.surface.card,
+    border: theme.border.subtle,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    faint: theme.ink.muted,
+    proAccent: theme.ink.action,
+    proSurface: theme.surface.muted,
+    success: theme.status.success,
+    restoreSurface: theme.surface.raised,
+    restoreText: theme.ink.primary,
+    cardShadow: theme.surface.canvas,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors) => {
+  const palette = paywallPalette(theme);
+
+  return StyleSheet.create({
   container: {
     padding: spacing.xxl,
     paddingBottom: 48,
     gap: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: palette.canvas,
   },
   pressed: { opacity: 0.8 },
   heroWrap: {
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.xs,
-    shadowColor: colors.pro,
+    shadowColor: theme.ink.action,
     shadowOpacity: 0.35,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
@@ -259,90 +352,107 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: theme.border.strong,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  title: { fontSize: 26, fontFamily: font.extrabold, color: '#fff' },
-  subtitle: { color: '#ede9fe', fontFamily: font.medium, fontSize: 15 },
+  title: { fontSize: 26, fontFamily: font.extrabold, color: theme.ink.primary },
+  subtitle: { color: theme.ink.secondary, fontFamily: font.medium, fontSize: 15 },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     gap: spacing.md,
     ...shadow.card,
+    shadowColor: palette.cardShadow,
   },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  benefit: { fontSize: 15, fontFamily: font.medium, color: colors.text, flex: 1 },
+  benefit: { fontSize: 15, fontFamily: font.medium, color: palette.ink, flex: 1 },
   prices: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   price: {
     flex: 1,
     minHeight: 112,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     paddingTop: 18,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
   },
-  priceSelected: { borderColor: colors.pro, backgroundColor: colors.proSoft },
+  priceSelected: { borderColor: palette.proAccent, backgroundColor: palette.proSurface },
   bestBadge: {
     position: 'absolute',
     top: -10,
-    backgroundColor: colors.pro,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingVertical: 3,
     paddingHorizontal: 10,
   },
-  bestBadgeText: { color: '#fff', fontSize: 10, fontFamily: font.extrabold, letterSpacing: 0.6 },
-  priceLabel: { fontFamily: font.bold, color: colors.text },
-  priceValue: { fontSize: 24, fontFamily: font.extrabold, color: colors.text },
-  priceNote: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12 },
-  cta: { marginTop: spacing.sm, backgroundColor: colors.pro },
+  bestBadgeText: { color: theme.ink.inverse, fontSize: 10, fontFamily: font.extrabold, letterSpacing: 0.6 },
+  priceLabel: { fontFamily: font.bold, color: palette.ink },
+  priceValue: { fontSize: 24, fontFamily: font.extrabold, color: palette.ink },
+  priceNote: { color: palette.muted, fontFamily: font.medium, fontSize: 12 },
+  cta: { marginTop: spacing.sm },
   proActive: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.proSoft,
-    borderColor: colors.pro,
+    backgroundColor: palette.proSurface,
+    borderColor: palette.proAccent,
     borderWidth: 1,
     borderRadius: radius.md,
     padding: spacing.lg,
     alignItems: 'center',
     marginTop: spacing.sm,
   },
-  proActiveText: { fontSize: 16, fontFamily: font.bold, color: colors.pro },
+  proActiveText: { fontSize: 16, fontFamily: font.bold, color: palette.proAccent },
   unavailable: {
     minHeight: 62,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.proSoft,
-    borderColor: colors.pro,
+    backgroundColor: palette.proSurface,
+    borderColor: palette.proAccent,
     borderWidth: 1,
     borderRadius: radius.md,
     padding: spacing.md,
     marginTop: spacing.sm,
   },
-  unavailableTitle: { fontSize: 14, fontFamily: font.bold, color: colors.pro },
+  unavailableTitle: { fontSize: 14, fontFamily: font.bold, color: palette.proAccent },
   unavailableDetail: {
-    color: colors.textMuted,
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 12,
     lineHeight: 17,
     marginTop: 3,
   },
   devNote: {
-    color: colors.textFaint,
+    color: palette.faint,
     fontFamily: font.regular,
     fontSize: 12,
     marginTop: spacing.md,
     textAlign: 'center',
   },
-});
+  restoreWrap: { alignSelf: 'stretch' },
+  restoreButton: {
+    minHeight: spacing.touch,
+    borderRadius: radius.md,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: palette.restoreSurface,
+  },
+  restoreText: { color: palette.restoreText, fontFamily: font.bold, fontSize: 16 },
+  restorePressed: { opacity: 0.92 },
+  restoreDisabled: { opacity: 0.5 },
+  });
+};

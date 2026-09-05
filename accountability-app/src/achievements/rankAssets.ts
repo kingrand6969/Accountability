@@ -19,6 +19,7 @@ export type RankName =
 
 export type RankConfig = {
   image: ImageSourcePropType;
+  crest: ImageSourcePropType;
   glow: string; // aura / glow colour, sampled from the badge
   glowMax: number; // peak glow opacity (0–1)
   shineMs: number; // shine-sweep duration
@@ -37,51 +38,61 @@ export const RANK_ORDER: RankName[] = [
 export const RANK_CONFIG: Record<RankName, RankConfig> = {
   Rookie: {
     image: require('../../assets/images/ranks/rookie.png'),
+    crest: require('../../assets/images/rank-crests/rookie.png'),
     glow: '#8b97ab', glowMax: 0.18, shineMs: 4200, shineBright: 0.42, shineDir: 'diag',
     sparkles: 0, flicker: false, feel: 'soft metallic shine',
   },
   Regular: {
     image: require('../../assets/images/ranks/regular.png'),
+    crest: require('../../assets/images/rank-crests/regular.png'),
     glow: '#3b82f6', glowMax: 0.26, shineMs: 3600, shineBright: 0.55, shineDir: 'diag',
     sparkles: 0, flicker: false, feel: 'blue sheen sweep',
   },
   Committed: {
     image: require('../../assets/images/ranks/committed.png'),
+    crest: require('../../assets/images/rank-crests/committed.png'),
     glow: '#22c55e', glowMax: 0.24, shineMs: 2600, shineBright: 0.8, shineDir: 'diag',
     sparkles: 0, flicker: false, feel: 'checkmark glint',
   },
   Dedicated: {
     image: require('../../assets/images/ranks/dedicated.png'),
+    crest: require('../../assets/images/rank-crests/dedicated.png'),
     glow: '#14b8a6', glowMax: 0.27, shineMs: 3400, shineBright: 0.5, shineDir: 'up',
     sparkles: 0, flicker: false, feel: 'upward chevron shimmer',
   },
   Proven: {
     image: require('../../assets/images/ranks/proven.png'),
+    crest: require('../../assets/images/rank-crests/proven.png'),
     glow: '#ef4444', glowMax: 0.4, shineMs: 4000, shineBright: 0.45, shineDir: 'diag',
     sparkles: 0, flicker: false, feel: 'ruby gleam',
   },
   Elite: {
     image: require('../../assets/images/ranks/elite.png'),
+    crest: require('../../assets/images/rank-crests/elite.png'),
     glow: '#8b5cf6', glowMax: 0.5, shineMs: 5000, shineBright: 0.35, shineDir: 'diag',
     sparkles: 0, flicker: false, feel: 'violet aura pulse',
   },
   Master: {
     image: require('../../assets/images/ranks/master.png'),
+    crest: require('../../assets/images/rank-crests/master.png'),
     glow: '#d4af37', glowMax: 0.38, shineMs: 3800, shineBright: 0.6, shineDir: 'diag',
     sparkles: 2, flicker: false, feel: 'laurel shimmer',
   },
   Apex: {
     image: require('../../assets/images/ranks/apex.png'),
+    crest: require('../../assets/images/rank-crests/apex.png'),
     glow: '#67e8f9', glowMax: 0.34, shineMs: 3000, shineBright: 0.65, shineDir: 'diag',
     sparkles: 2, flicker: true, feel: 'icy crystal flicker',
   },
   Legend: {
     image: require('../../assets/images/ranks/legend.png'),
+    crest: require('../../assets/images/rank-crests/legend.png'),
     glow: '#f5c542', glowMax: 0.5, shineMs: 3400, shineBright: 0.65, shineDir: 'diag',
     sparkles: 4, flicker: false, feel: 'golden radiant sparkles',
   },
   Mythical: {
     image: require('../../assets/images/ranks/mythical.png'),
+    crest: require('../../assets/images/rank-crests/mythical.png'),
     glow: '#b98cff', glowMax: 0.6, shineMs: 3000, shineBright: 0.55, shineDir: 'diag',
     sparkles: 5, flicker: false, feel: 'iridescent cosmic shimmer with particles',
   },

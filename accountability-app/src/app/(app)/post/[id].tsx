@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
   AccessibilityInfo,
@@ -6,7 +7,6 @@ import {
   AppState,
   BackHandler,
   FlatList,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import {
@@ -38,24 +39,30 @@ import { Avatar } from '../../../feed/Avatar';
 import type { FeedPost, PostComment } from '../../../feed/types';
 import { EmptyState } from '../../../ui/EmptyState';
 import { showToast } from '../../../ui/Toast';
-import { colors, font, radius, spacing } from '../../../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../../../ui/theme';
+import { useAppTheme } from '../../../ui/AppThemeProvider';
 import { EncouragementSheet } from '../../../feed/EncouragementSheet';
 import { VoiceEncouragementRecorder } from '../../../feed/VoiceEncouragementRecorder';
 import { BroadcastSheet } from '../../../feed/BroadcastSheet';
 import { canReportContent, createReportAction } from '../../../moderation/reportAction';
 import {
+  beginImmersiveRefresh,
   ImmersivePost,
   ImmersiveOperationCoordinator,
   deriveImmersivePostState,
   immersiveResultBelongsToView,
+  postDetailStatusBarStyle,
   visibleImmersiveSnapshot,
   type ImmersiveSnapshot,
   type ImmersiveViewContext,
 } from '../../../feed/ImmersivePost';
 import { navigateBackSafely } from '../../../navigation/routeAccessContract';
+import { userFacingErrorMessage } from '../../../ui/userFacingError';
 
 export default function PostDetailRoute() {
-  const { id, encouragement } = useLocalSearchParams<{ id: string; encouragement?: string }>();
+  const params = useLocalSearchParams<{ id: string; encouragement?: string }>();
+  const { id, encouragement } = params;
+  const { comment } = params as typeof params & { comment?: string };
   const { session } = useAuth();
   const myId = session?.user.id ?? null;
   const viewKey = `${id ?? ''}:${myId ?? ''}`;
@@ -64,6 +71,7 @@ export default function PostDetailRoute() {
       key={viewKey}
       id={id}
       encouragement={encouragement}
+      comment={comment}
       myId={myId}
     />
   );
@@ -72,15 +80,19 @@ export default function PostDetailRoute() {
 function PostDetailView({
   id,
   encouragement,
+  comment,
   myId,
 }: {
   id: string;
   encouragement?: string;
+  comment?: string;
   myId: string | null;
 }) {
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const renderViewKey = `${id ?? ''}:${myId ?? ''}`;
   const [snapshot, setSnapshot] = useState<
     ImmersiveSnapshot<FeedPost, PostComment, PostEncourager, VoiceEncouragement>
@@ -103,9 +115,8 @@ function PostDetailView({
   const commentsLoading = visibleSnapshot?.commentsLoading ?? false;
   const commentsError = visibleSnapshot?.commentsError ?? false;
   const [online, setOnline] = useState(true);
-    const [text, setText] = useState('');
-    const [keyboardInset, setKeyboardInset] = useState(0);
-    const [sending, setSending] = useState(false);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
   const [encouragementOpen, setEncouragementOpen] = useState(encouragement === '1');
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [sendingVoice, setSendingVoice] = useState(false);
@@ -113,6 +124,7 @@ function PostDetailView({
   const [reportingCommentIds, setReportingCommentIds] = useState<Set<string>>(() => new Set());
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const inputRef = useRef<TextInput>(null);
+  const commentIntentHandledRef = useRef(false);
   const mountedRef = useRef(true);
   const focusedRef = useRef(false);
 
@@ -124,16 +136,13 @@ function PostDetailView({
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const show = Keyboard.addListener('keyboardDidShow', (event) => {
-      setKeyboardInset(Math.max(0, event.endCoordinates.height));
+    if (comment !== '1' || !post || !isFocused || commentIntentHandledRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      commentIntentHandledRef.current = true;
+      inputRef.current?.focus();
     });
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardInset(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
+    return () => cancelAnimationFrame(frame);
+  }, [comment, isFocused, post]);
   const requestGeneration = useRef(0);
   const viewGeneration = useRef(0);
   const operations = useRef(new ImmersiveOperationCoordinator());
@@ -238,7 +247,9 @@ function PostDetailView({
     }, [router]),
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (
+    { preserveVisible = false }: { preserveVisible?: boolean } = {},
+  ) => {
     if (!id) return;
     const requestedId = id;
     const requestedOwnerId = myId;
@@ -257,16 +268,10 @@ function PostDetailView({
       const loadedPost = await getPost(id);
       if (!belongs()) return;
       const requestedViewKey = `${requestedId}:${requestedOwnerId ?? ''}`;
-      setSnapshot({
-        viewKey: requestedViewKey,
-        post: loadedPost,
-        comments: [],
-        encouragers: [],
-        voices: [],
-        commentsLoading: Boolean(loadedPost),
-        commentsError: false,
-      });
-      if (loadedPost) dataViewKeyRef.current = requestedViewKey;
+      setSnapshot((current) =>
+        beginImmersiveRefresh(current, requestedViewKey, loadedPost, preserveVisible),
+      );
+      dataViewKeyRef.current = loadedPost ? requestedViewKey : null;
       setLoadError(null);
       setLoading(false);
       if (!loadedPost) return;
@@ -290,7 +295,7 @@ function PostDetailView({
       );
     } catch (error) {
       if (!belongs()) return;
-      setLoadError(String((error as Error).message ?? error));
+      setLoadError(userFacingErrorMessage(error, 'load'));
     } finally {
       if (belongs()) {
         setLoading(false);
@@ -311,9 +316,11 @@ function PostDetailView({
     }
     if (wasOfflineRef.current && focusedRef.current) {
       wasOfflineRef.current = false;
-      void load();
+      void load({
+        preserveVisible: dataViewKeyRef.current === `${id ?? ''}:${myId ?? ''}`,
+      });
     }
-  }, [load, online]);
+  }, [id, load, myId, online]);
 
   useFocusEffect(
     // This lifecycle boundary intentionally owns all transient resets.
@@ -343,8 +350,8 @@ function PostDetailView({
       if (sameLoadedView && !onlineRef.current) {
         setLoading(false);
       } else {
-        setLoading(true);
-        void load();
+        setLoading(!sameLoadedView);
+        void load({ preserveVisible: sameLoadedView });
       }
       return () => {
         focusedRef.current = false;
@@ -383,8 +390,8 @@ function PostDetailView({
       }
     } catch (error) {
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
-        Alert.alert('Could not update like', String((error as Error).message ?? error));
-        void load();
+        Alert.alert('Could not update like', userFacingErrorMessage(error, 'update'));
+        void load({ preserveVisible: true });
       }
     } finally {
       operations.current.complete(token, currentView(), mountedRef.current && focusedRef.current);
@@ -423,11 +430,11 @@ function PostDetailView({
       await addComment(id, text.trim());
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
         setText('');
-        await load();
+        await load({ preserveVisible: true });
       }
     } catch (error) {
       if (operations.current.owns(token, currentView(), mountedRef.current && focusedRef.current)) {
-        Alert.alert('Could not comment', String((error as Error).message ?? error));
+        Alert.alert('Could not comment', userFacingErrorMessage(error, 'comment'));
       }
     } finally {
       const result = operations.current.complete(
@@ -472,51 +479,64 @@ function PostDetailView({
 
   if (viewState === 'loading') {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.stateText}>Loading post…</Text>
-      </View>
+      <>
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
+        <PostDetailState
+          topInset={insets.top}
+          onBack={() => navigateBackSafely(router)}
+        >
+          <ActivityIndicator size="large" color={theme.ink.action} />
+          <Text style={styles.stateText}>Loading post…</Text>
+        </PostDetailState>
+      </>
     );
   }
 
   if (!post) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.stateTitle}>
-          {viewState === 'offline-uncached'
-            ? 'You are offline'
-            : viewState === 'retryable-error'
-              ? 'This post could not be loaded'
-              : 'This post is unavailable'}
-        </Text>
-        <Text style={styles.stateText}>
-          {viewState === 'offline-uncached'
-            ? 'Reconnect to load this post. No private post copy is stored on this device.'
-            : 'It may have been removed or its audience may have changed. We cannot reveal which.'}
-        </Text>
-        {loadError || viewState === 'offline-uncached' ? (
-          <Pressable
-            onPress={() => {
-              setLoading(true);
-              void load();
-            }}
-            style={styles.retryButton}
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading post"
-          >
-            <Text style={styles.retryText}>Try again</Text>
-          </Pressable>
-        ) : null}
-      </View>
+      <>
+        {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
+        <PostDetailState
+          topInset={insets.top}
+          onBack={() => navigateBackSafely(router)}
+        >
+          <Text style={styles.stateTitle}>
+            {viewState === 'offline-uncached'
+              ? 'You are offline'
+              : viewState === 'retryable-error'
+                ? 'This post could not be loaded'
+                : 'This post is unavailable'}
+          </Text>
+          <Text style={styles.stateText}>
+            {viewState === 'offline-uncached'
+              ? 'Reconnect to load this post. No private post copy is stored on this device.'
+              : 'It may have been removed or its audience may have changed. We cannot reveal which.'}
+          </Text>
+          {loadError || viewState === 'offline-uncached' ? (
+            <Pressable
+              onPress={() => {
+                setLoading(true);
+                void load();
+              }}
+              style={styles.retryButton}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading post"
+            >
+              <Text style={styles.retryText}>Try again</Text>
+            </Pressable>
+          ) : null}
+        </PostDetailState>
+      </>
     );
   }
 
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
+      {isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null}
       {viewState === 'offline-cached' ? (
         <View style={styles.offlineBanner} accessibilityRole="alert">
           <Text style={styles.offlineText}>Offline · showing this session’s last loaded copy</Text>
@@ -559,21 +579,21 @@ function PostDetailView({
         ListEmptyComponent={
           viewState === 'comments-loading' ? (
             <View style={styles.commentsState}>
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={theme.ink.action} />
               <Text style={styles.stateText}>Loading comments…</Text>
             </View>
           ) : viewState === 'comments-error' ? (
             <View style={styles.commentsState}>
               <Text style={styles.stateText}>Comments are unavailable. The post is still safe to view.</Text>
-              <Pressable onPress={() => void load()} accessibilityRole="button" accessibilityLabel="Retry loading comments" style={styles.commentsRetry}>
+              <Pressable onPress={() => void load({ preserveVisible: true })} accessibilityRole="button" accessibilityLabel="Retry loading comments" style={styles.commentsRetry}>
                 <Text style={styles.commentsRetryText}>Retry comments</Text>
               </Pressable>
             </View>
           ) : (
             <EmptyState
-            icon="chatbubble-ellipses-outline"
-            title={`Be the first to Cheer ${authorLabel(post.author_name)}`}
-            subtitle="A little support can keep a streak going."
+              icon="chatbubble-ellipses-outline"
+              title="Be the first to comment"
+              subtitle="Share something supportive about this post."
             />
           )
         }
@@ -610,14 +630,13 @@ function PostDetailView({
         style={[
           styles.inputBar,
           { paddingBottom: Math.max(insets.bottom, spacing.sm) },
-          keyboardInset > 0 && { transform: [{ translateY: -keyboardInset }] },
         ]}
       >
         <TextInput
           ref={inputRef}
           style={styles.input}
           placeholder="Write a supportive comment…"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={theme.ink.muted}
           value={text}
           onChangeText={setText}
           multiline
@@ -635,7 +654,7 @@ function PostDetailView({
           accessibilityRole="button"
           accessibilityState={{ disabled: !text.trim() || sending, busy: sending }}
         >
-          {sending ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.sendText}>Send</Text>}
+          {sending ? <ActivityIndicator color={theme.ink.inverse} /> : <Text style={styles.sendText}>Send</Text>}
         </Pressable>
       </View>
       <EncouragementSheet
@@ -669,39 +688,79 @@ function PostDetailView({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  offlineBanner: { position: 'absolute', zIndex: 5, top: spacing.sm, alignSelf: 'center', borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: 'rgba(247,244,236,.94)' },
-  offlineText: { color: colors.navy, fontFamily: font.semibold, fontSize: 11 },
+function PostDetailState({
+  topInset,
+  onBack,
+  children,
+}: {
+  topInset: number;
+  onBack(): void;
+  children: ReactNode;
+}) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  return (
+    <View style={[styles.stateScreen, { paddingTop: Math.max(topInset, spacing.sm) }]}>
+      <Pressable
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        style={({ pressed }) => [styles.stateBack, pressed && styles.pressed]}
+      >
+        <Ionicons name="arrow-back" size={22} color={theme.ink.primary} />
+        <Text style={styles.stateBackText}>Back</Text>
+      </Pressable>
+      <View style={styles.center}>{children}</View>
+    </View>
+  );
+}
+
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.card },
+  stateScreen: { flex: 1, backgroundColor: theme.surface.card },
+  stateBack: {
+    minWidth: 88,
+    minHeight: spacing.touch,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  stateBackText: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 15 },
+  offlineBanner: { position: 'absolute', zIndex: 5, top: spacing.sm, alignSelf: 'center', borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: theme.surface.canvas, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border.subtle },
+  offlineText: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 11 },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.md,
     padding: spacing.xxl,
-    backgroundColor: colors.background,
+    backgroundColor: theme.surface.card,
   },
-  stateTitle: { color: colors.text, fontFamily: font.bold, fontSize: 18, textAlign: 'center' },
-  stateText: { color: colors.textMuted, fontFamily: font.regular, textAlign: 'center', lineHeight: 20 },
-  retryButton: { minHeight: 44, borderRadius: radius.pill, paddingHorizontal: spacing.xl, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
-  retryText: { color: colors.onPrimary, fontFamily: font.bold },
+  stateTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18, textAlign: 'center' },
+  stateText: { color: theme.ink.muted, fontFamily: font.regular, textAlign: 'center', lineHeight: 20 },
+  retryButton: { minHeight: spacing.touch, borderRadius: radius.pill, paddingHorizontal: spacing.xl, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ink.action },
+  retryText: { color: theme.ink.inverse, fontFamily: font.bold },
   list: { paddingBottom: spacing.lg },
   memoryAction: { minHeight: 48, paddingHorizontal: spacing.lg, alignItems: 'flex-end', justifyContent: 'center' },
-  commentsHeading: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, color: colors.textMuted, fontFamily: font.bold, fontSize: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  commentsHeading: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, color: theme.ink.muted, fontFamily: font.bold, fontSize: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border.subtle },
   commentsState: { minHeight: 120, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg },
-  commentsRetry: { minHeight: 44, paddingHorizontal: spacing.lg, justifyContent: 'center' },
-  commentsRetryText: { color: colors.primary, fontFamily: font.bold },
+  commentsRetry: { minHeight: spacing.touch, paddingHorizontal: spacing.lg, justifyContent: 'center' },
+  commentsRetryText: { color: theme.ink.action, fontFamily: font.bold },
   comment: { flexDirection: 'row', gap: 10, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   commentBody: { flex: 1 },
-  commentAuthor: { color: colors.text, fontFamily: font.semibold },
-  commentTime: { color: colors.textFaint, fontFamily: font.regular, fontSize: 12 },
-  commentText: { marginTop: 2, color: colors.text, fontFamily: font.regular, lineHeight: 20 },
-  reportComment: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
-  reportCommentText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.background },
-  input: { flex: 1, maxHeight: 100, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, color: colors.text, backgroundColor: colors.surfaceAlt, fontFamily: font.regular, fontSize: 15 },
-  sendButton: { minHeight: 44, borderRadius: 22, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
-  sendDisabled: { opacity: 0.5 },
-  sendText: { color: colors.onPrimary, fontFamily: font.bold },
+  commentAuthor: { color: theme.ink.primary, fontFamily: font.semibold },
+  commentTime: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 12 },
+  commentText: { marginTop: 2, color: theme.ink.primary, fontFamily: font.regular, lineHeight: 20 },
+  reportComment: { alignSelf: 'flex-start', minHeight: spacing.touch, justifyContent: 'center' },
+  reportCommentText: { color: theme.ink.muted, fontFamily: font.semibold, fontSize: 13 },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border.subtle, backgroundColor: theme.surface.card },
+  input: { flex: 1, minHeight: 44, maxHeight: 100, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, color: theme.ink.primary, backgroundColor: theme.surface.muted, fontFamily: font.regular, fontSize: 15 },
+  sendButton: { minHeight: spacing.touch, borderRadius: 24, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.ink.action },
+  sendDisabled: { opacity: theme.interaction.disabledOpacity },
+  sendText: { color: theme.ink.inverse, fontFamily: font.bold },
   pressed: { opacity: 0.7 },
 });

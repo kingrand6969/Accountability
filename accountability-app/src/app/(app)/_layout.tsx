@@ -1,6 +1,6 @@
 import { type ComponentProps, useEffect, useState } from 'react';
-import { type ColorValue, Image, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Redirect, Tabs, usePathname } from 'expo-router';
+import { type ColorValue, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Redirect, Tabs, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,13 +11,14 @@ import { floatingTabBarStyle } from '../../ui/floatingTabBar';
 import { GlassTabBar } from '../../ui/GlassTabBar';
 import { useUnreadMessages } from '../../buddy/useUnreadMessages';
 import { getMyProfile, touchLastActive } from '../../profiles/api';
-import { colors } from '../../ui/theme';
-import { statusBarStyleForPath } from '../../navigation/routeAccessContract';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { notificationHeaderOptions } from '../../navigation/SafeBackButton';
+import { AppLaunchState } from '../../ui/AppLaunchState';
+import { BrandWordmark } from '../../ui/BrandWordmark';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Quiet tab icon: selected destinations use the approved deep-navy ink. */
+/** Quiet tab icon: the dark shell supplies semantic ink. */
 function tabIcon(active: IoniconName, inactive: IoniconName) {
   return function TabIcon({
     color,
@@ -32,7 +33,7 @@ function tabIcon(active: IoniconName, inactive: IoniconName) {
       <Ionicons
         name={focused ? active : inactive}
         size={size}
-        color={focused ? colors.navy : color}
+        color={color}
       />
     );
   };
@@ -50,14 +51,17 @@ function MessagesTabIcon({
   focused: boolean;
   unread: number;
 }) {
+  const { colors: theme } = useAppTheme();
   return (
     <View style={styles.messageIcon}>
       <Ionicons
         name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
         size={size}
-        color={focused ? colors.navy : color}
+        color={color}
       />
-      {unread > 0 && !focused ? <View style={styles.unreadDot} /> : null}
+      {unread > 0 && !focused ? (
+        <View style={[styles.unreadDot, { borderColor: theme.surface.raised }]} />
+      ) : null}
     </View>
   );
 }
@@ -73,15 +77,15 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#db2777',
     borderWidth: 1.5,
-    borderColor: '#fff',
   },
 });
 
 export default function AppLayout() {
+  const router = useRouter();
   const { session } = useAuth();
-  const pathname = usePathname();
+  const { colors: theme } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { width: winW } = useWindowDimensions();
+  const { width: winW, fontScale } = useWindowDimensions();
   const userId = session?.user.id ?? null;
   const { unread: unreadMessages } = useUnreadMessages(userId);
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
@@ -127,22 +131,29 @@ export default function AppLayout() {
     return () => clearInterval(t);
   }, [userId]);
 
-  if (onboarded === null) return <View style={{ flex: 1 }} />;
+  if (onboarded === null) return <AppLaunchState message="Getting your training ready" />;
   if (!onboarded) return <Redirect href="/onboarding" />;
 
   return (
     <>
-      <StatusBar style={statusBarStyleForPath(pathname)} />
+      <StatusBar style="light" />
       <Tabs
-      // custom quiet bar — guarantees the approved four destinations and spacing
-      tabBar={(props) => <GlassTabBar {...props} />}
+      // custom quiet bar — guarantees the approved five destinations and spacing
+      tabBar={(props) => <GlassTabBar {...props} onMenu={() => router.push('/menu')} />}
       screenOptions={{
         headerShown: true,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: '#475569',
+        sceneStyle: { backgroundColor: theme.surface.canvas },
+        headerStyle: { backgroundColor: theme.surface.raised },
+        headerTintColor: theme.ink.primary,
+        headerTitleStyle: { color: theme.ink.primary },
+        tabBarActiveTintColor: theme.ink.action,
+        tabBarInactiveTintColor: theme.ink.muted,
         tabBarShowLabel: true,
         // kept so the run screen can hide the bar via tabBarStyle:{display:'none'}
-        tabBarStyle: floatingTabBarStyle(winW, insets.bottom),
+        tabBarStyle: floatingTabBarStyle(winW, insets.bottom, fontScale, {
+          backgroundColor: theme.surface.raised,
+          borderTopColor: theme.border.subtle,
+        }),
         tabBarItemStyle: {
           height: 62,
           alignItems: 'center',
@@ -159,14 +170,7 @@ export default function AppLayout() {
           // pin the wordmark to the left (iOS centres by default, which collides
           // with the right-hand icons on a phone) and keep it compact
           headerTitleAlign: 'left',
-          headerTitle: () => (
-            <Image
-              source={require('../../../assets/images/wordmark.png')}
-              style={{ width: 124, height: 30 }}
-              resizeMode="contain"
-              accessibilityLabel="AccountAbility"
-            />
-          ),
+          headerTitle: () => <BrandWordmark compact />,
           // headerLeft/right (menu, create, pages, groups) are set by the
           // Feed screen itself via navigation.setOptions — it needs screen state.
         }}
@@ -197,15 +201,14 @@ export default function AppLayout() {
           headerShown: true,
         }}
       />
-      {/* Post details stay inside the mounted app navigator on Android. */}
+      {/* Post details own their compact, immersive and loading-state headers. */}
       <Tabs.Screen
         name="post/[id]"
         options={{
           href: null,
           tabBarItemStyle: { display: 'none' },
           tabBarStyle: { display: 'none' },
-          headerShown: true,
-          title: 'Post',
+          headerShown: false,
         }}
       />
       {/* notifications live in the Feed header now — keep the route reachable */}

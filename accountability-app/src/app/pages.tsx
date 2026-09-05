@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,8 +15,15 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { listPages, followPage, PAGE_CATEGORIES, type Page } from '../pages/api';
 import { showToast } from '../ui/Toast';
 import { EmptyState } from '../ui/EmptyState';
-import { colors, font, radius, spacing, shadow } from '../ui/theme';
 import { useAuth } from '../auth/AuthProvider';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  font,
+  radius,
+  spacing,
+  shadow,
+  type AppThemeColors,
+} from '../ui/theme';
 
 type Row = { kind: 'header'; key: string; title: string } | { kind: 'page'; key: string; page: Page };
 
@@ -27,6 +34,11 @@ function categoryLabel(value: string): string | null {
 export default function Pages() {
   const router = useRouter();
   const { session } = useAuth();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const actionColor = theme.ink.action;
+  const mutedColor = theme.ink.muted;
+  const faintColor = theme.ink.muted;
   const ownerId = session?.user.id ?? null;
   const currentOwnerRef = useRef(ownerId);
   const loadGeneration = useRef(0);
@@ -151,7 +163,7 @@ export default function Pages() {
   if (loading || (ownerId !== null && dataOwnerId !== ownerId)) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={actionColor} />
       </View>
     );
   }
@@ -163,7 +175,7 @@ export default function Pages() {
         keyExtractor={(r) => r.key}
         contentContainerStyle={rows.length === 0 ? styles.emptyWrap : styles.list}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={actionColor} />
         }
         ListEmptyComponent={
           <View style={styles.center}>
@@ -198,7 +210,7 @@ export default function Pages() {
                 <Image source={{ uri: p.avatar_url }} style={styles.avatarImage} />
               ) : (
                 <View style={styles.iconCircle}>
-                  <Ionicons name="storefront-outline" size={20} color={colors.primary} />
+                  <Ionicons name="storefront-outline" size={20} color={actionColor} />
                 </View>
               )}
               <View style={styles.rowBody}>
@@ -207,7 +219,7 @@ export default function Pages() {
                     {p.name}
                   </Text>
                   {p.privacy === 'private' ? (
-                    <Ionicons name="lock-closed" size={13} color={colors.textMuted} />
+                    <Ionicons name="lock-closed" size={13} color={mutedColor} />
                   ) : null}
                 </View>
                 <Text style={styles.meta} numberOfLines={1}>
@@ -216,11 +228,11 @@ export default function Pages() {
               </View>
               {p.is_owner ? (
                 <View style={styles.ownerChip}>
-                  <Ionicons name="ribbon-outline" size={12} color={colors.primary} />
+                  <Ionicons name="ribbon-outline" size={12} color={actionColor} />
                   <Text style={styles.ownerChipText}>Owner</Text>
                 </View>
               ) : p.is_following ? (
-                <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+                <Ionicons name="chevron-forward" size={18} color={faintColor} />
               ) : (
                 <Pressable
                   style={({ pressed }) => [styles.followBtn, pressed && styles.pressed]}
@@ -242,7 +254,7 @@ export default function Pages() {
           accessibilityRole="button"
           accessibilityLabel="Create page"
         >
-          <Ionicons name="add" size={20} color={colors.onPrimary} />
+          <Ionicons name="add" size={20} color={theme.ink.inverse} />
           <Text style={styles.fabText}>Create page</Text>
         </Pressable>
       ) : null}
@@ -250,21 +262,21 @@ export default function Pages() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xxl,
-    backgroundColor: colors.background,
+    backgroundColor: theme.surface.canvas,
   },
   emptyWrap: { flexGrow: 1 },
   list: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 96 },
   sectionHeader: {
     fontFamily: font.bold,
     fontSize: 13,
-    color: colors.textMuted,
+    color: theme.ink.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginTop: spacing.sm,
@@ -274,46 +286,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 64,
     ...shadow.card,
   },
-  rowPressed: { opacity: 0.85 },
+  rowPressed: { opacity: 0.85, backgroundColor: theme.surface.muted },
   iconCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.raised,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface },
+  avatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.surface.muted },
   rowBody: { flex: 1, gap: 2 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  name: { fontFamily: font.bold, fontSize: 15.5, color: colors.text, flexShrink: 1 },
-  meta: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
+  name: { fontFamily: font.bold, fontSize: 15.5, color: theme.ink.primary, flexShrink: 1 },
+  meta: { fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
   ownerChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     borderRadius: radius.pill,
     paddingVertical: 5,
     paddingHorizontal: 10,
   },
-  ownerChipText: { fontFamily: font.bold, fontSize: 12, color: colors.primary },
+  ownerChipText: { fontFamily: font.bold, fontSize: 12, color: theme.ink.action },
   followBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingHorizontal: 18,
     minHeight: 36,
     justifyContent: 'center',
   },
-  followText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 13.5 },
+  followText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 13.5 },
   fab: {
     position: 'absolute',
     right: spacing.lg,
@@ -321,17 +333,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.pill,
     paddingVertical: 14,
     paddingHorizontal: spacing.xl,
-    minHeight: 48,
-    shadowColor: '#0f172a',
+    minHeight: spacing.touch,
+    shadowColor: theme.surface.canvas,
     shadowOpacity: 0.2,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
   },
-  fabText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  fabText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   pressed: { opacity: 0.8 },
 });

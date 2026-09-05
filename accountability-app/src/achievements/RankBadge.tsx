@@ -50,7 +50,7 @@ export function RankBadge({
   reducedMotion?: boolean;
   /** `none` renders only the official artwork, without decorative effects. */
   effects?: 'auto' | 'none';
-  /** `crest` clips the official 3:1 artwork to its square left emblem. */
+  /** `crest` renders the dedicated square crest artwork. */
   variant?: 'nameplate' | 'crest';
   onPress?: () => void;
 }) {
@@ -58,6 +58,16 @@ export function RankBadge({
   const w = size * AR;
   const h = size;
   const frameWidth = variant === 'crest' ? size : w;
+  const artworkGeometry = variant === 'crest'
+    ? {
+        width: size,
+        height: size,
+        left: 0,
+        top: 0,
+        right: undefined,
+        bottom: undefined,
+      }
+    : { width: w, height: h };
 
   // 0 (Rookie) … 1 (Mythical) — drives how much the smoke grows.
   const tierIndex = Math.max(0, RANK_ORDER.indexOf(rank as never));
@@ -182,7 +192,6 @@ export function RankBadge({
         style={{
           width: frameWidth,
           height: h,
-          ...(variant === 'crest' ? { overflow: 'hidden' as const } : null),
         }}
       >
         {/* faint static base aura — a soft tinted cloud behind the badge.
@@ -230,15 +239,20 @@ export function RankBadge({
         })}
 
         {/* the exact badge artwork — never altered */}
-        <Animated.Image
-          testID="rank-badge-artwork"
-          source={cfg.image}
-          resizeMode="contain"
-          style={[
-            StyleSheet.absoluteFill,
-            { width: w, height: h, opacity: showEffects && cfg.flicker ? flick : 1 },
-          ]}
-        />
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Animated.Image
+            testID="rank-badge-artwork"
+            source={variant === 'crest' ? cfg.crest : cfg.image}
+            resizeMode="contain"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                ...artworkGeometry,
+                opacity: showEffects && cfg.flicker ? flick : 1,
+              },
+            ]}
+          />
+        </View>
 
         {/* shine sweep, clipped to the plate */}
         {motion ? (

@@ -69,6 +69,7 @@ function isAllowedInternalLiteral(match: string) {
     'src/journey/JournalScreen.tsx': ['./encouragement'],
     'src/journey/JourneyEncouragementBar.tsx': ['./encouragement'],
     'src/journey/MomentumScreen.tsx': ['./encouragement'],
+    'src/lib/r2.ts': ['voice-encouragements'],
   };
   return allowedByFile[file]?.includes(literal) ?? false;
 }
@@ -81,6 +82,7 @@ describe('Cheer user-facing copy contract', () => {
 
   test('rejects UI copy that merely contains an internal identifier', () => {
     expect(isAllowedInternalLiteral('src/feed/api.ts: UI encouragement for post_encouragements')).toBe(false);
+    expect(isAllowedInternalLiteral('src/lib/r2.ts: UI encouragement for voice-encouragements')).toBe(false);
   });
 
   test('all live TypeScript presentation literals use Cheer wording', () => {

@@ -67,9 +67,10 @@ describe('Group 3 encouragement contract', () => {
     expect(sheetSource).not.toContain('private message');
   });
 
-  test('matches the approved cream sheet geometry and compact visual hierarchy', () => {
+  test('matches the approved dark sheet geometry and compact visual hierarchy', () => {
     expect(sheetSource).toContain("height: '54%'");
-    expect(sheetSource).toContain('backgroundColor: colors.cream');
+    expect(sheetSource).toContain('backgroundColor: theme.surface.card');
+    expect(sheetSource).toContain('backgroundColor: theme.interaction.scrim');
     expect(sheetSource).toContain('fontFamily: font.serif');
     expect(sheetSource).toContain('voiceWave');
     expect(sheetSource).toContain('voiceDuration');
@@ -327,7 +328,7 @@ describe('Group 3 encouragement contract', () => {
     expect(sheetSource).toContain('accessibilityLabel={`Voice options for ${name}`}');
     expect(sheetSource).toContain('{actionsExpanded ? (');
     expect(sheetSource).toContain('ellipsis-horizontal');
-    expect(sheetSource).toContain('minWidth: 44');
+    expect(sheetSource).toContain('minWidth: 48');
   });
 
   test('deferred old-row action cannot show success or unlock the replacement row', async () => {
@@ -348,8 +349,8 @@ describe('Group 3 encouragement contract', () => {
     expect(controller.complete(current, true)).toEqual({ apply: true, release: true });
   });
 
-  test('owned action controls expose 44-point disabled and busy semantics', () => {
-    expect(sheetSource).toContain('minHeight: 44');
+  test('owned action controls expose 48-point disabled and busy semantics', () => {
+    expect(sheetSource).toContain('minHeight: 48');
     expect(sheetSource).toContain('accessibilityState={{ disabled, busy }}');
     expect(sheetSource).toContain('disabled={disabled}');
   });

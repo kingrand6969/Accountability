@@ -1,4 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createActivitySynchronizer } from './activitySynchronizer';
 import { ActivityUploadError } from './activityUpload';
 import {
@@ -23,6 +25,7 @@ import type { QueuedActivity } from './offlineQueueTypes';
 import {
   createRunEditorSafeCloser,
   handleRunEditorHardwareBack,
+  runCardBackgroundButtonPlacement,
 } from './RunShareSheet';
 
 jest.mock('../lib/supabase', () => ({ supabase: {} }));
@@ -36,7 +39,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 jest.mock('expo-media-library', () => ({
   requestPermissionsAsync: jest.fn(),
-  createAssetAsync: jest.fn(),
+  Asset: { create: jest.fn() },
 }));
 jest.mock('expo-file-system', () => ({
   File: class {
@@ -62,6 +65,29 @@ const OWNER_B = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 const ACTIVITY_ID = '11111111-1111-4111-8111-111111111111';
 const STARTED_AT = '2026-07-26T01:00:00.000Z';
 
+describe('RunShareSheet Memories ownership', () => {
+  it('passes the immutable recording owner through the long-running Memories save', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/activity/RunShareSheet.tsx'),
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /saveToMemories:\s*\(uri\)\s*=>[\s\S]{0,180}saveImageToMemories\(uri,\s*null,\s*null,\s*run\.ownerId!\)/,
+    );
+  });
+});
+
+describe('Run card background control placement', () => {
+  it('stays on the card without covering each layout’s approved identity or data regions', () => {
+    expect(runCardBackgroundButtonPlacement('center-stack')).toEqual({ top: 12, left: 12 });
+    expect(runCardBackgroundButtonPlacement('right-rail')).toEqual({ bottom: 12, left: 12 });
+    expect(runCardBackgroundButtonPlacement('data-horizon')).toEqual({ top: '43%', right: 12 });
+    expect(runCardBackgroundButtonPlacement('editorial-stack')).toEqual({ top: 12, left: 12 });
+    expect(runCardBackgroundButtonPlacement('map-focus')).toEqual({ top: 12, right: 12 });
+  });
+});
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -86,6 +112,19 @@ function pending(): PendingRecordedActivity {
       ],
       started_at: STARTED_AT,
     },
+  };
+}
+
+function finalized() {
+  return {
+    identity: {
+      activityId: ACTIVITY_ID,
+      ownerId: OWNER_A,
+      startedAt: STARTED_AT,
+    },
+    finishId: 'finish-1',
+    snapshotId: 'snapshot-1',
+    recording: pending(),
   };
 }
 
@@ -119,92 +158,124 @@ function memoryStorage(
     removeItem: async (key) => {
       values.delete(key);
     },
+    getAllKeys: async () => [...values.keys()],
   };
 }
 
 describe('completeRecordedActivity', () => {
-  it('durably enqueues before clearing raw GPS', async () => {
+  it('claims the exact token before enqueue and acknowledges only after durability', async () => {
     const order: string[] = [];
-    const recording = pending();
+    const completed = finalized();
 
-    const result = await completeRecordedActivity(recording, {
+    const result = await completeRecordedActivity(completed, {
+      claimFinalized: async (value) => {
+        order.push('claim');
+        expect(value).toBe(completed);
+      },
       enqueueActivity: async (ownerId, activity, id) => {
         order.push('enqueue');
         expect([ownerId, id, activity]).toEqual([
           OWNER_A,
           ACTIVITY_ID,
-          recording.activity,
+          completed.recording.activity,
         ]);
-        return queued(recording);
+        return queued(completed.recording);
       },
-      clearRecording: async (activityId) => {
-        order.push('clear');
-        expect(activityId).toBe(ACTIVITY_ID);
+      acknowledgeFinalized: async (value) => {
+        order.push('acknowledge');
+        expect(value).toBe(completed);
       },
     });
 
     expect(result.id).toBe(ACTIVITY_ID);
-    expect(order).toEqual(['enqueue', 'clear']);
+    expect(order).toEqual(['claim', 'enqueue', 'acknowledge']);
   });
 
-  it('never clears raw GPS when durable enqueue fails', async () => {
-    const clearRecording = jest.fn(async () => undefined);
+  it('never enqueues or acknowledges when the durable claim is refused', async () => {
+    const enqueueActivity = jest.fn(async () => queued());
+    const acknowledgeFinalized = jest.fn(async () => undefined);
 
     await expect(
-      completeRecordedActivity(pending(), {
+      completeRecordedActivity(finalized(), {
+        claimFinalized: async () => {
+          throw new Error('discard already owns this recording');
+        },
+        enqueueActivity,
+        acknowledgeFinalized,
+      }),
+    ).rejects.toThrow('discard already owns this recording');
+
+    expect(enqueueActivity).not.toHaveBeenCalled();
+    expect(acknowledgeFinalized).not.toHaveBeenCalled();
+  });
+
+  it('never acknowledges the sealed snapshot when durable enqueue fails', async () => {
+    const claimFinalized = jest.fn(async () => undefined);
+    const acknowledgeFinalized = jest.fn(async () => undefined);
+
+    await expect(
+      completeRecordedActivity(finalized(), {
+        claimFinalized,
         enqueueActivity: async () => {
           throw new Error('storage full');
         },
-        clearRecording,
+        acknowledgeFinalized,
       }),
     ).rejects.toThrow('storage full');
 
-    expect(clearRecording).not.toHaveBeenCalled();
+    expect(claimFinalized).toHaveBeenCalledTimes(1);
+    expect(acknowledgeFinalized).not.toHaveBeenCalled();
   });
 
-  it('keeps the exact same ID for an idempotent retry after clear fails', async () => {
+  it('keeps the exact same ID and canonical bytes for an idempotent retry after acknowledgement fails', async () => {
     const ids: string[] = [];
-    let clearAttempts = 0;
+    const payloads: string[] = [];
+    let acknowledgeAttempts = 0;
     const dependencies = {
+      claimFinalized: async () => undefined,
       enqueueActivity: async (
         _ownerId: string,
         _activity: PendingRecordedActivity['activity'],
         id: string,
       ) => {
         ids.push(id);
+        payloads.push(JSON.stringify(_activity));
         return queued();
       },
-      clearRecording: async () => {
-        clearAttempts += 1;
-        if (clearAttempts === 1) throw new Error('clear failed');
+      acknowledgeFinalized: async () => {
+        acknowledgeAttempts += 1;
+        if (acknowledgeAttempts === 1) throw new Error('acknowledge failed');
       },
     };
+    const completed = finalized();
 
     await expect(
-      completeRecordedActivity(pending(), dependencies),
-    ).rejects.toThrow('clear failed');
+      completeRecordedActivity(completed, dependencies),
+    ).rejects.toThrow('acknowledge failed');
     await expect(
-      completeRecordedActivity(pending(), dependencies),
+      completeRecordedActivity(completed, dependencies),
     ).resolves.toMatchObject({ id: ACTIVITY_ID });
 
     expect(ids).toEqual([ACTIVITY_ID, ACTIVITY_ID]);
+    expect(payloads[1]).toBe(payloads[0]);
   });
 
   it('uses the owner captured at recording start after the signed-in account switches', async () => {
     let currentOwnerId = OWNER_A;
-    const recording = pending();
+    const completed = finalized();
     currentOwnerId = OWNER_B;
-    const enqueueActivity = jest.fn(async () => queued(recording));
+    const enqueueActivity = jest.fn(async () => queued(completed.recording));
 
-    await completeRecordedActivity(recording, {
+    await completeRecordedActivity(completed, {
+      claimFinalized: async () => undefined,
       enqueueActivity,
-      clearRecording: async () => undefined,
+      acknowledgeFinalized: async () => undefined,
     });
 
     expect(currentOwnerId).toBe(OWNER_B);
     expect(enqueueActivity).toHaveBeenCalledWith(
       OWNER_A,
-      recording.activity,
+      completed.recording.activity,
       ACTIVITY_ID,
     );
   });
@@ -215,13 +286,14 @@ describe('createDurableCompletionController', () => {
     const enqueue = deferred<QueuedActivity>();
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
-      clearRecording: async () => undefined,
+      acknowledgeFinalized: async () => undefined,
       onConfirm,
       onReset: jest.fn(),
     });
 
-    const completion = controller.complete(pending());
+    const completion = controller.complete(finalized());
     expect(onConfirm).not.toHaveBeenCalled();
 
     enqueue.resolve(queued(pending(), 'waiting_network'));
@@ -240,12 +312,13 @@ describe('createDurableCompletionController', () => {
     const enqueue = deferred<QueuedActivity>();
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
-      clearRecording: async () => undefined,
+      acknowledgeFinalized: async () => undefined,
       onConfirm,
       onReset: jest.fn(),
     });
-    const completion = controller.complete(pending());
+    const completion = controller.complete(finalized());
 
     enqueue.reject(new Error('queue unavailable'));
 
@@ -258,21 +331,46 @@ describe('createDurableCompletionController', () => {
     const enqueueActivity = jest.fn(() => enqueue.promise);
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity,
-      clearRecording: async () => undefined,
+      acknowledgeFinalized: async () => undefined,
       onConfirm,
       onReset: jest.fn(),
     });
 
-    const first = controller.complete(pending());
-    const retry = controller.complete(pending());
+    const completed = finalized();
+    const first = controller.complete(completed);
+    const retry = controller.complete(completed);
 
     expect(retry).toBe(first);
+    await Promise.resolve();
     expect(enqueueActivity).toHaveBeenCalledTimes(1);
 
     enqueue.resolve(queued());
     await Promise.all([first, retry]);
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an exact completion as busy through reset until claim, enqueue, and ack settle', async () => {
+    const claim = deferred<void>();
+    const controller = createDurableCompletionController({
+      claimFinalized: () => claim.promise,
+      enqueueActivity: async () => queued(),
+      acknowledgeFinalized: async () => undefined,
+      onConfirm: jest.fn(),
+      onReset: jest.fn(),
+    });
+
+    const completion = controller.complete(finalized());
+    expect(controller.isCompleting(ACTIVITY_ID)).toBe(true);
+    expect(controller.isCompleting('different-activity')).toBe(false);
+
+    controller.reset('discard');
+    expect(controller.isCompleting(ACTIVITY_ID)).toBe(true);
+
+    claim.resolve(undefined);
+    await completion;
+    expect(controller.isCompleting(ACTIVITY_ID)).toBe(false);
   });
 
   it('reset clears confirmation and prevents the superseded completion from confirming late', async () => {
@@ -286,8 +384,9 @@ describe('createDurableCompletionController', () => {
     };
     const resetReasons: string[] = [];
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
-      clearRecording: async () => undefined,
+      acknowledgeFinalized: async () => undefined,
       onConfirm: (value) => {
         confirmation = value;
       },
@@ -296,7 +395,7 @@ describe('createDurableCompletionController', () => {
         resetReasons.push(reason);
       },
     });
-    const completion = controller.complete(pending());
+    const completion = controller.complete(finalized());
 
     controller.reset('recovery');
     expect(confirmation).toBeNull();
@@ -328,12 +427,13 @@ describe('createDurableCompletionController', () => {
     const enqueue = deferred<QueuedActivity>();
     const onConfirm = jest.fn();
     const controller = createDurableCompletionController({
+      claimFinalized: async () => undefined,
       enqueueActivity: () => enqueue.promise,
-      clearRecording: async () => undefined,
+      acknowledgeFinalized: async () => undefined,
       onConfirm,
       onReset: jest.fn(),
     });
-    const completion = controller.complete(pending());
+    const completion = controller.complete(finalized());
 
     controller.dispose();
     enqueue.resolve(queued());
@@ -451,7 +551,7 @@ describe('location recording persistence', () => {
     );
   });
 
-  it('keeps a session-era legacy recording unclaimed and redacted', async () => {
+  it('keeps a session-era legacy recording unprovable and redacted', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:session': 'legacy-session',
@@ -467,13 +567,14 @@ describe('location recording persistence', () => {
     const before = new Map(storage.values);
 
     await expect(store.recover(OWNER_A, 'ride')).resolves.toEqual({
-      kind: 'legacy_unclaimed',
+      kind: 'legacy_unprovable',
+      discardToken: expect.any(String),
     });
     expect(storage.values).toEqual(before);
     expect(createId).not.toHaveBeenCalled();
   });
 
-  it('restores the pre-session point-array format', async () => {
+  it('keeps the pre-session point-array format unprovable and redacted', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:points': JSON.stringify(route),
@@ -488,13 +589,14 @@ describe('location recording persistence', () => {
     const before = new Map(storage.values);
 
     await expect(store.recover(OWNER_A, 'run')).resolves.toEqual({
-      kind: 'legacy_unclaimed',
+      kind: 'legacy_unprovable',
+      discardToken: expect.any(String),
     });
     expect(storage.values).toEqual(before);
     expect(storage.values.get('activity:session')).toBeUndefined();
   });
 
-  it('claims legacy GPS only after an explicit action and reuses one stable ID', async () => {
+  it('never claims legacy GPS and discards only with one exact stable token', async () => {
     const route = [{ lat: -31.9523, lon: 115.8613 }];
     const storage = memoryStorage({
       'activity:points': JSON.stringify(route),
@@ -510,26 +612,24 @@ describe('location recording persistence', () => {
     const first = await store.claimLegacy(OWNER_A, 'walk');
     const second = await store.claimLegacy(OWNER_A, 'run');
 
-    expect(first).toMatchObject({
-      kind: 'active',
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'walk',
-      points: route,
+    expect(first).toEqual({
+      kind: 'legacy_unprovable',
+      discardToken: expect.any(String),
     });
-    expect(second).toMatchObject({
-      kind: 'active',
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'walk',
-      points: route,
-    });
-    expect(createId).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(storage.values.get('activity:points')!)).toMatchObject({
-      activityId: ACTIVITY_ID,
-      ownerId: OWNER_A,
-      type: 'walk',
-    });
+    expect(second).toEqual(first);
+    expect(createId).not.toHaveBeenCalled();
+    expect(JSON.parse(storage.values.get('activity:points')!)).toEqual(route);
+
+    if (first.kind !== 'legacy_unprovable') {
+      throw new Error('Expected an unprovable legacy recording');
+    }
+    await expect(
+      store.discardLegacyUnprovable(first.discardToken),
+    ).resolves.toBe('discarded');
+    expect(storage.values.get('activity:points')).toBeUndefined();
+    await expect(
+      store.discardLegacyUnprovable(first.discardToken),
+    ).resolves.toBe('stale');
   });
 
   it('redacts owner-mismatched recovery and still prevents Start overwrite', async () => {
@@ -610,43 +710,53 @@ describe('location recording persistence', () => {
 describe('active GPS task reconciliation', () => {
   const granted = async () => ({ granted: true });
 
-  it('keeps an already-running task without starting another', async () => {
+  it('stops and confirms an identity-less native task that is still registered', async () => {
+    let started = true;
     const start = jest.fn(async () => undefined);
+    const stop = jest.fn(async () => {
+      started = false;
+    });
+    await expect(
+      reconcileLocationTask({
+        hasStarted: async () => started,
+        getForegroundPermission: granted,
+        getBackgroundPermission: granted,
+        start,
+        stop,
+      }),
+    ).resolves.toBe('paused');
+    expect(start).not.toHaveBeenCalled();
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a missing identity-less task paused without starting it', async () => {
+    const start = jest.fn(async () => undefined);
+    await expect(
+      reconcileLocationTask({
+        hasStarted: async () => false,
+        getForegroundPermission: granted,
+        getBackgroundPermission: granted,
+        start,
+        stop: jest.fn(async () => undefined),
+      }),
+    ).resolves.toBe('paused');
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('does not claim privacy-safe pause when native stop remains uncertain', async () => {
+    const stop = jest.fn(async () => {
+      throw new Error('native stop failed');
+    });
     await expect(
       reconcileLocationTask({
         hasStarted: async () => true,
         getForegroundPermission: granted,
         getBackgroundPermission: granted,
-        start,
+        start: jest.fn(async () => undefined),
+        stop,
       }),
-    ).resolves.toBe('running');
-    expect(start).not.toHaveBeenCalled();
-  });
-
-  it('restarts a missing task when permissions still allow tracking', async () => {
-    const start = jest.fn(async () => undefined);
-    await expect(
-      reconcileLocationTask({
-        hasStarted: async () => false,
-        getForegroundPermission: granted,
-        getBackgroundPermission: granted,
-        start,
-      }),
-    ).resolves.toBe('restarted');
-    expect(start).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns paused without mutating raw data when task restart fails', async () => {
-    await expect(
-      reconcileLocationTask({
-        hasStarted: async () => false,
-        getForegroundPermission: granted,
-        getBackgroundPermission: granted,
-        start: async () => {
-          throw new Error('native task unavailable');
-        },
-      }),
-    ).resolves.toBe('paused');
+    ).resolves.toBe('uncertain');
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -659,9 +769,9 @@ describe('run sync presentation', () => {
     ).toEqual({
       queued: true,
       status: 'waiting_network',
-      title: 'Saved on phone',
-      detail: 'Uploads automatically when online',
-      feedDisabledReason: 'Uploads automatically when online',
+      title: 'Run saved',
+      detail: 'Syncs automatically when online',
+      feedDisabledReason: 'Syncs automatically when online',
     });
   });
 
@@ -669,18 +779,18 @@ describe('run sync presentation', () => {
     expect(runSyncPresentation(ACTIVITY_ID, 'saved', [])).toEqual({
       queued: false,
       status: null,
-      title: 'Saved on phone',
-      detail: 'Uploaded',
+      title: 'Run saved',
+      detail: 'Synced to your account',
       feedDisabledReason: null,
     });
   });
 
-  it('still says Saved on phone when the network is absent', () => {
+  it('keeps local run saving distinct from account sync when the network is absent', () => {
     expect(
       runSyncPresentation(ACTIVITY_ID, 'waiting_network', []),
     ).toMatchObject({
-      title: 'Saved on phone',
-      detail: 'Uploads automatically when online',
+      title: 'Run saved',
+      detail: 'Syncs automatically when online',
     });
   });
 });
@@ -742,7 +852,7 @@ describe('fail-closed Feed availability', () => {
       }),
     ).toEqual({
       enabled: false,
-      reason: 'Uploads automatically when online',
+      reason: 'Syncs automatically when online',
     });
   });
 });
@@ -911,6 +1021,7 @@ describe('owner-independent run editor close', () => {
 describe('stable ID across an ambiguous committed upload', () => {
   it('preflights the same persisted ID on retry and removes only after confirmation', async () => {
     const recording = pending();
+    const completed = { ...finalized(), recording };
     const records = new Map<string, QueuedActivity>();
     const serverIds = new Set<string>();
     let inserts = 0;
@@ -926,9 +1037,10 @@ describe('stable ID across an ambiguous committed upload', () => {
       records.set(id, entry);
       return entry;
     };
-    await completeRecordedActivity(recording, {
+    await completeRecordedActivity(completed, {
+      claimFinalized: async () => undefined,
       enqueueActivity,
-      clearRecording: async () => undefined,
+      acknowledgeFinalized: async () => undefined,
     });
 
     const list = async (ownerId: string) =>

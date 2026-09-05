@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -10,7 +10,15 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
-import { colors, font, radius, spacing } from './theme';
+import {
+  font,
+  radius,
+  spacing,
+  themeColors,
+  type AppThemeColors,
+  type AppThemeMode,
+} from './theme';
+import { withAlpha } from './surfaces';
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -46,10 +54,16 @@ function clampMin(s: string): number {
 export function TimePicker({
   value,
   onChange,
+  theme = themeColors('dark'),
+  mode = 'dark',
 }: {
   value: string;
   onChange: (v: string) => void;
+  theme?: AppThemeColors;
+  mode?: AppThemeMode;
 }) {
+  const palette = useMemo(() => timePickerPalette(theme, mode), [theme, mode]);
+  const styles = useMemo(() => createStyles(theme, mode), [theme, mode]);
   const { hour12, minute, ampm } = parse(value);
   const [minuteDraft, setMinuteDraft] = useState(() => ({
     value,
@@ -68,7 +82,12 @@ export function TimePicker({
 
   return (
     <View style={styles.row}>
-      <Trigger label={String(hour12)} onPress={() => setOpen('hour')} />
+      <Trigger
+        label={String(hour12)}
+        onPress={() => setOpen('hour')}
+        palette={palette}
+        styles={styles}
+      />
       <Text style={styles.colon}>:</Text>
       <TextInput
         style={styles.minInput}
@@ -80,15 +99,21 @@ export function TimePicker({
         keyboardType="number-pad"
         maxLength={2}
         placeholder="00"
-        placeholderTextColor={colors.textFaint}
+        placeholderTextColor={palette.placeholder}
         accessibilityLabel="Minutes"
       />
-      <Trigger label={ampm} onPress={() => setOpen('ampm')} wide />
+      <Trigger
+        label={ampm}
+        onPress={() => setOpen('ampm')}
+        wide
+        palette={palette}
+        styles={styles}
+      />
 
       <Modal visible={open !== null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(null)}>
           <View style={styles.menu}>
-            <BlurView intensity={50} tint="light" style={styles.menuBlur} />
+            <BlurView intensity={50} tint="dark" style={styles.menuBlur} />
             <View style={styles.menuGlass} />
             <ScrollView>
               {open === 'hour'
@@ -103,6 +128,8 @@ export function TimePicker({
                         onChange(nextValue);
                         setOpen(null);
                       }}
+                      palette={palette}
+                      styles={styles}
                     />
                   ))
                 : (['AM', 'PM'] as const).map((ap) => (
@@ -120,6 +147,8 @@ export function TimePicker({
                         onChange(nextValue);
                         setOpen(null);
                       }}
+                      palette={palette}
+                      styles={styles}
                     />
                   ))}
             </ScrollView>
@@ -130,7 +159,19 @@ export function TimePicker({
   );
 }
 
-function Trigger({ label, onPress, wide }: { label: string; onPress: () => void; wide?: boolean }) {
+function Trigger({
+  label,
+  onPress,
+  wide,
+  palette,
+  styles,
+}: {
+  label: string;
+  onPress: () => void;
+  wide?: boolean;
+  palette: PickerPalette;
+  styles: PickerStyles;
+}) {
   return (
     <Pressable
       onPress={onPress}
@@ -138,7 +179,7 @@ function Trigger({ label, onPress, wide }: { label: string; onPress: () => void;
       accessibilityRole="button"
     >
       <Text style={styles.triggerText}>{label}</Text>
-      <Ionicons name="chevron-down" size={15} color={colors.textMuted} />
+      <Ionicons name="chevron-down" size={15} color={palette.muted} />
     </Pressable>
   );
 }
@@ -147,10 +188,14 @@ function MenuItem({
   label,
   selected,
   onPress,
+  palette,
+  styles,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
+  palette: PickerPalette;
+  styles: PickerStyles;
 }) {
   return (
     <Pressable
@@ -158,45 +203,62 @@ function MenuItem({
       style={({ pressed }) => [styles.menuItem, selected && styles.menuItemSel, pressed && styles.pressed]}
     >
       <Text style={[styles.menuText, selected && styles.menuTextSel]}>{label}</Text>
-      {selected ? <Ionicons name="checkmark" size={16} color={colors.primary} /> : null}
+      {selected ? <Ionicons name="checkmark" size={16} color={palette.action} /> : null}
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+function timePickerPalette(theme: AppThemeColors, _mode: AppThemeMode) {
+  return {
+    text: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    field: theme.surface.raised,
+    action: theme.ink.action,
+    selectedSoft: theme.surface.muted,
+    scrim: theme.interaction.scrim,
+    menuBorder: theme.border.strong,
+    menuGlass: withAlpha(theme.surface.card, 0.88),
+  };
+}
+
+function createStyles(theme: AppThemeColors, mode: AppThemeMode) {
+  const palette = timePickerPalette(theme, mode);
+  return StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  colon: { fontFamily: font.extrabold, fontSize: 20, color: colors.text, marginHorizontal: -2 },
+  colon: { fontFamily: font.extrabold, fontSize: 20, color: palette.text, marginHorizontal: -2 },
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 4,
     minWidth: 62,
-    minHeight: 48,
+    minHeight: spacing.touch,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
   },
   triggerWide: { minWidth: 76 },
-  triggerText: { fontFamily: font.bold, fontSize: 16, color: colors.text },
+  triggerText: { fontFamily: font.bold, fontSize: 16, color: palette.text },
   minInput: {
     minWidth: 62,
-    minHeight: 48,
+    minHeight: spacing.touch,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     fontFamily: font.bold,
     fontSize: 16,
-    color: colors.text,
+    color: palette.text,
     textAlign: 'center',
   },
   pressed: { opacity: 0.7 },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.4)',
+    backgroundColor: palette.scrim,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
@@ -205,7 +267,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: palette.menuBorder,
     paddingVertical: spacing.xs,
     maxHeight: 320,
     width: 160,
@@ -230,7 +292,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: palette.menuGlass,
   },
   menuItem: {
     flexDirection: 'row',
@@ -240,7 +302,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     minHeight: 46,
   },
-  menuItemSel: { backgroundColor: colors.primarySoft },
-  menuText: { fontFamily: font.semibold, fontSize: 16, color: colors.text },
-  menuTextSel: { color: colors.primary },
-});
+  menuItemSel: { backgroundColor: palette.selectedSoft },
+  menuText: { fontFamily: font.semibold, fontSize: 16, color: palette.text },
+  menuTextSel: { color: palette.action },
+  });
+}
+
+type PickerPalette = ReturnType<typeof timePickerPalette>;
+type PickerStyles = ReturnType<typeof createStyles>;

@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontFamily: font.semibold, fontSize: 11.5 },
   wave: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 2 },
   waveLine: { width: 2, borderRadius: 2, backgroundColor: colors.primary },
-  summary: { color: colors.primary, fontFamily: font.bold, fontSize: 9.5, marginLeft: 5 },
+  summary: { color: colors.primaryDark, fontFamily: font.bold, fontSize: 9.5, marginLeft: 5 },
   chevron: { color: colors.textMuted, fontFamily: font.regular, fontSize: 24 },
   pressed: { opacity: 0.72 },
 });

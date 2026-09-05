@@ -1,4 +1,15 @@
-export type AchievementCompletionKind = 'run' | 'workout' | 'streak' | 'challenge';
+export const ACHIEVEMENT_COMPLETION_KINDS = [
+  'manual',
+  'streak',
+  'workout',
+  'challenge',
+  'medal',
+  'rank',
+  'leaderboard',
+  'run',
+] as const;
+
+export type AchievementCompletionKind = (typeof ACHIEVEMENT_COMPLETION_KINDS)[number];
 
 export type AchievementCompletion = {
   kind: AchievementCompletionKind;

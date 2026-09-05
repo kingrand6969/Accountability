@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ImageBackground,
@@ -23,7 +23,14 @@ import {
   type ChallengeCard,
 } from '../compete/api';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import {
   createDiscoverActionLock,
   discoverActionKey,
@@ -41,6 +48,7 @@ import {
 
 type Filter = 'for-you' | 'nearby' | 'challenges' | 'groups';
 const VIEW_STARTED_AT = Date.now();
+const DISCOVER_TOUCH_INSET = { small: 2, wide: 12 } as const;
 
 export function deriveDiscoverLayout(fontScale: number) {
   const largeText = fontScale >= 1.25;
@@ -101,6 +109,9 @@ export async function loadDiscoverScopeData(input: {
 
 export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope }) {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const appearance = useMemo(() => createDiscoverAppearance(theme), [theme]);
+  const { palette, styles } = appearance;
   const { fontScale } = useWindowDimensions();
   const layout = deriveDiscoverLayout(fontScale);
   const isLargeText = layout.largeText;
@@ -109,6 +120,7 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
   const { session } = useAuth();
   const ownerId = session?.user.id ?? null;
   const [filter, setFilter] = useState<Filter>('for-you');
+  const [showAllPeople, setShowAllPeople] = useState(false);
   const [people, setPeople] = useState<Candidate[]>([]);
   const [cards, setCards] = useState<Map<string, BuddyCardView | null>>(new Map());
   const [groups, setGroups] = useState<Group[]>([]);
@@ -236,13 +248,13 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
   if (loading) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator color={colors.primary} />
+        <ActivityIndicator color={palette.action} />
         <Text style={styles.loadingText}>Finding people who show up…</Text>
       </View>
     );
   }
 
-  const recommended = [...people]
+  const sortedPeople = [...people]
     .sort(
       (a, b) =>
         (fixture
@@ -250,8 +262,8 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
             Number(a.id === fixture.personId)
           : 0) ||
         Number(!!b.avatar_url) - Number(!!a.avatar_url),
-    )
-    .slice(0, 4);
+    );
+  const visiblePeople = showAllPeople ? sortedPeople : sortedPeople.slice(0, 4);
   const recommendedGroups = [...groups].sort(
     (a, b) =>
       fixture
@@ -289,14 +301,15 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
       <Pressable
         style={[styles.search, useAdaptiveGeometry && styles.searchLargeText, largeControlStyle]}
         onPress={() => router.push('/search' as never)}
+        hitSlop={DISCOVER_TOUCH_INSET.small}
         accessibilityRole="button"
         accessibilityLabel="Search people, groups and challenges"
       >
-        <Ionicons name="search" size={18} color={colors.textMuted} />
+        <Ionicons name="search" size={18} color={palette.textMuted} />
         <Text style={[styles.searchText, isLargeText && styles.largeTextCopy]}>
           Search people, groups, challenges
         </Text>
-        <Ionicons name="options-outline" size={19} color={colors.primary} />
+        <Ionicons name="options-outline" size={19} color={palette.action} />
       </Pressable>
 
       {scope === 'all' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
@@ -339,11 +352,12 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
         Nearby is off until private location permission and a privacy-safe public query are proven.
       </Text> : null}
 
-      {state.status === 'offline' ? <StateNotice status="offline" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
-      {state.status === 'error' ? <StateNotice status="error" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
-      {state.status === 'empty' ? <StateNotice status="empty" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
+      {state.status === 'offline' ? <StateNotice appearance={appearance} status="offline" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
+      {state.status === 'error' ? <StateNotice appearance={appearance} status="error" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
+      {state.status === 'empty' ? <StateNotice appearance={appearance} status="empty" message={state.message} onRetry={load} largeText={isLargeText} /> : null}
       {state.status === 'permission-denied' ? (
         <StateNotice
+          appearance={appearance}
           status="permission-denied"
           message="Nearby is not available yet. It stays off until permission and a privacy-safe public query are proven—no private coordinates or made-up proximity."
           largeText={isLargeText}
@@ -353,13 +367,15 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
       {showData && (scope === 'people' || filter === 'for-you') ? (
         <>
           <SectionHeader
+            appearance={appearance}
             title="People you may connect with"
-            action="Browse all"
-            onPress={() => router.push('/buddy' as never)}
+            action={showAllPeople ? undefined : 'Browse all'}
+            onPress={showAllPeople ? undefined : () => setShowAllPeople(true)}
             largeText={layout.stackCards}
           />
-          {recommended.map((person) => (
+          {visiblePeople.map((person) => (
             <PersonCard
+              appearance={appearance}
               key={person.id}
               person={person}
               card={cards.get(person.id) ?? null}
@@ -379,9 +395,10 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
 
       {scope === 'all' && showData && (filter === 'for-you' || filter === 'groups') ? (
         <>
-          <SectionHeader title="Recommended group" action="See all" onPress={() => router.push('/groups' as never)} largeText={layout.stackCards} />
+          <SectionHeader appearance={appearance} title="Recommended group" action="See all" onPress={() => router.push('/groups' as never)} largeText={layout.stackCards} />
           {recommendedGroups.slice(0, filter === 'groups' ? 8 : 1).map((group) => (
             <GroupCard
+              appearance={appearance}
               key={group.id}
               group={group}
               fixtureMediaUrl={fixture?.groupId === group.id ? fixture.groupMediaUrl : null}
@@ -392,15 +409,16 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
               onJoin={() => act('group', group.id, (expectedOwner) => joinGroup(group.id, expectedOwner), `Joined ${group.name}`)}
             />
           ))}
-          {groups.length === 0 ? <Empty icon="people-circle-outline" text="No public groups to recommend yet." /> : null}
+          {groups.length === 0 ? <Empty appearance={appearance} icon="people-circle-outline" text="No public groups to recommend yet." /> : null}
         </>
       ) : null}
 
       {scope === 'all' && showData && (filter === 'for-you' || filter === 'challenges') ? (
         <>
-          <SectionHeader title="Challenge spotlight" action="See all" onPress={() => router.push('/compete' as never)} largeText={layout.stackCards} />
+          <SectionHeader appearance={appearance} title="Challenge spotlight" action="See all" onPress={() => router.push('/compete' as never)} largeText={layout.stackCards} />
           {recommendedChallenges.slice(0, filter === 'challenges' ? 8 : 1).map((challenge) => (
             <ChallengeRow
+              appearance={appearance}
               key={challenge.id}
               challenge={challenge}
               busy={isDiscoverActionBusy(busy, ownerId, 'challenge', challenge.id)}
@@ -411,31 +429,35 @@ export function DiscoverExperience({ scope = 'all' }: { scope?: DiscoverScope })
               onJoin={() => act('challenge', challenge.id, (expectedOwner) => joinChallenge(challenge.id, expectedOwner), `Joined ${challenge.title}`)}
             />
           ))}
-          {challenges.length === 0 ? <Empty icon="trophy-outline" text="The next challenge is being prepared." /> : null}
+          {challenges.length === 0 ? <Empty appearance={appearance} icon="trophy-outline" text="The next challenge is being prepared." /> : null}
         </>
       ) : null}
     </ScrollView>
   );
 }
 
-function SectionHeader({ title, action, onPress, largeText }: { title: string; action: string; onPress: () => void; largeText: boolean }) {
+function SectionHeader({ appearance, title, action, onPress, largeText }: { appearance: DiscoverAppearance; title: string; action?: string; onPress?: () => void; largeText: boolean }) {
+  const { styles } = appearance;
   return (
     <View style={[styles.sectionHeader, largeText && styles.sectionHeaderLargeText]}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <Pressable
-        style={[styles.sectionAction, largeText && styles.sectionActionLargeText]}
-        onPress={onPress}
-        hitSlop={10}
-        accessibilityRole="button"
-        accessibilityLabel={`${action}: ${title}`}
-      >
-        <Text style={styles.sectionActionText}>{action}</Text>
-      </Pressable>
+      {action && onPress ? (
+        <Pressable
+          style={[styles.sectionAction, largeText && styles.sectionActionLargeText]}
+          onPress={onPress}
+          hitSlop={DISCOVER_TOUCH_INSET.wide}
+          accessibilityRole="button"
+          accessibilityLabel={`${action}: ${title}`}
+        >
+          <Text style={styles.sectionActionText}>{action}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 function PersonCard({
+  appearance,
   person,
   card,
   comparisonFixture,
@@ -444,6 +466,7 @@ function PersonCard({
   onOpen,
   onConnect,
 }: {
+  appearance: DiscoverAppearance;
   person: Candidate;
   card: BuddyCardView | null;
   comparisonFixture: boolean;
@@ -452,6 +475,10 @@ function PersonCard({
   onOpen: () => void;
   onConnect: () => void;
 }) {
+  const { palette, styles } = appearance;
+  const resolvedHeroImage = useResolvedImageUrl(
+    card?.card.bg_url || card?.avatar || person.avatar_url,
+  );
   const traits = comparisonFixture
     ? ['Consistent', 'Supportive', 'Runner']
     : (card?.card.traits ?? []).slice(0, 3);
@@ -461,25 +488,25 @@ function PersonCard({
         onPress={onOpen}
         style={[styles.personHero, largeText && styles.personHeroLargeText]}
         accessibilityRole="button"
-        accessibilityLabel={`Open public profile for ${card?.name ?? person.display_name ?? 'AccountAbility member'}`}
+        accessibilityLabel={`Open public profile for ${card?.name ?? person.display_name ?? 'Mantle member'}`}
         accessibilityHint="Shows their public accountability card"
       >
-        {card?.card.bg_url || card?.avatar || person.avatar_url ? (
+        {resolvedHeroImage ? (
           <ImageBackground
-            source={{ uri: card?.card.bg_url || card?.avatar || person.avatar_url! }}
+            source={{ uri: resolvedHeroImage }}
             style={[styles.personImage, largeText && styles.personImageLargeText]}
             imageStyle={styles.personImageRadius}
-            accessibilityLabel={`Public profile image for ${card?.name ?? person.display_name ?? 'AccountAbility member'}`}
+            accessibilityLabel={`Public profile image for ${card?.name ?? person.display_name ?? 'Mantle member'}`}
           >
             <View style={styles.personScrim} />
           </ImageBackground>
         ) : (
           <View style={[styles.personImage, styles.personFallback, largeText && styles.personImageLargeText]}>
-            <Ionicons name="person" size={76} color="#bfdbfe" />
+            <Ionicons name="person" size={76} color="#E8F4D7" />
           </View>
         )}
         <View style={[styles.personCopy, largeText && styles.personCopyLargeText]}>
-          <Text style={styles.personName}>{card?.name ?? person.display_name ?? 'AccountAbility member'}</Text>
+          <Text style={styles.personName}>{card?.name ?? person.display_name ?? 'Mantle member'}</Text>
           <Text style={styles.personMeta}>
             {comparisonFixture
               ? 'Runner. Coffee lover.\nAlways up for a challenge.'
@@ -508,18 +535,20 @@ function PersonCard({
       <Pressable
         style={({ pressed }) => [styles.connect, largeText && styles.connectLargeText, pressed && styles.pressed, busy && styles.disabled]}
         onPress={onConnect}
-      disabled={busy}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: busy, busy }}
+        hitSlop={DISCOVER_TOUCH_INSET.small}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: busy, busy }}
         accessibilityLabel={`Connect with ${person.display_name ?? 'member'}`}
       >
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectText}>Connect</Text>}
+        {busy ? <ActivityIndicator color={palette.onAction} /> : <Text style={styles.connectText}>Connect</Text>}
       </Pressable>
     </View>
   );
 }
 
 function GroupCard({
+  appearance,
   group,
   fixtureMediaUrl,
   busy,
@@ -528,6 +557,7 @@ function GroupCard({
   onOpen,
   onJoin,
 }: {
+  appearance: DiscoverAppearance;
   group: Group;
   fixtureMediaUrl: string | null;
   busy: boolean;
@@ -536,6 +566,7 @@ function GroupCard({
   onOpen: () => void;
   onJoin: () => void;
 }) {
+  const { palette, styles } = appearance;
   return (
     <View style={[styles.groupCard, largeText && styles.groupCardLargeText]} accessibilityLabel={`Recommended public group, ${group.name}`}>
       <Pressable
@@ -544,6 +575,7 @@ function GroupCard({
           largeText && !fixtureMediaUrl && styles.groupArtLargeText,
         ]}
         onPress={onOpen}
+        hitSlop={DISCOVER_TOUCH_INSET.small}
         accessibilityRole="button"
         accessibilityLabel={`Open ${group.name} public group`}
         accessibilityHint="Opens the group page"
@@ -557,7 +589,7 @@ function GroupCard({
           />
         ) : (
           <>
-            <Ionicons name="people" size={largeText ? 28 : 22} color="#fff" />
+            <Ionicons name="people" size={largeText ? 28 : 22} color={palette.text} />
             <Text
               style={[
                 styles.groupFallbackLabel,
@@ -585,6 +617,7 @@ function GroupCard({
       <Pressable
         style={[styles.join, largeText && styles.joinLargeText, group.is_member && styles.joined]}
         onPress={group.is_member ? onOpen : onJoin}
+        hitSlop={DISCOVER_TOUCH_INSET.small}
         disabled={busy}
         accessibilityRole="button"
         accessibilityState={{ disabled: busy, busy }}
@@ -599,24 +632,28 @@ function GroupCard({
 }
 
 function ChallengeRow({
+  appearance,
   challenge,
   busy,
   largeText,
   onOpen,
   onJoin,
 }: {
+  appearance: DiscoverAppearance;
   challenge: ChallengeCard;
   busy: boolean;
   largeText: boolean;
   onOpen: () => void;
   onJoin: () => void;
 }) {
+  const { styles } = appearance;
   const days = Math.max(0, Math.ceil((new Date(challenge.ends_at).getTime() - VIEW_STARTED_AT) / 86_400_000));
   return (
     <View style={[styles.challenge, largeText && styles.challengeLargeText]} accessibilityLabel={`Public challenge, ${challenge.title}`}>
       <Pressable
         style={[styles.challengeCopy, largeText && styles.challengeCopyLargeText]}
         onPress={onOpen}
+        hitSlop={DISCOVER_TOUCH_INSET.small}
         accessibilityRole="button"
         accessibilityLabel={`Open ${challenge.title} challenge`}
         accessibilityHint="Shows challenge details"
@@ -629,6 +666,7 @@ function ChallengeRow({
       <Pressable
         style={[styles.challengeBadge, largeText && styles.challengeBadgeLargeText]}
         onPress={challenge.joined ? onOpen : onJoin}
+        hitSlop={DISCOVER_TOUCH_INSET.small}
         disabled={busy}
         accessibilityRole="button"
         accessibilityState={{ disabled: busy, busy }}
@@ -644,16 +682,19 @@ function ChallengeRow({
 }
 
 function StateNotice({
+  appearance,
   status,
   message,
   onRetry,
   largeText = false,
 }: {
+  appearance: DiscoverAppearance;
   status: 'empty' | 'offline' | 'permission-denied' | 'error';
   message: string;
   onRetry?: () => void;
   largeText?: boolean;
 }) {
+  const { palette, styles } = appearance;
   const icon =
     status === 'offline'
       ? 'cloud-offline-outline'
@@ -667,7 +708,7 @@ function StateNotice({
       style={[styles.stateNotice, largeText && styles.stateNoticeLargeText]}
       accessibilityRole={status === 'error' ? 'alert' : 'text'}
     >
-      <Ionicons name={icon} size={24} color={colors.primary} />
+      <Ionicons name={icon} size={24} color={palette.action} />
       <Text style={[styles.stateNoticeText, largeText && styles.stateNoticeTextLarge]}>
         {message}
       </Text>
@@ -675,6 +716,7 @@ function StateNotice({
         <Pressable
           style={[styles.retry, largeText && styles.retryLargeText]}
           onPress={onRetry}
+          hitSlop={DISCOVER_TOUCH_INSET.small}
           accessibilityRole="button"
           accessibilityLabel="Retry discovery"
         >
@@ -685,113 +727,144 @@ function StateNotice({
   );
 }
 
-function Empty({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+function Empty({ appearance, icon, text }: { appearance: DiscoverAppearance; icon: keyof typeof Ionicons.glyphMap; text: string }) {
+  const { palette, styles } = appearance;
   return (
     <View style={styles.empty}>
-      <Ionicons name={icon} size={25} color={colors.primary} />
+      <Ionicons name={icon} size={25} color={palette.action} />
       <Text style={styles.emptyText}>{text}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: 120, gap: 3 },
+function discoverPalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    raisedSurface: theme.surface.raised,
+    mutedSurface: theme.surface.muted,
+    border: theme.border.subtle,
+    primarySoft: theme.surface.raised,
+    text: theme.ink.primary,
+    textSecondary: theme.ink.secondary,
+    textMuted: theme.ink.muted,
+    textFaint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    scrim: theme.interaction.scrim,
+    warningSurface: theme.status.dangerSoft,
+    warningText: theme.status.attention,
+    disabledOpacity: theme.interaction.disabledOpacity,
+  };
+}
+
+type DiscoverPalette = ReturnType<typeof discoverPalette>;
+
+function createDiscoverAppearance(theme: AppThemeColors) {
+  const palette = discoverPalette(theme);
+  return { palette, styles: createStyles(palette) };
+}
+
+type DiscoverAppearance = ReturnType<typeof createDiscoverAppearance>;
+
+const createStyles = (palette: DiscoverPalette) => StyleSheet.create({
+  content: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: 120, gap: 3, backgroundColor: palette.canvas },
   loading: { padding: spacing.xxl, alignItems: 'center', gap: spacing.sm },
-  loadingText: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
+  loadingText: { color: palette.textMuted, fontFamily: font.medium, fontSize: 13 },
   search: {
     height: DISCOVER_GEOMETRY.search,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.pill,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  searchText: { flex: 1, color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
+  searchText: { flex: 1, color: palette.textMuted, fontFamily: font.medium, fontSize: 13 },
   searchLargeText: { height: 'auto', minHeight: 48, paddingVertical: spacing.sm },
   largeTextCopy: { flexShrink: 1 },
   filters: { gap: 6 },
-  filter: { height: DISCOVER_GEOMETRY.filters, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  filter: { height: DISCOVER_GEOMETRY.filters, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border },
   filterLargeText: { height: 'auto', minHeight: 48, paddingVertical: spacing.sm },
-  filterActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 12 },
-  filterTextActive: { color: '#fff' },
-  nearbyExplanation: { height: DISCOVER_GEOMETRY.nearbyExplanation, color: colors.textMuted, fontFamily: font.medium, fontSize: 9, lineHeight: 12 },
+  filterActive: { backgroundColor: palette.action, borderColor: palette.action },
+  filterText: { color: palette.textSecondary, fontFamily: font.semibold, fontSize: 12 },
+  filterTextActive: { color: palette.onAction },
+  nearbyExplanation: { height: DISCOVER_GEOMETRY.nearbyExplanation, color: palette.textMuted, fontFamily: font.medium, fontSize: 9, lineHeight: 12 },
   nearbyExplanationLargeText: { height: 'auto', minHeight: 48, paddingVertical: spacing.xs },
-  notice: { minHeight: 44, padding: spacing.md, borderRadius: radius.md, backgroundColor: '#fff7ed' },
-  noticeText: { color: '#9a3412', fontFamily: font.medium, fontSize: 12.5 },
-  stateNotice: { minHeight: 80, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceAlt },
+  notice: { minHeight: 44, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.warningSurface },
+  noticeText: { color: palette.warningText, fontFamily: font.medium, fontSize: 12.5 },
+  stateNotice: { minHeight: 80, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.mutedSurface },
   stateNoticeLargeText: { flexDirection: 'column', alignItems: 'stretch' },
-  stateNoticeText: { flex: 1, color: colors.textSecondary, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
+  stateNoticeText: { flex: 1, color: palette.textSecondary, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
   stateNoticeTextLarge: { flex: 0, width: '100%' },
-  retry: { minHeight: 44, minWidth: 58, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.primary },
+  retry: { minHeight: 44, minWidth: 58, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.action },
   retryLargeText: { minHeight: 48 },
-  retryText: { color: '#fff', fontFamily: font.bold, fontSize: 12 },
+  retryText: { color: palette.onAction, fontFamily: font.bold, fontSize: 12 },
   sectionHeader: { height: DISCOVER_GEOMETRY.personHeader, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionHeaderLargeText: { height: 'auto', minHeight: 48, flexDirection: 'column', alignItems: 'stretch' },
-  sectionTitle: { flex: 1, color: colors.text, fontFamily: font.bold, fontSize: 13 },
+  sectionTitle: { flex: 1, color: palette.text, fontFamily: font.bold, fontSize: 13 },
   sectionAction: { height: 24, justifyContent: 'center', paddingLeft: spacing.md },
   sectionActionLargeText: { height: 'auto', minHeight: 48, alignSelf: 'flex-end' },
-  sectionActionText: { color: colors.primary, fontFamily: font.bold, fontSize: 12 },
-  personCard: { borderRadius: radius.md, backgroundColor: colors.card, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
-  personHero: { height: DISCOVER_GEOMETRY.personHero, backgroundColor: '#0b2047' },
+  sectionActionText: { color: palette.action, fontFamily: font.bold, fontSize: 12 },
+  personCard: { borderRadius: radius.md, backgroundColor: palette.card, overflow: 'hidden', borderWidth: 1, borderColor: palette.border },
+  personHero: { height: DISCOVER_GEOMETRY.personHero, backgroundColor: palette.raisedSurface },
   personHeroLargeText: { height: 'auto', minHeight: DISCOVER_GEOMETRY.personHero },
   personImage: { flex: 1, justifyContent: 'flex-end' },
   personImageLargeText: { flex: 0, minHeight: 160 },
   personImageRadius: { borderRadius: 0 },
   personFallback: { alignItems: 'center', justifyContent: 'center' },
-  personScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,18,45,.36)' },
+  personScrim: { ...StyleSheet.absoluteFill, backgroundColor: palette.scrim },
   personCopy: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: 5 },
-  personCopyLargeText: { position: 'relative', left: 0, right: 0, bottom: 0, padding: spacing.md, backgroundColor: colors.primaryDark },
-  personName: { color: '#fff', fontFamily: font.serif, fontSize: 20, lineHeight: 21 },
-  personMeta: { color: '#e2e8f0', fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
-  areaBadge: { alignSelf: 'flex-start', minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,.92)', paddingHorizontal: 9, marginTop: spacing.sm },
-  areaBadgeText: { color: '#123b79', fontFamily: font.bold, fontSize: 10 },
+  personCopyLargeText: { position: 'relative', left: 0, right: 0, bottom: 0, padding: spacing.md, backgroundColor: palette.mutedSurface },
+  personName: { color: palette.text, fontFamily: font.serif, fontSize: 20, lineHeight: 21 },
+  personMeta: { color: palette.textSecondary, fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
+  areaBadge: { alignSelf: 'flex-start', minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.pill, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 9, marginTop: spacing.sm },
+  areaBadgeText: { color: palette.text, fontFamily: font.bold, fontSize: 10 },
   realTraits: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 },
-  realTrait: { height: 18, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,.92)', paddingHorizontal: 6 },
+  realTrait: { height: 18, justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.mutedSurface, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 6 },
   realTraitLargeText: { height: 'auto', minHeight: 32, paddingVertical: spacing.xs },
-  realTraitText: { color: '#123b79', fontFamily: font.bold, fontSize: 8 },
+  realTraitText: { color: palette.textSecondary, fontFamily: font.bold, fontSize: 8 },
   levelBand: { marginTop: 3, gap: 2 },
   levelLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   levelLabelsLargeText: { flexDirection: 'column', gap: spacing.xs },
-  levelText: { color: '#fff', fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
-  progressTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,.35)', overflow: 'hidden' },
-  progressFill: { width: '87%', height: 4, borderRadius: 2, backgroundColor: colors.primary },
-  connect: { height: DISCOVER_GEOMETRY.connect, margin: DISCOVER_GEOMETRY.personCardSpacing / 2, borderRadius: radius.sm, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  levelText: { color: palette.textSecondary, fontFamily: font.medium, fontSize: 8.5, lineHeight: 10 },
+  progressTrack: { height: 4, borderRadius: 2, backgroundColor: palette.border, overflow: 'hidden' },
+  progressFill: { width: '87%', height: 4, borderRadius: 2, backgroundColor: palette.action },
+  connect: { height: DISCOVER_GEOMETRY.connect, margin: DISCOVER_GEOMETRY.personCardSpacing / 2, borderRadius: radius.sm, backgroundColor: palette.action, alignItems: 'center', justifyContent: 'center' },
   connectLargeText: { height: 'auto', minHeight: 48, paddingVertical: spacing.sm },
-  connectText: { color: '#fff', fontFamily: font.bold, fontSize: 13.5 },
-  disabled: { opacity: .55 },
-  groupCard: { height: DISCOVER_GEOMETRY.group, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 3, backgroundColor: colors.card },
+  connectText: { color: palette.onAction, fontFamily: font.bold, fontSize: 13.5 },
+  disabled: { opacity: palette.disabledOpacity },
+  groupCard: { height: DISCOVER_GEOMETRY.group, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, padding: 3, backgroundColor: palette.card },
   groupCardLargeText: { height: 'auto', minHeight: DISCOVER_GEOMETRY.group, flexDirection: 'column', alignItems: 'stretch', padding: spacing.sm },
-  groupArt: { width: 50, height: 50, borderRadius: radius.sm, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', gap: 2, overflow: 'hidden' },
+  groupArt: { width: 50, height: 50, borderRadius: radius.sm, backgroundColor: palette.mutedSurface, alignItems: 'center', justifyContent: 'center', gap: 2, overflow: 'hidden' },
   groupArtLargeText: { width: '100%', height: 'auto', minHeight: 112, padding: spacing.sm, overflow: 'visible' },
   groupFixtureImage: { width: 50, height: 50 },
   groupImageRadius: { borderRadius: radius.sm },
-  groupFallbackLabel: { color: '#fff', fontFamily: font.bold, fontSize: 9, lineHeight: 11, textAlign: 'center' },
+  groupFallbackLabel: { color: palette.text, fontFamily: font.bold, fontSize: 9, lineHeight: 11, textAlign: 'center' },
   groupFallbackLabelLargeText: { fontSize: 11, lineHeight: 14 },
   groupCopy: { flex: 1, minHeight: 44, justifyContent: 'center' },
   groupCopyLargeText: { flex: 0, minHeight: 48 },
-  groupName: { color: colors.text, fontFamily: font.bold, fontSize: 14 },
-  groupMeta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 10.5, marginTop: 1 },
-  groupDescription: { color: colors.textSecondary, fontFamily: font.regular, fontSize: 9.5, lineHeight: 12, marginTop: 2 },
-  join: { minWidth: 62, minHeight: 44, borderRadius: radius.sm, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  groupName: { color: palette.text, fontFamily: font.bold, fontSize: 14 },
+  groupMeta: { color: palette.textMuted, fontFamily: font.medium, fontSize: 10.5, marginTop: 1 },
+  groupDescription: { color: palette.textSecondary, fontFamily: font.regular, fontSize: 9.5, lineHeight: 12, marginTop: 2 },
+  join: { minWidth: 62, minHeight: 44, borderRadius: radius.sm, backgroundColor: palette.primarySoft, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
   joinLargeText: { minHeight: 48, alignSelf: 'stretch' },
-  joined: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-  joinText: { color: colors.primary, fontFamily: font.bold, fontSize: 12 },
-  joinedText: { color: colors.textSecondary },
-  challenge: { height: DISCOVER_GEOMETRY.challenge, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: colors.card },
+  joined: { backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border },
+  joinText: { color: palette.action, fontFamily: font.bold, fontSize: 12 },
+  joinedText: { color: palette.textSecondary },
+  challenge: { height: DISCOVER_GEOMETRY.challenge, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, backgroundColor: palette.card },
   challengeLargeText: { height: 'auto', minHeight: DISCOVER_GEOMETRY.challenge, flexDirection: 'column', alignItems: 'stretch', paddingVertical: spacing.sm },
   challengeCopy: { flex: 1, minHeight: 44, justifyContent: 'center' },
   challengeCopyLargeText: { flex: 0, minHeight: 48 },
-  challengeTitle: { color: colors.text, fontFamily: font.serif, fontSize: 14, lineHeight: 17 },
-  challengeMeta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 11, marginTop: 4 },
-  challengeBadge: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  challengeTitle: { color: palette.text, fontFamily: font.serif, fontSize: 14, lineHeight: 17 },
+  challengeMeta: { color: palette.textMuted, fontFamily: font.medium, fontSize: 11, marginTop: 4 },
+  challengeBadge: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: palette.action, alignItems: 'center', justifyContent: 'center' },
   challengeBadgeLargeText: { width: 'auto', height: 'auto', minWidth: 48, minHeight: 48, borderRadius: 24, alignSelf: 'flex-end', paddingHorizontal: spacing.sm },
-  challengeNumber: { color: colors.primary, fontFamily: font.extrabold, fontSize: 20, lineHeight: 22 },
-  challengeBadgeLabel: { color: colors.primary, fontFamily: font.bold, fontSize: 8.5 },
-  empty: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.md },
-  emptyText: { flex: 1, color: colors.textMuted, fontFamily: font.medium, fontSize: 12.5 },
+  challengeNumber: { color: palette.action, fontFamily: font.extrabold, fontSize: 20, lineHeight: 22 },
+  challengeBadgeLabel: { color: palette.action, fontFamily: font.bold, fontSize: 8.5 },
+  empty: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.border, borderRadius: radius.md },
+  emptyText: { flex: 1, color: palette.textMuted, fontFamily: font.medium, fontSize: 12.5 },
   pressed: { opacity: .75 },
 });

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -13,18 +13,15 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthProvider';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 import { getMyProfile } from '../../profiles/api';
 import type { Profile as ProfileRecord } from '../../profiles/types';
 import { getMetrics, getRank } from '../../achievements/api';
 import type { Metrics } from '../../achievements/catalog';
 import { CachedImage } from '../../ui/CachedImage';
-import { useResolvedMediaUrl } from '../../media/useResolvedMediaUrl';
-import { font, shadow } from '../../ui/theme';
+import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
+import { font, shadow, spacing, type AppThemeColors } from '../../ui/theme';
 
-const PAPER = '#F7F4EC';
-const INK = '#081A3A';
-const MUTED = '#647084';
-const BLUE = '#155EEF';
 const MOUNTAIN = require('../../../assets/images/auth-mountain-hero.png');
 
 type RankSummary = Awaited<ReturnType<typeof getRank>>;
@@ -40,42 +37,117 @@ export default function ProfileOverview() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const currentOwnerRef = useRef(ownerId);
+  const loadGeneration = useRef(0);
   const [profile, setProfile] = useState<ProfileRecord | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [rank, setRank] = useState<RankSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const resolvedAvatar = useResolvedMediaUrl(profile?.avatar_url ?? null);
-  const resolvedCover = useResolvedMediaUrl(profile?.cover_url ?? null);
+  const [dataOwnerId, setDataOwnerId] = useState<string | null>(null);
+  const [errorOwnerId, setErrorOwnerId] = useState<string | null>(null);
+
+  useEffect(() => {
+    currentOwnerRef.current = ownerId;
+    loadGeneration.current += 1;
+  }, [ownerId]);
+
+  const ownedProfile = ownerId && dataOwnerId === ownerId ? profile : null;
+  const ownedMetrics = ownerId && dataOwnerId === ownerId ? metrics : null;
+  const ownedRank = ownerId && dataOwnerId === ownerId ? rank : null;
+  const loadFailed = Boolean(ownerId && errorOwnerId === ownerId);
+  const resolvedAvatar = useResolvedImageUrl(ownedProfile?.avatar_url ?? null);
+  const resolvedCover = useResolvedImageUrl(ownedProfile?.cover_url ?? null);
+
+  const load = useCallback(async () => {
+    const requestOwner = ownerId;
+    const generation = ++loadGeneration.current;
+    setErrorOwnerId(null);
+    if (!requestOwner) {
+      setProfile(null);
+      setMetrics(null);
+      setRank(null);
+      setDataOwnerId(null);
+      return;
+    }
+    try {
+      const [nextProfile, nextMetrics, nextRank] = await Promise.all([
+        getMyProfile(),
+        getMetrics(),
+        getRank({ expectedOwnerId: requestOwner }),
+      ]);
+      if (!nextProfile) {
+        throw new Error('Profile unavailable');
+      }
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current
+      ) return;
+      setProfile(nextProfile);
+      setMetrics(nextMetrics);
+      setRank(nextRank);
+      setDataOwnerId(requestOwner);
+      setErrorOwnerId(null);
+    } catch {
+      if (
+        generation !== loadGeneration.current ||
+        requestOwner !== currentOwnerRef.current
+      ) return;
+      setErrorOwnerId(requestOwner);
+    }
+  }, [ownerId]);
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      setLoading(true);
-      Promise.all([getMyProfile(), getMetrics(), getRank()])
-        .then(([p, m, r]) => {
-          if (!active) return;
-          setProfile(p);
-          setMetrics(m);
-          setRank(r);
-        })
-        .catch(() => {})
-        .finally(() => active && setLoading(false));
+      void load();
       return () => {
-        active = false;
+        loadGeneration.current += 1;
       };
-    }, []),
+    }, [load]),
   );
 
-  if (loading) {
+  if (loadFailed && dataOwnerId !== ownerId) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={BLUE} size="large" />
+      <View
+        style={styles.failure}
+        accessibilityRole="alert"
+        accessibilityLiveRegion="assertive"
+      >
+        <View style={styles.failureIcon}>
+          <Ionicons name="cloud-offline-outline" size={28} color={theme.ink.action} />
+        </View>
+        <Text style={styles.failureTitle} accessibilityRole="header">
+          We couldn’t load your profile
+        </Text>
+        <Text style={styles.failureMessage}>Check your connection, then try again.</Text>
+        <Pressable
+          onPress={() => void load()}
+          style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading profile"
+        >
+          <Ionicons name="refresh" size={17} color={theme.ink.inverse} />
+          <Text style={styles.retryButtonText}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!ownerId || dataOwnerId !== ownerId) {
+    return (
+      <View
+        style={styles.center}
+        accessibilityRole="progressbar"
+        accessibilityLabel="Loading profile"
+      >
+        <ActivityIndicator color={theme.ink.action} size="large" />
         <Text style={styles.loadingText}>Opening your story...</Text>
       </View>
     );
   }
 
-  const displayName = profile?.display_name?.trim() || session?.user.email?.split('@')[0] || 'AccountAbility member';
+  const displayName = ownedProfile?.display_name?.trim() || session?.user.email?.split('@')[0] || 'Mantle member';
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
@@ -91,7 +163,7 @@ export default function ProfileOverview() {
           <Image source={MOUNTAIN} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
         <LinearGradient
-          colors={['rgba(8,26,58,0.08)', 'rgba(8,26,58,0.52)']}
+          colors={['rgba(17,20,17,0.08)', 'rgba(17,20,17,0.52)']}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.heroTop}>
@@ -121,11 +193,11 @@ export default function ProfileOverview() {
           )}
         </View>
         <Text style={styles.name}>{displayName}</Text>
-        {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : <Text style={styles.bio}>Discipline is my compass.</Text>}
-        {profile?.area ? (
+        {ownedProfile?.bio ? <Text style={styles.bio}>{ownedProfile.bio}</Text> : <Text style={styles.bio}>Discipline is my compass.</Text>}
+        {ownedProfile?.area ? (
           <View style={styles.location}>
-            <Ionicons name="location-outline" size={14} color={MUTED} />
-            <Text style={styles.locationText}>{profile.area}</Text>
+            <Ionicons name="location-outline" size={14} color={theme.ink.muted} />
+            <Text style={styles.locationText}>{ownedProfile.area}</Text>
           </View>
         ) : null}
         <Pressable
@@ -134,17 +206,40 @@ export default function ProfileOverview() {
           accessibilityRole="button"
           accessibilityLabel="Edit profile"
         >
-          <Ionicons name="pencil-outline" size={16} color="#fff" />
+          <Ionicons name="pencil-outline" size={16} color={theme.ink.inverse} />
           <Text style={styles.editButtonText}>Edit profile</Text>
         </Pressable>
       </View>
 
+      {loadFailed ? (
+        <View
+          style={styles.refreshNotice}
+          accessibilityRole="alert"
+          accessibilityLabel="Profile refresh failed"
+          accessibilityLiveRegion="polite"
+        >
+          <Ionicons name="cloud-offline-outline" size={18} color={theme.status.attention} />
+          <View style={styles.refreshNoticeCopy}>
+            <Text style={styles.refreshNoticeTitle}>Couldn’t refresh your profile</Text>
+            <Text style={styles.refreshNoticeMessage}>Showing your last loaded profile.</Text>
+          </View>
+          <Pressable
+            onPress={() => void load()}
+            style={({ pressed }) => [styles.refreshRetry, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Retry refreshing profile"
+          >
+            <Text style={styles.refreshRetryText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.stats}>
-        <Stat value={metrics?.streak ?? 0} label="Day streak" />
+        <Stat value={ownedMetrics?.streak ?? 0} label="Day streak" />
         <View style={styles.statDivider} />
-        <Stat value={rank?.name ?? 'Rookie'} label="Momentum rank" />
+        <Stat value={ownedRank?.name ?? 'Rookie'} label="Momentum rank" />
         <View style={styles.statDivider} />
-        <Stat value={metrics?.buddies ?? 0} label="Buddies" />
+        <Stat value={ownedMetrics?.buddies ?? 0} label="Buddies" />
       </View>
 
       <View style={styles.sectionHeader}>
@@ -161,13 +256,13 @@ export default function ProfileOverview() {
             accessibilityLabel={`${tile.label}, ${tile.caption}`}
           >
             <View style={styles.tileIcon}>
-              <Ionicons name={tile.icon} size={22} color={BLUE} />
+              <Ionicons name={tile.icon} size={22} color={theme.ink.action} />
             </View>
             <View style={styles.tileCopy}>
               <Text style={styles.tileTitle}>{tile.label}</Text>
               <Text style={styles.tileCaption}>{tile.caption}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={17} color="#A4ACB9" />
+            <Ionicons name="chevron-forward" size={17} color={theme.ink.muted} />
           </Pressable>
         ))}
       </View>
@@ -175,7 +270,7 @@ export default function ProfileOverview() {
       <View style={styles.settingsCard}>
         <SettingsRow icon="shield-checkmark-outline" label="Account & privacy" route="/menu" />
         <SettingsRow icon="notifications-outline" label="Notifications" route="/notifications" />
-        <SettingsRow icon="help-circle-outline" label="Help & support" route="/menu" last />
+        <SettingsRow icon="help-circle-outline" label="Help & support" route="/help" last />
       </View>
       <Text style={styles.footer}>Your private details stay in Edit profile and are never shown here.</Text>
     </ScrollView>
@@ -183,6 +278,8 @@ export default function ProfileOverview() {
 }
 
 function Stat({ value, label }: { value: string | number; label: string }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.stat}>
       <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
@@ -205,6 +302,8 @@ function SettingsRow({
   last?: boolean;
 }) {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
       onPress={() => router.push(route as never)}
@@ -212,53 +311,65 @@ function SettingsRow({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={20} color={INK} />
+      <Ionicons name={icon} size={20} color={theme.ink.primary} />
       <Text style={styles.settingsText}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color="#A4ACB9" />
+      <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: PAPER },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   content: { paddingBottom: 120 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: PAPER },
-  loadingText: { color: MUTED, fontFamily: font.medium, fontSize: 14 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: theme.surface.canvas },
+  loadingText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 14 },
+  failure: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, backgroundColor: theme.surface.canvas },
+  failureIcon: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surface.muted },
+  failureTitle: { marginTop: 18, color: theme.ink.primary, fontFamily: font.bold, fontSize: 22, textAlign: 'center' },
+  failureMessage: { marginTop: 7, color: theme.ink.muted, fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  retryButton: { marginTop: 20, minHeight: spacing.touch, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.ink.action },
+  retryButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
   pressed: { opacity: 0.72 },
   hero: { height: 184, paddingHorizontal: 18, overflow: 'hidden' },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   heroBrand: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
   heroBrandText: { color: '#fff', fontFamily: font.bold, fontSize: 11, letterSpacing: 1.5 },
-  heroButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,26,58,0.28)' },
+  heroButton: { width: spacing.touch, height: spacing.touch, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,20,17,0.28)' },
   identity: { alignItems: 'center', paddingHorizontal: 24, marginTop: -52 },
-  avatarRing: { width: 108, height: 108, borderRadius: 54, padding: 4, backgroundColor: PAPER, ...shadow.card },
+  avatarRing: { width: 108, height: 108, borderRadius: 54, padding: 4, backgroundColor: theme.surface.canvas, ...shadow.card },
   avatar: { width: 100, height: 100, borderRadius: 50 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8E4DA' },
-  avatarInitial: { color: INK, fontFamily: font.extrabold, fontSize: 36 },
-  name: { marginTop: 10, color: INK, fontFamily: font.bold, fontSize: 27, letterSpacing: -0.5 },
-  bio: { marginTop: 5, color: MUTED, fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surface.muted },
+  avatarInitial: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 36 },
+  name: { marginTop: 10, color: theme.ink.primary, fontFamily: font.bold, fontSize: 27, letterSpacing: -0.5 },
+  bio: { marginTop: 5, color: theme.ink.muted, fontFamily: font.regular, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   location: { marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationText: { color: MUTED, fontFamily: font.medium, fontSize: 12.5 },
-  editButton: { marginTop: 16, minHeight: 48, minWidth: 174, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BLUE },
-  editButtonText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
-  stats: { marginHorizontal: 18, marginTop: 22, minHeight: 82, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 18, backgroundColor: '#FFFCF6', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, ...shadow.card },
+  locationText: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5 },
+  editButton: { marginTop: 16, minHeight: spacing.touch, minWidth: 174, borderRadius: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.ink.action },
+  editButtonText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
+  refreshNotice: { marginHorizontal: 18, marginTop: 18, minHeight: spacing.touch, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 14, backgroundColor: theme.surface.card, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  refreshNoticeCopy: { flex: 1 },
+  refreshNoticeTitle: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 13 },
+  refreshNoticeMessage: { marginTop: 2, color: theme.ink.muted, fontFamily: font.regular, fontSize: 11.5 },
+  refreshRetry: { minWidth: spacing.touch, minHeight: spacing.touch, alignItems: 'center', justifyContent: 'center' },
+  refreshRetryText: { color: theme.ink.action, fontFamily: font.bold, fontSize: 13 },
+  stats: { marginHorizontal: 18, marginTop: 22, minHeight: 82, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 18, backgroundColor: theme.surface.card, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, ...shadow.card },
   stat: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
-  statValue: { color: INK, fontFamily: font.bold, fontSize: 18 },
-  statLabel: { marginTop: 4, color: MUTED, fontFamily: font.medium, fontSize: 10.5, textAlign: 'center' },
-  statDivider: { height: 38, width: 1, backgroundColor: '#E1DDD2' },
+  statValue: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 18 },
+  statLabel: { marginTop: 4, color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5, textAlign: 'center' },
+  statDivider: { height: 38, width: 1, backgroundColor: theme.border.subtle },
   sectionHeader: { paddingHorizontal: 20, marginTop: 28, marginBottom: 12 },
-  sectionTitle: { color: INK, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.4 },
-  sectionNote: { marginTop: 3, color: MUTED, fontFamily: font.regular, fontSize: 13 },
+  sectionTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.4 },
+  sectionNote: { marginTop: 3, color: theme.ink.muted, fontFamily: font.regular, fontSize: 13 },
   tileGrid: { paddingHorizontal: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: { width: '48.5%', minHeight: 94, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 16, backgroundColor: '#FFFCF6', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, ...shadow.card },
-  tileIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#EEF4FF', alignItems: 'center', justifyContent: 'center' },
+  tile: { width: '48.5%', minHeight: 94, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 16, backgroundColor: theme.surface.card, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, ...shadow.card },
+  tileIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
   tileCopy: { flex: 1 },
-  tileTitle: { color: INK, fontFamily: font.bold, fontSize: 13.5 },
-  tileCaption: { marginTop: 3, color: MUTED, fontFamily: font.regular, fontSize: 10.5, lineHeight: 14 },
-  settingsCard: { marginHorizontal: 18, marginTop: 24, borderWidth: 1, borderColor: '#E1DDD2', borderRadius: 18, backgroundColor: '#FFFCF6', overflow: 'hidden' },
+  tileTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 13.5 },
+  tileCaption: { marginTop: 3, color: theme.ink.muted, fontFamily: font.regular, fontSize: 10.5, lineHeight: 14 },
+  settingsCard: { marginHorizontal: 18, marginTop: 24, borderWidth: 1, borderColor: theme.border.subtle, borderRadius: 18, backgroundColor: theme.surface.card, overflow: 'hidden' },
   settingsRow: { minHeight: 56, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  settingsBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DDD8CC' },
-  settingsText: { flex: 1, color: INK, fontFamily: font.semibold, fontSize: 14 },
-  footer: { marginHorizontal: 28, marginTop: 14, color: MUTED, fontFamily: font.regular, fontSize: 11.5, lineHeight: 17, textAlign: 'center' },
+  settingsBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border.subtle },
+  settingsText: { flex: 1, color: theme.ink.primary, fontFamily: font.semibold, fontSize: 14 },
+  footer: { marginHorizontal: 28, marginTop: 14, color: theme.ink.muted, fontFamily: font.regular, fontSize: 11.5, lineHeight: 17, textAlign: 'center' },
 });

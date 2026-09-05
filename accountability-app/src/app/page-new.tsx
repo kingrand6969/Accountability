@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -11,11 +11,17 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { createPage, PAGE_CATEGORIES } from '../pages/api';
 import { showToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
-import { PrivacyToggle } from '../ui/PrivacyToggle';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
 import { useAuth } from '../auth/AuthProvider';
 
 const NAME_MIN = 3;
@@ -25,6 +31,9 @@ const HANDLE_RE = /^[a-z0-9_]{3,30}$/;
 export default function PageNew() {
   const router = useRouter();
   const { session } = useAuth();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const faintColor = theme.ink.muted;
   const ownerId = session?.user.id ?? null;
   const currentOwnerRef = useRef(ownerId);
   const createGeneration = useRef(0);
@@ -135,7 +144,7 @@ export default function PageNew() {
           <TextInput
             style={styles.input}
             placeholder="e.g. Iron Temple Gym"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={faintColor}
             value={name}
             onChangeText={setName}
             maxLength={NAME_MAX + 20}
@@ -150,7 +159,7 @@ export default function PageNew() {
           <TextInput
             style={styles.input}
             placeholder="e.g. iron_temple"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={faintColor}
             value={handle}
             onChangeText={onHandleChange}
             autoCapitalize="none"
@@ -185,6 +194,7 @@ export default function PageNew() {
                     pressed && styles.pressed,
                   ]}
                   onPress={() => setCategory(c.value)}
+                  hitSlop={2}
                   accessibilityRole="button"
                   accessibilityLabel={`Category ${c.label}`}
                   accessibilityState={{ selected }}
@@ -203,7 +213,7 @@ export default function PageNew() {
           <TextInput
             style={[styles.input, styles.multiline]}
             placeholder="What is this page about? (optional)"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={faintColor}
             value={bio}
             onChangeText={setBio}
             multiline
@@ -213,7 +223,7 @@ export default function PageNew() {
 
         <View style={styles.field}>
           <Text style={styles.label}>Privacy</Text>
-          <PrivacyToggle
+          <PrivacySelector
             value={privacy}
             onChange={setPrivacy}
             publicHint="Anyone can find and follow this page."
@@ -232,37 +242,123 @@ export default function PageNew() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.xl },
-  field: { gap: spacing.sm },
-  label: { fontFamily: font.semibold, fontSize: 14, color: colors.textSecondary },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    fontSize: 16,
-    fontFamily: font.regular,
-    color: colors.text,
-    minHeight: 48,
-    backgroundColor: colors.surfaceAlt,
-  },
-  multiline: { minHeight: 96, textAlignVertical: 'top' },
-  helper: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
-  error: { fontFamily: font.medium, fontSize: 13, color: colors.danger },
-  chipRow: { gap: spacing.sm, paddingVertical: 2 },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    minHeight: 44,
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-  },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontFamily: font.semibold, fontSize: 14, color: colors.textSecondary },
-  chipTextSelected: { color: colors.onPrimary },
-  pressed: { opacity: 0.8 },
+type PrivacySelectorProps = {
+  value: 'public' | 'private';
+  onChange: (value: 'public' | 'private') => void;
+  publicHint: string;
+  privateHint: string;
+};
+
+function PrivacySelector({ value, onChange, publicHint, privateHint }: PrivacySelectorProps) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const options = [
+    { value: 'public' as const, icon: 'globe-outline' as const, label: 'Public' },
+    { value: 'private' as const, icon: 'lock-closed-outline' as const, label: 'Private' },
+  ];
+
+  return (
+    <View style={styles.privacyWrap}>
+      <View style={styles.privacyRow}>
+        {options.map((option) => {
+          const selected = value === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              accessibilityRole="button"
+              accessibilityLabel={option.label}
+              accessibilityState={{ selected }}
+              hitSlop={2}
+              style={({ pressed }) => [
+                styles.privacySegment,
+                selected && styles.privacySegmentSelected,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons
+                name={option.icon}
+                size={16}
+                color={selected ? theme.ink.inverse : theme.ink.secondary}
+              />
+              <Text
+                style={[
+                  styles.privacySegmentText,
+                  selected && styles.privacySegmentTextSelected,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={styles.privacyHint}>{value === 'public' ? publicHint : privateHint}</Text>
+    </View>
+  );
+}
+
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.surface.canvas },
+    content: { padding: spacing.lg, gap: spacing.xl },
+    field: { gap: spacing.sm },
+    label: { fontFamily: font.semibold, fontSize: 14, color: theme.ink.secondary },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.border.subtle,
+      borderRadius: radius.sm,
+      padding: spacing.md,
+      fontSize: 16,
+      fontFamily: font.regular,
+      color: theme.ink.primary,
+      minHeight: spacing.touch,
+      backgroundColor: theme.surface.raised,
+    },
+    multiline: { minHeight: 96, textAlignVertical: 'top' },
+    helper: { fontFamily: font.regular, fontSize: 13, color: theme.ink.muted },
+    error: { fontFamily: font.medium, fontSize: 13, color: theme.status.danger },
+    chipRow: { gap: spacing.sm, paddingVertical: 2 },
+    chip: {
+      borderWidth: 1,
+      borderColor: theme.border.subtle,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.lg,
+      minHeight: 44,
+      justifyContent: 'center',
+      backgroundColor: theme.surface.card,
+    },
+    chipSelected: { backgroundColor: theme.ink.action, borderColor: theme.border.action },
+    chipText: { fontFamily: font.semibold, fontSize: 14, color: theme.ink.secondary },
+    chipTextSelected: { color: theme.ink.inverse },
+    privacyWrap: { gap: 6 },
+    privacyRow: {
+      flexDirection: 'row',
+      backgroundColor: theme.surface.muted,
+      borderRadius: radius.sm,
+      padding: 4,
+      gap: 4,
+    },
+    privacySegment: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minHeight: 44,
+      borderRadius: radius.sm - 2,
+    },
+    privacySegmentSelected: {
+      backgroundColor: theme.ink.action,
+      borderWidth: 1,
+      borderColor: theme.border.action,
+    },
+    privacySegmentText: { fontFamily: font.semibold, fontSize: 14.5, color: theme.ink.muted },
+    privacySegmentTextSelected: { color: theme.ink.inverse, fontFamily: font.bold },
+    privacyHint: {
+      fontFamily: font.regular,
+      fontSize: 12.5,
+      color: theme.ink.muted,
+      paddingHorizontal: 2,
+    },
+    pressed: { opacity: 0.75 },
 });

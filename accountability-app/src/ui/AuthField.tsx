@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -8,7 +8,8 @@ import {
   type TextInputProps,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, font, radius, spacing } from './theme';
+import { font, radius, spacing, type AppThemeColors } from './theme';
+import { useAppTheme } from './AppThemeProvider';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -32,16 +33,18 @@ export function AuthField({
   ...inputProps
 }: Props) {
   const [focused, setFocused] = useState(false);
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   return (
     <View style={styles.group}>
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.field, focused && styles.focused, error ? styles.invalid : null]}>
-        <Ionicons name={icon} size={19} color={focused ? colors.primary : colors.textFaint} />
+        <Ionicons name={icon} size={19} color={focused ? theme.ink.action : theme.ink.muted} />
         <TextInput
           {...inputProps}
           style={[styles.input, style]}
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={theme.ink.muted}
           accessibilityLabel={label}
           accessibilityHint={error}
           onFocus={(event) => {
@@ -67,7 +70,7 @@ export function AuthField({
       </View>
       {error ? (
         <View style={styles.errorRow} accessibilityLiveRegion="polite">
-          <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+          <Ionicons name="alert-circle-outline" size={14} color={theme.status.danger} />
           <Text style={styles.error}>{error}</Text>
         </View>
       ) : null}
@@ -75,10 +78,10 @@ export function AuthField({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   group: { gap: 7 },
   label: {
-    color: colors.text,
+    color: theme.ink.primary,
     fontFamily: font.semibold,
     fontSize: 13.5,
     marginLeft: 2,
@@ -89,23 +92,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.md,
     paddingHorizontal: 14,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: theme.surface.raised,
   },
   focused: {
-    borderColor: colors.primary,
+    borderColor: theme.border.action,
     borderWidth: 1.5,
   },
   invalid: {
-    borderColor: colors.danger,
+    borderColor: theme.border.danger,
   },
   input: {
     flex: 1,
     minHeight: 50,
     paddingVertical: 12,
-    color: colors.text,
+    color: theme.ink.primary,
     fontFamily: font.regular,
     fontSize: 16,
   },
@@ -116,7 +119,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionText: {
-    color: colors.primary,
+    color: theme.ink.action,
     fontFamily: font.semibold,
     fontSize: 13,
   },
@@ -128,7 +131,7 @@ const styles = StyleSheet.create({
   },
   error: {
     flex: 1,
-    color: colors.danger,
+    color: theme.status.danger,
     fontFamily: font.medium,
     fontSize: 12.5,
     lineHeight: 17,

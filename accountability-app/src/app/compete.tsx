@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,13 @@ import { GlassBackdrop, GlassCard } from '../ui/Glass';
 import { contentMaxWidth } from '../ui/responsive';
 import { font, radius, spacing } from '../ui/theme';
 import { showToast } from '../ui/Toast';
-import { Chips, RankRow, Segmented, INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
+import {
+  Chips,
+  RankRow,
+  Segmented,
+  useCompetitionTheme,
+  type CompetitionPalette,
+} from '../compete/CompeteUI';
 import { getRank, flexStanding } from '../achievements/api';
 import { RankBadge } from '../achievements/RankBadge';
 import { hapticSuccess } from '../ui/haptics';
@@ -47,7 +53,14 @@ import { challengeEnded, daysLeft } from '../achievements/challengeTime';
 const metricOpts = METRICS.map((m) => ({ value: m.value, label: m.label, icon: m.icon }));
 const periodOpts = PERIODS.map((p) => ({ value: p.value, label: p.label }));
 
+function useCompeteAppearance() {
+  const { palette } = useCompetitionTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  return { palette, styles };
+}
+
 export default function Compete() {
+  const { palette, styles } = useCompeteAppearance();
   const router = useRouter();
   const { isPro } = useIsPro();
   const { width } = useWindowDimensions();
@@ -85,9 +98,20 @@ export default function Compete() {
               accessibilityRole="button"
               accessibilityLabel="Share a win"
             >
-              <Ionicons name="flame" size={17} color="#f59e0b" />
+              <View style={styles.winIcon}>
+                <Ionicons name="flame" size={17} color={palette.statusAttention} />
+              </View>
             </Pressable>
-            {rank ? <RankBadge rank={rank} size={30} onPress={() => router.push('/achievements' as never)} /> : null}
+            {rank ? (
+              <Pressable
+                style={({ pressed }) => [styles.rankBtn, pressed && styles.pressed]}
+                onPress={() => router.push('/achievements' as never)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${rank} rank details`}
+              >
+                <RankBadge rank={rank} size={30} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
         <Segmented
@@ -111,6 +135,7 @@ export default function Compete() {
 // ─── Rankings ────────────────────────────────────────────────────────────────
 
 function RankingsTab({ uid }: { uid: string | null }) {
+  const { palette, styles } = useCompeteAppearance();
   const [sharing, setSharing] = useState<LocationSharing | null>(null);
   const [enabling, setEnabling] = useState(false);
   const [scope, setScope] = useState<Scope>('city');
@@ -161,7 +186,7 @@ function RankingsTab({ uid }: { uid: string | null }) {
   }
 
   if (!sharing) {
-    return <ActivityIndicator color={ACCENT} style={{ marginTop: 40 }} />;
+    return <ActivityIndicator color={palette.accent} style={{ marginTop: 40 }} />;
   }
 
   if (!sharing.share_location) {
@@ -169,7 +194,7 @@ function RankingsTab({ uid }: { uid: string | null }) {
       <GlassCard style={styles.card}>
         <View style={styles.pad}>
           <View style={styles.iconWrap}>
-            <Ionicons name="location" size={26} color={ACCENT} />
+            <Ionicons name="location" size={26} color={palette.accent} />
           </View>
           <Text style={styles.cardTitle}>Join your local leaderboards</Text>
           <Text style={styles.cardSub}>
@@ -183,7 +208,7 @@ function RankingsTab({ uid }: { uid: string | null }) {
             accessibilityRole="button"
           >
             {enabling ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={palette.onAccent} />
             ) : (
               <Text style={styles.primaryBtnText}>Turn on location</Text>
             )}
@@ -243,7 +268,7 @@ function RankingsTab({ uid }: { uid: string | null }) {
       <GlassCard style={styles.card}>
         <View style={styles.listPad}>
           {loading ? (
-            <ActivityIndicator color={ACCENT} style={{ marginVertical: 24 }} />
+            <ActivityIndicator color={palette.accent} style={{ marginVertical: 24 }} />
           ) : loadError ? (
             <RetryState label="leaderboard" onRetry={() => setReloadKey((value) => value + 1)} />
           ) : rows.length === 0 ? (
@@ -274,10 +299,10 @@ function RankingsTab({ uid }: { uid: string | null }) {
           accessibilityLabel="Flex your leaderboard spot to your feed"
         >
           {flexing ? (
-            <ActivityIndicator size="small" color={ACCENT} />
+            <ActivityIndicator size="small" color={palette.accent} />
           ) : (
             <>
-              <Ionicons name="sparkles" size={16} color={ACCENT} />
+              <Ionicons name="sparkles" size={16} color={palette.accent} />
               <Text style={styles.flexBtnText}>
                 Flex my spot — #{meRow.rnk} in {boardLabel}
               </Text>
@@ -292,6 +317,7 @@ function RankingsTab({ uid }: { uid: string | null }) {
 // ─── Challenges ──────────────────────────────────────────────────────────────
 
 function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<typeof useRouter> }) {
+  const { palette, styles } = useCompeteAppearance();
   const [items, setItems] = useState<ChallengeCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [challengesCheckedAt, setChallengesCheckedAt] = useState<number | null>(null);
@@ -337,18 +363,22 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
         accessibilityRole="button"
         accessibilityLabel={isPro ? 'Create a challenge' : 'Learn about Pro challenge creation'}
       >
-        <Ionicons name={isPro ? 'add' : 'lock-closed'} size={17} color="#fff" />
+        <Ionicons
+          name={isPro ? 'add' : 'lock-closed'}
+          size={17}
+          color={palette.onAccent}
+        />
         <Text style={styles.primaryBtnText}>
           {isPro ? 'Create a challenge' : 'Create a challenge — Pro'}
         </Text>
       </Pressable>
 
       {loading ? (
-        <ActivityIndicator color={ACCENT} style={{ marginTop: 30 }} />
+        <ActivityIndicator color={palette.accent} style={{ marginTop: 30 }} />
       ) : loadError ? (
         <GlassCard style={styles.card}>
           <View style={styles.pad}>
-            <Ionicons name="cloud-offline-outline" size={28} color={INK_SOFT} />
+            <Ionicons name="cloud-offline-outline" size={28} color={palette.inkSoft} />
             <Text style={styles.cardTitle}>Challenges couldn&apos;t load</Text>
             <Text style={styles.cardSub}>Check your connection, then try again.</Text>
             <Pressable
@@ -386,17 +416,17 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
                     <MissionIcon source={art} size={48} />
                   ) : (
                     <View style={[styles.iconWrap, { marginBottom: 0 }]}>
-                      <Ionicons name={meta.icon as never} size={22} color={ACCENT} />
+                      <Ionicons name={meta.icon as never} size={22} color={palette.accent} />
                     </View>
                   );
                 })()}
-                <View style={{ flex: 1 }}>
+                <View style={styles.challengeCopy}>
                   {c.is_official ? (
                     <Text style={styles.officialLabel}>
                       OFFICIAL · {(c.difficulty ?? 'beginner').toUpperCase()}
                     </Text>
                   ) : null}
-                  <Text style={styles.challengeTitle} numberOfLines={1}>
+                  <Text style={styles.challengeTitle}>
                     {c.title}
                   </Text>
                   <Text style={styles.challengeMeta}>
@@ -428,7 +458,10 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
                     accessibilityState={{ disabled: busy === c.id, busy: busy === c.id }}
                   >
                     {busy === c.id ? (
-                      <ActivityIndicator size="small" color={c.joined ? INK_SOFT : '#fff'} />
+                      <ActivityIndicator
+                        size="small"
+                        color={c.joined ? palette.inkSoft : palette.onAccent}
+                      />
                     ) : (
                       <Text style={c.joined ? styles.joinedText : styles.joinText}>
                         {c.joined ? 'Joined' : 'Join'}
@@ -448,6 +481,7 @@ function ChallengesTab({ isPro, router }: { isPro: boolean; router: ReturnType<t
 // ─── Buddies ─────────────────────────────────────────────────────────────────
 
 function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<typeof useRouter> }) {
+  const { palette, styles } = useCompeteAppearance();
   const [metric, setMetric] = useState<Metric>('consistency');
   const [period, setPeriod] = useState<Period>('week');
   const [rows, setRows] = useState<Awaited<ReturnType<typeof getBuddyStandings>>>([]);
@@ -483,9 +517,9 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
         onPress={() => router.push('/buddy-map')}
         accessibilityRole="button"
       >
-        <Ionicons name="map" size={18} color={ACCENT} />
+        <Ionicons name="map" size={18} color={palette.accent} />
         <Text style={styles.mapBtnText}>Share &amp; see live location</Text>
-        <Ionicons name="chevron-forward" size={16} color={INK_SOFT} />
+        <Ionicons name="chevron-forward" size={16} color={palette.inkSoft} />
       </Pressable>
 
       <Chips options={metricOpts} value={metric} onChange={(v) => setMetric(v as Metric)} />
@@ -498,7 +532,7 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
       <GlassCard style={styles.card}>
         <View style={styles.listPad}>
           {loading ? (
-            <ActivityIndicator color={ACCENT} style={{ marginVertical: 24 }} />
+            <ActivityIndicator color={palette.accent} style={{ marginVertical: 24 }} />
           ) : loadError ? (
             <RetryState label="buddy standings" onRetry={() => setReloadKey((value) => value + 1)} />
           ) : soloOrEmpty ? (
@@ -533,9 +567,10 @@ function BuddiesTab({ uid, router }: { uid: string | null; router: ReturnType<ty
 }
 
 function RetryState({ label, onRetry }: { label: string; onRetry: () => void }) {
+  const { palette, styles } = useCompeteAppearance();
   return (
     <View style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}>
-      <Ionicons name="cloud-offline-outline" size={26} color={INK_SOFT} />
+      <Ionicons name="cloud-offline-outline" size={26} color={palette.inkSoft} />
       <Text style={styles.empty}>Couldn&apos;t load the {label}.</Text>
       <Pressable
         style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
@@ -549,20 +584,34 @@ function RetryState({ label, onRetry }: { label: string; onRetry: () => void }) 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   winBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(245,158,11,0.15)',
+    width: spacing.touch,
+    height: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontSize: 26, fontFamily: font.extrabold, color: INK },
+  winIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: palette.faintAccent,
+    borderWidth: 1,
+    borderColor: palette.statusAttention,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankBtn: {
+    minWidth: spacing.touch,
+    minHeight: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { flexShrink: 1, fontSize: 26, fontFamily: font.extrabold, color: palette.ink },
   pressed: { opacity: 0.7 },
   card: {},
   pad: { padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
@@ -571,81 +620,85 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: palette.subtleAccent,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 2,
   },
-  cardTitle: { fontFamily: font.bold, fontSize: 17, color: INK, textAlign: 'center' },
+  cardTitle: { fontFamily: font.bold, fontSize: 17, color: palette.ink, textAlign: 'center' },
   cardSub: {
     fontFamily: font.regular,
     fontSize: 13.5,
-    color: INK_SOFT,
+    color: palette.inkSoft,
     textAlign: 'center',
     lineHeight: 19,
   },
-  note: { fontFamily: font.medium, fontSize: 12.5, color: INK_SOFT, lineHeight: 18, paddingHorizontal: 4 },
-  empty: { fontFamily: font.medium, fontSize: 13.5, color: INK_SOFT, textAlign: 'center', paddingVertical: 12 },
+  note: { fontFamily: font.medium, fontSize: 12.5, color: palette.inkSoft, lineHeight: 18, paddingHorizontal: 4 },
+  empty: { fontFamily: font.medium, fontSize: 13.5, color: palette.inkSoft, textAlign: 'center', paddingVertical: 12 },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: ACCENT,
+    backgroundColor: palette.accent,
     borderRadius: radius.pill,
     paddingVertical: 13,
     paddingHorizontal: 20,
     minHeight: 48,
     marginTop: 4,
   },
-  primaryBtnText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  primaryBtnText: { color: palette.onAccent, fontFamily: font.bold, fontSize: 15 },
   secondaryBtn: {
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: palette.subtleAccent,
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 18,
-  },
-  secondaryBtnText: { color: ACCENT, fontFamily: font.bold, fontSize: 13.5 },
-  challengePad: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
-  challengeTitle: { fontFamily: font.bold, fontSize: 15.5, color: INK },
-  officialLabel: { fontFamily: font.extrabold, fontSize: 9.5, color: ACCENT, letterSpacing: 0.6 },
-  challengeMeta: { fontFamily: font.medium, fontSize: 12.5, color: INK_SOFT, marginTop: 2 },
-  challengeGoal: { fontFamily: font.medium, fontSize: 11.5, color: INK_SOFT, marginTop: 2 },
-  joinBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: radius.pill,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    minHeight: 36,
+    minHeight: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  joinedBtn: { backgroundColor: 'rgba(30,27,75,0.08)' },
-  joinText: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
-  joinedText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 13 },
+  secondaryBtnText: { color: palette.accent, fontFamily: font.bold, fontSize: 13.5 },
+  challengePad: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
+  challengeCopy: { flex: 1, minWidth: 0 },
+  challengeTitle: { fontFamily: font.bold, fontSize: 15.5, color: palette.ink },
+  officialLabel: { fontFamily: font.extrabold, fontSize: 9.5, color: palette.accent, letterSpacing: 0.6 },
+  challengeMeta: { fontFamily: font.medium, fontSize: 12.5, color: palette.inkSoft, marginTop: 2 },
+  challengeGoal: { fontFamily: font.medium, fontSize: 11.5, color: palette.inkSoft, marginTop: 2 },
+  joinBtn: {
+    backgroundColor: palette.accent,
+    borderRadius: radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    minHeight: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinedBtn: { backgroundColor: palette.faintInk },
+  joinText: { color: palette.onAccent, fontFamily: font.bold, fontSize: 13 },
+  joinedText: { color: palette.inkSoft, fontFamily: font.bold, fontSize: 13 },
   mapBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: palette.segmentSurface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.segmentBorder,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 48,
   },
-  mapBtnText: { flex: 1, fontFamily: font.bold, fontSize: 14, color: INK },
+  mapBtnText: { flex: 1, fontFamily: font.bold, fontSize: 14, color: palette.ink },
   flexBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: palette.subtleAccent,
     borderWidth: 1,
-    borderColor: 'rgba(37,99,235,0.3)',
+    borderColor: palette.accentBorder,
     borderRadius: radius.pill,
     paddingVertical: 12,
-    minHeight: 44,
+    minHeight: spacing.touch,
   },
-  flexBtnText: { fontFamily: font.bold, fontSize: 14, color: ACCENT },
+  flexBtnText: { flexShrink: 1, fontFamily: font.bold, fontSize: 14, color: palette.accent, textAlign: 'center' },
 });

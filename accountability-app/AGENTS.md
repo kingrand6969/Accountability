@@ -8,7 +8,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
 - EAS project ID: `f91c0791-4a6e-4080-88fd-5cc9a4e720bf`
 - Staging mobile build: Android `preview` profile, internal APK distribution
 - Staging update channel/environment: `preview`
-- Staging app identity: `AccountAbility Staging`
+- Staging app identity: `Mantle Staging`
   (`com.awldesk.accountability.staging`)
 - Production mobile build: `production` profile and `production` channel
 - Never deploy the `production` profile or publish to the `production` channel
@@ -18,3 +18,14 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before 
   either location.
 - This is a multi-project Git workspace. Run EAS from `accountability-app` with
   `EAS_NO_VCS=1` so unrelated projects and repository history are not uploaded.
+- The EAS `preview` environment must define the project-scoped plain-text
+  variable `APP_VARIANT=staging`; never assign it to `production` for staging.
+- `app.config.js` accepts only `staging` or `production`, defaults a missing
+  value to staging, rejects invalid non-empty values, and requires explicit
+  `APP_VARIANT=production` for the production public identity.
+- Before every preview update, also set local `APP_VARIANT=staging`, resolve the
+  public Expo config, and fail closed unless name=`Mantle Staging`,
+  scheme=`accountabilityapp-staging`, Android/iOS IDs both equal
+  `com.awldesk.accountability.staging`, `extra.appVariant=preview`, and
+  `extra.eas.projectId=f91c0791-4a6e-4080-88fd-5cc9a4e720bf`. Publish only
+  with `--channel preview --environment preview`.

@@ -38,7 +38,7 @@ export function VerifiedRunOverlay({ data }: { data: Record<string, unknown> }) 
           width={traceWidth}
           height={78}
           stroke={3}
-          accent="#4f8cff"
+          accent="#B9FF3D"
           pad={8}
           style={styles.route}
         />

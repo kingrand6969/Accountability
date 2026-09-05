@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors } from './theme';
+import { useAppTheme } from './AppThemeProvider';
 
 /** A tappable checkbox with a comfortable (44pt) hit area. The label is passed
  *  as children so it can contain tappable links. */
@@ -17,6 +17,7 @@ export function Checkbox({
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       onPress={() => onChange(!checked)}
@@ -26,8 +27,14 @@ export function Checkbox({
       hitSlop={6}
       style={({ pressed }) => [styles.row, pressed && styles.pressed, style]}
     >
-      <View style={[styles.box, checked && styles.boxOn]}>
-        {checked ? <Ionicons name="checkmark" size={15} color="#fff" /> : null}
+      <View
+        style={[
+          styles.box,
+          { borderColor: theme.border.subtle, backgroundColor: theme.surface.muted },
+          checked && { borderColor: theme.border.action, backgroundColor: theme.ink.action },
+        ]}
+      >
+        {checked ? <Ionicons name="checkmark" size={15} color={theme.ink.inverse} /> : null}
       </View>
       <View style={styles.label}>{children}</View>
     </Pressable>
@@ -42,12 +49,9 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
-    backgroundColor: colors.surface,
   },
-  boxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   label: { flex: 1 },
 });

@@ -1,6 +1,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import {
+  beginImmersiveRefresh,
   deriveImmersivePostState,
   createImmersiveOperationToken,
   beginImmersiveOperation,
@@ -8,7 +9,9 @@ import {
   ImmersiveOperationCoordinator,
   immersiveOperationOwnsCompletion,
   immersiveResultBelongsToView,
+  postDetailStatusBarStyle,
   presentImmersivePost,
+  usesImmersivePostSurface,
   visibleImmersiveSnapshot,
 } from './ImmersivePost';
 import type { FeedPost } from './types';
@@ -19,6 +22,9 @@ jest.mock('./PostVideo', () => ({ PostVideo: () => null }));
 
 const routeSource = readFileSync(require.resolve('../app/(app)/post/[id]'), 'utf8');
 const componentSource = readFileSync(require.resolve('./ImmersivePost'), 'utf8');
+const appConfig = JSON.parse(
+  readFileSync(require.resolve('../../app.json'), 'utf8'),
+) as { expo?: { android?: { softwareKeyboardLayoutMode?: string } } };
 
 function jsxCalls(componentSource: string, componentName: string): string[] {
   return [
@@ -54,6 +60,7 @@ const post = {
 describe('Group 3 immersive Post Detail contract', () => {
   test('derives explicit loading, retry, missing, revoked, offline, and comment states', () => {
     expect(deriveImmersivePostState({ loading: true, post: null })).toBe('loading');
+    expect(deriveImmersivePostState({ loading: true, post })).toBe('comments-empty');
     expect(deriveImmersivePostState({ loading: false, post: null, error: 'network' })).toBe('retryable-error');
     expect(deriveImmersivePostState({ loading: false, post: null })).toBe('unavailable');
     expect(deriveImmersivePostState({ loading: false, post, online: false, cached: true })).toBe('offline-cached');
@@ -85,6 +92,111 @@ describe('Group 3 immersive Post Detail contract', () => {
       privacyLabel: 'Author details unavailable',
     });
     expect(presentImmersivePost({ ...post, post_type: 'photo' }, 'owner').run).toBe(false);
+  });
+
+  test('keeps the same loaded view visible while a refresh runs in the background', () => {
+    const snapshot = {
+      viewKey: 'post-a:owner',
+      post,
+      comments: [{ id: 'comment-a' }],
+      encouragers: [{ id: 'supporter-a' }],
+      voices: [{ id: 'voice-a' }],
+      commentsLoading: false,
+      commentsError: true,
+    };
+    const refreshedPost = { ...post, body: 'Fresh server body' };
+
+    expect(
+      beginImmersiveRefresh(snapshot, 'post-a:owner', refreshedPost, true),
+    ).toEqual({
+      ...snapshot,
+      post: refreshedPost,
+      commentsLoading: true,
+      commentsError: false,
+    });
+    expect(
+      beginImmersiveRefresh(snapshot, 'post-b:owner', refreshedPost, true),
+    ).toEqual({
+      viewKey: 'post-b:owner',
+      post: refreshedPost,
+      comments: [],
+      encouragers: [],
+      voices: [],
+      commentsLoading: true,
+      commentsError: false,
+    });
+    expect(
+      beginImmersiveRefresh(snapshot, 'post-a:owner', null, true),
+    ).toEqual({
+      viewKey: 'post-a:owner',
+      post: null,
+      comments: [],
+      encouragers: [],
+      voices: [],
+      commentsLoading: false,
+      commentsError: false,
+    });
+  });
+
+  test('uses readable light status bar ink for every permanent-dark post surface', () => {
+    expect(postDetailStatusBarStyle(null)).toBe('light');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'post' })).toBe('light');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'event' })).toBe('light');
+    expect(
+      postDetailStatusBarStyle({
+        ...post,
+        post_type: 'photo',
+        share_data: { verified: false },
+      }),
+    ).toBe('light');
+    expect(
+      postDetailStatusBarStyle({
+        ...post,
+        post_type: 'video',
+        share_data: {},
+      }),
+    ).toBe('light');
+    expect(postDetailStatusBarStyle({ ...post, post_type: 'photo' })).toBe('light');
+    expect(postDetailStatusBarStyle(post)).toBe('light');
+    expect(routeSource).toContain("import { StatusBar } from 'expo-status-bar'");
+    expect(routeSource).toContain(
+      'isFocused ? <StatusBar style={postDetailStatusBarStyle(post)} animated /> : null',
+    );
+  });
+
+  test('reserves the athletic hero for runs and verified athletic proof', () => {
+    expect(
+      usesImmersivePostSurface({
+        ...post,
+        post_type: 'photo',
+        share_data: { verified: false },
+      }),
+    ).toBe(false);
+    expect(
+      usesImmersivePostSurface({
+        ...post,
+        post_type: 'video',
+        share_data: {},
+      }),
+    ).toBe(false);
+    expect(usesImmersivePostSurface({ ...post, post_type: 'photo' })).toBe(true);
+    expect(usesImmersivePostSurface({ ...post, post_type: 'video' })).toBe(true);
+    expect(usesImmersivePostSurface(post)).toBe(true);
+    expect(usesImmersivePostSurface({ ...post, image_url: null })).toBe(false);
+    expect(usesImmersivePostSurface({ ...post, post_type: 'post' })).toBe(false);
+    expect(
+      usesImmersivePostSurface({
+        ...post,
+        post_type: 'event',
+        event: {
+          id: 'event-a',
+          title: 'Saturday long run',
+          starts_at: '2026-08-22T06:00:00Z',
+          location: 'Kings Park',
+          group_id: 'group-a',
+        },
+      }),
+    ).toBe(false);
   });
 
   test('operation tokens synchronously reject duplicates and stale completions', () => {
@@ -150,6 +262,11 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain("viewState === 'offline-uncached'");
     expect(routeSource).toContain('dataViewKeyRef.current');
     expect(routeSource).toContain('sameLoadedView && !onlineRef.current');
+    expect(routeSource).toContain('setLoading(!sameLoadedView)');
+    expect(routeSource).toContain('void load({ preserveVisible: sameLoadedView })');
+    expect(routeSource).toContain(
+      'beginImmersiveRefresh(current, requestedViewKey, loadedPost, preserveVisible)',
+    );
   });
 
   test('opens encouragement from the canonical query and preserves all actions', () => {
@@ -171,7 +288,16 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(routeSource).toContain('viewGeneration.current += 1');
     expect(componentSource).toContain('label="Cheer this post"');
     expect(componentSource).toContain('label="Comment on this post"');
-    expect(componentSource).toContain('label="Share this post"');
+    const shareActions = jsxCalls(componentSource, 'Action').filter((call) =>
+      call.includes('onPress={onShare}'),
+    );
+    expect(shareActions).toHaveLength(2);
+    for (const shareAction of shareActions) {
+      expect(shareAction).toMatch(/\bicon=["']share-outline["']/);
+      expect(shareAction).toMatch(/\blabel=["']Share this post["']/);
+      expect(shareAction).toMatch(/\bshortLabel=["']Share["']/);
+    }
+    expect(componentSource).not.toContain('paper-plane-outline');
     expect(componentSource).toContain('accessibilityLabel={label}');
   });
 
@@ -255,6 +381,77 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(navigate).toHaveBeenCalledTimes(1);
   });
 
+  test('keeps the comment composer above edge-to-edge Android keyboards exactly once', () => {
+    expect(appConfig.expo?.android?.softwareKeyboardLayoutMode).toBe('resize');
+    expect(routeSource).toContain('<KeyboardAvoidingView');
+    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : 'height'}");
+    expect(routeSource).toContain("keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}");
+    expect(routeSource).not.toContain("Keyboard.addListener('keyboardDidShow'");
+    expect(routeSource).not.toContain("Keyboard.addListener('keyboardDidHide'");
+    expect(routeSource).not.toContain('keyboardInset');
+    expect(routeSource).not.toContain('translateY: -keyboardInset');
+  });
+
+  test('focuses the comment composer only for an explicit comment route intent', () => {
+    expect(routeSource).toContain('comment?: string');
+    expect(routeSource).toContain("comment !== '1'");
+    expect(routeSource).toContain('inputRef.current?.focus()');
+    expect(routeSource).not.toMatch(/<TextInput[\s\S]{0,300}\bautoFocus\b/);
+  });
+
+  test('keeps a visible safe Back action in every pre-content state', () => {
+    expect(routeSource.match(/<PostDetailState\b/g)).toHaveLength(2);
+    expect(routeSource).toContain('accessibilityLabel="Back"');
+    expect(routeSource).toContain('onBack={() => navigateBackSafely(router)}');
+  });
+
+  test('renders text and event details as one compact normal post instead of a fake media hero', () => {
+    expect(componentSource).toContain('if (!usesImmersivePostSurface(post))');
+    expect(componentSource).toContain('<CompactPostSurface');
+    expect(componentSource).toContain('post.event.title');
+    expect(componentSource).toContain('post.event.starts_at');
+    expect(componentSource).toContain('post.event.location');
+    expect(componentSource).not.toContain('Media unavailable');
+    expect(componentSource).not.toContain('minHeight: 720');
+    expect(componentSource).not.toContain('presentation.privacyLabel || post.body');
+  });
+
+  test('renders ordinary photos in the clean natural-size detail viewer', () => {
+    expect(componentSource).toContain('<PostImage url={post.image_url} detail />');
+    expect(componentSource).not.toContain('<PostImage url={post.image_url} capTall />');
+    expect(componentSource).not.toMatch(/compactMedia:\s*\{[^}]*minHeight/s);
+  });
+
+  test('preserves the focused-route playback lifecycle for ordinary video detail', () => {
+    expect(componentSource).toContain('mediaActive={mediaActive}');
+    expect(componentSource).toContain(
+      '<PostVideo url={post.image_url} detail active={mediaActive} />',
+    );
+  });
+
+  test('uses the approved Solid Signal for Cheer and truthful empty-comment copy', () => {
+    expect(componentSource).toContain('<Action icon="cheer"');
+    expect(componentSource).toContain("name={active ? 'thumbs-up' : 'thumbs-up-outline'}");
+    expect(componentSource).not.toContain('hand-left-outline');
+    expect(componentSource).not.toContain('hand-right-outline');
+    expect(componentSource).not.toContain('function CheerIcon(');
+    expect(componentSource).not.toContain("icon={post.liked_by_me ? 'flame' : 'flame-outline'}");
+    expect(routeSource).toContain('title="Be the first to comment"');
+    expect(routeSource).toContain('subtitle="Share something supportive about this post."');
+    expect(routeSource).not.toContain('Be the first to Cheer');
+  });
+
+  test('uses one authoritative header and 48dp detail action targets', () => {
+    expect(componentSource).toContain('iconButton: { width: spacing.touch, height: spacing.touch');
+    expect(componentSource).toContain('action: { flex: 1, minHeight: 48');
+    expect(componentSource).toContain('plainIconButton: {');
+    expect(componentSource).toContain('width: spacing.touch');
+    expect(componentSource).toContain('height: spacing.touch');
+    expect(componentSource).toContain('useSafeAreaInsets()');
+    expect(componentSource).toContain('topInset={insets.top}');
+    expect(componentSource).toContain('Math.max(insets.top + spacing.xs, spacing.xxl)');
+  });
+
   test('matches the approved immersive first viewport visual contract', () => {
     expect(componentSource).toContain('minHeight: height');
     expect(componentSource).toContain('label="Back"');
@@ -270,16 +467,10 @@ describe('Group 3 immersive Post Detail contract', () => {
     expect(componentSource).toContain('chevron-forward');
     expect(componentSource).toContain('actionBar');
     expect(componentSource).toContain("backgroundColor: 'rgba(2,8,20,.78)'");
-    expect(routeSource).toContain('<KeyboardAvoidingView');
-    expect(routeSource).toContain("behavior={Platform.OS === 'ios' ? 'padding' : undefined}");
-    expect(routeSource).toContain("Keyboard.addListener('keyboardDidShow'");
-    expect(routeSource).toContain("Keyboard.addListener('keyboardDidHide'");
-    expect(routeSource).toContain('translateY: -keyboardInset');
-    expect(routeSource).toContain("keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}");
     expect(routeSource).not.toContain('ListFooterComponent={');
     expect(routeSource).toMatch(/<FlatList[\s\S]*?\/>\s*<View[\s\S]*?styles\.inputBar[\s\S]*?<TextInput/);
     expect(routeSource).toContain('Math.max(insets.bottom, spacing.sm)');
-    expect(componentSource).toContain('style={styles.photoContain}');
+    expect(componentSource).toContain('style={immersiveStyles.photoContain}');
     expect(componentSource).not.toMatch(/<PostImage[\s\S]{0,250}transform:/);
   });
 

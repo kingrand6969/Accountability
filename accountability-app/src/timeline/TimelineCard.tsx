@@ -1,10 +1,11 @@
-import type { ComponentProps } from 'react';
+import { useMemo, type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { typeMeta, formatTime } from './format';
 import type { TimelineItem } from './types';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -16,6 +17,9 @@ export function TimelineCard({
   onDelete: (item: TimelineItem) => void;
 }) {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => timelinePalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const meta = typeMeta(item.type);
   const checklist = item.checklist ?? [];
   const hasList = checklist.length > 0;
@@ -28,10 +32,11 @@ export function TimelineCard({
       <Pressable
         style={({ pressed }) => [styles.body, pressed && styles.cardPressed]}
         onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })}
+        accessibilityRole="button"
         accessibilityLabel={`Open ${item.title}`}
       >
         <Text style={styles.time}>{formatTime(item.starts_at)}</Text>
-        <View style={[styles.iconBadge, { backgroundColor: `${meta.tint}18` }]}>
+        <View style={[styles.iconBadge, { backgroundColor: `${meta.tint}${palette.iconBadgeAlpha}` }]}>
           <Ionicons name={meta.icon as IoniconName} size={18} color={meta.tint} />
         </View>
         <View style={styles.bodyText}>
@@ -41,43 +46,57 @@ export function TimelineCard({
           <View style={styles.indicators}>
             {hasList ? (
               <View style={styles.badge}>
-                <Ionicons name="checkbox-outline" size={12} color={colors.primary} />
+                <Ionicons name="checkbox-outline" size={12} color={palette.action} />
                 <Text style={styles.badgeText}>
                   {doneCount}/{checklist.length}
                 </Text>
               </View>
             ) : item.note ? (
               <View style={styles.badge}>
-                <Ionicons name="document-text-outline" size={12} color={colors.textMuted} />
+                <Ionicons name="document-text-outline" size={12} color={palette.mutedInk} />
                 <Text style={styles.badgeMuted}>Note</Text>
               </View>
             ) : null}
             {item.reminder_id ? (
-              <Ionicons name="notifications-outline" size={13} color={colors.textMuted} />
+              <Ionicons name="notifications-outline" size={13} color={palette.mutedInk} />
             ) : null}
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+        <Ionicons name="chevron-forward" size={16} color={palette.quietInk} />
       </Pressable>
       <Pressable
         onPress={() => onDelete(item)}
         hitSlop={8}
         style={({ pressed }) => [styles.delete, pressed && styles.pressed]}
+        accessibilityRole="button"
         accessibilityLabel={`Delete ${item.title}`}
       >
-        <Ionicons name="close" size={18} color={colors.textFaint} />
+        <Ionicons name="close" size={18} color={palette.quietInk} />
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function timelinePalette(theme: AppThemeColors) {
+  return {
+    surface: theme.surface.card,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    ink: theme.ink.primary,
+    mutedInk: theme.ink.muted,
+    quietInk: theme.ink.muted,
+    badgeSurface: theme.surface.raised,
+    iconBadgeAlpha: '2E',
+  } as const;
+}
+
+const createStyles = (palette: ReturnType<typeof timelinePalette>) => StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     paddingRight: spacing.xs,
   },
@@ -89,7 +108,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
   },
-  time: { fontSize: 13, fontFamily: font.bold, color: colors.primary, width: 44 },
+  time: { fontSize: 13, fontFamily: font.bold, color: palette.action, width: 44 },
   iconBadge: {
     width: 36,
     height: 36,
@@ -98,19 +117,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bodyText: { flex: 1, gap: 3 },
-  title: { fontSize: 15.5, fontFamily: font.semibold, color: colors.text },
+  title: { fontSize: 15.5, fontFamily: font.semibold, color: palette.ink },
   indicators: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.badgeSurface,
     borderRadius: radius.pill,
     paddingVertical: 2,
     paddingHorizontal: 7,
   },
-  badgeText: { fontFamily: font.bold, fontSize: 11.5, color: colors.primary },
-  badgeMuted: { fontFamily: font.semibold, fontSize: 11.5, color: colors.textMuted },
+  badgeText: { fontFamily: font.bold, fontSize: 11.5, color: palette.action },
+  badgeMuted: { fontFamily: font.semibold, fontSize: 11.5, color: palette.mutedInk },
   delete: {
     minWidth: 40,
     minHeight: 40,

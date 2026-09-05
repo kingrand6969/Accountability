@@ -1,6 +1,11 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import type { AppThemeColors } from '../ui/theme';
 
 export function EditorialBackdrop() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <View style={styles.paper} />
@@ -11,12 +16,12 @@ export function EditorialBackdrop() {
   );
 }
 
-const styles = StyleSheet.create({
-  paper: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#F7F4EC' },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  paper: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: theme.surface.canvas },
   contour: {
     position: 'absolute',
     borderWidth: 1,
-    borderColor: 'rgba(125,105,72,0.075)',
+    borderColor: theme.border.subtle,
     borderRadius: 999,
     transform: [{ rotate: '-18deg' }],
   },

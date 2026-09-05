@@ -63,6 +63,12 @@ async function me(): Promise<string> {
   return uid;
 }
 
+async function assertExpectedOwner(expectedOwnerId?: string): Promise<string> {
+  const uid = await me();
+  if (expectedOwnerId && uid !== expectedOwnerId) throw new Error('Account changed.');
+  return uid;
+}
+
 export async function getMemoriesUsage(): Promise<number> {
   const { data, error } = await supabase.rpc('memories_usage');
   if (error) throw error;
@@ -125,8 +131,9 @@ async function uploadBuffer(
   kind: 'image' | 'video',
   location: string | null,
   tagged: string[] | null,
+  expectedOwnerId?: string,
 ): Promise<MemorySaveConfirmation> {
-  const uid = await me();
+  const uid = await assertExpectedOwner(expectedOwnerId);
   if (buf.byteLength > MAX_FILE_BYTES) {
     throw new Error(`That file is too big (max ${formatBytes(MAX_FILE_BYTES)}).`);
   }
@@ -135,11 +142,13 @@ async function uploadBuffer(
     throw new Error('Memories storage is full (1 GB). Delete some memories to save more.');
   }
   const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  await assertExpectedOwner(expectedOwnerId);
   const { error } = await supabase.storage.from('memories').upload(path, buf, {
     contentType,
     cacheControl: '31536000', // unique path → cache forever at the CDN
   });
   if (error) throw error;
+  await assertExpectedOwner(expectedOwnerId);
   const { error: rowError } = await supabase
     .from('memories')
     .insert({ path, kind, bytes: buf.byteLength, location, tagged });
@@ -167,6 +176,7 @@ export async function saveImageToMemories(
   localUri: string,
   location: string | null = null,
   tagged: string[] | null = null,
+  expectedOwnerId?: string,
 ): Promise<MemorySaveConfirmation> {
   const shrunk = await ImageManipulator.manipulateAsync(
     localUri,
@@ -181,6 +191,7 @@ export async function saveImageToMemories(
     'image',
     location,
     tagged && tagged.length > 0 ? tagged : null,
+    expectedOwnerId,
   );
 }
 

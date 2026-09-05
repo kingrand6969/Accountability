@@ -1,15 +1,18 @@
-import { forwardRef, type ReactNode, type Ref } from 'react';
+import { forwardRef, useMemo, type ReactNode, type Ref } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import { BlurView, BlurTargetView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import { useAppTheme } from './AppThemeProvider';
+import type { AppThemeColors } from './theme';
+import { withAlpha } from './surfaces';
 
 /**
  * Real glassmorphism needs saturated shapes BEHIND the glass — blurring a flat
  * gradient is invisible. GlassBackdrop paints a quiet base gradient plus soft
  * 3D "spheres" that cross the glass panels' edges; GlassCard is the frosted
  * panel itself (radius+clip+border on the BlurView, shadow on the wrapper,
- * white plate for text contrast — per platform quirks).
+ * dark plate for text contrast — per platform quirks).
  */
 
 /** A soft radial glow that fades fully to transparent at its edge — so it reads
@@ -23,7 +26,7 @@ function Sphere({
 }: {
   id: string;
   size: number;
-  colors: [string, string];
+  colors: readonly [string, string];
   style: ViewStyle;
   opacity: number;
 }) {
@@ -46,10 +49,17 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
   { columnWidth = 600 }: { columnWidth?: number },
   ref: Ref<View>,
 ) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const backdropColors = [theme.surface.canvas, theme.surface.card, theme.surface.raised] as const;
+  const blobA = [theme.ink.action, theme.surface.raised] as const;
+  const blobB = [theme.status.attention, theme.surface.muted] as const;
+  const blobC = [theme.ink.action, theme.surface.muted] as const;
+
   return (
     <BlurTargetView ref={ref as never} style={StyleSheet.absoluteFill}>
       <LinearGradient
-        colors={['#EDF4FC', '#DEEAF8', '#C9DCF4']}
+        colors={backdropColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -61,23 +71,23 @@ export const GlassBackdrop = forwardRef(function GlassBackdrop(
         <Sphere
           id="blobA"
           size={460}
-          colors={['#DBEAFE', '#93C5FD']}
+          colors={blobA}
           style={{ top: -140, left: -160 }}
-          opacity={0.85}
+          opacity={0.22}
         />
         <Sphere
           id="blobB"
           size={380}
-          colors={['#FFE4F0', '#F4BCD8']}
+          colors={blobB}
           style={{ top: 220, right: -150 }}
-          opacity={0.7}
+          opacity={0.12}
         />
         <Sphere
           id="blobC"
           size={520}
-          colors={['#E1EEFF', '#B7D6F7']}
+          colors={blobC}
           style={{ top: 560, left: -190 }}
-          opacity={0.6}
+          opacity={0.16}
         />
       </View>
     </BlurTargetView>
@@ -88,31 +98,36 @@ export function GlassCard({
   children,
   style,
   blurTarget,
-  plateOpacity = 0.45,
+  plateOpacity = 0.82,
 }: {
   children: ReactNode;
   style?: ViewStyle;
   blurTarget?: React.RefObject<View | null>;
-  /** 0.45 keeps ~4.5:1 ink contrast while letting the blobs glow through */
+  /** Clamped to 0..1. The 0.82 default preserves text contrast while revealing blur. */
   plateOpacity?: number;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const borderColors = [theme.border.strong, theme.border.subtle, theme.ink.action] as const;
+  const sheenColors = ['rgba(185,255,61,0.14)', 'rgba(185,255,61,0.03)', 'transparent'] as const;
+
   return (
     <View style={[styles.shadowWrap, style]}>
       {/* gradient BORDER — a 1.5px light edge that catches the light top-left and
           bottom-right, the signature glass rim. Renders identically on every
           platform, so the panel reads as glass even where native blur is weak. */}
       <LinearGradient
-        colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.7)']}
+        colors={borderColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.borderGrad}
       >
-        {/* lower intensity = less white cast from the tint overlay (the fallback
+        {/* lower intensity = less cast from the tint overlay (the fallback
             path in Expo Go / web), so the backdrop colour glows through — the
-            actual glass effect. The white plate below guards text contrast. */}
+            actual glass effect. The dark plate below guards text contrast. */}
         <BlurView
           intensity={Platform.select({ ios: 40, android: 45, web: 35, default: 45 })}
-          tint="light"
+          tint="dark"
           blurMethod="dimezisBlurViewSdk31Plus"
           blurReductionFactor={2}
           blurTarget={(blurTarget as never) ?? undefined}
@@ -120,11 +135,14 @@ export function GlassCard({
         >
           {/* base plate keeps ink legible */}
           <View
-            style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(255,255,255,${plateOpacity})` }]}
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: withAlpha(theme.surface.card, plateOpacity) },
+            ]}
           />
           {/* diagonal sheen — the frosted-glass highlight */}
           <LinearGradient
-            colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
+            colors={sheenColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -137,7 +155,7 @@ export function GlassCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   blobColumn: {
     position: 'absolute',
     top: 0,
@@ -152,7 +170,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'android'
       ? {} // elevation bleeds grey through translucent children — skip on Android
       : {
-          shadowColor: '#1E3A8A',
+          shadowColor: theme.surface.canvas,
           shadowOffset: { width: 0, height: 16 },
           shadowOpacity: 0.16,
           shadowRadius: 32,

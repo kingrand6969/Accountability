@@ -10,29 +10,40 @@ export type PendingRecordedActivity = {
   activity: NewActivity;
 };
 
-export type RunCompletionDependencies = {
+export type FinalizedRecordedActivityEnvelope = {
+  recording: PendingRecordedActivity;
+};
+
+export type RunCompletionDependencies<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+> = {
+  claimFinalized: (finalized: TFinalized) => Promise<void>;
   enqueueActivity: (
     ownerId: string,
     activity: NewActivity,
     id: string,
   ) => Promise<QueuedActivity>;
-  clearRecording: (activityId: string) => Promise<void>;
+  acknowledgeFinalized: (finalized: TFinalized) => Promise<void>;
 };
 
 /**
- * Makes the offline queue the durable handoff boundary. Raw GPS is retained
- * unless and until the stable activity ID has been confirmed in that queue.
+ * Claims exact completion authority before the offline queue handoff. Raw GPS
+ * is retained unless and until that stable activity ID is confirmed queued.
  */
-export async function completeRecordedActivity(
-  recording: PendingRecordedActivity,
-  dependencies: RunCompletionDependencies,
+export async function completeRecordedActivity<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+>(
+  finalized: TFinalized,
+  dependencies: RunCompletionDependencies<TFinalized>,
 ): Promise<QueuedActivity> {
+  const { recording } = finalized;
+  await dependencies.claimFinalized(finalized);
   const queued = await dependencies.enqueueActivity(
     recording.ownerId,
     recording.activity,
     recording.activityId,
   );
-  await dependencies.clearRecording(recording.activityId);
+  await dependencies.acknowledgeFinalized(finalized);
   return queued;
 }
 
@@ -49,20 +60,25 @@ export type DurableCompletionResetReason =
   | 'auth_owner_change'
   | 'current_run_cleared';
 
-export type DurableCompletionController = {
+export type DurableCompletionController<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+> = {
   complete: (
-    recording: PendingRecordedActivity,
+    finalized: TFinalized,
   ) => Promise<QueuedActivity>;
+  isCompleting: (activityId?: string) => boolean;
   reset: (reason: DurableCompletionResetReason) => void;
   dispose: () => void;
 };
 
-export function createDurableCompletionController(
-  dependencies: RunCompletionDependencies & {
+export function createDurableCompletionController<
+  TFinalized extends FinalizedRecordedActivityEnvelope,
+>(
+  dependencies: RunCompletionDependencies<TFinalized> & {
     onConfirm: (confirmation: DurableQueueConfirmation) => void;
     onReset: (reason: DurableCompletionResetReason) => void;
   },
-): DurableCompletionController {
+): DurableCompletionController<TFinalized> {
   let disposed = false;
   let revision = 0;
   let inFlight: {
@@ -71,8 +87,9 @@ export function createDurableCompletionController(
   } | null = null;
 
   const complete = (
-    recording: PendingRecordedActivity,
+    finalized: TFinalized,
   ): Promise<QueuedActivity> => {
+    const { recording } = finalized;
     if (disposed) {
       return Promise.reject(
         new Error('Durable completion controller is disposed.'),
@@ -88,7 +105,7 @@ export function createDurableCompletionController(
     }
 
     const expectedRevision = revision;
-    const promise = completeRecordedActivity(recording, dependencies)
+    const promise = completeRecordedActivity(finalized, dependencies)
       .then((queued) => {
         if (!disposed && revision === expectedRevision) {
           dependencies.onConfirm({
@@ -112,6 +129,9 @@ export function createDurableCompletionController(
 
   return {
     complete,
+    isCompleting: (activityId) =>
+      inFlight !== null &&
+      (activityId === undefined || inFlight.activityId === activityId),
     reset: (reason) => {
       if (disposed) return;
       revision += 1;
@@ -128,7 +148,7 @@ export function createDurableCompletionController(
 export type RunSyncPresentation = {
   queued: boolean;
   status: UploadStatus | null;
-  title: 'Saved on phone';
+  title: 'Run saved';
   detail: string;
   feedDisabledReason: string | null;
 };
@@ -136,14 +156,14 @@ export type RunSyncPresentation = {
 function detailFor(status: UploadStatus): string {
   switch (status) {
     case 'uploading':
-      return 'Uploading now';
+      return 'Syncing to your account';
     case 'needs_sign_in':
-      return 'Sign in to upload automatically';
+      return 'Sign in to sync this run';
     case 'needs_attention':
-      return 'Upload needs attention';
+      return 'Sync needs attention';
     case 'saved':
     case 'waiting_network':
-      return 'Uploads automatically when online';
+      return 'Syncs automatically when online';
   }
 }
 
@@ -158,7 +178,7 @@ export function runSyncPresentation(
     return {
       queued: true,
       status: queued.status,
-      title: 'Saved on phone',
+      title: 'Run saved',
       detail,
       feedDisabledReason: detail,
     };
@@ -167,11 +187,11 @@ export function runSyncPresentation(
   return {
     queued: false,
     status: null,
-    title: 'Saved on phone',
+    title: 'Run saved',
     detail:
       initialStatus === 'waiting_network'
         ? detailFor(initialStatus)
-        : 'Uploaded',
+        : 'Synced to your account',
     feedDisabledReason: null,
   };
 }

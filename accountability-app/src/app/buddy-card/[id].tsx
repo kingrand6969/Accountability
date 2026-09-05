@@ -1,13 +1,15 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type ImageStyle,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -50,7 +52,17 @@ import { supabase } from '../../lib/supabase';
 import { authorLabel, timeAgo } from '../../feed/format';
 import { Button } from '../../ui/Button';
 import { showToast } from '../../ui/Toast';
-import { colors, font, radius, shadow, spacing, contentMax } from '../../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+} from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
+import { navigateBackSafely } from '../../navigation/routeAccessContract';
+import { CachedImage } from '../../ui/CachedImage';
+import { useResolvedImageUrl } from '../../media/useResolvedImageUrl';
 
 type ModerationContext = Readonly<{
   loadToken: BuddyCardLoadToken;
@@ -59,10 +71,43 @@ type ModerationContext = Readonly<{
   name: string | null;
 }>;
 
+type BuddyCardPostThumbnailProps = Readonly<{
+  post: CardPost;
+  imageStyle: StyleProp<ImageStyle>;
+  placeholderStyle: StyleProp<ViewStyle>;
+  iconColor: string;
+}>;
+
+function BuddyCardPostThumbnail({
+  post,
+  imageStyle,
+  placeholderStyle,
+  iconColor,
+}: BuddyCardPostThumbnailProps) {
+  const resolvedImageUrl = useResolvedImageUrl(post.post_type === 'video' ? null : post.image_url);
+
+  if (resolvedImageUrl) {
+    return <CachedImage uri={resolvedImageUrl} style={imageStyle} contentFit="cover" />;
+  }
+
+  return (
+    <View style={placeholderStyle}>
+      <Ionicons
+        name={post.post_type === 'video' ? 'videocam-outline' : 'chatbox-ellipses-outline'}
+        size={20}
+        color={iconColor}
+      />
+    </View>
+  );
+}
+
 export default function BuddyCardScreen() {
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => buddyCardShellPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [view, setView] = useState<BuddyCardView | null>(null);
   const [stats, setStats] = useState<BuddyStats | null>(null);
   const [boardRank, setBoardRank] = useState<BoardRank | null>(null);
@@ -420,7 +465,7 @@ export default function BuddyCardScreen() {
       showToast('Blocked');
       moderationLockRef.current.release(actionToken);
       if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
-      router.back();
+      navigateBackSafely(router);
     } catch (e) {
       if (!moderationContextIsCurrent(context, actionToken)) return;
       if (/account changed/i.test(String((e as Error).message ?? e))) return;
@@ -473,7 +518,7 @@ export default function BuddyCardScreen() {
       showToast('Reported - thank you');
       moderationLockRef.current.release(actionToken);
       if (moderationTokenRef.current === actionToken) moderationTokenRef.current = null;
-      router.back();
+      navigateBackSafely(router);
     } catch (e) {
       if (!moderationContextIsCurrent(context, actionToken)) return;
       if (/account changed/i.test(String((e as Error).message ?? e))) return;
@@ -487,7 +532,7 @@ export default function BuddyCardScreen() {
   if (loading || (view != null && view.id !== id)) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
         <Text style={styles.loadingText}>Loading Buddy Card...</Text>
       </View>
     );
@@ -498,7 +543,7 @@ export default function BuddyCardScreen() {
         <Ionicons
           name={loadError ? 'cloud-offline-outline' : 'person-circle-outline'}
           size={42}
-          color={colors.textFaint}
+          color={palette.faintInk}
         />
         <Text style={styles.missing}>
           {loadError ? 'Could not load Buddy Card' : 'This Buddy Card is unavailable.'}
@@ -511,7 +556,7 @@ export default function BuddyCardScreen() {
             accessibilityLabel="Retry loading Buddy Card"
             style={({ pressed }) => [styles.retry, pressed && styles.retryPressed]}
           >
-            <Ionicons name="refresh" size={18} color="#fff" />
+            <Ionicons name="refresh" size={18} color={palette.onAction} />
             <Text style={styles.retryText}>Try again</Text>
           </Pressable>
         ) : null}
@@ -543,12 +588,12 @@ export default function BuddyCardScreen() {
                       accessibilityLabel="More options"
                       style={({ pressed }) => [styles.optionAction, pressed && { opacity: 0.6 }]}
                 >
-                  <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+                  <Ionicons name="ellipsis-vertical" size={20} color={palette.ink} />
                 </Pressable>
               ),
         }}
       />
-      <View style={styles.card}>
+      <View style={fullBuddyView ? styles.card : styles.publicCardShell}>
         {fullBuddyView ? (
           <BuddyCardFace
           name={view.name}
@@ -589,7 +634,7 @@ export default function BuddyCardScreen() {
 
       {accessMode === 'public' ? (
         <View style={styles.privacyRow}>
-          <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+          <Ionicons name="shield-checkmark-outline" size={20} color={palette.action} />
           <Text style={styles.privacyText}>
             {authorLabel(view.name)} chose everything shown on this card.
           </Text>
@@ -610,7 +655,7 @@ export default function BuddyCardScreen() {
             {ownerView || isBuddy ? 'Recent posts' : 'Shared publicly'}
           </Text>
           {posts === null ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
+            <ActivityIndicator color={palette.action} style={{ marginVertical: 12 }} />
           ) : posts.length === 0 ? (
             <Text style={styles.aboutText}>
               {ownerView || isBuddy ? 'No posts yet.' : 'No public Buddy Card posts selected.'}
@@ -628,29 +673,19 @@ export default function BuddyCardScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Open post"
                 >
-                  {p.image_url && p.post_type !== 'video' ? (
-                    <Image
-                      source={{ uri: p.image_url }}
-                      style={ownerView || isBuddy ? styles.postThumb : styles.publicPostImage}
-                    />
-                  ) : (
-                    <View
-                      style={[
-                        ownerView || isBuddy ? styles.postThumb : styles.publicPostImage,
-                        styles.postThumbFallback,
-                      ]}
-                    >
-                      <Ionicons
-                        name={p.post_type === 'video' ? 'videocam-outline' : 'chatbox-ellipses-outline'}
-                        size={20}
-                        color={colors.textFaint}
-                      />
-                    </View>
-                  )}
+                  <BuddyCardPostThumbnail
+                    post={p}
+                    imageStyle={ownerView || isBuddy ? styles.postThumb : styles.publicPostImage}
+                    placeholderStyle={[
+                      ownerView || isBuddy ? styles.postThumb : styles.publicPostImage,
+                      styles.postThumbFallback,
+                    ]}
+                    iconColor={palette.faintInk}
+                  />
                   <View style={ownerView || isBuddy ? { flex: 1 } : styles.publicPostCopy}>
                     {!ownerView && !isBuddy ? (
                       <View style={styles.publicPostChip}>
-                        <Ionicons name="globe-outline" size={12} color={colors.primary} />
+                        <Ionicons name="globe-outline" size={12} color={palette.action} />
                         <Text style={styles.publicPostChipText}>PUBLIC POST</Text>
                       </View>
                     ) : null}
@@ -673,19 +708,19 @@ export default function BuddyCardScreen() {
         <Button
           title="Edit Buddy Card"
           onPress={() => router.push('/buddy-card-edit' as never)}
-          icon={<Ionicons name="create-outline" size={18} color="#fff" />}
+          icon={<Ionicons name="create-outline" size={18} color={palette.onAction} />}
           style={styles.connect}
         />
       ) : isBuddy ? (
         <>
           <View style={styles.buddyRow}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <Ionicons name="checkmark-circle" size={18} color={palette.success} />
             <Text style={styles.buddyLabel}>You&apos;re buddies</Text>
           </View>
           <Button
             title="Message"
             onPress={() => router.push({ pathname: '/buddy-chat/[id]', params: { id: id! } })}
-            icon={<Ionicons name="chatbubble-ellipses-outline" size={17} color="#fff" />}
+            icon={<Ionicons name="chatbubble-ellipses-outline" size={17} color={palette.onAction} />}
             style={styles.connect}
           />
         </>
@@ -698,9 +733,9 @@ export default function BuddyCardScreen() {
             disabled={sent}
             icon={
               sent ? (
-                <Ionicons name="checkmark-circle-outline" size={19} color="#fff" />
+                <Ionicons name="checkmark-circle-outline" size={19} color={palette.onAction} />
               ) : (
-                <Ionicons name="person-add-outline" size={19} color="#fff" />
+                <Ionicons name="person-add-outline" size={19} color={palette.onAction} />
               )
             }
             style={styles.connect}
@@ -714,23 +749,46 @@ export default function BuddyCardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.surface },
+function buddyCardShellPalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    stateCanvas: theme.surface.canvas,
+    surface: theme.surface.card,
+    mutedSurface: theme.surface.muted,
+    ink: theme.ink.primary,
+    secondaryInk: theme.ink.secondary,
+    mutedInk: theme.ink.muted,
+    faintInk: theme.ink.muted,
+    border: theme.border.subtle,
+    chipSurface: theme.surface.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors) => {
+  const palette = buddyCardShellPalette(theme);
+  const panelFrame = { borderWidth: 1, borderColor: palette.border };
+
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   center: {
     flex: 1,
+    backgroundColor: palette.stateCanvas,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
     gap: spacing.sm,
   },
-  missing: { fontFamily: font.bold, fontSize: 17, color: colors.text },
-  loadingText: { fontFamily: font.medium, fontSize: 14, color: colors.textMuted },
+  missing: { fontFamily: font.bold, fontSize: 17, color: palette.ink },
+  loadingText: { fontFamily: font.medium, fontSize: 14, color: palette.mutedInk },
   errorDetail: {
     maxWidth: 320,
     fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: colors.textMuted,
+    color: palette.mutedInk,
     textAlign: 'center',
   },
   retry: {
@@ -742,24 +800,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
   },
   retryPressed: { opacity: 0.75 },
-  retryText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  retryText: { color: palette.onAction, fontFamily: font.bold, fontSize: 14 },
   optionAction: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: spacing.lg, paddingBottom: 40, ...contentMax },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     borderRadius: radius.xl,
     padding: spacing.md,
-    ...shadow.card,
+    ...panelFrame,
+  },
+  publicCardShell: {
+    width: '100%',
   },
   aboutCard: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     borderRadius: radius.lg,
     padding: spacing.lg,
     marginTop: spacing.md,
-    ...shadow.card,
+    ...panelFrame,
   },
   privacyRow: {
     minHeight: 48,
@@ -771,33 +832,33 @@ const styles = StyleSheet.create({
   },
   privacyText: {
     flex: 1,
-    color: colors.textSecondary,
+    color: palette.secondaryInk,
     fontFamily: font.medium,
     fontSize: 12.5,
     lineHeight: 18,
   },
-  aboutTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text, marginBottom: 6 },
-  aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: colors.textSecondary },
+  aboutTitle: { fontFamily: font.bold, fontSize: 15, color: palette.ink, marginBottom: 6 },
+  aboutText: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, color: palette.secondaryInk },
   postRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: 8,
   },
-  postThumb: { width: 48, height: 48, borderRadius: radius.sm, backgroundColor: colors.surface },
+  postThumb: { width: 48, height: 48, borderRadius: radius.sm, backgroundColor: palette.mutedSurface },
   postThumbFallback: { alignItems: 'center', justifyContent: 'center' },
   publicPostCard: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     overflow: 'hidden',
-    backgroundColor: colors.card,
+    backgroundColor: palette.surface,
     marginTop: spacing.sm,
   },
   publicPostImage: {
     width: '100%',
     aspectRatio: 16 / 9,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.mutedSurface,
   },
   publicPostCopy: { padding: spacing.md },
   publicPostChip: {
@@ -805,24 +866,24 @@ const styles = StyleSheet.create({
     minHeight: 26,
     borderRadius: radius.pill,
     paddingHorizontal: 8,
-    backgroundColor: '#eff6ff',
+    backgroundColor: palette.chipSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginBottom: 6,
   },
   publicPostChipText: {
-    color: colors.primary,
+    color: palette.action,
     fontFamily: font.extrabold,
     fontSize: 9.5,
     letterSpacing: 0.6,
   },
-  postBody: { fontFamily: font.medium, fontSize: 13.5, color: colors.text, lineHeight: 19 },
-  postTime: { fontFamily: font.regular, fontSize: 11.5, color: colors.textMuted, marginTop: 1 },
+  postBody: { fontFamily: font.medium, fontSize: 13.5, color: palette.ink, lineHeight: 19 },
+  postTime: { fontFamily: font.regular, fontSize: 11.5, color: palette.mutedInk, marginTop: 1 },
   postNote: {
     fontFamily: font.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: palette.mutedInk,
     marginTop: 8,
   },
   connect: { marginTop: spacing.md },
@@ -833,12 +894,13 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: spacing.lg,
   },
-  buddyLabel: { fontFamily: font.semibold, fontSize: 13.5, color: colors.success },
+  buddyLabel: { fontFamily: font.semibold, fontSize: 13.5, color: palette.success },
   hint: {
-    color: colors.textMuted,
+    color: palette.mutedInk,
     fontFamily: font.medium,
     fontSize: 12.5,
     textAlign: 'center',
     marginTop: spacing.sm,
   },
-});
+  });
+};

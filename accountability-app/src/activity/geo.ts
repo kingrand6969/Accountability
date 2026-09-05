@@ -102,3 +102,16 @@ export function trimRouteEnds(points: Pt[], meters = 130): Pt[] {
   if (endIdx - startIdx < 1) return points; // nothing left after trimming
   return points.slice(startIdx, endIdx + 1);
 }
+
+/**
+ * Route geometry safe for a shared card. If a 130m zone cannot be removed
+ * truthfully, never fall back to the user's exact recorded endpoints.
+ */
+export function privacySafeRoute(points: Pt[], meters = 130): Pt[] {
+  const trimmed = trimRouteEnds(points, meters);
+  const removedRecordedEndpoint =
+    trimmed.length > 0 &&
+    (trimmed[0] !== points[0] || trimmed[trimmed.length - 1] !== points[points.length - 1]);
+  if (removedRecordedEndpoint) return trimmed;
+  return points.length >= 4 ? points.slice(1, -1) : [];
+}

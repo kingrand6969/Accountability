@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,11 @@ import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { contentMaxWidth } from '../../ui/responsive';
 import { font, radius, spacing } from '../../ui/theme';
 import { showToast } from '../../ui/Toast';
-import { RankRow, INK, INK_SOFT, ACCENT } from '../../compete/CompeteUI';
+import {
+  RankRow,
+  useCompetitionTheme,
+  type CompetitionPalette,
+} from '../../compete/CompeteUI';
 import {
   getChallenge,
   getChallengeStandings,
@@ -42,6 +46,8 @@ function fmtRange(startsAt: string, endsAt: string, checkedAt: number): string {
 }
 
 export default function ChallengeDetail() {
+  const { palette } = useCompetitionTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
   const router = useRouter();
@@ -89,7 +95,7 @@ export default function ChallengeDetail() {
       await Share.share({
         message:
           `I'm challenging you: "${challenge.title}" — ${days} days of ${meta.label.toLowerCase()} ` +
-          `on AccountAbility. Get the app, add me as a buddy and join the challenge. ` +
+          `on Mantle. Get the app, add me as a buddy and join the challenge. ` +
           `Think you can beat me? 🏆`,
       });
     } catch {
@@ -116,7 +122,7 @@ export default function ChallengeDetail() {
     return (
       <View style={[styles.screen, styles.center]}>
         <GlassBackdrop ref={bgRef} columnWidth={colMax} />
-        <ActivityIndicator size="large" color={ACCENT} />
+        <ActivityIndicator size="large" color={palette.accent} />
       </View>
     );
   }
@@ -164,7 +170,7 @@ export default function ChallengeDetail() {
                 <MissionIcon source={art} size={64} style={{ marginBottom: 4 }} />
               ) : (
                 <View style={styles.iconWrap}>
-                  <Ionicons name={meta.icon as never} size={28} color={ACCENT} />
+                  <Ionicons name={meta.icon as never} size={28} color={palette.accent} />
                 </View>
               );
             })()}
@@ -195,7 +201,7 @@ export default function ChallengeDetail() {
                     accessibilityRole="button"
                     accessibilityLabel="Flex this challenge win"
                   >
-                    <Ionicons name="trophy-outline" size={15} color={ACCENT} />
+                    <Ionicons name="trophy-outline" size={15} color={palette.accent} />
                     <Text style={styles.inviteText}>Flex this win</Text>
                   </Pressable>
                 ) : null}
@@ -212,7 +218,9 @@ export default function ChallengeDetail() {
                 accessibilityRole="button"
               >
                 {busy ? (
-                  <ActivityIndicator color={challenge.joined ? INK_SOFT : '#fff'} />
+                  <ActivityIndicator
+                    color={challenge.joined ? palette.inkSoft : palette.onAccent}
+                  />
                 ) : (
                   <Text style={challenge.joined ? styles.leaveText : styles.joinText}>
                     {challenge.joined ? 'Leave challenge' : 'Join challenge'}
@@ -230,7 +238,7 @@ export default function ChallengeDetail() {
                 <Ionicons
                   name={isPro ? 'share-social' : 'lock-closed'}
                   size={15}
-                  color={ACCENT}
+                  color={palette.accent}
                 />
                 <Text style={styles.inviteText}>
                   {isPro ? 'Challenge a friend — share anywhere' : 'Challenge a friend — Pro'}
@@ -264,17 +272,20 @@ export default function ChallengeDetail() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   center: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
-  gone: { fontFamily: font.medium, color: INK_SOFT, fontSize: 15, textAlign: 'center' },
+  gone: { fontFamily: font.medium, color: palette.inkSoft, fontSize: 15, textAlign: 'center' },
   retryBtn: {
-    backgroundColor: ACCENT,
+    backgroundColor: palette.accent,
     borderRadius: radius.pill,
     paddingVertical: 10,
     paddingHorizontal: 24,
+    minHeight: spacing.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  retryText: { color: '#fff', fontFamily: font.bold, fontSize: 14 },
+  retryText: { color: palette.onAccent, fontFamily: font.bold, fontSize: 14 },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   pressed: { opacity: 0.7 },
   hero: {},
@@ -283,46 +294,46 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: palette.subtleAccent,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
-  title: { fontFamily: font.extrabold, fontSize: 20, color: INK, textAlign: 'center' },
-  meta: { fontFamily: font.semibold, fontSize: 13.5, color: ACCENT },
-  range: { fontFamily: font.medium, fontSize: 12.5, color: INK_SOFT, marginBottom: 8 },
+  title: { fontFamily: font.extrabold, fontSize: 20, color: palette.ink, textAlign: 'center' },
+  meta: { fontFamily: font.semibold, fontSize: 13.5, color: palette.accent, textAlign: 'center' },
+  range: { fontFamily: font.medium, fontSize: 12.5, color: palette.inkSoft, marginBottom: 8, textAlign: 'center' },
   joinBtn: {
-    backgroundColor: ACCENT,
+    backgroundColor: palette.accent,
     borderRadius: radius.pill,
     paddingVertical: 12,
     paddingHorizontal: 28,
-    minHeight: 46,
+    minHeight: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'stretch',
   },
-  joinText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
-  leaveBtn: { backgroundColor: 'rgba(30,27,75,0.08)' },
-  leaveText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 15 },
-  endedBtn: { backgroundColor: 'rgba(30,27,75,0.06)' },
-  endedText: { color: INK_SOFT, fontFamily: font.bold, fontSize: 15 },
+  joinText: { color: palette.onAccent, fontFamily: font.bold, fontSize: 15 },
+  leaveBtn: { backgroundColor: palette.faintInk },
+  leaveText: { color: palette.inkSoft, fontFamily: font.bold, fontSize: 15 },
+  endedBtn: { backgroundColor: palette.quietInk },
+  endedText: { color: palette.inkSoft, fontFamily: font.bold, fontSize: 15 },
   inviteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
     borderWidth: 1,
-    borderColor: 'rgba(37,99,235,0.35)',
-    backgroundColor: 'rgba(37,99,235,0.08)',
+    borderColor: palette.accentBorderStrong,
+    backgroundColor: palette.faintAccent,
     borderRadius: radius.pill,
     paddingVertical: 11,
     alignSelf: 'stretch',
-    minHeight: 44,
+    minHeight: spacing.touch,
     marginTop: 6,
   },
-  inviteText: { color: ACCENT, fontFamily: font.bold, fontSize: 13.5 },
-  section: { fontFamily: font.bold, fontSize: 15, color: INK, marginTop: 4, marginLeft: 4 },
+  inviteText: { flexShrink: 1, color: palette.accent, fontFamily: font.bold, fontSize: 13.5, textAlign: 'center' },
+  section: { fontFamily: font.bold, fontSize: 15, color: palette.ink, marginTop: 4, marginLeft: 4 },
   card: {},
   listPad: { padding: spacing.sm, gap: 2 },
-  empty: { fontFamily: font.medium, fontSize: 13.5, color: INK_SOFT, textAlign: 'center', paddingVertical: 16 },
+  empty: { fontFamily: font.medium, fontSize: 13.5, color: palette.inkSoft, textAlign: 'center', paddingVertical: 16 },
 });

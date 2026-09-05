@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -8,13 +8,16 @@ import { authErrorMessage, isUnconfirmed } from '../auth/errors';
 import { AuthShell } from '../ui/AuthShell';
 import { AuthField } from '../ui/AuthField';
 import { Button } from '../ui/Button';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { WELCOME_ACTIONS, welcomeErrorState } from '../entry/welcomeContract';
 
 const CREATE_ACCOUNT_ROUTE = WELCOME_ACTIONS[1].route;
 const FORGOT_PASSWORD_ROUTE = WELCOME_ACTIONS[2].route;
 
 export default function SignIn() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -49,7 +52,7 @@ export default function SignIn() {
       presentation="welcome"
       footer={
         <View style={styles.privacy}>
-          <Ionicons name="shield-checkmark-outline" size={21} color="#FFFFFF" />
+          <Ionicons name="shield-checkmark-outline" size={21} color={theme.ink.primary} />
           <Text style={styles.privacyText}>
             Your progress is private.{'\n'}We&apos;ll never share your data.
           </Text>
@@ -62,7 +65,7 @@ export default function SignIn() {
 
       {formErrorState.visible ? (
         <View style={styles.errorBanner} accessibilityLiveRegion={formErrorState.liveRegion}>
-          <Ionicons name="alert-circle-outline" size={19} color="#b91c1c" />
+          <Ionicons name="alert-circle-outline" size={19} color={theme.status.danger} />
           <Text style={styles.errorBannerText}>{formError}</Text>
         </View>
       ) : null}
@@ -123,10 +126,10 @@ export default function SignIn() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   heading: { alignItems: 'center', marginBottom: spacing.xs },
   title: {
-    color: colors.navy,
+    color: theme.ink.primary,
     fontFamily: font.serif,
     fontSize: 27,
     lineHeight: 34,
@@ -138,12 +141,12 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
+    borderColor: theme.border.danger,
+    backgroundColor: theme.status.dangerSoft,
   },
   errorBannerText: {
     flex: 1,
-    color: '#991b1b',
+    color: theme.status.danger,
     fontFamily: font.medium,
     fontSize: 13,
     lineHeight: 18,
@@ -154,7 +157,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: -6,
   },
-  forgotText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13.5 },
+  forgotText: { color: theme.ink.action, fontFamily: font.semibold, fontSize: 13.5 },
   pressed: { opacity: 0.65 },
   button: { marginTop: -2 },
   privacy: {
@@ -165,7 +168,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   privacyText: {
-    color: '#FFFFFF',
+    color: theme.ink.primary,
     fontFamily: font.medium,
     fontSize: 11.5,
     lineHeight: 15,

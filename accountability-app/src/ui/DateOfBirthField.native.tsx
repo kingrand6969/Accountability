@@ -69,7 +69,7 @@ export function DateOfBirthField({ value, onChange, minimumAge, error }: Props) 
         </Text>
         <Ionicons name="chevron-down" size={18} color={colors.textFaint} />
       </Pressable>
-      <Text style={styles.hint}>You must be {minimumAge}+ to use AccountAbility.</Text>
+      <Text style={styles.hint}>You must be {minimumAge}+ to use Mantle.</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {open ? (
         <View>
@@ -140,5 +140,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneText: { color: colors.primary, fontFamily: font.bold, fontSize: 15 },
+  doneText: { color: colors.primaryDark, fontFamily: font.bold, fontSize: 15 },
 });

@@ -1,14 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { RankBadge } from '../achievements/RankBadge';
 import { RANK_ORDER, type RankName } from '../achievements/rankAssets';
 import { authorLabel, timeAgo } from '../feed/format';
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
-import { CachedImage } from '../ui/CachedImage';
 import { font, radius, shadow, spacing } from '../ui/theme';
 import { BuddyCardAchievements } from './BuddyCardAchievements';
 import { BuddyCardFocus } from './BuddyCardFocus';
+import { BuddyCardProfilePhoto } from './BuddyCardProfilePhoto';
 import type { BoardRank, BuddyCard, BuddyStats, CardMetrics } from './card';
 import {
   resolveBuddyCardPalette,
@@ -53,7 +52,6 @@ function BuddyCardIdentity({
   palette,
 }: IdentityProps): React.JSX.Element {
   const displayName = authorLabel(name);
-  const resolvedAvatar = useResolvedMediaUrl(avatar);
   const rankName = RANK_ORDER.includes(card.rank_name as RankName)
     ? (card.rank_name as RankName)
     : null;
@@ -66,22 +64,7 @@ function BuddyCardIdentity({
 
   return (
     <View testID="buddy-card-identity" style={styles.identitySection}>
-      <View style={[styles.avatarRing, { borderColor: palette.accent }]}>
-        {resolvedAvatar ? (
-          <CachedImage
-            uri={resolvedAvatar}
-            style={styles.avatar}
-            contentFit="cover"
-            accessibilityLabel={`${displayName}'s profile photo`}
-          />
-        ) : (
-          <View
-            style={[styles.avatar, styles.avatarFallback, { backgroundColor: palette.surfaceTint }]}
-          >
-            <Ionicons name="person" size={32} color={palette.accent} />
-          </View>
-        )}
-      </View>
+      <BuddyCardProfilePhoto avatar={avatar} displayName={displayName} palette={palette} />
 
       <View style={styles.identityCopy}>
         <Text style={[styles.name, { color: palette.text }]} numberOfLines={2}>
@@ -101,25 +84,22 @@ function BuddyCardIdentity({
             <View testID="buddy-card-rank-inline" style={styles.rankInline}>
               <RankBadge
                 rank={rankName}
-                size={32}
+                size={24}
                 animated={false}
                 effects="none"
                 variant="crest"
               />
-              <Text style={[styles.rankName, { color: palette.text }]}>{rankName}</Text>
+              <Text style={[styles.rankName, { color: palette.accent }]}>{rankName}</Text>
             </View>
           ) : null}
-          <Text
-            style={[
-              styles.challengeWins,
-              !showRank && styles.challengeWinsWithoutRank,
-              { color: palette.textMuted },
-            ]}
-          >
-            Challenges won · {card.show_challenge_wins && metrics?.chwin != null
-              ? Math.round(metrics.chwin)
-              : EMPTY_VALUE}
-          </Text>
+          <View style={styles.challengeWinsRow}>
+            <Ionicons name="trophy" size={10} color={palette.accent} />
+            <Text style={[styles.challengeWins, { color: palette.textMuted }]}>
+              Challenges won · {card.show_challenge_wins && metrics?.chwin != null
+                ? Math.round(metrics.chwin)
+                : EMPTY_VALUE}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -182,10 +162,16 @@ function BuddyCardRankings({
   return (
     <View
       testID="buddy-card-rankings"
-      style={[styles.section, { borderBottomColor: palette.border }]}
+      style={styles.rankingsSection}
     >
-      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Rankings</Text>
-      <View testID="buddy-card-ranking-row" style={styles.rankingRow}>
+      <View style={styles.sectionHeader}>
+        <Text accessibilityRole="header" style={[styles.sectionTitle, { color: palette.text }]}>Rankings</Text>
+        <Text style={[styles.sectionAction, { color: palette.accent }]}>YOUR POSITION</Text>
+      </View>
+      <View
+        testID="buddy-card-ranking-row"
+        style={[styles.rankingRow, { borderColor: palette.border }]}
+      >
         {items.map((item) => (
           <Metric
             key={item.label}
@@ -230,12 +216,14 @@ function BuddyCardSocialProof({
   return (
     <View
       testID="buddy-card-social-proof"
-      style={[styles.section, { borderBottomColor: palette.border }]}
+      style={[
+        styles.socialStrip,
+        { backgroundColor: palette.surfaceTint, borderColor: palette.border },
+      ]}
     >
-      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Social</Text>
-      <View style={styles.metricGrid}>
+      <View testID="buddy-card-social-row" style={styles.compactMetricRow}>
         {items.map((item) => (
-          <Metric key={item.label} {...item} palette={palette} />
+          <Metric key={item.label} {...item} palette={palette} layout="compact" />
         ))}
       </View>
     </View>
@@ -272,10 +260,9 @@ function BuddyCardFitnessMetrics({
 
   return (
     <View testID="buddy-card-fitness" style={styles.lastSection}>
-      <Text style={[styles.sectionLabel, { color: palette.textMuted }]}>Fitness</Text>
-      <View style={styles.metricGrid}>
+      <View testID="buddy-card-fitness-row" style={styles.compactMetricRow}>
         {items.map((item) => (
-          <Metric key={item.label} {...item} palette={palette} />
+          <Metric key={item.label} {...item} palette={palette} layout="compact" />
         ))}
       </View>
     </View>
@@ -286,24 +273,25 @@ function Metric({
   label,
   value,
   palette,
-  layout = 'wrapping',
+  layout = 'compact',
   accessibilityLabel,
 }: {
   label: string;
   value: string;
   palette: BuddyCardPalette;
-  layout?: 'ranking' | 'wrapping';
+  layout?: 'ranking' | 'compact';
   accessibilityLabel?: string;
 }) {
   const groupedForAccessibility = accessibilityLabel !== undefined;
 
   return (
     <View
+      testID={`buddy-card-metric-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
       accessible={groupedForAccessibility ? true : undefined}
       accessibilityLabel={accessibilityLabel}
       style={[
         styles.metric,
-        layout === 'ranking' ? styles.rankingMetric : styles.wrappingMetric,
+        layout === 'ranking' ? styles.rankingMetric : styles.compactMetric,
       ]}
     >
       <Text
@@ -363,8 +351,9 @@ export function PublicBuddyCardFace({
   groupsCount?: number | null;
   onPressMedals?: () => void;
 }) {
-  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
-  const palette = resolveBuddyCardPalette(card.palette_key, scheme);
+  // The app shell currently uses its approved light appearance. Reading the
+  // phone's system scheme here made this one card turn dark inside a light app.
+  const palette = resolveBuddyCardPalette(card.palette_key, 'light');
   const presentedCard: BuddyCard = ownerView
     ? {
         ...card,
@@ -386,13 +375,9 @@ export function PublicBuddyCardFace({
       style={[styles.frame, { backgroundColor: palette.surface, borderColor: palette.border }]}
     >
       <View
+        testID="buddy-card-atmosphere"
         pointerEvents="none"
         style={[styles.atmosphere, { backgroundColor: palette.surfaceTint }]}
-      />
-      <View
-        testID="buddy-card-accent"
-        pointerEvents="none"
-        style={[styles.accent, { backgroundColor: palette.accent }]}
       />
       <View style={styles.content}>
         <BuddyCardIdentity
@@ -440,13 +425,12 @@ const styles = StyleSheet.create({
   },
   atmosphere: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 132,
-  },
-  accent: {
-    height: 4,
+    width: 220,
+    height: 220,
+    right: -110,
+    top: -120,
+    borderRadius: 110,
+    opacity: 0.26,
   },
   content: {
     paddingHorizontal: spacing.lg,
@@ -454,25 +438,9 @@ const styles = StyleSheet.create({
   identitySection: {
     paddingVertical: spacing.lg,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.md,
-  },
-  avatarRing: {
-    width: 78,
-    height: 78,
-    padding: 3,
-    borderWidth: 2,
-    borderRadius: 39,
-  },
-  avatar: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-  },
-  avatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   identityCopy: {
     flex: 1,
@@ -480,8 +448,8 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: font.extrabold,
-    fontSize: 23,
-    lineHeight: 28,
+    fontSize: 21,
+    lineHeight: 26,
     letterSpacing: -0.45,
   },
   identityMeta: {
@@ -497,26 +465,29 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   rankDetails: {
-    marginTop: spacing.sm,
+    marginTop: 6,
     alignItems: 'flex-start',
   },
   rankInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 5,
   },
   rankName: {
     fontFamily: font.extrabold,
-    fontSize: 17,
+    fontSize: 13,
+  },
+  challengeWinsRow: {
+    minHeight: 18,
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   challengeWins: {
-    marginTop: 2,
-    marginLeft: 104,
-    fontFamily: font.semibold,
-    fontSize: 11.5,
-  },
-  challengeWinsWithoutRank: {
     marginLeft: 0,
+    fontFamily: font.semibold,
+    fontSize: 10,
   },
   traitRow: {
     width: '100%',
@@ -537,36 +508,54 @@ const styles = StyleSheet.create({
     fontFamily: font.semibold,
     fontSize: 11.5,
   },
-  section: {
-    paddingVertical: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  rankingsSection: {
+    paddingTop: spacing.lg,
+  },
+  sectionHeader: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    fontFamily: font.extrabold,
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
+  sectionAction: {
+    fontFamily: font.extrabold,
+    fontSize: 9,
+    letterSpacing: 0.8,
   },
   lastSection: {
-    paddingVertical: spacing.lg,
-  },
-  sectionLabel: {
-    marginBottom: spacing.md,
-    fontFamily: font.extrabold,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  metricGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: spacing.md,
+    paddingVertical: spacing.md,
   },
   rankingRow: {
     flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.md,
+  },
+  socialStrip: {
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+  },
+  compactMetricRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
   },
   metric: {
     paddingRight: spacing.sm,
   },
-  wrappingMetric: {
-    width: '25%',
-    minWidth: 72,
-  },
   rankingMetric: {
+    flex: 1,
+    minWidth: 0,
+  },
+  compactMetric: {
     flex: 1,
     minWidth: 0,
   },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -10,10 +10,18 @@ import {
   executeShareHandoff,
 } from '../../navigation/routeAccessContract';
 import { BrandMark } from '../../ui/BrandMark';
-import { colors, font, spacing } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
+import {
+  font,
+  spacing,
+  type AppThemeColors,
+} from '../../ui/theme';
 
 export default function SharedUpdateRoute() {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => publicSharePalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { session, loading: authLoading } = useAuth();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const shareId = typeof id === 'string' ? id : undefined;
@@ -56,7 +64,7 @@ export default function SharedUpdateRoute() {
 
   return (
     <View style={styles.screen}>
-      <BrandMark size={58} color={colors.primary} accessibilityLabel="AccountAbility" />
+      <BrandMark size={58} color={palette.action} accessibilityLabel="Mantle" />
       <View
         style={styles.status}
         accessibilityLiveRegion="polite"
@@ -72,7 +80,7 @@ export default function SharedUpdateRoute() {
       >
       {displayStatus === 'loading' ? (
         <>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator color={palette.action} />
           <Text style={styles.title}>Opening shared update…</Text>
         </>
       ) : (
@@ -80,7 +88,7 @@ export default function SharedUpdateRoute() {
           <Ionicons
             name={displayStatus === 'web' ? 'open-outline' : 'time-outline'}
             size={30}
-            color={colors.navy}
+            color={palette.ink}
           />
           <Text style={styles.title}>
             {displayStatus === 'web'
@@ -97,7 +105,7 @@ export default function SharedUpdateRoute() {
             disabled={openingWeb}
             style={({ pressed }) => [styles.button, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={displayStatus === 'web' ? 'Open public shared update' : 'Go to AccountAbility feed'}
+            accessibilityLabel={displayStatus === 'web' ? 'Open public shared update' : 'Go to Mantle feed'}
             accessibilityState={{ busy: openingWeb, disabled: openingWeb }}
           >
             <Text style={styles.buttonText}>
@@ -113,12 +121,26 @@ export default function SharedUpdateRoute() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, padding: spacing.xl, backgroundColor: colors.cream, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+function publicSharePalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors) => {
+  const palette = publicSharePalette(theme);
+
+  return StyleSheet.create({
+  screen: { flex: 1, padding: spacing.xl, backgroundColor: palette.canvas, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
   status: { alignItems: 'center', gap: spacing.lg },
-  title: { color: colors.navy, fontFamily: 'Georgia', fontSize: 25, textAlign: 'center' },
-  copy: { maxWidth: 340, color: colors.inkSoft, fontFamily: font.regular, fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  button: { minHeight: 48, minWidth: 180, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
-  buttonText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 14 },
+  title: { color: palette.ink, fontFamily: 'Georgia', fontSize: 25, textAlign: 'center' },
+  copy: { maxWidth: 340, color: palette.muted, fontFamily: font.regular, fontSize: 14, lineHeight: 21, textAlign: 'center' },
+  button: { minHeight: spacing.touch, minWidth: 180, borderRadius: 12, backgroundColor: palette.action, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
+  buttonText: { color: palette.onAction, fontFamily: font.bold, fontSize: 14 },
   pressed: { opacity: 0.72 },
-});
+  });
+};

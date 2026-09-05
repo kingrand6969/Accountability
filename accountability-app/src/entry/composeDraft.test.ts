@@ -5,6 +5,7 @@ import {
   composeDraftKey,
   draftEffect,
   durableMediaPath,
+  hasRestorableDraftContent,
   isCompatibleDraft,
   parseComposeDraft,
   persistDurableMedia,
@@ -22,15 +23,15 @@ import {
   persistDraftMedia,
   resolveDraftContext,
   validMediaTuple,
-  type ComposeDraftV1,
+  type ComposeDraftV2,
   type DraftFileAdapter,
 } from './composeDraft';
 
 const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const DRAFT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
-const validDraft: ComposeDraftV1 = {
-  version: 1,
+const validDraft: ComposeDraftV2 = {
+  version: 2,
   draftId: DRAFT,
   ownerId: OWNER,
   kind: 'new',
@@ -38,7 +39,10 @@ const validDraft: ComposeDraftV1 = {
   origin: 'photo',
   queryIdentity: { photo: true, event: false, text: null, edit: null },
   body: 'hello',
+  showPublicly: false,
+  visibilityChanged: false,
   audience: 'buddies',
+  showOnCard: false,
   media: null,
   event: { open: false, title: '', date: '2026-07-29', time: '18:00', location: '' },
   tagIds: [],
@@ -48,14 +52,284 @@ const validDraft: ComposeDraftV1 = {
 
 describe('compose draft contract', () => {
   test('uses versioned per-user keys and round-trips a valid draft', () => {
-    expect(composeDraftKey('user-a', 'new', 'draft-1')).toBe('compose-draft:v1:user-a:new:draft-1');
-    expect(composeDraftIndexKey('user-a')).toBe('compose-draft-index:v1:user-a');
+    expect(composeDraftKey('user-a', 'new', 'draft-1')).toBe('compose-draft:v2:user-a:new:draft-1');
+    expect(composeDraftIndexKey('user-a')).toBe('compose-draft-index:v2:user-a');
     expect(parseComposeDraft(JSON.stringify(validDraft), OWNER)).toEqual(validDraft);
+  });
+
+  test('round-trips an explicitly Public plus Buddy Card draft through save and load', async () => {
+    const featuredDraft: ComposeDraftV2 = {
+      ...validDraft,
+      showPublicly: true,
+      audience: 'public',
+      showOnCard: true,
+    };
+    const storage = memoryStorage();
+
+    await saveComposeDraft(featuredDraft, storage);
+
+    expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([featuredDraft]);
+  });
+
+  test('loads an indexed V1 draft, migrates it to V2, and writes rollback visibility fields', async () => {
+    const legacyKey = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const legacyIndex = `compose-draft-index:v1:${OWNER}`;
+    const {
+      showPublicly: _showPublicly,
+      visibilityChanged: _visibilityChanged,
+      audience: _audience,
+      showOnCard: _showOnCard,
+      ...base
+    } = validDraft;
+    const legacy = { ...base, version: 1, audience: 'public', showOnCard: true };
+    const storage = memoryStorage(new Map([
+      [legacyIndex, JSON.stringify([legacyKey])],
+      [legacyKey, JSON.stringify(legacy)],
+    ]));
+
+    const migrated = (await loadComposeDrafts(OWNER, storage)).drafts[0];
+    expect(migrated).toEqual({
+      ...validDraft,
+      showPublicly: true,
+      audience: 'public',
+      showOnCard: true,
+    });
+    await saveComposeDraft(migrated!, storage);
+    expect(JSON.parse((await storage.getItem(composeDraftKey(OWNER, 'new', DRAFT)))!)).toMatchObject({
+      version: 2,
+      showPublicly: true,
+      visibilityChanged: false,
+      audience: 'public',
+      showOnCard: true,
+    });
+    expect(await storage.getItem(legacyKey)).not.toBeNull();
+  });
+
+  test('reconciles a valid unindexed V1 pending record into V2 before removing its pointer', async () => {
+    const legacyKey = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const legacyPending = `compose-draft-pending:v1:${OWNER}`;
+    const { showPublicly: _show, visibilityChanged: _changed, ...rollback } = validDraft;
+    const legacy = { ...rollback, version: 1, audience: 'buddies', showOnCard: false };
+    const storage = memoryStorage(new Map([
+      [legacyPending, legacyKey],
+      [legacyKey, JSON.stringify(legacy)],
+    ]));
+
+    expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([validDraft]);
+    expect(await storage.getItem(composeDraftKey(OWNER, 'new', DRAFT))).not.toBeNull();
+    expect(await storage.getItem(legacyPending)).toBeNull();
+  });
+
+  test('keeps an existing newer V2 authoritative when a stale V1 record is retained', async () => {
+    const v2Key = composeDraftKey(OWNER, 'new', DRAFT);
+    const v1Key = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const v1Index = `compose-draft-index:v1:${OWNER}`;
+    const v1Pending = `compose-draft-pending:v1:${OWNER}`;
+    const newerV2: ComposeDraftV2 = {
+      ...validDraft,
+      body: 'newer V2 work',
+      updatedAt: '2026-08-23T00:00:00.000Z',
+    };
+    const {
+      showPublicly: _show,
+      visibilityChanged: _changed,
+      audience: _audience,
+      showOnCard: _showOnCard,
+      ...legacyBase
+    } = validDraft;
+    const staleV1 = {
+      ...legacyBase,
+      version: 1,
+      body: 'stale V1 work',
+      updatedAt: '2026-08-20T00:00:00.000Z',
+      audience: 'buddies',
+      showOnCard: false,
+    };
+    const storage = memoryStorage(new Map([
+      [composeDraftIndexKey(OWNER), JSON.stringify([v2Key])],
+      [v2Key, JSON.stringify(newerV2)],
+      [v1Index, JSON.stringify([v1Key])],
+      [v1Pending, v1Key],
+      [v1Key, JSON.stringify(staleV1)],
+    ]));
+
+    expect((await loadComposeDrafts(OWNER, storage)).drafts).toEqual([newerV2]);
+    expect(JSON.parse((await storage.getItem(v2Key))!)).toEqual(newerV2);
+    expect(await storage.getItem(v1Key)).not.toBeNull();
+    expect(await storage.getItem(v1Pending)).toBeNull();
+  });
+
+  test('saving an empty V2 removes its exact retained V1 so media cannot resurrect', async () => {
+    const v2Key = composeDraftKey(OWNER, 'new', DRAFT);
+    const v1Key = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const v1Index = `compose-draft-index:v1:${OWNER}`;
+    const v1Pending = `compose-draft-pending:v1:${OWNER}`;
+    const media = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'c'.repeat(64)}.jpg`,
+      extension: 'jpg',
+      mimeType: 'image/jpeg',
+      byteCount: 42,
+      sha256: 'c'.repeat(64),
+      kind: 'photo' as const,
+    };
+    const {
+      showPublicly: _show,
+      visibilityChanged: _changed,
+      audience: _audience,
+      showOnCard: _showOnCard,
+      ...legacyBase
+    } = validDraft;
+    const legacy = {
+      ...legacyBase,
+      version: 1,
+      body: '',
+      media,
+      audience: 'buddies',
+      showOnCard: false,
+    };
+    const storage = memoryStorage(new Map([
+      [v1Index, JSON.stringify([v1Key])],
+      [v1Pending, v1Key],
+      [v1Key, JSON.stringify(legacy)],
+    ]));
+
+    const migrated = (await loadComposeDrafts(OWNER, storage)).drafts[0]!;
+    expect(migrated.media).toEqual(media);
+    // Model a retained rollback recovery pointer that exists when the user
+    // deliberately clears the migrated draft.
+    await storage.setItem(v1Pending, v1Key);
+    await saveComposeDraft({ ...migrated, body: '', media: null }, storage);
+
+    expect(await loadComposeDrafts(OWNER, storage)).toEqual({ drafts: [], cleanedInvalid: 0 });
+    expect(await storage.getItem(v2Key)).toBeNull();
+    expect(await storage.getItem(composeDraftIndexKey(OWNER))).toBeNull();
+    expect(await storage.getItem(v1Key)).toBeNull();
+    expect(await storage.getItem(v1Index)).toBeNull();
+    expect(await storage.getItem(v1Pending)).toBeNull();
+  });
+
+  test('empty V2 cleanup preserves other legacy draft identities and recovery pointers', async () => {
+    const otherDraftId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const exactV1Key = `compose-draft:v1:${OWNER}:new:${DRAFT}`;
+    const otherV1Key = `compose-draft:v1:${OWNER}:new:${otherDraftId}`;
+    const v1Index = `compose-draft-index:v1:${OWNER}`;
+    const v1Pending = `compose-draft-pending:v1:${OWNER}`;
+    const { showPublicly: _show, visibilityChanged: _changed, ...legacyBase } = validDraft;
+    const exactLegacy = { ...legacyBase, version: 1, body: 'exact draft' };
+    const otherLegacy = {
+      ...legacyBase,
+      version: 1,
+      draftId: otherDraftId,
+      body: 'other draft',
+    };
+    const storage = memoryStorage(new Map([
+      [v1Index, JSON.stringify([exactV1Key, otherV1Key])],
+      [v1Pending, otherV1Key],
+      [exactV1Key, JSON.stringify(exactLegacy)],
+      [otherV1Key, JSON.stringify(otherLegacy)],
+    ]));
+
+    await saveComposeDraft({ ...validDraft, body: '', media: null }, storage);
+
+    expect(await storage.getItem(exactV1Key)).toBeNull();
+    expect(await storage.getItem(otherV1Key)).not.toBeNull();
+    expect(JSON.parse((await storage.getItem(v1Index))!)).toEqual([otherV1Key]);
+    expect(await storage.getItem(v1Pending)).toBe(otherV1Key);
+  });
+
+  test.each([
+    ['wrong owner', `compose-draft:v1:${DRAFT}:new:${DRAFT}`, JSON.stringify(validDraft)],
+    ['wrong prefix', `compose-draft:v2:${OWNER}:new:${DRAFT}`, JSON.stringify(validDraft)],
+    ['corrupt record', `compose-draft:v1:${OWNER}:new:${DRAFT}`, '{broken'],
+  ])('does not reconcile or remove an unsafe V1 pending pointer: %s', async (_case, pointer, raw) => {
+    const pendingKey = `compose-draft-pending:v1:${OWNER}`;
+    const storage = memoryStorage(new Map([[pendingKey, pointer], [pointer, raw]]));
+    expect(await loadComposeDrafts(OWNER, storage)).toEqual({ drafts: [], cleanedInvalid: 0 });
+    expect(await storage.getItem(pendingKey)).toBe(pointer);
+    expect(await storage.getItem(composeDraftIndexKey(OWNER))).toBeNull();
+  });
+
+  test('treats an all-default draft as disposable while preserving real composer work', () => {
+    const blankDraft: ComposeDraftV2 = {
+      ...validDraft,
+      origin: 'post',
+      queryIdentity: { photo: false, event: false, text: '', edit: null },
+      body: '   ',
+      media: null,
+      event: { open: false, title: '', date: '2026-08-21', time: '18:00', location: '' },
+      tagIds: [],
+      keepInMemories: false,
+      showPublicly: false,
+    };
+
+    expect(hasRestorableDraftContent(blankDraft)).toBe(false);
+    expect(hasRestorableDraftContent({ ...blankDraft, body: 'Easy five today' })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, media: validDraft.media ?? {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2, sha256: 'a'.repeat(64), kind: 'photo',
+    } })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, event: { ...blankDraft.event, open: true } })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, tagIds: ['buddy-a'] })).toBe(true);
+    expect(hasRestorableDraftContent({ ...blankDraft, showPublicly: true })).toBe(true);
+  });
+
+  test('silently removes legacy blank drafts instead of presenting them for restore', async () => {
+    const blankDraft: ComposeDraftV2 = {
+      ...validDraft,
+      origin: 'post',
+      queryIdentity: { photo: false, event: false, text: '', edit: null },
+      body: '',
+      event: { open: false, title: '', date: '2026-08-21', time: '18:00', location: '' },
+    };
+    const storage = memoryStorage();
+    await saveComposeDraft(blankDraft, storage);
+
+    expect(await loadComposeDrafts(OWNER, storage)).toEqual({ drafts: [], cleanedInvalid: 0 });
+    expect(await storage.getItem(composeDraftKey(OWNER, 'new', DRAFT))).toBeNull();
+    expect(await storage.getItem(composeDraftIndexKey(OWNER))).toBeNull();
+  });
+
+  test('privacy-safely migrates all legacy audience and Buddy Card combinations', () => {
+    const {
+      showPublicly: _newField,
+      visibilityChanged: _legacyChanged,
+      audience: _rollbackAudience,
+      showOnCard: _rollbackCard,
+      ...currentBase
+    } = validDraft;
+    const legacyBase = { ...currentBase, version: 1 };
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: true }), OWNER))
+      .toEqual({ ...validDraft, showPublicly: true, audience: 'public', showOnCard: true });
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: false }), OWNER))
+      .toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'buddies', showOnCard: true }), OWNER))
+      .toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'buddies' }), OWNER))
+      .toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: true }), OWNER)?.showPublicly)
+      .toBe(true);
+  });
+
+  test('rejects malformed new or legacy visibility fields', () => {
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showPublicly: 'yes' }), OWNER)).toBeNull();
+    const { showPublicly: _newField, visibilityChanged: _changed, ...currentBase } = validDraft;
+    const legacyBase = { ...currentBase, version: 1 };
+    expect(parseComposeDraft(JSON.stringify({ ...legacyBase, audience: 'public', showOnCard: 'yes' }), OWNER)).toBeNull();
+  });
+
+  test('defaults older drafts to no explicit edit visibility change', () => {
+    const { visibilityChanged: _missing, ...olderDraft } = validDraft;
+    expect(parseComposeDraft(JSON.stringify(olderDraft), OWNER)).toEqual(validDraft);
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, visibilityChanged: true }), OWNER)?.visibilityChanged)
+      .toBe(true);
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, visibilityChanged: 'yes' }), OWNER)).toBeNull();
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, audience: 'public' }), OWNER)).toBeNull();
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, showOnCard: true }), OWNER)).toBeNull();
   });
 
   test('rejects corrupt, unsupported and cross-owner records', () => {
     expect(parseComposeDraft('{broken', OWNER)).toBeNull();
-    expect(parseComposeDraft(JSON.stringify({ ...validDraft, version: 2 }), OWNER)).toBeNull();
+    expect(parseComposeDraft(JSON.stringify({ ...validDraft, version: 3 }), OWNER)).toBeNull();
     expect(parseComposeDraft(JSON.stringify({ ...validDraft, ownerId: DRAFT }), OWNER)).toBeNull();
   });
 
@@ -186,8 +460,22 @@ describe('Compose production binding', () => {
   const source = readFileSync(require.resolve('../app/compose'), 'utf8');
 
   test('binds debounced field saves and immediate background flush', () => {
-    expect(source).toContain('setTimeout(() => { void flushDraft(); }, 500)');
-    expect(source).toContain("if (state !== 'active') void flushDraft()");
+    expect(source).toContain(
+      'setTimeout(() => { if (!postingRef.current) void flushDraft(); }, 500)',
+    );
+    expect(source).toContain(
+      "if (state !== 'active' && !postingRef.current) void flushDraft()",
+    );
+    expect(source).toContain('[draftReady, body, showPublicly, visibilityChanged, draftMedia');
+  });
+
+  test('closes the draft-save gate synchronously before submission begins', () => {
+    const submitIndex = source.indexOf('async function onPost()');
+    const gateIndex = source.indexOf('postingRef.current = true', submitIndex);
+    const stateIndex = source.indexOf('setPosting(true)', submitIndex);
+
+    expect(gateIndex).toBeGreaterThan(submitIndex);
+    expect(stateIndex).toBeGreaterThan(gateIndex);
   });
 
   test('binds owner-guarded Restore and Discard plus truthful notices', () => {
@@ -203,10 +491,143 @@ describe('Compose production binding', () => {
     expect(source).toContain('Only local draft cleanup failed; do not submit again.');
   });
 
+  test('closes an untouched composer directly without a redundant draft prompt', () => {
+    const closeBody = source.match(/function onClose\(\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+
+    expect(closeBody).toContain('hasRestorableDraftContent');
+    expect(closeBody).toContain('void clearSavedDraft().finally(exitCompose)');
+    expect(closeBody.indexOf('hasRestorableDraftContent')).toBeLessThan(
+      closeBody.indexOf("Alert.alert('Cancel this draft?'")
+    );
+  });
+
+  test('latches remote success so cleanup failures can never enable a second submission', () => {
+    expect(source).toContain('const remoteSucceededRef = useRef(false);');
+    expect(source).toContain('remoteSucceededRef.current = true;');
+    expect(source).toContain('if (!canPost || remoteSucceededRef.current) return;');
+    expect(source).toMatch(
+      /const canPost = !remoteSucceeded[\s\S]*?async function onPost\(\)/,
+    );
+    expect(source.match(/remoteSucceededRef\.current = false/g) ?? []).toHaveLength(1);
+  });
+
+  test('keeps safe Close and Retry cleanup actions visible after the first cleanup failure', () => {
+    expect(source).toContain('const [cleanupRecovery, setCleanupRecovery] = useState<CleanupRecovery | null>(null);');
+    expect(source).toContain('setCleanupRecovery(recovery);');
+    expect(source).toContain("setDraftNotice('Remote save succeeded, but the local draft could not be cleared')");
+    expect(source).toMatch(/cleanupRecovery \? \([\s\S]*?accessibilityLabel="Close composer"[\s\S]*?accessibilityLabel="Retry local draft cleanup"/);
+  });
+
+  test('a repeated cleanup failure preserves recovery mode and never reopens Post', () => {
+    const retryBody = source.match(
+      /async function retryRemoteCleanup\([\s\S]*?\n  \}/,
+    )?.[0] ?? '';
+
+    expect(retryBody).toContain('clearSavedDraft(true, recovery.submittedDraft)');
+    expect(retryBody).toContain("setDraftNotice('Local draft cleanup still needs retry')");
+    expect(retryBody).not.toContain('setCleanupRecovery(null)');
+    expect(retryBody).not.toContain('setPosting(false)');
+    expect(retryBody).not.toContain('postingRef.current = false');
+  });
+
   test('detaches all live media and draft state on account switch', () => {
     expect(source).toContain('draftRef.current = null');
     expect(source).toContain('setDraftMedia(null)');
     expect(source).toContain('setOwnerId(nextOwner)');
+    expect(source).toContain('setShowPublicly(DEFAULT_SHOW_PUBLICLY)');
+    expect(source).toContain('releaseEditorPhoto()');
+  });
+
+  test('resets every mounted submission latch at the auth identity boundary without deleting the old draft', () => {
+    const boundary = source.match(
+      /onAuthStateChange\([\s\S]*?if \(nextOwner === ownerId\) return;([\s\S]*?)setOwnerId\(nextOwner\);/,
+    )?.[1] ?? '';
+
+    expect(boundary).toContain('mountTokenRef.current += 1');
+    expect(boundary).toContain('postingRef.current = false');
+    expect(boundary).toContain('setPosting(false)');
+    expect(boundary).toContain('remoteSucceededRef.current = false');
+    expect(boundary).toContain('setRemoteSucceeded(false)');
+    expect(boundary).toContain('setCleanupRecovery(null)');
+    expect(boundary).toContain('cleanupRetryingRef.current = false');
+    expect(boundary).toContain('setCleanupRetrying(false)');
+    expect(boundary).not.toContain('clearSavedDraft');
+    expect(boundary).not.toContain('clearComposeDraft');
+    expect(boundary).not.toContain('removeDurableMedia');
+  });
+
+  test('a deferred Account A submit cannot clean its preserved draft or reapply state after Account B attaches', () => {
+    expect(source).toContain('function submissionIsCurrent(');
+    expect(source).toContain('clearSavedDraftForSubmission(');
+    expect(source).toMatch(
+      /completeRemoteSubmission\([\s\S]*?clearSavedDraftForSubmission\(\s*true,\s*submittedDraft,\s*submittedOwner,\s*submittedToken,?\s*\)/,
+    );
+    expect(source).toMatch(
+      /const postId = await createPost[\s\S]*?if \(!submissionIsCurrent\(submittedOwner, submittedToken\)\) return;[\s\S]*?await clearSavedDraft\(false, submittedDraft\)/,
+    );
+  });
+
+  test('a deferred cleanup-recovery callback from Account A cannot close or mutate Account B', () => {
+    const retryBody = source.match(
+      /async function retryRemoteCleanup\([\s\S]*?\n  \}/,
+    )?.[0] ?? '';
+
+    expect(source).toContain('function closeRecoveryAfterRemoteSuccess(recovery: CleanupRecovery)');
+    expect(source).toContain('if (!submissionIsCurrent(recovery.expectedOwner, recovery.expectedToken)) return;');
+    expect(source).toContain("{ text: 'Close', onPress: () => closeRecoveryAfterRemoteSuccess(recovery) }");
+    expect(source).toContain('onPress={() => closeRecoveryAfterRemoteSuccess(cleanupRecovery)}');
+    expect(retryBody).toMatch(
+      /async function retryRemoteCleanup[\s\S]*?if \([\s\S]*?!== recovery\.expectedOwner[\s\S]*?!== recovery\.expectedToken[\s\S]*?\) return;/,
+    );
+    expect(retryBody).toMatch(
+      /finally \{\s*if \([\s\S]*?ownerRef\.current === recovery\.expectedOwner[\s\S]*?mountTokenRef\.current === recovery\.expectedToken[\s\S]*?\) \{\s*cleanupRetryingRef\.current = false;/,
+    );
+  });
+
+  test('persists and restores the approved Public Buddy Card feature intent', () => {
+    expect(source).toContain('showPublicly,');
+    expect(source).toContain('setShowPublicly(draft.showPublicly)');
+    expect(source).toContain('<PostVisibilitySwitch');
+    expect(source).toContain('showPublicly={showPublicly}');
+    expect(source).not.toContain('Feature on my Buddy Card');
+    expect(source).not.toContain('accessibilityRole="radiogroup"');
+  });
+
+  test('keeps drafts for other composer entry points without showing a non-actionable warning', () => {
+    expect(source).not.toContain("setDraftNotice('Other saved draft available')");
+  });
+
+  test('reuses the saved draft identity across media upload and lost-response post retries', () => {
+    expect(source).toContain('const operationId = submittedDraft?.draftId ?? draftId;');
+    expect(source).toMatch(/uploadPostImageWithDigest\(pickedBase64, pickedExt, operationId, submittedOwner\)/);
+    expect(source).toMatch(/uploadPostVideoWithDigest\([\s\S]*?pickedVideo\.uri,[\s\S]*?pickedVideo\.mimeType,[\s\S]*?operationId,[\s\S]*?submittedOwner,[\s\S]*?\)/);
+    expect(source).toMatch(/createPost\([\s\S]*?operationId,[\s\S]*?\);/);
+    expect(source).toMatch(/createPost\([\s\S]*?expectedOwnerId: submittedOwner,[\s\S]*?\);/);
+    expect(source).toContain("shareData: mediaUpload ? { client_media_sha256: mediaUpload.sha256 } : undefined");
+    expect(source).toContain('saveImageToMemories(postedImageUri, place, tagNames, submittedOwner)');
+  });
+
+  test('de-indexes the committed draft before optional side effects but keeps media until sharing finishes', () => {
+    const source = readFileSync(require.resolve('../app/compose'), 'utf8');
+    const createIndex = source.indexOf('const postId = await createPost');
+    const deindexIndex = source.indexOf('await clearSavedDraft(false, submittedDraft)', createIndex);
+    const memoryIndex = source.indexOf('await saveImageToMemories(postedImageUri', createIndex);
+    const shareIndex = source.indexOf('await promptCrossShare(postedText, postedImageUri');
+    const mediaCleanupIndex = source.indexOf('await removeDurableMedia(submittedMedia', shareIndex);
+
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(deindexIndex).toBeGreaterThan(createIndex);
+    expect(memoryIndex).toBeGreaterThan(deindexIndex);
+    expect(shareIndex).toBeGreaterThan(-1);
+    expect(mediaCleanupIndex).toBeGreaterThan(shareIndex);
+    expect(source.slice(createIndex, mediaCleanupIndex)).not.toContain(
+      'await clearSavedDraft(true, submittedDraft)',
+    );
+  });
+
+  test('signals the initiating account after standard and event posts commit', () => {
+    expect(source).toContain('markFeedPostPublished(submittedOwner, result.value.postId)');
+    expect(source).toContain('markFeedPostPublished(submittedOwner, postId)');
   });
 });
 
@@ -323,6 +744,67 @@ describe('durable media path and transaction', () => {
     await expect(commitDraftMedia({ ...validDraft, media: prior }, next, storage, adapter)).rejects.toThrow('save');
     expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([['delete', next.uri]]);
     expect(calls[0]).toBe('set');
+  });
+
+  test('keeps the durable file when an index crash occurs after its descriptor commit', async () => {
+    const next = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2,
+      sha256: 'a'.repeat(64), kind: 'photo' as const,
+    };
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        if (key === composeDraftIndexKey(OWNER)) throw new Error('index crash');
+        values.set(key, value);
+      },
+      removeItem: async (key: string) => { values.delete(key); },
+    };
+    const adapter = mockAdapter();
+    await expect(commitDraftMedia(validDraft, next, storage, adapter)).rejects.toThrow('index crash');
+    expect(JSON.parse(values.get(composeDraftKey(OWNER, 'new', DRAFT))!)).toMatchObject({ media: next });
+    expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([]);
+  });
+
+  test('rolls back a stale committed descriptor before deleting its durable file', async () => {
+    const next = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2,
+      sha256: 'a'.repeat(64), kind: 'photo' as const,
+    };
+    const values = new Map<string, string>();
+    const storage = memoryStorage(values);
+    const adapter = mockAdapter();
+    await expect(commitDraftMedia(validDraft, next, storage, adapter, () => false))
+      .rejects.toThrow('detached');
+    expect(JSON.parse(values.get(composeDraftKey(OWNER, 'new', DRAFT))!)).toMatchObject({ media: null });
+    expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([['delete', next.uri]]);
+  });
+
+  test('never deletes a committed durable file when descriptor rollback fails', async () => {
+    const next = {
+      uri: `file:///document/compose-drafts/${OWNER}/${DRAFT}/${'a'.repeat(64)}.jpg`,
+      extension: 'jpg', mimeType: 'image/jpeg', byteCount: 2,
+      sha256: 'a'.repeat(64), kind: 'photo' as const,
+    };
+    const values = new Map<string, string>();
+    let descriptorWrites = 0;
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        if (key === composeDraftKey(OWNER, 'new', DRAFT) && ++descriptorWrites === 2) {
+          throw new Error('rollback failed');
+        }
+        values.set(key, value);
+      },
+      removeItem: async (key: string) => { values.delete(key); },
+    };
+    const adapter = mockAdapter();
+    await expect(commitDraftMedia(validDraft, next, storage, adapter, () => false))
+      .rejects.toThrow('rollback failed');
+    expect(JSON.parse(values.get(composeDraftKey(OWNER, 'new', DRAFT))!)).toMatchObject({ media: next });
+    expect(adapter.calls.filter(([name]) => name === 'delete')).toEqual([]);
   });
 
   test('persists media null before deleting removed media', async () => {

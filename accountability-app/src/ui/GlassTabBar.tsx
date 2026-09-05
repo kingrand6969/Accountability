@@ -1,13 +1,16 @@
 import type { ReactNode } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandMark } from './BrandMark';
+import { CrownDockRunAction } from './CrownDockRunAction';
 import {
   TAB_BAR_MIN_CONTENT_HEIGHT,
   tabBarContentHeight,
 } from './floatingTabBar';
+import { useAppTheme } from './AppThemeProvider';
 import { hapticSelect } from './haptics';
-import { colors, semanticColors, spacing, type } from './theme';
+import { font, spacing } from './theme';
 
 // Minimal shape of the props Expo Router's <Tabs tabBar={...}> passes — avoids a
 // direct dependency on @react-navigation/bottom-tabs' (nested) type declarations.
@@ -24,6 +27,7 @@ type TabBarProps = {
     };
     navigate: (name: string) => void;
   };
+  onMenu: () => void;
 };
 
 export const VISIBLE_TAB_LABELS = [
@@ -31,6 +35,7 @@ export const VISIBLE_TAB_LABELS = [
   'Journey',
   'Run',
   'Messages',
+  'Menu',
 ] as const;
 
 const visibleTabLabels = new Set<string>(VISIBLE_TAB_LABELS);
@@ -39,11 +44,13 @@ const compactTabLabels: Record<(typeof VISIBLE_TAB_LABELS)[number], string> = {
   Journey: 'Path',
   Run: 'Run',
   Messages: 'Chat',
+  Menu: 'Menu',
 };
 
-/** Quiet four-destination bottom navigation matching the approved references. */
-export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
+/** Quiet five-destination bottom navigation matching the approved references. */
+export function GlassTabBar({ state, descriptors, navigation, onMenu }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const { colors: theme } = useAppTheme();
   const fontScale = PixelRatio.getFontScale();
   const contentHeight = tabBarContentHeight(fontScale);
 
@@ -72,6 +79,8 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
         {
           minHeight: contentHeight + Math.max(insets.bottom, 4),
           paddingBottom: Math.max(insets.bottom, 4),
+          backgroundColor: theme.surface.raised,
+          borderTopColor: theme.border.subtle,
         },
       ]}
     >
@@ -84,6 +93,7 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
             const { options } = descriptors[route.key];
             const isFocused = route.key === focusedKey;
             const accessibleLabel = options.title ?? route.name;
+            const isRun = accessibleLabel === 'Run';
             const visualLabel =
               fontScale >= 1.25 && visibleTabLabels.has(accessibleLabel)
                 ? compactTabLabels[accessibleLabel as (typeof VISIBLE_TAB_LABELS)[number]]
@@ -106,37 +116,78 @@ export function GlassTabBar({ state, descriptors, navigation }: TabBarProps) {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isFocused }}
                 accessibilityLabel={accessibleLabel}
-                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.item,
+                  isRun && styles.runItem,
+                  pressed && styles.pressed,
+                ]}
               >
-                {(options.title ?? route.name) === 'Journey' ? (
+                {isRun ? (
+                  <CrownDockRunAction focused={isFocused} />
+                ) : (options.title ?? route.name) === 'Journey' ? (
                   <BrandMark
                     size={27}
-                    color={isFocused ? semanticColors.ink.primary : semanticColors.ink.muted}
-                    accessibilityLabel="Journey"
+                    color={isFocused ? theme.ink.action : theme.ink.muted}
+                    accessible={false}
                   />
                 ) : (
                   options.tabBarIcon?.({
                     focused: isFocused,
-                    color: semanticColors.ink.muted,
+                    color: isFocused ? theme.ink.action : theme.ink.muted,
                     size: 24,
                   })
                 )}
-                <Text
-                  testID={`tab-label-${accessibleLabel}`}
-                  style={[styles.label, isFocused && styles.labelActive]}
-                  numberOfLines={2}
-                >
-                  {visualLabel}
-                </Text>
-                {isFocused ? (
+                {!isRun ? (
+                  <Text
+                    testID={`tab-label-${accessibleLabel}`}
+                    style={[
+                      styles.label,
+                      { color: theme.ink.muted },
+                      isFocused && { color: theme.ink.action },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {visualLabel}
+                  </Text>
+                ) : null}
+                {isFocused && !isRun ? (
                   <View
                     testID={`tab-indicator-${options.title ?? route.name}`}
-                    style={styles.indicator}
+                    style={{
+                      ...styles.indicator,
+                      backgroundColor: theme.ink.action,
+                    }}
                   />
                 ) : null}
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => {
+              hapticSelect();
+              onMenu();
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: false }}
+            accessibilityLabel="Menu"
+            style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+          >
+            <Ionicons
+              name="menu-outline"
+              size={24}
+              color={theme.ink.muted}
+            />
+            <Text
+              testID="tab-label-Menu"
+              style={[
+                styles.label,
+                { color: theme.ink.muted },
+              ]}
+              numberOfLines={2}
+            >
+              {fontScale >= 1.25 ? compactTabLabels.Menu : 'Menu'}
+            </Text>
+          </Pressable>
       </View>
     </View>
   );
@@ -149,9 +200,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     minHeight: 68,
-    backgroundColor: semanticColors.surface.card,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: semanticColors.border.subtle,
+    overflow: 'visible',
   },
   row: {
     minHeight: TAB_BAR_MIN_CONTENT_HEIGHT,
@@ -159,6 +209,7 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     paddingTop: 6,
     paddingBottom: 8,
+    overflow: 'visible',
   },
   item: {
     flex: 1,
@@ -169,21 +220,24 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingHorizontal: 2,
   },
+  runItem: {
+    overflow: 'visible',
+    zIndex: 4,
+    elevation: 14,
+  },
   pressed: { opacity: 0.72 },
   label: {
-    ...type.caption,
-    lineHeight: 16,
-    color: semanticColors.ink.muted,
+    fontFamily: font.medium,
+    fontSize: 11,
+    lineHeight: 14,
     textAlign: 'center',
     flexShrink: 1,
   },
-  labelActive: { color: semanticColors.ink.primary },
   indicator: {
     position: 'absolute',
     bottom: 3,
     width: 18,
     height: 2,
     borderRadius: 1,
-    backgroundColor: colors.navy,
   },
 });

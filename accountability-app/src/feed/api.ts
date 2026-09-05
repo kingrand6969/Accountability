@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { getPublicProfiles } from '../profiles/publicProfiles';
 import type { FeedPost, PostAudience, PostComment, PostType } from './types';
+import { normalizeStoredPostVisibility, postVisibility } from '../progress/visibility';
 import { File } from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import { uploadBytesToR2 } from '../lib/r2';
@@ -12,7 +13,7 @@ async function currentUserId(): Promise<string | null> {
 }
 
 const POST_SELECT =
-  'id,body,image_url,created_at,user_id,audience,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_encouragements(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
+  'id,body,image_url,created_at,user_id,audience,show_on_card,group_id,page_id,post_type,share_data,activity_id,post_likes(count),post_comments(count),post_encouragements(count),post_tags(user_id),event:events(id,title,starts_at,location,group_id)';
 
 function mapPost(
   row: any,
@@ -33,6 +34,9 @@ function mapPost(
     voice_encouragement_count: row.post_encouragements?.[0]?.count ?? 0,
     liked_by_me: likedSet.has(row.id),
     audience: row.audience ?? 'buddies',
+    show_on_card: row.show_on_card === true,
+    group_id: row.group_id ?? null,
+    page_id: row.page_id ?? null,
     post_type: row.post_type ?? (row.event ? 'event' : row.image_url ? 'photo' : 'post'),
     share_data: row.share_data ?? {},
     activity_id: row.activity_id ?? null,
@@ -111,6 +115,7 @@ export async function reportComment(commentId: string, reason?: string): Promise
 export const FEED_PAGE_SIZE = 20;
 const FEED_CANDIDATE_LIMIT = 500;
 const FEED_SESSION_MAX_AGE_MS = 29 * 60 * 1000;
+const FEED_FIRST_PAGE_REUSE_MS = 2 * 60 * 1000;
 const FEED_REPLACEMENT_MAX_PAGES = Math.ceil(FEED_CANDIDATE_LIMIT / FEED_PAGE_SIZE);
 
 export type UnifiedFeedSource =
@@ -287,15 +292,52 @@ async function pagePersonalFeed(
   return page.posts;
 }
 
+async function reusePersonalFeedFirstPage(
+  me: string,
+  confirmOwner: () => Promise<string | null>,
+): Promise<UnifiedFeedPost[]> {
+  const snapshot = activeFeedSnapshot;
+  const ageMs = snapshot ? Date.now() - snapshot.createdAtMs : Number.POSITIVE_INFINITY;
+  if (
+    !snapshot
+    || snapshot.ownerId !== me
+    || ageMs < 0
+    || ageMs >= FEED_FIRST_PAGE_REUSE_MS
+    || ageMs >= FEED_SESSION_MAX_AGE_MS
+  ) {
+    return refreshPersonalFeed(me, new Set(), confirmOwner);
+  }
+
+  let page: Awaited<ReturnType<typeof loadHydratedSnapshotPage>>;
+  try {
+    page = await loadHydratedSnapshotPage(me, snapshot.sessionId, 0, new Set());
+  } catch (error) {
+    if (!(error instanceof FeedSnapshotUnavailableError)) throw error;
+    return refreshPersonalFeed(me, new Set(), confirmOwner);
+  }
+
+  const confirmedUserId = await confirmOwner();
+  if (confirmedUserId !== me || activeFeedSnapshot !== snapshot) return [];
+  snapshot.afterPosition = page.afterPosition;
+  snapshot.seenPostIds = new Set(page.encounteredIds);
+  return page.posts;
+}
+
+export type PersonalFeedLoadOptions = {
+  forceFresh?: boolean;
+};
+
 /** Fast personal-feed path for screens that already own an authenticated identity. */
 export async function listPersonalFeed(
   expectedOwnerId: string,
   beforeCreatedAt?: string,
+  options: PersonalFeedLoadOptions = {},
 ): Promise<UnifiedFeedPost[]> {
   if (await currentSessionUserId() !== expectedOwnerId) return [];
-  return beforeCreatedAt
-    ? pagePersonalFeed(expectedOwnerId, currentSessionUserId)
-    : refreshPersonalFeed(expectedOwnerId, new Set(), currentSessionUserId);
+  if (beforeCreatedAt) return pagePersonalFeed(expectedOwnerId, currentSessionUserId);
+  return options.forceFresh
+    ? refreshPersonalFeed(expectedOwnerId, new Set(), currentSessionUserId)
+    : reusePersonalFeedFirstPage(expectedOwnerId, currentSessionUserId);
 }
 
 async function myBuddyIds(me: string | null): Promise<string[]> {
@@ -387,6 +429,9 @@ export type IdempotentPostResult = {
   created: boolean;
 };
 
+const POST_OPERATION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function executeIdempotentPost(deps: {
   findExisting(): Promise<string | null>;
   insert(): Promise<string>;
@@ -424,6 +469,172 @@ async function postIdForOperation(
   return (data?.id as string | undefined) ?? null;
 }
 
+type StandardPostOperationPayload = {
+  body: string;
+  image_url: string | null;
+  group_id: string | null;
+  page_id: string | null;
+  event_id: string | null;
+  show_on_card: boolean;
+  audience: PostAudience;
+  post_type: PostType;
+  share_data: Record<string, unknown>;
+  activity_id: string | null;
+};
+
+const STANDARD_POST_OPERATION_SELECT =
+  'id,body,image_url,group_id,page_id,event_id,show_on_card,audience,post_type,share_data,activity_id';
+
+function canonicalJson(value: unknown): string {
+  if (value === null || value === undefined || typeof value === 'number' && !Number.isFinite(value)) {
+    return 'null';
+  }
+  if (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function matchesStandardPostOperation(
+  row: Record<string, unknown>,
+  expected: StandardPostOperationPayload,
+): boolean {
+  return row.body === expected.body
+    && (row.image_url ?? null) === expected.image_url
+    && (row.group_id ?? null) === expected.group_id
+    && (row.page_id ?? null) === expected.page_id
+    && (row.event_id ?? null) === expected.event_id
+    && row.show_on_card === expected.show_on_card
+    && row.audience === expected.audience
+    && row.post_type === expected.post_type
+    && canonicalJson(row.share_data ?? {}) === canonicalJson(expected.share_data)
+    && (row.activity_id ?? null) === expected.activity_id;
+}
+
+async function matchingStandardPostPayloadId(
+  userId: string,
+  operationId: string,
+  expected: StandardPostOperationPayload,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select(STANDARD_POST_OPERATION_SELECT)
+    .eq('user_id', userId)
+    .eq('client_operation_id', operationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  if (!matchesStandardPostOperation(data as Record<string, unknown>, expected)) {
+    throw new Error('This draft changed after the post was created. Refresh before posting again.');
+  }
+  return data.id as string;
+}
+
+/** Reconciles an exact standard-post payload without creating a new row. */
+export async function findMatchingStandardPostIdForOperation(input: {
+  expectedOwnerId: string;
+  operationId: string;
+  body: string;
+  imageUrl: string | null;
+  showPublicly: boolean;
+  postType: PostType;
+  shareData: Record<string, unknown>;
+}): Promise<string | null> {
+  if (!POST_OPERATION_ID.test(input.operationId)) throw new Error('Invalid post operation id.');
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  if (me !== input.expectedOwnerId) throw new Error('Account changed.');
+  const visibility = postVisibility(input.showPublicly);
+  return matchingStandardPostPayloadId(input.expectedOwnerId, input.operationId, {
+    body: input.body,
+    image_url: input.imageUrl,
+    group_id: null,
+    page_id: null,
+    event_id: null,
+    show_on_card: visibility.showOnCard,
+    audience: visibility.audience,
+    post_type: input.postType,
+    share_data: input.shareData,
+    activity_id: null,
+  });
+}
+
+const VERIFIED_RUN_SHARE_KEYS = [
+  'verified',
+  'activity_type',
+  'distance_m',
+  'duration_s',
+  'started_at',
+] as const;
+
+function runClientShareData(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const copy = { ...(value as Record<string, unknown>) };
+  for (const key of VERIFIED_RUN_SHARE_KEYS) delete copy[key];
+  return copy;
+}
+
+function hasVerifiedRunHydration(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const data = value as Record<string, unknown>;
+  return data.verified === true
+    && typeof data.activity_type === 'string'
+    && typeof data.distance_m === 'number'
+    && Number.isFinite(data.distance_m)
+    && typeof data.duration_s === 'number'
+    && Number.isFinite(data.duration_s)
+    && typeof data.started_at === 'string';
+}
+
+function matchesRunPostOperation(
+  row: Record<string, unknown>,
+  expected: StandardPostOperationPayload,
+): boolean {
+  // The database trigger adds these five verified activity fields after the
+  // client insert. Validate that hydration is present, then compare every
+  // client-controlled share key exactly; activity_id binds the server-owned
+  // values to the same owner activity without treating trigger output as a
+  // changed draft on a lost-response retry.
+  const storedClientShareData = runClientShareData(row.share_data);
+  const expectedClientShareData = runClientShareData(expected.share_data);
+  return storedClientShareData !== null
+    && expectedClientShareData !== null
+    && hasVerifiedRunHydration(row.share_data)
+    && canonicalJson(storedClientShareData) === canonicalJson(expectedClientShareData)
+    && matchesStandardPostOperation(
+      { ...row, share_data: expected.share_data },
+      expected,
+    );
+}
+
+async function matchingRunPostIdForOperation(
+  userId: string,
+  operationId: string,
+  expected: StandardPostOperationPayload,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select(STANDARD_POST_OPERATION_SELECT)
+    .eq('user_id', userId)
+    .eq('client_operation_id', operationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  if (!matchesRunPostOperation(data as Record<string, unknown>, expected)) {
+    throw new Error('This draft changed after the post was created. Refresh before posting again.');
+  }
+  return data.id as string;
+}
+
 export async function findMyPostByOperationId(operationId: string): Promise<string | null> {
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
@@ -434,30 +645,51 @@ export async function createRunPostIdempotent(input: {
   body: string;
   imageUrl: string | null;
   operationId: string;
-  audience: Exclude<PostAudience, 'group'>;
+  audience?: Exclude<PostAudience, 'group'>;
+  showPublicly?: boolean;
   activityId: string;
   shareData: Record<string, unknown>;
+  expectedOwnerId?: string;
 }): Promise<IdempotentPostResult> {
+  if (!POST_OPERATION_ID.test(input.operationId)) {
+    throw new Error('Invalid post operation id.');
+  }
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
+  if (input.expectedOwnerId && me !== input.expectedOwnerId) {
+    throw new Error('Account changed.');
+  }
+  const ownerId = input.expectedOwnerId ?? me;
+  const visibility = postVisibility(
+    input.showPublicly ?? input.audience === 'public',
+  );
+  const postPayload: StandardPostOperationPayload = {
+    body: input.body,
+    image_url: input.imageUrl,
+    group_id: null,
+    page_id: null,
+    event_id: null,
+    show_on_card: visibility.showOnCard,
+    audience: visibility.audience,
+    post_type: 'run',
+    share_data: input.shareData,
+    activity_id: input.activityId,
+  };
 
-  return executeIdempotentPost({
-    findExisting: () => postIdForOperation(me, input.operationId),
+  const result = await executeIdempotentPost({
+    findExisting: () => matchingRunPostIdForOperation(
+      ownerId,
+      input.operationId,
+      postPayload,
+    ),
     insert: async () => {
+      const currentOwner = await currentUserId();
+      if (currentOwner !== ownerId) throw new Error('Account changed.');
       const { data, error } = await supabase
         .from('posts')
         .insert({
-          user_id: me,
-          body: input.body,
-          image_url: input.imageUrl,
-          group_id: null,
-          page_id: null,
-          event_id: null,
-          show_on_card: false,
-          audience: input.audience,
-          post_type: 'run',
-          share_data: input.shareData,
-          activity_id: input.activityId,
+          user_id: ownerId,
+          ...postPayload,
           client_operation_id: input.operationId,
         })
         .select('id')
@@ -466,6 +698,8 @@ export async function createRunPostIdempotent(input: {
       return data.id as string;
     },
   });
+  if (await currentUserId() !== ownerId) throw new Error('Account changed.');
+  return result;
 }
 
 export async function createPost(
@@ -480,29 +714,65 @@ export async function createPost(
     postType?: PostType;
     shareData?: Record<string, unknown>;
     activityId?: string | null;
+    operationId?: string;
+    expectedOwnerId?: string;
+    showPublicly?: boolean;
   } = {},
 ): Promise<string> {
+  const operationId = options.operationId;
+  if (operationId !== undefined && !POST_OPERATION_ID.test(operationId)) {
+    throw new Error('Invalid post operation id.');
+  }
   const me = await currentUserId();
   if (!me) throw new Error('Not signed in.');
-  const { data, error } = await supabase
-    .from('posts')
-    .insert({
-      user_id: me,
-      body,
-      image_url: imageUrl,
-      group_id: groupId,
-      page_id: pageId,
-      event_id: eventId,
-      show_on_card: showOnCard,
-      audience: groupId ? 'group' : pageId ? 'public' : (options.audience ?? 'buddies'),
-      post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
-      share_data: options.shareData ?? {},
-      activity_id: options.activityId ?? null,
+  if (options.expectedOwnerId && me !== options.expectedOwnerId) {
+    throw new Error('Account changed.');
+  }
+  const ownerId = options.expectedOwnerId ?? me;
+  const personalVisibility = options.showPublicly === undefined
+    ? normalizeStoredPostVisibility({
+      audience: options.audience ?? 'buddies',
+      showOnCard,
     })
-    .select('id')
-    .single();
-  if (error) throw error;
-  return data.id as string;
+    : postVisibility(options.showPublicly);
+  const postPayload: StandardPostOperationPayload = {
+    body,
+    image_url: imageUrl,
+    group_id: groupId,
+    page_id: pageId,
+    event_id: eventId,
+    show_on_card: groupId || pageId ? showOnCard : personalVisibility.showOnCard,
+    audience: groupId ? 'group' : pageId ? 'public' : personalVisibility.audience,
+    post_type: options.postType ?? (eventId ? 'event' : imageUrl ? 'photo' : 'post'),
+    share_data: options.shareData ?? {},
+    activity_id: options.activityId ?? null,
+  };
+  const insert = async (): Promise<string> => {
+    if (await currentUserId() !== ownerId) throw new Error('Account changed.');
+    const { data, error } = await supabase
+      .from('posts')
+      .insert({
+        user_id: ownerId,
+        ...postPayload,
+        ...(operationId ? { client_operation_id: operationId } : {}),
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data.id as string;
+  };
+
+  if (!operationId) {
+    const postId = await insert();
+    if (await currentUserId() !== ownerId) throw new Error('Account changed.');
+    return postId;
+  }
+  const result = await executeIdempotentPost({
+    findExisting: () => matchingStandardPostPayloadId(ownerId, operationId, postPayload),
+    insert,
+  });
+  if (await currentUserId() !== ownerId) throw new Error('Account changed.');
+  return result.postId;
 }
 
 export async function updatePost(postId: string, body: string): Promise<void> {
@@ -511,8 +781,36 @@ export async function updatePost(postId: string, body: string): Promise<void> {
 }
 
 export async function updatePostAudience(postId: string, audience: Exclude<PostAudience, 'group'>): Promise<void> {
-  const { error } = await supabase.from('posts').update({ audience }).eq('id', postId);
+  return updatePostVisibility(postId, audience === 'public');
+}
+
+export async function updatePostVisibility(
+  postId: string,
+  showPublicly: boolean,
+  expectedOwnerId?: string,
+): Promise<void> {
+  const me = await currentUserId();
+  if (!me) throw new Error('Not signed in.');
+  if (expectedOwnerId && me !== expectedOwnerId) throw new Error('Account changed.');
+  const ownerId = expectedOwnerId ?? me;
+  const visibility = postVisibility(showPublicly);
+  const { data, error } = await supabase.rpc('set_personal_post_visibility', {
+    p_expected_owner: ownerId,
+    p_post_id: postId,
+    p_show_publicly: showPublicly,
+  });
   if (error) throw error;
+  const rows = Array.isArray(data) ? data : [];
+  const row = rows.length === 1 && rows[0] && typeof rows[0] === 'object'
+    ? rows[0] as Record<string, unknown>
+    : null;
+  if (!row
+    || row.result_post_id !== postId
+    || row.result_audience !== visibility.audience
+    || row.result_show_on_card !== visibility.showOnCard) {
+    throw new Error('Post visibility could not be updated.');
+  }
+  if (await currentUserId() !== ownerId) throw new Error('Account changed.');
 }
 
 /** Tag buddies on a post (author-only; RLS also requires they're your buddies). */

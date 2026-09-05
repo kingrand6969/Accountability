@@ -1,0 +1,158 @@
+import { describe, expect, jest, test } from '@jest/globals';
+import {
+  applyCommittedComposerMedia,
+  createComposerMediaLease,
+  runComposerPickerLease,
+} from './composerMediaLease';
+
+describe('Composer media picker lease', () => {
+  test.each(['A to B', 'A to B to A', 'unmount'])(
+    'discards a deferred picker result after %s',
+    async (transition) => {
+      let owner: string | null = 'owner-a';
+      let mountToken = 1;
+      let requestToken = 1;
+      let active = true;
+      let resolve!: (value: string) => void;
+      const launch = jest.fn(() => new Promise<string>((done) => { resolve = done; }));
+      const accept = jest.fn(async () => {});
+      const discard = jest.fn(async () => {});
+      const lease = createComposerMediaLease('owner-a', mountToken, requestToken);
+      const pending = runComposerPickerLease({
+        lease,
+        current: () => ({ owner, mountToken, requestToken, active, editing: false }),
+        launch,
+        accept,
+        discard,
+      });
+
+      if (transition === 'A to B') {
+        owner = 'owner-b'; mountToken = 2;
+      } else if (transition === 'A to B to A') {
+        owner = 'owner-b'; mountToken = 2;
+        owner = 'owner-a'; mountToken = 3;
+      } else {
+        active = false; mountToken = 2;
+      }
+      resolve('picked-result');
+      await pending;
+
+      expect(accept).not.toHaveBeenCalled();
+      expect(discard).toHaveBeenCalledWith('picked-result');
+    },
+  );
+
+  test('accepts only the current request and rechecks after async acceptance', async () => {
+    let requestToken = 4;
+    const accepted = jest.fn(async () => { requestToken = 5; });
+    const discard = jest.fn(async () => {});
+    const applied = await runComposerPickerLease({
+      lease: createComposerMediaLease('owner-a', 2, 4),
+      current: () => ({ owner: 'owner-a', mountToken: 2, requestToken, active: true, editing: false }),
+      launch: async () => 'picked-result',
+      accept: accepted,
+      discard,
+    });
+    expect(applied).toBe(false);
+    expect(discard).toHaveBeenCalledWith('picked-result');
+  });
+
+  test.each(['picker persistence', 'edited-photo persistence'])(
+    'rejects a deferred %s result when context changes before persistence resolves',
+    async () => {
+      let mountToken = 8;
+      let finishPersistence!: () => void;
+      const persistence = new Promise<void>((resolve) => { finishPersistence = resolve; });
+      const discard = jest.fn(async () => {});
+      const pending = runComposerPickerLease({
+        lease: createComposerMediaLease('owner-a', 8, 3),
+        current: () => ({
+          owner: 'owner-a', mountToken, requestToken: 3, active: true, editing: false,
+        }),
+        launch: async () => 'durable-result',
+        accept: async () => persistence,
+        discard,
+      });
+      await Promise.resolve();
+      mountToken = 9;
+      finishPersistence();
+      await expect(pending).resolves.toBe(false);
+      expect(discard).toHaveBeenCalledWith('durable-result');
+    },
+  );
+
+  test('keeps committed media intact when its UI callback becomes stale', () => {
+    let mountToken = 8;
+    const descriptor = { uri: 'file:///document/compose-drafts/owner-a/draft-a/committed.jpg' };
+    let durableFileExists = true;
+    const applyToUi = jest.fn(() => {
+      durableFileExists = false;
+    });
+    const lease = createComposerMediaLease('owner-a', mountToken, 3);
+
+    // Persistence has already committed the descriptor. A context change now
+    // makes only the UI callback stale; it must not roll back durable storage.
+    mountToken = 9;
+    expect(applyCommittedComposerMedia({
+      lease,
+      current: () => ({
+        owner: 'owner-a', mountToken, requestToken: 3, active: true, editing: false,
+      }),
+      committed: descriptor,
+      apply: applyToUi,
+    })).toBe(false);
+
+    expect(applyToUi).not.toHaveBeenCalled();
+    expect(descriptor.uri).toContain('committed.jpg');
+    expect(durableFileExists).toBe(true);
+  });
+
+  test.each(['photo', 'video'])(
+    'suppresses a committed %s continuation after A to B without touching A storage',
+    async (kind) => {
+      let owner: string | null = 'owner-a';
+      let recoveryAttached = true;
+      let resolveDurable!: (value: { uri: string; kind: string }) => void;
+      const durablePromise = new Promise<{ uri: string; kind: string }>((resolve) => {
+        resolveDurable = resolve;
+      });
+      const accountADraft = {
+        media: { uri: `file:///document/compose-drafts/owner-a/draft-a/committed.${kind}`, kind },
+      };
+      let accountBMedia: typeof accountADraft.media | null = null;
+      const lease = createComposerMediaLease('owner-a', 4, 7);
+      const continuation = durablePromise.then((committed) => applyCommittedComposerMedia({
+        lease,
+        current: () => ({ owner, mountToken: 4, requestToken: 7, active: true, editing: false }),
+        recoveryCurrent: () => recoveryAttached,
+        committed,
+        apply: (value) => { accountBMedia = value; },
+      }));
+
+      resolveDurable(accountADraft.media);
+      owner = 'owner-b';
+      recoveryAttached = false;
+
+      await expect(continuation).resolves.toBe(false);
+      expect(accountBMedia).toBeNull();
+      expect(accountADraft.media.uri).toContain('owner-a/draft-a/committed');
+    },
+  );
+
+  test.each(['photo', 'video'])(
+    'rechecks the recovered %s context at the committed continuation boundary',
+    (kind) => {
+      const apply = jest.fn();
+      expect(applyCommittedComposerMedia({
+        lease: createComposerMediaLease('owner-a', 4, 7),
+        current: () => ({
+          owner: 'owner-a', mountToken: 4, requestToken: 7, active: true, editing: false,
+        }),
+        recoveryCurrent: () => false,
+        committed: { uri: `file:///committed.${kind}` },
+        apply,
+      })).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+    },
+  );
+});

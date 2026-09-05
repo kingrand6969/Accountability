@@ -29,7 +29,7 @@ export function MissionIcon({
   size = 44,
   animated = true,
   reducedMotion,
-  glow = 'rgba(37,99,235,0.35)',
+  glow = 'rgba(185,255,61,0.35)',
   style,
 }: {
   source: ImageSourcePropType;

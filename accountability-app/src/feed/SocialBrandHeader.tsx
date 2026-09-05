@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useMemo } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BrandMark } from '../ui/BrandMark';
-import { colors, font, spacing } from '../ui/theme';
+import { BrandWordmark } from '../ui/BrandWordmark';
+import { spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 type Props = {
   unread: number;
-  onMenu: () => void;
   onSearch: () => void;
   onCreate: () => void;
   onNotifications: () => void;
@@ -14,31 +15,28 @@ type Props = {
 
 export function SocialBrandHeader({
   unread,
-  onMenu,
   onSearch,
   onCreate,
   onNotifications,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
-  const isLargeText = fontScale >= 1.25;
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={[styles.header, { paddingTop: insets.top }]}>
-      <IconButton icon="menu-outline" accessibilityLabel="Menu" onPress={onMenu} />
-      <View style={styles.wordmark} accessible accessibilityLabel="AccountAbility">
-        <BrandMark size={32} accessibilityLabel="AccountAbility logo" />
-        {isLargeText ? null : (
-          <Text style={styles.account}>Account<Text style={styles.ability}>Ability</Text></Text>
-        )}
+      <View style={styles.wordmark}>
+        <BrandWordmark compact />
       </View>
       <View style={styles.actions}>
-        <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearch} />
-        <IconButton icon="add-circle-outline" accessibilityLabel="Create" onPress={onCreate} />
+        <IconButton icon="search-outline" accessibilityLabel="Search" onPress={onSearch} styles={styles} color={theme.ink.secondary} />
+        <IconButton icon="add-circle-outline" accessibilityLabel="Create" onPress={onCreate} styles={styles} color={theme.ink.action} />
         <View>
           <IconButton
             icon="notifications-outline"
             accessibilityLabel="Notifications"
             onPress={onNotifications}
+            styles={styles}
+            color={theme.ink.secondary}
           />
           {unread > 0 ? <View style={styles.dot} accessibilityElementsHidden /> : null}
         </View>
@@ -51,10 +49,14 @@ function IconButton({
   icon,
   accessibilityLabel,
   onPress,
+  styles,
+  color,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   accessibilityLabel: string;
   onPress: () => void;
+  styles: BrandHeaderStyles;
+  color: string;
 }) {
   return (
     <Pressable
@@ -63,36 +65,36 @@ function IconButton({
       onPress={onPress}
       style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
     >
-      <Ionicons name={icon} size={23} color={colors.primary} />
+      <Ionicons name={icon} size={23} color={color} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+type BrandHeaderStyles = ReturnType<typeof createStyles>;
+
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   header: {
-    minHeight: 58,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.xs,
-    backgroundColor: colors.card,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: theme.surface.canvas,
   },
   wordmark: {
     flex: 1,
+    justifyContent: 'center',
+  },
+  actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: spacing.xs,
   },
-  account: { color: colors.navy, fontFamily: font.bold, fontSize: 16 },
-  ability: { color: colors.primary },
-  actions: { flexDirection: 'row', alignItems: 'center' },
   iconButton: {
-    minWidth: 44,
-    minHeight: 44,
+    width: spacing.touch,
+    height: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 22,
+    borderRadius: spacing.touch / 2,
   },
   dot: {
     position: 'absolute',
@@ -101,9 +103,9 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.danger,
+    backgroundColor: theme.status.danger,
     borderWidth: 1,
-    borderColor: colors.card,
+    borderColor: theme.surface.card,
   },
-  pressed: { opacity: 0.62 },
+  pressed: { opacity: 0.68 },
 });

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,11 @@ import { GlassBackdrop, GlassCard } from '../ui/Glass';
 import { contentMaxWidth } from '../ui/responsive';
 import { font, radius, spacing } from '../ui/theme';
 import { showToast } from '../ui/Toast';
-import { Chips, INK, INK_SOFT, ACCENT } from '../compete/CompeteUI';
+import {
+  Chips,
+  useCompetitionTheme,
+  type CompetitionPalette,
+} from '../compete/CompeteUI';
 import { CHALLENGE_METRICS, createChallenge, type Metric } from '../compete/api';
 
 const metricOpts = CHALLENGE_METRICS.map((m) => ({ value: m.value, label: m.label, icon: m.icon }));
@@ -26,6 +30,8 @@ const DAYS = [
 ];
 
 export default function ChallengeNew() {
+  const { palette } = useCompetitionTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const router = useRouter();
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
@@ -62,7 +68,7 @@ export default function ChallengeNew() {
             <TextInput
               style={styles.input}
               placeholder="e.g. October Consistency Sprint"
-              placeholderTextColor={INK_SOFT}
+              placeholderTextColor={palette.inkSoft}
               value={title}
               onChangeText={setTitle}
               maxLength={80}
@@ -84,7 +90,7 @@ export default function ChallengeNew() {
           accessibilityRole="button"
         >
           {saving ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={palette.onAccent} />
           ) : (
             <Text style={styles.createText}>Create challenge</Text>
           )}
@@ -101,33 +107,33 @@ function metricHint(m: Metric): string {
   return 'Ranked by how many days each person shows up.';
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: CompetitionPalette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 60, width: '100%', alignSelf: 'center' },
   pressed: { opacity: 0.7 },
   card: {},
   pad: { padding: spacing.lg, gap: spacing.sm },
-  label: { fontFamily: font.bold, fontSize: 13, color: INK, marginTop: 6 },
+  label: { fontFamily: font.bold, fontSize: 13, color: palette.ink, marginTop: 6 },
   input: {
     borderWidth: 1,
-    borderColor: 'rgba(30,27,75,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderColor: palette.inputBorder,
+    backgroundColor: palette.inputSurface,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 15.5,
     fontFamily: font.regular,
-    color: INK,
+    color: palette.ink,
     minHeight: 48,
   },
-  hint: { fontFamily: font.medium, fontSize: 12.5, color: INK_SOFT, lineHeight: 17 },
+  hint: { fontFamily: font.medium, fontSize: 12.5, color: palette.inkSoft, lineHeight: 17 },
   createBtn: {
-    backgroundColor: ACCENT,
+    backgroundColor: palette.accent,
     borderRadius: radius.pill,
     paddingVertical: 14,
     minHeight: 50,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createText: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
-  footNote: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, textAlign: 'center' },
+  createText: { color: palette.onAccent, fontFamily: font.bold, fontSize: 16 },
+  footNote: { fontFamily: font.medium, fontSize: 12, color: palette.inkSoft, textAlign: 'center' },
 });

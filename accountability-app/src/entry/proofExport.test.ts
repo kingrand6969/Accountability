@@ -11,10 +11,15 @@ import {
   type ProofExportOptIns,
   type RenderAssetAdapter,
 } from './proofExport';
-import { buildProofCardSummary } from './ProofCaptureCard';
+import {
+  buildProofCardSummary,
+  createProofShareRenderModel,
+  proofBackgroundSource,
+  PROOF_RUNNER_HERO,
+} from './ProofCaptureCard';
 
 const safeInput: ProofExportInput = {
-  brand: 'AccountAbility',
+  brand: 'Mantle',
   headline: 'I showed up today.',
   format: 'portrait',
   metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -40,6 +45,25 @@ const builders: [string, typeof buildFeedProofExport][] = [
 ];
 
 describe('Share Proof screen safety contract', () => {
+  test('Flex preview and capture consume the same frozen proof renderer props', () => {
+    const context = {
+      dto: buildFeedProofExport(safeInput, allOptIns),
+      backgroundImage: null,
+      routeImages: [],
+      buddyPortraitImages: [],
+      resolve: jest.fn(() => ''),
+    };
+    const media = { kind: 'photo' as const, uri: 'file:///flex-selfie.jpg' };
+
+    const preview = createProofShareRenderModel(context, media);
+    const capture = createProofShareRenderModel(context, media);
+
+    expect(preview).toEqual(capture);
+    expect(preview.context).toBe(context);
+    expect(preview.backgroundUri).toBe('file:///flex-selfie.jpg');
+    expect(Object.isFrozen(preview)).toBe(true);
+  });
+
   const screenSource = readFileSync(resolve(__dirname, '../app/win-card.tsx'), 'utf8');
   const layoutSource = readFileSync(resolve(__dirname, '../app/_layout.tsx'), 'utf8');
   const cardSource = readFileSync(resolve(__dirname, './ProofCaptureCard.tsx'), 'utf8');
@@ -54,13 +78,20 @@ describe('Share Proof screen safety contract', () => {
     );
   });
 
-  test('captures the trusted bundled runner hero without a raw URI source', () => {
+  test('captures the trusted hero or one normalized local Share Studio photo', () => {
     expect(cardSource).toContain(
       "require('../../assets/images/proof-runner-hero-v1.webp')",
     );
-    expect(cardSource).toContain('source={PROOF_RUNNER_HERO}');
+    expect(cardSource).toContain('source={backgroundSource}');
     expect(cardSource).not.toContain('source={{ uri:');
     expect(cardSource).not.toContain('context.resolve');
+    expect(proofBackgroundSource(null)).toBe(PROOF_RUNNER_HERO);
+    expect(proofBackgroundSource('file:///cache/share.jpg')).toEqual({ uri: 'file:///cache/share.jpg' });
+    expect(proofBackgroundSource('content://media/share.jpg')).toEqual({ uri: 'content://media/share.jpg' });
+    expect(proofBackgroundSource('blob:https://local.invalid/photo')).toEqual({ uri: 'blob:https://local.invalid/photo' });
+    expect(proofBackgroundSource('https://project.supabase.co/storage/v1/object/sign/private')).toBe(PROOF_RUNNER_HERO);
+    expect(proofBackgroundSource('data:image/jpeg;base64,secret')).toBe(PROOF_RUNNER_HERO);
+    expect(proofBackgroundSource('file:relative-secret')).toBe(PROOF_RUNNER_HERO);
   });
 
   test('uses real safe-area insets and preserves scalable controls outside fixed artwork', () => {
@@ -77,7 +108,7 @@ describe('Share Proof screen safety contract', () => {
         { ...safeInput, format },
         allOptIns,
       ))).toBe(
-        `AccountAbility. I showed up today. 3 workouts. 5 activities. 8 day streak. ` +
+        `Mantle. I showed up today. 3 workouts. 5 activities. 8 day streak. ` +
         `Location: Kings Park. Buddies: Alex, Sam. ${format} format.`,
       );
     },
@@ -107,7 +138,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
     'preserves exact DTO shape in %s format',
     (format) => {
       expect(build({ ...safeInput, format }, noOptIns)).toEqual({
-        brand: 'AccountAbility',
+        brand: 'Mantle',
         headline: 'I showed up today.',
         format,
         metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -117,7 +148,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
 
   test('constructs the exact safe keyset with no opt-ins', () => {
     expect(build(safeInput, noOptIns)).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -133,7 +164,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
   test.each(singleOptInCases)('allows only the single %s opt-in', (_name, optIns, key, value) => {
     const output = build(safeInput, optIns);
     expect(output).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -150,7 +181,7 @@ describe.each(builders)('%s proof export', (_destination, build) => {
 
   test('all legal scalar opt-ins remain independent', () => {
     expect(build(safeInput, allOptIns)).toEqual({
-      brand: 'AccountAbility',
+      brand: 'Mantle',
       headline: 'I showed up today.',
       format: 'portrait',
       metrics: { workouts: 3, activities: 5, streakDays: 8 },
@@ -310,7 +341,7 @@ describe('trusted proof render asset store', () => {
         buddyPortraitImages: [portrait1, portrait2],
       });
       expect(build(input, allOptIns)).toEqual({
-        brand: 'AccountAbility',
+        brand: 'Mantle',
         headline: 'I showed up today.',
         format: 'portrait',
         metrics: { workouts: 3, activities: 5, streakDays: 8 },

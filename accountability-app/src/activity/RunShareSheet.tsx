@@ -9,6 +9,7 @@ import {
 import {
   Alert,
   BackHandler,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -21,11 +22,10 @@ import {
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
 import { File } from 'expo-file-system';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { RunCard } from './RunCard';
-import { formatDurationLong, formatKm, formatPace, trimRouteEnds, type Pt } from './geo';
+import { formatDurationLong, formatKm, formatPace, privacySafeRoute, type Pt } from './geo';
 import type { ActivityType } from './api';
 import {
   createRunPostIdempotent,
@@ -34,7 +34,7 @@ import {
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { promptCrossShare } from '../feed/crossShare';
 import { recordRunSelfie } from '../achievements/api';
-import { font } from '../ui/theme';
+import { font, themeColors } from '../ui/theme';
 import {
   RUN_SHARE_FORMATS,
   runShareExportSize,
@@ -42,7 +42,6 @@ import {
   type RunMediaFit,
   type RunShareFormat,
 } from './runShareFormats';
-import type { PostAudience } from '../feed/types';
 import { createShareOperationGate } from './shareOperationGate';
 import { saveImageToMemories } from '../memories/api';
 import { RunMediaActions } from './RunMediaActions';
@@ -77,14 +76,51 @@ import {
 import type { BeautyCaptureSource } from './beauty/cameraMode';
 import { DEFAULT_BEAUTY } from './beauty/types';
 import { addStoryIdempotent } from '../stories/api';
-import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
 import {
   retainAchievementStoryOperation,
   type AchievementCompletion,
   type AchievementStoryOperation,
 } from '../entry/achievementCompletion';
+import { ShareStudio, type ShareStudioResult } from '../share/ShareStudio';
+import {
+  createRunShareMediaOverrideController,
+  freezeRunShareRenderInputs,
+  runShareRenderModel,
+  uploadRunFeedImage,
+  type FrozenRunShareRenderInputs,
+  type RunSharePresentation,
+} from './runShareMediaOverride';
+import { feedShareAvailability } from '../share/feedShareAvailability';
+import {
+  RUN_SHARE_FONTS,
+  RUN_SHARE_LAYOUTS,
+  routeEndpointVisibilityIntent,
+  type RunCardTheme,
+  type RunShareFont,
+  type RunShareLayout,
+} from './runShareAppearance';
+import { RunShareOptionSelect } from './RunShareOptionSelect';
+import {
+  createPhonePhoto,
+  requestPhonePhotoPermission,
+} from '../media/phoneMediaLibrary';
 
-const LIME = '#c6f24e';
+const palette = themeColors('dark');
+const LIME = palette.ink.action;
+
+export function runCardBackgroundButtonPlacement(layout: RunShareLayout) {
+  switch (layout) {
+    case 'center-stack':
+    case 'editorial-stack':
+      return { top: 12, left: 12 } as const;
+    case 'right-rail':
+      return { bottom: 12, left: 12 } as const;
+    case 'data-horizon':
+      return { top: '43%', right: 12 } as const;
+    default:
+      return { top: 12, right: 12 } as const;
+  }
+}
 
 export type FinishedRun = {
   activityId: string | null;
@@ -95,6 +131,8 @@ export type FinishedRun = {
   elapsed: number;
   points: Pt[];
   title: string;
+  completedAt: string;
+  cardTheme: RunCardTheme;
   // A saved run may still be queued locally, so there is no truthful resulting
   // server streak yet. The completion remains a run until sync establishes it.
 };
@@ -103,12 +141,16 @@ type Mode = 'map' | 'photo';
 
 type RunFeedOperationMetadata = {
   body: string;
-  audience: Exclude<PostAudience, 'group'>;
+  showPublicly: boolean;
   activityId: string;
   shareData: {
     format: RunShareFormat;
     media_fit: RunMediaFit;
     route_ends_visible: boolean;
+    layout: RunShareLayout;
+    font: RunShareFont;
+    recorded_time_visible: boolean;
+    card_theme: RunCardTheme;
   };
   selfie: boolean;
   distanceKm: number;
@@ -182,14 +224,17 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   >(null);
   const [mode, setMode] = useState<Mode>('map');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | null>(null);
+  const [photoKind, setPhotoKind] = useState<'selfie' | 'place' | 'gallery' | null>(null);
   const [originalRatio, setOriginalRatio] = useState<number | null>(null);
   const [format, setFormat] = useState<RunShareFormat>('feed');
   const [mediaFit, setMediaFit] = useState<RunMediaFit>('cover');
-  const [audience, setAudience] = useState<Exclude<PostAudience, 'group'>>('buddies');
   const [activeDestination, setActiveDestination] = useState<RunMediaDestination | null>(null);
-  const [sharePromptVisible, setSharePromptVisible] = useState(true);
+  const [shareStudioVisible, setShareStudioVisible] = useState(false);
   const [showEnds, setShowEnds] = useState(false); // opt in to reveal home/finish
+  const [layout, setLayout] = useState<RunShareLayout>('map-focus');
+  const [cardFont, setCardFont] = useState<RunShareFont>('momentum');
+  const [showTimestamp, setShowTimestamp] = useState(true);
+  const [backgroundPickerVisible, setBackgroundPickerVisible] = useState(false);
   const [beautyStage, setBeautyStage] = useState<'camera' | 'editor' | null>(
     null,
   );
@@ -198,6 +243,14 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   const cardRef = useRef<View>(null);
   const stagedMedia = useRef<RunMediaCacheItem | null>(null);
   const processedPhotoMedia = useRef<RunMediaCacheItem | null>(null);
+  const shareMediaOverride = useRef<ReturnType<
+    typeof createRunShareMediaOverrideController
+  > | null>(null);
+  if (!shareMediaOverride.current) {
+    shareMediaOverride.current = createRunShareMediaOverrideController();
+  }
+  const shareStudioRunInputs = useRef<FrozenRunShareRenderInputs | null>(null);
+  const shareStudioCaptureSize = useRef<{ width: number; height: number } | null>(null);
   const renderGeneration = useRef(0);
   const capturedSourceLeases = useRef<ReturnType<
     typeof createBeautyCaptureLeaseSlot
@@ -260,8 +313,15 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
         setMode('map');
         setFormat('feed');
         setMediaFit('cover');
-        setAudience('buddies');
+        setShareStudioVisible(false);
+        shareMediaOverride.current!.clear();
+        shareStudioRunInputs.current = null;
+        shareStudioCaptureSize.current = null;
         setShowEnds(false);
+        setLayout('map-focus');
+        setCardFont('momentum');
+        setShowTimestamp(true);
+        setBackgroundPickerVisible(false);
         setBeautyStage(null);
         setBeautySource(null);
       },
@@ -306,8 +366,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           reason:
             'Save a real GPS activity before posting a verified Run card.',
         };
-  const activityQueued = !feedAvailability.enabled;
-  const feedDisabledReason = feedAvailability.reason ?? undefined;
+  const feedShare = feedShareAvailability(Platform.OS);
+  const activityQueued = !feedAvailability.enabled || !feedShare.available;
+  const feedDisabledReason = feedShare.reason ?? feedAvailability.reason ?? undefined;
   const syncDetail =
     !currentOwnerId || currentOwnerId !== run.ownerId
       ? 'Sign in as the recording owner to upload'
@@ -351,6 +412,9 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     }
     void capturedSourceLeases.current!.releaseAll();
     feedOperation.current = null;
+    shareMediaOverride.current!.clear();
+    shareStudioRunInputs.current = null;
+    shareStudioCaptureSize.current = null;
     hasPersistentDestination.current = false;
     let active = true;
     queueMicrotask(() => {
@@ -360,7 +424,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       setPhotoKind(null);
       setOriginalRatio(null);
       setMode('map');
+      setShareStudioVisible(false);
       setShowEnds(false);
+      setLayout('map-focus');
+      setCardFont('momentum');
+      setShowTimestamp(true);
+      setBackgroundPickerVisible(false);
       setBeautyStage(null);
       setBeautySource(null);
     });
@@ -369,11 +438,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     };
   }, [ownerMatches]);
 
-  // size the 4:5 card to fit BOTH the width and the space left after the
-  // header/mode-picker/buttons, so it never clips on short screens
+  // Keep the reviewed card large enough to judge; the editor scrolls on short
+  // screens instead of shrinking the privacy and typography details away.
   const cardRatio = runShareRatio(format, originalRatio);
-  const maxPreviewHeight = Math.max(170, height - 520);
-  const cardWidth = Math.max(170, Math.min(width - 40, 340, Math.floor(maxPreviewHeight * cardRatio)));
+  const cardWidth = Math.max(240, Math.min(width - 40, 380));
   const exportSize = runShareExportSize(format, originalRatio);
   const renderSizeKey = runMediaRenderSizeKey({
     viewportWidth: width,
@@ -386,8 +454,18 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   // the shared route hides its true start/end by default (privacy zone); the
   // user can opt to reveal them, and the full route always stays in the saved activity
   const cardPoints = useMemo(
-    () => (showEnds ? run.points : trimRouteEnds(run.points)),
+    () => (showEnds ? run.points : privacySafeRoute(run.points)),
     [run.points, showEnds],
+  );
+  const cardAppearance = useMemo(
+    () => ({
+      layout,
+      font: cardFont,
+      showTimestamp,
+      theme: run.cardTheme,
+      completedAt: run.completedAt,
+    }),
+    [cardFont, layout, run.cardTheme, run.completedAt, showTimestamp],
   );
 
   // Android hardware back closes the sheet instead of popping the run screen
@@ -406,7 +484,19 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     const stale = stagedMedia.current;
     stagedMedia.current = null;
     if (stale) void runMediaCache.release(stale.id, 'editor').catch(() => {});
-  }, [format, mediaFit, showEnds, mode, photoUri, originalRatio, run, renderSizeKey]);
+  }, [
+    cardFont,
+    format,
+    layout,
+    mediaFit,
+    showEnds,
+    showTimestamp,
+    mode,
+    photoUri,
+    originalRatio,
+    run,
+    renderSizeKey,
+  ]);
 
   const caption =
     `🏃 ${run.title} · ${formatKm(run.distance)} km in ${formatDurationLong(run.elapsed)} ` +
@@ -492,7 +582,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     }
   }
 
-  async function addPhoto(kind: 'selfie' | 'place') {
+  async function addPhoto(kind: 'selfie' | 'place' | 'gallery') {
     if (kind === 'selfie') {
       openBeautyCamera();
       return;
@@ -509,7 +599,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       let res: ImagePicker.ImagePickerResult;
       // web has no camera and needs the picker to open synchronously (an
       // await before it breaks the user-gesture) → go straight to the library
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' || kind === 'gallery') {
         res = await ImagePicker.launchImageLibraryAsync(opts);
         boundary.assertOwned();
       } else {
@@ -545,12 +635,13 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     try {
       // 4:5 at 1080×1350 — Instagram/FB portrait HD; near-lossless jpg so the
       // stats stay crisp (the on-screen preview renders small)
+      const captureSize = shareStudioCaptureSize.current ?? exportSize;
       const captured = await captureRef(cardRef, {
         format: 'jpg',
         quality: 0.97,
         result,
-        width: exportSize.width,
-        height: exportSize.height,
+        width: captureSize.width,
+        height: captureSize.height,
       });
       boundary.assertOwned();
       return captured;
@@ -599,7 +690,7 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
     await safeCloseRef.current!();
   }
 
-  async function onDestination(destination: RunMediaDestination) {
+  async function onDestination(destination: RunMediaDestination, draft?: ShareStudioResult) {
     const ran = await shareOperationGate.run(async () => {
       const boundary = ownerBoundary();
       boundary.assertOwned();
@@ -611,22 +702,32 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               'Save a real GPS activity on your phone before posting a verified Run card.',
           );
         }
+        if (destination === 'feed' && !draft) {
+          throw new Error('Review this run in Share Studio before posting.');
+        }
         const feedContext =
           destination === 'feed'
             ? (feedOperation.current = retainFeedOperationContext(
                 feedOperation.current,
                 () => ({
-                  operationId: createRunMediaOperationId(),
+                  operationId: draft!.operationId,
                   metadata: {
-                    body: caption,
-                    audience,
+                    body: draft!.caption || caption,
+                    showPublicly: draft!.showPublicly,
                     activityId: run.activityId!,
                     shareData: {
-                      format,
-                      media_fit: mediaFit,
-                      route_ends_visible: showEnds,
+                      format: shareStudioRunInputs.current?.format ?? format,
+                      media_fit: shareStudioRunInputs.current?.mediaFit ?? mediaFit,
+                      route_ends_visible: shareStudioRunInputs.current?.showEnds ?? showEnds,
+                      layout: shareStudioRunInputs.current?.appearance.layout ?? layout,
+                      font: shareStudioRunInputs.current?.appearance.font ?? cardFont,
+                      recorded_time_visible:
+                        shareStudioRunInputs.current?.appearance.showTimestamp ?? showTimestamp,
+                      card_theme: run.cardTheme,
                     },
-                    selfie: photoKind === 'selfie',
+                    selfie: draft!.media.kind === 'photo'
+                      ? draft!.media.source === 'selfie'
+                      : photoKind === 'selfie',
                     distanceKm: run.distance / 1000,
                   },
                 }),
@@ -652,9 +753,10 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               body: feedContext!.metadata.body,
               imageUrl: null,
               operationId: operationId!,
-              audience: feedContext!.metadata.audience,
+              showPublicly: feedContext!.metadata.showPublicly,
               activityId: feedContext!.metadata.activityId,
               shareData: feedContext!.metadata.shareData,
+              expectedOwnerId: run.ownerId!,
             }));
             boundary.assertOwned();
             void completionEffects
@@ -665,7 +767,6 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
               )
               .catch(() => {});
             Alert.alert('Posted 🎉', 'Your run is on your feed.');
-            await closeEditor();
             return;
           }
           throw new Error('Saving run images is available on your phone.');
@@ -677,13 +778,15 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           retain: runMediaCache.retain,
           release: runMediaCache.release,
           saveToMemories: (uri) =>
-            boundary.runSideEffect(() => saveImageToMemories(uri)),
+            boundary.runSideEffect(() =>
+              saveImageToMemories(uri, null, null, run.ownerId!),
+            ),
           requestPhonePermission: () =>
             boundary.runSideEffect(() =>
-              MediaLibrary.requestPermissionsAsync(true, ['photo']),
+              requestPhonePhotoPermission(),
             ),
           saveToPhone: (uri) =>
-            boundary.runSideEffect(() => MediaLibrary.Asset.create(uri)),
+            boundary.runSideEffect(() => createPhonePhoto(uri)),
           share: async (uri) => {
             boundary.assertOwned();
             if (Platform.OS !== 'web' && (await Sharing.isAvailableAsync())) {
@@ -707,21 +810,25 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
                 : Promise.resolve(null),
             ),
           uploadToFeed: async (uri) => {
-            boundary.assertOwned();
-            const base64 = await new File(uri).base64();
-            boundary.assertOwned();
-            return boundary.runSideEffect(() =>
-              uploadPostImage(base64, 'jpg', operationId ?? undefined),
-            );
+            return uploadRunFeedImage({
+              uri,
+              operationId: operationId ?? undefined,
+              expectedOwnerId: run.ownerId!,
+            }, {
+              readBase64: async (sourceUri) => new File(sourceUri).base64(),
+              uploadPostImage,
+              assertOwned: boundary.assertOwned,
+            });
           },
           createFeedPost: (imageUrl) =>
             boundary.runSideEffect(() => createRunPostIdempotent({
               body: feedContext!.metadata.body,
               imageUrl,
               operationId: operationId!,
-              audience: feedContext!.metadata.audience,
+              showPublicly: feedContext!.metadata.showPublicly,
               activityId: feedContext!.metadata.activityId,
               shareData: feedContext!.metadata.shareData,
+              expectedOwnerId: run.ownerId!,
             })),
         });
         boundary.assertOwned();
@@ -747,7 +854,6 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           const tmp = await capture('tmpfile');
           boundary.assertOwned();
           promptCrossShare(feedContext!.metadata.body, tmp);
-          await closeEditor();
         }
       } finally {
         setActiveDestination(null);
@@ -789,6 +895,107 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
       }
     });
     if (!ran) throw new Error('Another run-image action is already in progress.');
+  }
+
+  async function publishRunDraft(draft: ShareStudioResult): Promise<void> {
+    const boundary = ownerBoundary();
+    boundary.assertOwned();
+    if (draft.ownerId !== run.ownerId) throw new Error('Account changed.');
+    const frozen = shareStudioRunInputs.current;
+    if (!frozen) throw new Error('The reviewed Run preview is no longer available.');
+    const reviewed = runShareRenderModel(frozen, draft.media);
+    shareStudioCaptureSize.current = runShareExportSize(
+      reviewed.format,
+      reviewed.presentation.originalRatio,
+    );
+    setFormat(reviewed.format);
+    setMediaFit(reviewed.mediaFit);
+    setShowEnds(reviewed.showEnds);
+    setLayout(reviewed.appearance.layout);
+    setCardFont(reviewed.appearance.font);
+    setShowTimestamp(reviewed.appearance.showTimestamp);
+    if (draft.media.kind === 'photo') {
+      applyRunSharePresentation(shareMediaOverride.current!.stage(
+        frozen.presentation,
+        processedPhotoMedia.current,
+        {
+          operationId: draft.operationId,
+          uri: draft.media.uri,
+          source: draft.media.source,
+          width: draft.media.width,
+          height: draft.media.height,
+        },
+      ));
+    } else {
+      applyRunSharePresentation(reviewed.presentation);
+    }
+    await nextRunSharePaint();
+    boundary.assertOwned();
+    await onDestination('feed', draft);
+    const committed = shareMediaOverride.current!.commit();
+    if (committed) {
+      processedPhotoMedia.current = null;
+      if (committed.releasePrevious) {
+        await runMediaCache.release(committed.releasePrevious.id, 'editor').catch(() => {});
+      }
+    }
+    if (draft.media.kind === 'photo') {
+      await draft.media.release().catch(() => {});
+    }
+    setShareStudioVisible(false);
+    shareStudioRunInputs.current = null;
+    shareStudioCaptureSize.current = null;
+    await closeEditor();
+  }
+
+  function cancelRunShareStudio(): void {
+    const restored = shareMediaOverride.current!.cancel();
+    if (restored) {
+      processedPhotoMedia.current = restored.processedPhoto;
+      applyRunSharePresentation(restored.presentation);
+    }
+    feedOperation.current = null;
+    shareStudioRunInputs.current = null;
+    shareStudioCaptureSize.current = null;
+    setShareStudioVisible(false);
+  }
+
+  function openFeedStudio(): void {
+    feedOperation.current = null;
+    shareStudioRunInputs.current = freezeRunShareRenderInputs({
+      presentation: { mode, photoUri, photoKind, originalRatio },
+      format,
+      mediaFit,
+      showEnds,
+      appearance: cardAppearance,
+      points: cardPoints,
+      distanceM: run.distance,
+      durationS: run.elapsed,
+    });
+    setShareStudioVisible(true);
+  }
+
+  function applyRunSharePresentation(presentation: RunSharePresentation): void {
+    setMode(presentation.mode);
+    setPhotoUri(presentation.photoUri);
+    setPhotoKind(presentation.photoKind);
+    setOriginalRatio(presentation.originalRatio);
+  }
+
+  function toggleRouteEndpointPrivacy(): void {
+    const intent = routeEndpointVisibilityIntent(showEnds);
+    if (!intent.requiresConfirmation) {
+      setShowEnds(intent.next);
+      return;
+    }
+    Alert.alert(
+      'Show start and finish points?',
+      'These points can reveal where you live, work, or regularly exercise. Only continue if you are comfortable sharing them.',
+      [
+        { text: 'Keep hidden', style: 'cancel' },
+        { text: 'Show points', style: 'destructive', onPress: () => setShowEnds(intent.next) },
+      ],
+    );
   }
 
   if (!ownerMatches) {
@@ -872,7 +1079,12 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
   }
 
   return (
-    <View style={styles.overlay}>
+    <ScrollView
+      style={styles.overlay}
+      contentContainerStyle={styles.overlayContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Share your run</Text>
         <Pressable
@@ -907,6 +1119,44 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           width={cardWidth}
           aspectRatio={cardRatio}
           mediaFit={mediaFit}
+          layout={layout}
+          font={cardFont}
+          theme={run.cardTheme}
+          title={run.title}
+          completedAt={run.completedAt}
+          showTimestamp={showTimestamp}
+          showEndpoints={showEnds}
+        />
+        <Pressable
+          style={[
+            styles.changeBackgroundButton,
+            runCardBackgroundButtonPlacement(layout),
+          ]}
+          onPress={() => setBackgroundPickerVisible(true)}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Change Run card background"
+          accessibilityHint="Choose the route map, take a photo, take a selfie, or choose from your gallery"
+          accessibilityState={{ disabled: busy }}
+        >
+          <Ionicons name="camera-outline" size={22} color={palette.ink.primary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.appearanceRow}>
+        <RunShareOptionSelect
+          label="Layout"
+          value={layout}
+          options={RUN_SHARE_LAYOUTS}
+          onChange={setLayout}
+          disabled={busy}
+        />
+        <RunShareOptionSelect
+          label="Font"
+          value={cardFont}
+          options={RUN_SHARE_FONTS}
+          onChange={setCardFont}
+          disabled={busy}
         />
       </View>
 
@@ -945,102 +1195,202 @@ export function RunShareSheet({ run, onClose }: { run: FinishedRun; onClose: () 
           accessibilityState={{ checked: mediaFit === 'contain', disabled: busy }}
           accessibilityLabel="Fit the whole photo inside the selected orientation"
         >
-          <Ionicons name={mediaFit === 'cover' ? 'crop-outline' : 'scan-outline'} size={15} color="#cbd5e1" />
+          <Ionicons name={mediaFit === 'cover' ? 'crop-outline' : 'scan-outline'} size={15} color={palette.ink.secondary} />
           <Text style={styles.fitText}>{mediaFit === 'cover' ? 'Crop to fill' : 'Fit whole photo'}</Text>
         </Pressable>
       ) : null}
 
-      {/* privacy: start & end hidden by default; user can opt to show them */}
       <Pressable
-        style={styles.privacyRow}
-        onPress={() => setShowEnds((v) => !v)}
+        style={styles.preferenceRow}
+        onPress={() => setShowTimestamp((visible) => !visible)}
         disabled={busy}
         accessibilityRole="switch"
-        accessibilityState={{ checked: showEnds, disabled: busy }}
-        accessibilityLabel="Show start and end points"
+        accessibilityState={{ checked: showTimestamp, disabled: busy }}
+        accessibilityLabel="Show recorded date and time"
+      >
+        <Ionicons name="time-outline" size={17} color={showTimestamp ? LIME : palette.ink.muted} />
+        <View style={styles.preferenceCopy}>
+          <Text style={styles.preferenceTitle}>Show recorded date & time</Text>
+          <Text style={styles.preferenceDetail}>Run duration always stays visible</Text>
+        </View>
+        <View style={[styles.checkbox, showTimestamp && styles.checkboxActive]}>
+          {showTimestamp ? <Ionicons name="checkmark" size={15} color={palette.ink.inverse} /> : null}
+        </View>
+      </Pressable>
+
+      {/* privacy: start & end hidden by default; user can opt to show them */}
+      <Pressable
+        style={styles.preferenceRow}
+        onPress={toggleRouteEndpointPrivacy}
+        disabled={busy}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: !showEnds, disabled: busy }}
+        accessibilityLabel="Hide start and finish points"
       >
         <Ionicons
           name={showEnds ? 'eye-outline' : 'shield-checkmark'}
-          size={13}
-          color={showEnds ? '#c6f24e' : '#94a3b8'}
+          size={17}
+          color={showEnds ? palette.status.attention : LIME}
         />
-        <Text style={styles.privacyText}>
-          {showEnds ? 'Showing start & end points' : 'Start & end hidden for privacy'}
-        </Text>
-        <Text style={styles.privacyAction}>{showEnds ? 'Hide' : 'Show'}</Text>
+        <View style={styles.preferenceCopy}>
+          <Text style={styles.preferenceTitle}>Hide start & finish points</Text>
+          <Text style={styles.preferenceDetail}>
+            {showEnds ? 'Visible — your location privacy may be exposed' : 'Recommended for privacy'}
+          </Text>
+        </View>
+        <View style={[styles.checkbox, !showEnds && styles.checkboxActive]}>
+          {!showEnds ? <Ionicons name="checkmark" size={15} color={palette.ink.inverse} /> : null}
+        </View>
       </Pressable>
 
-      {/* mode picker */}
-      <View style={styles.modeRow}>
-        <ModeBtn
-          icon="happy-outline"
-          label="Selfie"
-          active={mode === 'photo' && photoKind === 'selfie'}
-          onPress={() => addPhoto('selfie')}
-          disabled={busy}
-        />
-        <ModeBtn
-          icon="camera-outline"
-          label="Photo"
-          active={mode === 'photo' && photoKind === 'place'}
-          onPress={() => addPhoto('place')}
-          disabled={busy}
-        />
-        <ModeBtn
-          icon="map-outline"
-          label="Map only"
-          active={mode === 'map'}
-          onPress={() => {
-            setPhotoUri(null);
-            setPhotoKind(null);
-            setMode('map');
-            releaseProcessedPhotoAfterReplacement();
-          }}
-          disabled={busy}
-        />
-      </View>
-
-      <View style={styles.audienceRow}>
-        <Text style={styles.audienceTitle}>Who can see it?</Text>
-        {(['buddies', 'public'] as const).map((value) => (
-          <Pressable
-            key={value}
-            onPress={() => setAudience(value)}
-            disabled={busy}
-            style={[styles.audienceChip, audience === value && styles.audienceChipActive]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: audience === value }}
-          >
-            <Ionicons
-              name={value === 'buddies' ? 'people' : 'earth'}
-              size={14}
-              color={audience === value ? '#101319' : '#cbd5e1'}
-            />
-            <Text style={[styles.audienceText, audience === value && styles.audienceTextActive]}>
-              {value === 'buddies' ? 'Buddies' : 'Public'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <Modal
+        visible={backgroundPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBackgroundPickerVisible(false)}
+      >
+        <Pressable
+          style={styles.backgroundBackdrop}
+          onPress={() => setBackgroundPickerVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close background choices"
+        >
+          <View style={styles.backgroundSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.backgroundSheetHeader}>
+              <View>
+                <Text accessibilityRole="header" style={styles.backgroundTitle}>Change background</Text>
+                <Text style={styles.backgroundHint}>Your route and run stats stay visible</Text>
+              </View>
+              <Pressable
+                style={styles.backgroundClose}
+                onPress={() => setBackgroundPickerVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close background choices"
+              >
+                <Ionicons name="close" size={21} color={palette.ink.secondary} />
+              </Pressable>
+            </View>
+            <View style={styles.modeRow}>
+              <ModeBtn
+                icon="map-outline"
+                label="Route map"
+                active={mode === 'map'}
+                onPress={() => {
+                  setPhotoUri(null);
+                  setPhotoKind(null);
+                  setMode('map');
+                  releaseProcessedPhotoAfterReplacement();
+                  setBackgroundPickerVisible(false);
+                }}
+                disabled={busy}
+              />
+              <ModeBtn
+                icon="happy-outline"
+                label="Selfie"
+                active={mode === 'photo' && photoKind === 'selfie'}
+                onPress={() => {
+                  setBackgroundPickerVisible(false);
+                  void addPhoto('selfie');
+                }}
+                disabled={busy}
+              />
+              <ModeBtn
+                icon="camera-outline"
+                label="Camera"
+                active={mode === 'photo' && photoKind === 'place'}
+                onPress={() => {
+                  setBackgroundPickerVisible(false);
+                  void addPhoto('place');
+                }}
+                disabled={busy}
+              />
+              <ModeBtn
+                icon="images-outline"
+                label="Gallery"
+                active={mode === 'photo' && photoKind === 'gallery'}
+                onPress={() => {
+                  setBackgroundPickerVisible(false);
+                  void addPhoto('gallery');
+                }}
+                disabled={busy}
+              />
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
 
       <RunMediaActions
         onDestination={onDestination}
-        onShareAchievement={() => setSharePromptVisible(true)}
+        onContinueToFeed={openFeedStudio}
+        onMyDay={onStoryDestination}
         disabled={busy}
         activityQueued={activityQueued}
         feedDisabledReason={feedDisabledReason}
       />
-      <AchievementSharePrompt
-        visible={sharePromptVisible}
-        payloadKey={`${completionPayload.kind}:${completionPayload.sourceId}`}
-        feedDisabledReason={feedDisabledReason}
-        onFeed={() => onDestination('feed')}
-        onStory={onStoryDestination}
-        onPrivate={() => closeEditor()}
-        onClose={() => setSharePromptVisible(false)}
+      <ShareStudio
+        visible={shareStudioVisible}
+        expectedOwnerId={run.ownerId!}
+        presentation="feed-composer"
+        context={{
+          title: run.title,
+          date: new Date(run.completedAt).toLocaleDateString(),
+          metrics: [
+            { label: 'Distance', value: `${formatKm(run.distance)} km`, sensitivity: 'standard' },
+            { label: 'Time', value: formatDurationLong(run.elapsed), sensitivity: 'standard' },
+            { label: 'Pace', value: `${formatPace(run.distance, run.elapsed)} /km`, sensitivity: 'standard' },
+          ],
+        }}
+        defaultCaption={caption}
+        unavailableReason={feedShare.reason}
+        destinationPreviewAspectRatio={(state) => {
+          const frozen = shareStudioRunInputs.current;
+          if (!frozen) return 4 / 5;
+          const preview = runShareRenderModel(frozen, state.media);
+          return runShareRatio(preview.format, preview.presentation.originalRatio);
+        }}
+        renderDestinationPreview={(state) => {
+          const frozen = shareStudioRunInputs.current ?? freezeRunShareRenderInputs({
+            presentation: { mode, photoUri, photoKind, originalRatio },
+            format,
+            mediaFit,
+            showEnds,
+            appearance: cardAppearance,
+            points: cardPoints,
+            distanceM: run.distance,
+            durationS: run.elapsed,
+          });
+          const preview = runShareRenderModel(frozen, state.media);
+          return (
+            <RunCard
+              mode={preview.presentation.mode}
+              photoUri={preview.presentation.photoUri}
+              distanceM={preview.distanceM}
+              durationS={preview.durationS}
+              points={preview.points as Pt[]}
+              width={cardWidth}
+              aspectRatio={runShareRatio(preview.format, preview.presentation.originalRatio)}
+              mediaFit={preview.mediaFit}
+              layout={preview.appearance.layout}
+              font={preview.appearance.font}
+              theme={preview.appearance.theme}
+              title={run.title}
+              completedAt={preview.appearance.completedAt}
+              showTimestamp={preview.appearance.showTimestamp}
+              showEndpoints={preview.showEnds}
+            />
+          );
+        }}
+        onContinue={publishRunDraft}
+        onCancel={cancelRunShareStudio}
       />
-    </View>
+    </ScrollView>
   );
+}
+
+function nextRunSharePaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
 
 function ModeBtn({
@@ -1050,7 +1400,7 @@ function ModeBtn({
   onPress,
   disabled,
 }: {
-  icon: 'happy-outline' | 'camera-outline' | 'map-outline';
+  icon: 'happy-outline' | 'camera-outline' | 'images-outline' | 'map-outline';
   label: string;
   active: boolean;
   onPress: () => void;
@@ -1065,7 +1415,7 @@ function ModeBtn({
       accessibilityRole="button"
       accessibilityState={{ selected: active, disabled }}
     >
-      <Ionicons name={icon} size={18} color={active ? '#101319' : '#cbd5e1'} />
+      <Ionicons name={icon} size={18} color={active ? palette.ink.inverse : palette.ink.secondary} />
       <Text style={[styles.modeText, active && styles.modeTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -1086,7 +1436,7 @@ function PlatformBeautyCamera(props: BeautyCameraProps) {
 const styles = StyleSheet.create({
   beautyOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#0b0e14',
+    backgroundColor: palette.surface.canvas,
     paddingTop: 42,
     zIndex: 30,
   },
@@ -1104,7 +1454,7 @@ const styles = StyleSheet.create({
     minWidth: 72,
   },
   beautyCancelText: {
-    color: '#e2e8f0',
+    color: palette.ink.secondary,
     fontFamily: font.bold,
     fontSize: 14,
   },
@@ -1116,24 +1466,27 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#0b0e14',
+    backgroundColor: palette.surface.canvas,
+  },
+  overlayContent: {
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 48,
     paddingBottom: 24,
     alignItems: 'center',
-    justifyContent: 'center', // center the compact stack — no stretched gaps
+    justifyContent: 'flex-start',
     gap: 12,
   },
   ownerBoundary: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#0b0e14',
+    backgroundColor: palette.surface.canvas,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
     paddingHorizontal: 28,
   },
   ownerBoundaryText: {
-    color: '#fff',
+    color: palette.ink.primary,
     fontFamily: font.bold,
     fontSize: 16,
     textAlign: 'center',
@@ -1148,7 +1501,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   ownerBoundaryCloseText: {
-    color: '#101319',
+    color: palette.ink.inverse,
     fontFamily: font.extrabold,
     fontSize: 15,
   },
@@ -1160,7 +1513,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
   },
-  headerTitle: { color: '#fff', fontFamily: font.extrabold, fontSize: 18 },
+  headerTitle: { color: palette.ink.primary, fontFamily: font.extrabold, fontSize: 18 },
   savedStatus: {
     minHeight: 44,
     flexDirection: 'row',
@@ -1171,13 +1524,34 @@ const styles = StyleSheet.create({
     maxWidth: 560,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(198,242,78,0.1)',
+    backgroundColor: palette.surface.muted,
+    borderWidth: 1,
+    borderColor: palette.border.subtle,
   },
-  savedTitle: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
-  savedDetail: { color: '#94a3b8', fontFamily: font.medium, fontSize: 11 },
-  skip: { color: '#94a3b8', fontFamily: font.bold, fontSize: 15 },
+  savedTitle: { color: palette.ink.primary, fontFamily: font.bold, fontSize: 13 },
+  savedDetail: { color: palette.ink.muted, fontFamily: font.medium, fontSize: 11 },
+  skip: { color: palette.ink.muted, fontFamily: font.bold, fontSize: 15 },
   skipBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  preview: { justifyContent: 'center' },
+  preview: { position: 'relative', justifyContent: 'center' },
+  changeBackgroundButton: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.surface.raised,
+    borderWidth: 1,
+    borderColor: palette.border.strong,
+  },
+  appearanceRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: 560,
+    gap: 8,
+  },
   formatRow: { gap: 7, paddingHorizontal: 2 },
   formatChip: {
     minWidth: 68,
@@ -1187,79 +1561,92 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(30,36,48,0.9)',
+    backgroundColor: palette.surface.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: palette.border.subtle,
   },
-  formatChipActive: { borderColor: LIME, backgroundColor: 'rgba(198,242,78,0.14)' },
-  formatLabel: { color: '#e2e8f0', fontFamily: font.bold, fontSize: 12 },
-  formatRatio: { color: '#94a3b8', fontFamily: font.medium, fontSize: 10 },
+  formatChipActive: { borderColor: LIME, backgroundColor: palette.surface.muted },
+  formatLabel: { color: palette.ink.secondary, fontFamily: font.bold, fontSize: 12 },
+  formatRatio: { color: palette.ink.muted, fontFamily: font.medium, fontSize: 10 },
   formatLabelActive: { color: LIME },
   fitControl: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  fitText: { color: '#cbd5e1', fontFamily: font.semibold, fontSize: 12 },
-  privacyRow: {
+  fitText: { color: palette.ink.secondary, fontFamily: font.semibold, fontSize: 12 },
+  preferenceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
-    minHeight: 44,
+    gap: 10,
+    paddingHorizontal: 12,
+    minHeight: 48,
     width: '100%',
     maxWidth: 560,
+    borderRadius: 13,
+    backgroundColor: palette.surface.card,
+    borderWidth: 1,
+    borderColor: palette.border.subtle,
+  },
+  preferenceCopy: { flex: 1, minWidth: 0, paddingVertical: 8 },
+  preferenceTitle: { color: palette.ink.primary, fontFamily: font.bold, fontSize: 12 },
+  preferenceDetail: { marginTop: 2, color: palette.ink.muted, fontFamily: font.medium, fontSize: 10 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: palette.border.strong,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  privacyText: { color: '#94a3b8', fontFamily: font.medium, fontSize: 12 },
-  privacyAction: { color: '#c6f24e', fontFamily: font.bold, fontSize: 12 },
+  checkboxActive: { backgroundColor: LIME, borderColor: LIME },
   modeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     alignSelf: 'center',
     justifyContent: 'center',
     width: '100%',
     maxWidth: 560,
   },
-  audienceRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 560,
-    gap: 8,
+  backgroundBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: palette.interaction.scrim,
+    padding: 16,
   },
-  audienceTitle: {
-    color: '#94a3b8',
-    fontFamily: font.semibold,
-    fontSize: 12,
-    marginRight: 'auto',
-  },
-  audienceChip: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    borderRadius: 999,
+  backgroundSheet: {
+    borderRadius: 23,
+    backgroundColor: palette.surface.card,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: palette.border.subtle,
+    padding: 16,
+    gap: 16,
   },
-  audienceChipActive: { backgroundColor: LIME, borderColor: LIME },
-  audienceText: { color: '#cbd5e1', fontFamily: font.bold, fontSize: 12 },
-  audienceTextActive: { color: '#101319' },
+  backgroundSheetHeader: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  backgroundTitle: { color: palette.ink.primary, fontFamily: font.extrabold, fontSize: 18 },
+  backgroundHint: { marginTop: 3, color: palette.ink.muted, fontFamily: font.medium, fontSize: 11 },
+  backgroundClose: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: palette.surface.raised },
   modeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(30,36,48,0.9)',
+    backgroundColor: palette.surface.raised,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: palette.border.subtle,
     borderRadius: 999,
     paddingVertical: 11,
     paddingHorizontal: 16,
-    minHeight: 44,
+    minHeight: 48,
+    minWidth: 128,
+    flexGrow: 1,
   },
   modeBtnActive: { backgroundColor: LIME, borderColor: LIME },
-  modeText: { color: '#cbd5e1', fontFamily: font.bold, fontSize: 13.5 },
-  modeTextActive: { color: '#101319' },
+  modeText: { color: palette.ink.secondary, fontFamily: font.bold, fontSize: 13.5 },
+  modeTextActive: { color: palette.ink.inverse },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1272,7 +1659,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
   },
-  primaryText: { color: '#101319', fontFamily: font.extrabold, fontSize: 16 },
+  primaryText: { color: palette.ink.inverse, fontFamily: font.extrabold, fontSize: 16 },
   secondary: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1282,8 +1669,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: palette.border.strong,
+    backgroundColor: palette.surface.card,
   },
-  secondaryText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  secondaryText: { color: palette.ink.primary, fontFamily: font.bold, fontSize: 15 },
   dim: { opacity: 0.6 },
 });

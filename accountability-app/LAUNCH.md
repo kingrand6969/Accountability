@@ -1,6 +1,6 @@
-# AccountAbility — Launch Runbook
+# Mantle — Launch Runbook
 
-_Last updated: 2026-07-25. This is your single checklist to get from "code is ready" to
+_Last updated: 2026-09-02. This is your single checklist to get from "code is ready" to
 "live in the App Store and Google Play." Work top to bottom — the order matters._
 
 ## The honest split
@@ -28,7 +28,7 @@ than any line of code. Everything else is mechanical; that one is a real decisio
 - **Safety/anti-abuse**: RLS on every table, server-side rate limits on write paths,
   automated content screening + human review, 5-strike sanctions, IP tracking, in-app
   Block/Report, admin moderation dashboard with cross-tab de-duplication.
-- **Legal**: worldwide-hardened Terms & Privacy (v2026-07-23) — liability cap,
+- **Legal**: worldwide-hardened Terms & Privacy (v2026-09-02) — liability cap,
   indemnification, fitness assumption-of-risk, arbitration + class-waiver (with local-law
   carve-outs), GDPR/CCPA/UK coverage. Hosted web versions generated in `legal-web/`.
 - **Store identifiers set**: iOS `com.awldesk.accountability`, Android
@@ -73,7 +73,7 @@ insurance — especially the injury waiver (Section 7) and arbitration clause (S
 
 > ⚠️ The bundle ID `com.awldesk.accountability` is now baked into `app.json`. Register that
 > exact string in both stores. It is **permanent** after first submission — tell me now if
-> you want a different one. Also check the name "AccountAbility" is free on both stores; if
+> you want a different one. Also check the name "Mantle" is free on both stores; if
 > taken you'll need a store display-name variant (the in-app name can stay).
 
 ### 4. Supabase production hardening (dashboard — ~30 min)
@@ -152,13 +152,13 @@ to add screenshots (take them from the running app) and host the legal pages (Se
 
 ## Section A — Store listing pack (drafted; edit + paste)
 
-**App name:** AccountAbility
+**App name:** Mantle
 **Subtitle / short description (30–80 chars):** Your fitness accountability crew
 **Category:** Health & Fitness (secondary: Social Networking / Lifestyle)
 **Age rating:** 18+ (the app enforces an 18+ age gate; declare 17+/18+ so ratings match)
 
 **Full description (paste, trim to taste):**
-> AccountAbility keeps you honest about the goals that matter — training, connection, and daily
+> Mantle keeps you honest about the goals that matter — training, connection, and daily
 > habits — with a crew that actually shows up. Track runs, rides and walks with GPS. Log
 > workouts and meals. Set challenges, compete on leaderboards, and cheer your
 > buddies on. Earn medals for real streaks and real distance. Private by default, safe by

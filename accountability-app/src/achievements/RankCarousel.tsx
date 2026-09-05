@@ -1,10 +1,11 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { GlassCard } from '../ui/Glass';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { RankBadge } from './RankBadge';
 import { SwipeDeck } from './SwipeDeck';
 import { RANKS } from './catalog';
-import { font, spacing } from '../ui/theme';
-import { INK_SOFT, ACCENT } from '../compete/CompeteUI';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -34,25 +35,28 @@ export function RankCarousel({ points, ready }: { points: number; ready: boolean
 }
 
 function RankPage({ index, cur, points }: { index: number; cur: number; points: number }) {
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => rankPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const r = RANKS[index];
   const next = RANKS[index + 1] ?? null;
   const status = index < cur ? 'achieved' : index === cur ? 'current' : 'locked';
 
   let kicker: string;
-  let kickerColor = INK_SOFT;
+  let kickerColor: string = palette.muted;
   let ptsLabel: string;
   let progress: number;
   let foot: string;
 
   if (status === 'current') {
     kicker = 'YOUR RANK';
-    kickerColor = ACCENT;
+    kickerColor = palette.action;
     progress = next ? clamp01((points - r.at) / (next.at - r.at)) : 1;
     ptsLabel = next ? `${points} / ${next.at} Flex Points` : `${points} Flex Points`;
     foot = next ? `${next.at - points} pts to ${next.name}` : 'Top rank reached — legend 👑';
   } else if (status === 'achieved') {
     kicker = 'ACHIEVED';
-    kickerColor = '#16a34a';
+    kickerColor = palette.success;
     progress = 1;
     ptsLabel = `${r.at} Flex Points`;
     foot = 'Unlocked ✓';
@@ -65,7 +69,7 @@ function RankPage({ index, cur, points }: { index: number; cur: number; points: 
   }
 
   return (
-    <GlassCard>
+    <GlassCard plateOpacity={0}>
       <View style={styles.inner}>
         <Text style={[styles.kicker, { color: kickerColor }]}>{kicker}</Text>
         <RankBadge rank={r.name} size={62} />
@@ -79,18 +83,39 @@ function RankPage({ index, cur, points }: { index: number; cur: number; points: 
   );
 }
 
-const styles = StyleSheet.create({
-  inner: { padding: spacing.lg, alignItems: 'center', gap: 8, minHeight: 168, justifyContent: 'center' },
+function rankPalette(theme: AppThemeColors) {
+  return {
+    action: theme.ink.action,
+    success: theme.status.success,
+    points: theme.ink.primary,
+    muted: theme.ink.muted,
+    track: theme.interaction.skeleton,
+  };
+}
+
+function createStyles(theme: AppThemeColors) {
+  const palette = rankPalette(theme);
+
+  return StyleSheet.create({
+  inner: {
+    padding: spacing.lg,
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 168,
+    justifyContent: 'center',
+    backgroundColor: theme.surface.card,
+  },
   kicker: { fontFamily: font.extrabold, fontSize: 11, letterSpacing: 1.5 },
-  pts: { fontFamily: font.semibold, fontSize: 13, color: INK_SOFT, marginTop: 2 },
+  pts: { fontFamily: font.semibold, fontSize: 13, color: palette.points, marginTop: 2 },
   track: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: 'rgba(30,27,75,0.1)',
+    backgroundColor: palette.track,
     alignSelf: 'stretch',
     marginTop: 4,
     overflow: 'hidden',
   },
-  fill: { height: 8, borderRadius: 4, backgroundColor: ACCENT },
-  foot: { fontFamily: font.medium, fontSize: 12, color: INK_SOFT, marginTop: 4, textAlign: 'center' },
-});
+  fill: { height: 8, borderRadius: 4, backgroundColor: palette.action },
+  foot: { fontFamily: font.medium, fontSize: 12, color: palette.muted, marginTop: 4, textAlign: 'center' },
+  });
+}
