@@ -15,13 +15,21 @@ import {
 } from 'react-native';
 
 import {
-  colors,
   elevation,
   radius,
   semanticColors,
   spacing,
   type,
 } from './theme';
+
+/** Applies a clamped 0..1 alpha channel to the app's six-digit hex tokens. */
+export function withAlpha(color: string, opacity: number): string {
+  const match = color.match(/^#[\dA-Fa-f]{6}(?:[\dA-Fa-f]{2})?$/);
+  if (!match) return color;
+  const clamped = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1;
+  const alpha = Math.round(clamped * 255).toString(16).padStart(2, '0');
+  return `${color.slice(0, 7)}${alpha}`;
+}
 
 type EditorialHeadingProps = TextProps & {
   children?: ReactNode;
@@ -227,11 +235,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   primaryButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: semanticColors.ink.action,
+    borderRadius: radius.pill,
   },
   outlinedButton: {
-    backgroundColor: semanticColors.surface.card,
-    borderColor: semanticColors.border.action,
+    backgroundColor: 'transparent',
+    borderColor: semanticColors.border.strong,
     borderWidth: 1,
   },
   pressed: {
@@ -248,10 +257,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   primaryButtonLabel: {
-    color: colors.onPrimary,
+    color: semanticColors.ink.inverse,
   },
   outlinedButtonLabel: {
-    color: colors.primary,
+    color: semanticColors.ink.primary,
   },
   iconButton: {
     borderRadius: radius.pill,
@@ -259,10 +268,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconButtonSelected: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: semanticColors.surface.muted,
   },
   creamCard: {
-    backgroundColor: semanticColors.surface.canvas,
+    backgroundColor: semanticColors.surface.card,
     borderRadius: radius.card,
     padding: spacing.lg,
     ...elevation.card,
@@ -277,7 +286,7 @@ const styles = StyleSheet.create({
     height: undefined,
   },
   heroScrim: {
-    backgroundColor: 'rgba(8,26,58,0.66)',
+    backgroundColor: 'rgba(17,20,17,0.66)',
   },
   heroContent: {
     flex: 1,
@@ -288,7 +297,7 @@ const styles = StyleSheet.create({
     minWidth: spacing.touch,
   },
   bottomSheet: {
-    backgroundColor: semanticColors.surface.canvas,
+    backgroundColor: semanticColors.surface.raised,
     borderTopLeftRadius: radius.sheet,
     borderTopRightRadius: radius.sheet,
     paddingHorizontal: spacing.xl,

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { createElement } from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { PixelRatio, Text } from 'react-native';
+import { PixelRatio, StyleSheet, Text } from 'react-native';
 
 import { GlassTabBar, VISIBLE_TAB_LABELS } from './GlassTabBar';
 import {
@@ -10,8 +10,21 @@ import {
   TAB_BAR_SAFE_AREA_ALLOWANCE,
 } from './floatingTabBar';
 import * as floatingTabBar from './floatingTabBar';
-import { colors, spacing } from './theme';
+import { spacing, themeColors, type AppThemeMode } from './theme';
 import { hapticSelect } from './haptics';
+
+let mockThemeMode: AppThemeMode = 'dark';
+
+jest.mock('./AppThemeProvider', () => ({
+  useAppTheme: () => {
+    const theme = jest.requireActual<typeof import('./theme')>('./theme');
+    return {
+      mode: mockThemeMode,
+      colors: theme.themeColors(mockThemeMode),
+      setMode: jest.fn(),
+    };
+  },
+}));
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 16, left: 0 }),
@@ -20,6 +33,15 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('./haptics', () => ({
   hapticSelect: jest.fn(),
 }));
+
+jest.mock('@expo/vector-icons/Ionicons', () => {
+  const mockReact = jest.requireActual<typeof import('react')>('react');
+  const { Text: MockText } = jest.requireActual<typeof import('react-native')>('react-native');
+  return ({ name, color, size }: { name: string; color: string; size: number }) => mockReact.createElement(
+    MockText,
+    { testID: `ionicon-${name}`, style: { color, width: size, height: size } },
+  );
+});
 
 jest.mock('./BrandMark', () => ({
   BrandMark: function MockBrandMark(props: Record<string, unknown>) {
@@ -82,6 +104,7 @@ function renderTabBar({
 } = {}) {
   const emit = jest.fn(() => ({ defaultPrevented: preventPress }));
   const navigate = jest.fn();
+  const onMenu = jest.fn();
   const descriptors = Object.fromEntries(
     routes.map((route, index) => [
       route.key,
@@ -103,10 +126,11 @@ function renderTabBar({
         state: { index: focusedIndex, routes },
         descriptors,
         navigation: { emit, navigate },
+        onMenu,
       }),
     );
   });
-  return { renderer, emit, navigate };
+  return { renderer, emit, navigate, onMenu };
 }
 
 function visibleLabels(renderer: TestRenderer.ReactTestRenderer) {
@@ -131,11 +155,12 @@ function pressableByLabel(
 
 describe('GlassTabBar contract', () => {
   beforeEach(() => {
+    mockThemeMode = 'dark';
     jest.restoreAllMocks();
     jest.clearAllMocks();
   });
 
-  it('shows exactly the approved four destinations in order', () => {
+  it('shows Menu immediately after Messages as the fifth dashboard destination', () => {
     const { renderer } = renderTabBar();
 
     expect(VISIBLE_TAB_LABELS).toEqual([
@@ -143,14 +168,21 @@ describe('GlassTabBar contract', () => {
       'Journey',
       'Run',
       'Messages',
+      'Menu',
     ]);
-    expect(visibleLabels(renderer)).toEqual(VISIBLE_TAB_LABELS);
+    expect(visibleLabels(renderer)).toEqual([
+      'Feed',
+      'Journey',
+      'Messages',
+      'Menu',
+    ]);
     expect(visibleLabels(renderer)).not.toEqual(
       expect.arrayContaining(['Today', 'Profile', 'Notifications']),
     );
   });
 
-  it('uses quiet ink and a restrained indicator for the selected destination', () => {
+  it('uses action ink and a restrained indicator for the selected destination', () => {
+    const dark = themeColors('dark');
     const { renderer } = renderTabBar({ focusedIndex: 1 });
     const journey = pressableByLabel(renderer, 'Journey');
 
@@ -159,27 +191,98 @@ describe('GlassTabBar contract', () => {
     expect(
       renderer.root.findByProps({ testID: 'tab-label-Journey' }).props.style,
     ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ color: colors.navy })]),
+      expect.arrayContaining([expect.objectContaining({ color: dark.ink.action })]),
     );
     expect(
       renderer.root.findByProps({ testID: 'tab-indicator-Journey' }).props.style,
     ).toEqual(
       expect.objectContaining({
-        backgroundColor: colors.navy,
+        backgroundColor: dark.ink.action,
         position: 'absolute',
         bottom: 3,
       }),
     );
   });
 
+  it('keeps Menu unselected and muted when a hidden Notifications route is focused', () => {
+    const dark = themeColors('dark');
+    const inactive = renderTabBar({ focusedIndex: 0 });
+    const inactiveMenu = pressableByLabel(inactive.renderer, 'Menu');
+
+    expect(inactiveMenu.props.accessibilityState).toEqual({ selected: false });
+    expect(
+      StyleSheet.flatten(
+        inactive.renderer.root.findByProps({ testID: 'ionicon-menu-outline' }).props.style,
+      ).color,
+    ).toBe(dark.ink.muted);
+    expect(
+      inactive.renderer.root.findByProps({ testID: 'tab-label-Menu' }).props.style,
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ color: dark.ink.muted })]));
+
+    const notifications = renderTabBar({ focusedIndex: 4 });
+    const notificationsMenu = pressableByLabel(notifications.renderer, 'Menu');
+
+    expect(notificationsMenu.props.accessibilityState).toEqual({ selected: false });
+    expect(
+      StyleSheet.flatten(
+        notifications.renderer.root.findByProps({ testID: 'ionicon-menu-outline' }).props
+          .style,
+      ).color,
+    ).toBe(dark.ink.muted);
+    expect(
+      notifications.renderer.root.findByProps({ testID: 'tab-label-Menu' }).props.style,
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ color: dark.ink.muted })]));
+  });
+
+  it('renders the permanent dark surface, border, ink, and indicator roles', () => {
+    const dark = themeColors('dark');
+    const { renderer } = renderTabBar({ focusedIndex: 0 });
+
+    expect(renderer.toJSON()).toEqual(
+      expect.objectContaining({
+        props: expect.objectContaining({
+          style: expect.arrayContaining([
+            expect.objectContaining({
+              backgroundColor: dark.surface.raised,
+              borderTopColor: dark.border.subtle,
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(
+      renderer.root.findByProps({ testID: 'tab-label-Feed' }).props.style,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ color: dark.ink.action })]),
+    );
+    expect(renderer.root.findByProps({ testID: 'icon-Feed' }).props.style).toEqual(
+      expect.objectContaining({ color: dark.ink.action }),
+    );
+    expect(
+      renderer.root.findByProps({ testID: 'tab-label-Messages' }).props.style,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ color: dark.ink.muted })]),
+    );
+    expect(
+      renderer.root.findByProps({ testID: 'tab-indicator-Feed' }).props.style,
+    ).toEqual(expect.objectContaining({ backgroundColor: dark.ink.action }));
+    expect(renderer.root.findByProps({ testID: 'icon-Messages' }).props.style).toEqual(
+      expect.objectContaining({ color: dark.ink.muted }),
+    );
+  });
+
   it('renders Journey with the approved mark and no filled or elevated holder', () => {
+    const dark = themeColors('dark');
     const { renderer } = renderTabBar({ focusedIndex: 1 });
     const journey = pressableByLabel(renderer, 'Journey');
     const mark = renderer.root.findByProps({ testID: 'approved-brand-mark' });
     const idleStyles = journey.props.style({ pressed: false });
 
-    expect(mark.props.accessibilityLabel).toBe('Journey');
-    expect(mark.props.color).toBe(colors.navy);
+    expect(mark.props.accessible).toBe(false);
+    expect(mark.props.accessibilityLabel).toBeUndefined();
+    expect(journey.props.accessibilityRole).toBe('tab');
+    expect(journey.props.accessibilityLabel).toBe('Journey');
+    expect(mark.props.color).toBe(dark.ink.action);
     expect(idleStyles).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -196,7 +299,7 @@ describe('GlassTabBar contract', () => {
     );
   });
 
-  it('provides 44 by 44 targets and exposes selected state accessibly', () => {
+  it('provides 48 by 48 targets and exposes selected state accessibly', () => {
     const { renderer } = renderTabBar({ focusedIndex: 3 });
 
     expect(
@@ -225,10 +328,29 @@ describe('GlassTabBar contract', () => {
     }
   });
 
+  it('renders Run as the elevated Crown Dock action without a visual label', () => {
+    const focused = renderTabBar({ focusedIndex: 2 });
+    const run = pressableByLabel(focused.renderer, 'Run');
+
+    expect(
+      focused.renderer.root.findByProps({ testID: 'crown-dock-run' }),
+    ).toBeTruthy();
+    expect(
+      focused.renderer.root.findAllByProps({ testID: 'tab-label-Run' }),
+    ).toHaveLength(0);
+    expect(run.props.accessibilityRole).toBe('tab');
+    expect(run.props.accessibilityState).toEqual({ selected: true });
+
+    const unfocused = renderTabBar();
+    act(() => pressableByLabel(unfocused.renderer, 'Run').props.onPress());
+    expect(unfocused.navigate).toHaveBeenCalledWith('run');
+    expect(hapticSelect).toHaveBeenCalledTimes(1);
+  });
+
   it('allows centered two-line labels on a 320dp phone at high font scale', () => {
     const { renderer } = renderTabBar();
 
-    for (const label of VISIBLE_TAB_LABELS) {
+    for (const label of VISIBLE_TAB_LABELS.filter((label) => label !== 'Run')) {
       const text = renderer.root.findByProps({ testID: `tab-label-${label}` });
       expect(text.props.numberOfLines).not.toBe(1);
       expect(text.props.numberOfLines).toBe(2);
@@ -242,6 +364,7 @@ describe('GlassTabBar contract', () => {
         ]),
       );
     }
+    expect(renderer.root.findAllByProps({ testID: 'tab-label-Run' })).toHaveLength(0);
   });
 
   it('uses compact visual words at large text while preserving full accessible names', () => {
@@ -250,7 +373,6 @@ describe('GlassTabBar contract', () => {
     const expected = {
       Feed: 'Home',
       Journey: 'Path',
-      Run: 'Run',
       Messages: 'Chat',
     } as const;
 
@@ -262,6 +384,18 @@ describe('GlassTabBar contract', () => {
         renderer.root.findByProps({ testID: `tab-label-${accessibleName}` }).props.children,
       ).toBe(visualLabel);
     }
+    expect(renderer.root.findAllByProps({ testID: 'tab-label-Run' })).toHaveLength(0);
+  });
+
+  it('uses compact dock typography while preserving the Feed accessible name', () => {
+    const { renderer } = renderTabBar();
+    const feed = pressableByLabel(renderer, 'Feed');
+    const label = renderer.root.findByProps({ testID: 'tab-label-Feed' });
+
+    expect(StyleSheet.flatten(label.props.style)).toEqual(
+      expect.objectContaining({ fontSize: 11, lineHeight: 14 }),
+    );
+    expect(feed.props.accessibilityLabel).toBe('Feed');
   });
 
   it('preserves tabPress prevention, navigation, and haptics', () => {
@@ -303,5 +437,43 @@ describe('GlassTabBar contract', () => {
     );
     expect(TAB_BAR_MAX_CONTENT_HEIGHT).toBeGreaterThanOrEqual(100);
     expect(TAB_BAR_SAFE_AREA_ALLOWANCE).toBeGreaterThanOrEqual(32);
+  });
+
+  it('keeps the underlying native tab bar aligned with the selected appearance', () => {
+    const dark = themeColors('dark');
+    const style = floatingTabBar.floatingTabBarStyle(320, 16, 1, {
+      backgroundColor: dark.surface.raised,
+      borderTopColor: dark.border.subtle,
+    });
+
+    expect(style).toEqual(
+      expect.objectContaining({
+        width: 320,
+        height: 84,
+        backgroundColor: dark.surface.raised,
+        borderTopColor: dark.border.subtle,
+      }),
+    );
+  });
+
+  it('opens the existing Menu destination with haptic feedback', () => {
+    const { renderer, onMenu } = renderTabBar();
+
+    expect(renderer.root.findByProps({ testID: 'ionicon-menu-outline' })).toBeTruthy();
+    act(() => pressableByLabel(renderer, 'Menu').props.onPress());
+
+    expect(onMenu).toHaveBeenCalledTimes(1);
+    expect(hapticSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to dark semantic tab chrome when no palette is supplied', () => {
+    const dark = themeColors('dark');
+
+    expect(floatingTabBar.floatingTabBarStyle(320, 16)).toEqual(
+      expect.objectContaining({
+        backgroundColor: dark.surface.canvas,
+        borderTopColor: dark.border.subtle,
+      }),
+    );
   });
 });

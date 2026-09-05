@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   Share,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,13 +16,28 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMyProfile } from '../profiles/api';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { BrandMark } from '../ui/BrandMark';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
+import {
+  font,
+  radius,
+  shadow,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
 
 export default function InviteCard() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => invitePalette(theme), [theme]);
+  const insets = useSafeAreaInsets();
   const cardRef = useRef<View>(null);
   const [name, setName] = useState('A friend');
   const [avatar, setAvatar] = useState<string | null>(null);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const [sharing, setSharing] = useState(false);
 
   useFocusEffect(
@@ -47,12 +63,12 @@ export default function InviteCard() {
         });
         await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
-          dialogTitle: 'Invite a buddy to AccountAbility',
+          dialogTitle: 'Invite a buddy to Mantle',
         });
         return;
       }
       await Share.share({
-        message: `${name} invited you to build better habits together on AccountAbility.`,
+        message: `${name} invited you to build better habits together on Mantle.`,
       });
     } catch (error) {
       if (String(error).toLowerCase().includes('cancel')) return;
@@ -63,16 +79,29 @@ export default function InviteCard() {
   }
 
   return (
-    <View style={styles.screen}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + spacing.lg },
+      ]}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.eyebrow}>YOUR INVITATION</Text>
       <Text style={styles.title}>Better together.</Text>
       <Text style={styles.subtitle}>
         Share a polished invitation—not a technical link.
       </Text>
 
-      <View ref={cardRef} collapsable={false} style={styles.capture}>
+      <View
+        ref={cardRef}
+        collapsable={false}
+        accessible
+        accessibilityLabel="Invitation artwork"
+        style={styles.capture}
+      >
         <LinearGradient
-          colors={['#071a46', '#0b4fd8', '#0a84ff']}
+          colors={['#111411', '#263223', '#446B00']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.card}
@@ -80,13 +109,13 @@ export default function InviteCard() {
           <View style={styles.orbOne} />
           <View style={styles.orbTwo} />
           <View style={styles.brandRow}>
-            <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
-            <Text style={styles.brand}>AccountAbility</Text>
+            <BrandMark size={28} color="#B9FF3D" accessibilityLabel="Mantle logo" />
+            <Text style={styles.brand}>Mantle</Text>
           </View>
 
           <View style={styles.inviter}>
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatar} />
+            {resolvedAvatar ? (
+              <Image source={{ uri: resolvedAvatar }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
                 <Ionicons name="person" size={26} color="#fff" />
@@ -109,7 +138,7 @@ export default function InviteCard() {
               <Text style={styles.pillText}>Streaks</Text>
             </View>
             <View style={styles.pill}>
-              <Ionicons name="people" size={17} color="#93c5fd" />
+              <Ionicons name="people" size={17} color="#B9FF3D" />
               <Text style={styles.pillText}>Buddies</Text>
             </View>
             <View style={styles.pill}>
@@ -119,7 +148,7 @@ export default function InviteCard() {
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerPrimary}>Join me on AccountAbility</Text>
+            <Text style={styles.footerPrimary}>Join me on Mantle</Text>
             <Text style={styles.footerSecondary}>Achieve. Consistency.</Text>
           </View>
         </LinearGradient>
@@ -137,10 +166,10 @@ export default function InviteCard() {
         ]}
       >
         {sharing ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={palette.onAction} />
         ) : (
           <>
-            <Ionicons name="share-social" size={21} color="#fff" />
+            <Ionicons name="share-social" size={21} color={palette.onAction} />
             <Text style={styles.shareText}>Share invitation</Text>
           </>
         )}
@@ -148,27 +177,44 @@ export default function InviteCard() {
       <Text style={styles.privacy}>
         Only this invitation image is shared. Your private app data is not included.
       </Text>
-    </View>
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+function invitePalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    title: theme.ink.primary,
+    muted: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors) => {
+  const palette = invitePalette(theme);
+
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f5f8ff',
+    backgroundColor: palette.canvas,
+  },
+  content: {
+    flexGrow: 1,
     padding: spacing.lg,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   eyebrow: {
     marginTop: spacing.sm,
-    color: colors.primary,
+    color: palette.action,
     fontFamily: font.extrabold,
     fontSize: 12,
     letterSpacing: 1.5,
   },
-  title: { marginTop: 5, color: '#0f172a', fontFamily: font.extrabold, fontSize: 28 },
+  title: { marginTop: 5, color: palette.title, fontFamily: font.extrabold, fontSize: 28 },
   subtitle: {
-    color: '#64748b',
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 14,
     lineHeight: 21,
@@ -189,7 +235,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: 'rgba(96,165,250,0.25)',
+    backgroundColor: 'rgba(185,255,61,0.22)',
     right: -100,
     top: -75,
   },
@@ -203,8 +249,7 @@ const styles = StyleSheet.create({
     bottom: 30,
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  logo: { width: 28, height: 28, resizeMode: 'contain' },
-  brand: { color: '#fff', fontFamily: font.extrabold, fontSize: 18 },
+  brand: { color: '#F4F5F1', fontFamily: font.brand, fontSize: 18 },
   inviter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -219,9 +264,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.2)',
   },
   avatar: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, borderColor: '#fff' },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563eb' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#6F9F00' },
   inviterCopy: { maxWidth: 180 },
-  invitedBy: { color: '#bfdbfe', fontFamily: font.bold, fontSize: 9, letterSpacing: 1.2 },
+  invitedBy: { color: '#E8F4D7', fontFamily: font.bold, fontSize: 9, letterSpacing: 1.2 },
   name: { color: '#fff', fontFamily: font.extrabold, fontSize: 17, marginTop: 1 },
   cardHeadline: {
     color: '#fff',
@@ -232,7 +277,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.7,
   },
   cardBody: {
-    color: '#dbeafe',
+    color: '#EEF7E4',
     fontFamily: font.medium,
     fontSize: 14,
     lineHeight: 21,
@@ -257,24 +302,24 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.2)',
   },
   footerPrimary: { color: '#fff', fontFamily: font.extrabold, fontSize: 16 },
-  footerSecondary: { color: '#bfdbfe', fontFamily: font.medium, fontSize: 12, marginTop: 3 },
+  footerSecondary: { color: '#E8F4D7', fontFamily: font.medium, fontSize: 12, marginTop: 3 },
   shareButton: {
     width: '100%',
     maxWidth: 360,
     height: 52,
     borderRadius: 26,
     marginTop: spacing.lg,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
   },
-  shareText: { color: '#fff', fontFamily: font.bold, fontSize: 16 },
+  shareText: { color: palette.onAction, fontFamily: font.bold, fontSize: 16 },
   pressed: { opacity: 0.82 },
   disabled: { opacity: 0.6 },
   privacy: {
-    color: '#64748b',
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 12,
     lineHeight: 17,
@@ -282,4 +327,5 @@ const styles = StyleSheet.create({
     maxWidth: 330,
     marginTop: 12,
   },
-});
+  });
+};

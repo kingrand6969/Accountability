@@ -3,7 +3,7 @@ import { showToast } from '../ui/Toast';
 import { myInviteUrl } from '../profiles/referrals';
 
 const INVITE_MESSAGE =
-  `I'm using AccountAbility to stay on track — workouts, meals, runs and challenges. ` +
+  `I'm using Mantle to stay on track — workouts, meals, runs and challenges. ` +
   `Join me as an accountability buddy.`;
 
 /**

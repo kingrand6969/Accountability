@@ -29,6 +29,9 @@ jest.mock('../compete/api', () => ({
   metricMeta: jest.fn(() => ({ label: 'Metric' })),
 }));
 jest.mock('../ui/Toast', () => ({ showToast: jest.fn() }));
+jest.mock('../media/useResolvedImageUrl', () => ({
+  useResolvedImageUrl: (value: string | null | undefined) => value ?? null,
+}));
 jest.mock('@react-native-community/netinfo', () => ({
   addEventListener: jest.fn(() => jest.fn()),
 }));

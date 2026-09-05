@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Link, router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -14,9 +14,12 @@ import { AuthField } from '../ui/AuthField';
 import { DateOfBirthField } from '../ui/DateOfBirthField';
 import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function SignUp() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [birthday, setBirthday] = useState('');
@@ -39,7 +42,7 @@ export default function SignUp() {
       : rawBirthdayError
         ? rawBirthdayError
         : age === null || age < MIN_AGE
-          ? `You must be ${MIN_AGE} or older to use AccountAbility.`
+          ? `You must be ${MIN_AGE} or older to use Mantle.`
           : '';
     const nextConsentError = agree
       ? ''
@@ -61,7 +64,7 @@ export default function SignUp() {
     }
     if (data.session) {
       await updateMyProfile({ birthday: birthday.trim() }).catch(() => {});
-      await recordConsent();
+      await recordConsent(data.session.user.id);
     } else {
       router.push({ pathname: '/verify-email', params: { email: email.trim(), birthday: birthday.trim() } });
     }
@@ -76,7 +79,7 @@ export default function SignUp() {
 
       {formError ? (
         <View style={styles.errorBanner} accessibilityLiveRegion="assertive">
-          <Ionicons name="alert-circle-outline" size={19} color="#b91c1c" />
+          <Ionicons name="alert-circle-outline" size={19} color={theme.status.danger} />
           <Text style={styles.errorBannerText}>{formError}</Text>
         </View>
       ) : null}
@@ -127,9 +130,9 @@ export default function SignUp() {
       />
 
       <View style={styles.safetyBox}>
-        <Ionicons name="heart-circle-outline" size={19} color="#92400e" />
+        <Ionicons name="heart-circle-outline" size={19} color={theme.ink.action} />
         <Text style={styles.safetyText}>
-          Train safely and respect the community. AccountAbility is not medical advice, and harmful
+          Train safely and respect the community. Mantle is not medical advice, and harmful
           or abusive content is not allowed.{' '}
           <Text style={styles.safetyLink} onPress={() => router.push('/legal/terms')}>
             Review the rules.
@@ -170,16 +173,16 @@ export default function SignUp() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   heading: { gap: 5, marginBottom: spacing.xs },
   title: {
-    color: colors.text,
+    color: theme.ink.primary,
     fontFamily: font.extrabold,
     fontSize: 27,
     letterSpacing: -0.35,
   },
   sub: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     fontSize: 14,
     lineHeight: 20,
@@ -191,12 +194,12 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
+    borderColor: theme.border.danger,
+    backgroundColor: theme.status.dangerSoft,
   },
   errorBannerText: {
     flex: 1,
-    color: '#991b1b',
+    color: theme.status.danger,
     fontFamily: font.medium,
     fontSize: 13,
     lineHeight: 18,
@@ -206,41 +209,41 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 9,
     borderWidth: 1,
-    borderColor: '#fde68a',
+    borderColor: theme.border.strong,
     borderRadius: radius.md,
     padding: 11,
-    backgroundColor: 'rgba(255,251,235,0.9)',
+    backgroundColor: theme.surface.muted,
   },
   safetyText: {
     flex: 1,
-    color: '#78350f',
+    color: theme.ink.secondary,
     fontFamily: font.regular,
     fontSize: 12,
     lineHeight: 17,
   },
-  safetyLink: { color: '#92400e', fontFamily: font.bold, textDecorationLine: 'underline' },
+  safetyLink: { color: theme.ink.action, fontFamily: font.bold, textDecorationLine: 'underline' },
   consent: { marginTop: 1 },
   consentText: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
   },
   consentError: {
-    color: colors.danger,
+    color: theme.status.danger,
     fontFamily: font.medium,
     fontSize: 12.5,
     lineHeight: 17,
     marginLeft: 32,
     marginTop: 5,
   },
-  link: { color: colors.primary, fontFamily: font.semibold },
+  link: { color: theme.ink.action, fontFamily: font.semibold },
   linkCenter: {
     textAlign: 'center',
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.regular,
     fontSize: 13.5,
     marginTop: spacing.xs,
   },
-  linkStrong: { color: colors.primary, fontFamily: font.semibold },
+  linkStrong: { color: theme.ink.action, fontFamily: font.semibold },
 });

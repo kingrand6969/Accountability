@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 type Option<T extends string> = { value: T; label: string };
 
@@ -14,6 +16,8 @@ type Props<T extends string> = {
  * selection (back to null), since every field here is optional.
  */
 export function ChipSelector<T extends string>({ options, value, onChange }: Props<T>) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.row}>
       {options.map((opt) => {
@@ -40,11 +44,12 @@ export function ChipSelector<T extends string>({ options, value, onChange }: Pro
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
   chip: {
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: theme.border.action,
+    backgroundColor: theme.surface.card,
     borderRadius: radius.pill,
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -52,8 +57,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipSelected: { backgroundColor: colors.primary },
-  chipText: { color: colors.primary, fontFamily: font.semibold },
-  chipTextSelected: { color: colors.onPrimary },
+  chipSelected: { backgroundColor: theme.ink.action },
+  chipText: { color: theme.ink.action, fontFamily: font.semibold },
+  chipTextSelected: { color: theme.ink.inverse },
   pressed: { opacity: 0.7 },
 });

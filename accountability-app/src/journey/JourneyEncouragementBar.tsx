@@ -1,19 +1,21 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Avatar } from '../feed/Avatar';
 import { authorLabel } from '../feed/format';
 import type { JourneyEncouragement } from './encouragement';
-import { colors, font, spacing } from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export function JourneyEncouragementBar({
   value,
-  dark = false,
   onPress,
 }: {
   value: JourneyEncouragement | null;
-  dark?: boolean;
   onPress(): void;
 }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const first = value?.people[0];
   const copy = value
     ? `${authorLabel(first?.name ?? null)}${value.count > 1 ? ` and ${value.count - 1} ${value.count === 2 ? 'other' : 'others'}` : ''} cheered you`
@@ -22,7 +24,7 @@ export function JourneyEncouragementBar({
     <Pressable
       disabled={!value}
       onPress={onPress}
-      style={({ pressed }) => [styles.bar, dark && styles.barDark, !value && styles.empty, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.bar, !value && styles.empty, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityState={{ disabled: !value }}
       accessibilityLabel={value ? `${copy}. Open Cheers.` : copy}
@@ -33,30 +35,53 @@ export function JourneyEncouragementBar({
             <Avatar url={person.avatar_url} name={person.name} size={36} />
           </View>
         )) : (
-          <View style={styles.placeholder}><Ionicons name="heart-outline" size={18} color={colors.primary} /></View>
+          <View style={styles.placeholder}>
+            <Ionicons name="heart-outline" size={18} color={theme.ink.action} />
+          </View>
         )}
       </View>
       <View style={styles.copy}>
-        <Text style={[styles.title, dark && styles.titleDark]}>Cheers</Text>
-        <Text style={[styles.meta, dark && styles.metaDark]} numberOfLines={2}>{copy}</Text>
+        <Text style={styles.title}>Cheers</Text>
+        <Text style={styles.meta} numberOfLines={2}>{copy}</Text>
       </View>
-      {value?.hasVoice ? <Ionicons name="pulse" size={22} color={colors.primary} accessibilityLabel="Includes a voice Cheer" /> : null}
-      <Ionicons name="chevron-forward" size={18} color={dark ? '#AFC1D7' : colors.navy} />
+      {value?.hasVoice ? (
+        <Ionicons
+          name="pulse"
+          size={22}
+          color={theme.ink.action}
+          accessibilityLabel="Includes a voice Cheer"
+        />
+      ) : null}
+      <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  bar: { minHeight: 72, borderRadius: 15, paddingHorizontal: spacing.md, backgroundColor: '#F0E9DC', borderWidth: 1, borderColor: 'rgba(99,79,46,0.14)', flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  barDark: { backgroundColor: 'rgba(10,57,95,0.95)', borderColor: 'rgba(120,178,225,0.19)' },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  bar: {
+    minHeight: 72,
+    borderRadius: 15,
+    paddingHorizontal: spacing.md,
+    backgroundColor: theme.surface.card,
+    borderWidth: 1,
+    borderColor: theme.border.subtle,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   empty: { opacity: 0.82 },
   faces: { minWidth: 42, flexDirection: 'row', alignItems: 'center' },
-  face: { borderWidth: 2, borderColor: '#FFFFFF', borderRadius: 20 },
-  placeholder: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  face: { borderWidth: 2, borderColor: theme.surface.card, borderRadius: 20 },
+  placeholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.surface.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   copy: { flex: 1 },
-  title: { color: colors.navy, fontFamily: font.bold, fontSize: 12 },
-  titleDark: { color: '#FFFFFF' },
-  meta: { color: colors.inkSoft, fontFamily: font.regular, fontSize: 11, lineHeight: 15, marginTop: 2 },
-  metaDark: { color: '#AFC1D7' },
+  title: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 12 },
+  meta: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 11, lineHeight: 15, marginTop: 2 },
   pressed: { opacity: 0.7 },
 });

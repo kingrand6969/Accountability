@@ -1,0 +1,156 @@
+import { describe, expect, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+import { themeColors } from '../ui/theme';
+
+const source = (file: string) => readFileSync(path.resolve(__dirname, file), 'utf8');
+
+const editProfileSource = source('../app/edit-profile.tsx');
+const helpSource = source('../app/help.tsx');
+const legalSource = source('../app/legal/[doc].tsx');
+const booksSource = source('../app/books.tsx');
+
+function contrastRatio(foreground: string, background: string) {
+  const luminance = (hex: string) => {
+    const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+    const linear = channels.map((channel) => channel <= 0.03928
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4);
+    return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+  };
+  const lighter = Math.max(luminance(foreground), luminance(background));
+  const darker = Math.min(luminance(foreground), luminance(background));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+describe('Account and support manual appearance contract', () => {
+  test('edit profile uses permanent dark semantic chrome', () => {
+    expect(editProfileSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(editProfileSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(editProfileSource).toContain('background: theme.surface.canvas');
+    expect(editProfileSource).toContain('card: theme.surface.card');
+    expect(editProfileSource).toContain('field: theme.surface.raised');
+    expect(editProfileSource).toContain('ink: theme.ink.primary');
+    expect(editProfileSource).toContain('border: theme.border.subtle');
+    expect(editProfileSource).toContain('danger: theme.status.danger');
+    expect(editProfileSource).not.toContain("mode === 'light'");
+  });
+
+  test('Pro membership and upgrade states use distinct readable foreground roles', () => {
+    const theme = themeColors('dark');
+    const activePro = {
+      surface: theme.surface.muted,
+      text: theme.ink.action,
+      icon: theme.ink.action,
+      border: theme.border.action,
+    };
+    const upgrade = {
+      surface: theme.surface.raised,
+      text: theme.ink.primary,
+      icon: theme.ink.secondary,
+      border: theme.border.strong,
+    };
+
+    for (const state of [activePro, upgrade]) {
+      expect(contrastRatio(state.text, state.surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(state.icon, state.surface)).toBeGreaterThanOrEqual(3);
+    }
+    expect(contrastRatio(activePro.border, activePro.surface)).toBeGreaterThanOrEqual(3);
+
+    expect(editProfileSource).toContain('profileProAppearance(theme, isPro)');
+    expect(editProfileSource).toContain('surface: theme.surface.muted');
+    expect(editProfileSource).toContain('text: theme.ink.action');
+    expect(editProfileSource).toContain('icon: theme.ink.action');
+    expect(editProfileSource).toContain('border: theme.border.action');
+    expect(editProfileSource).toContain('surface: theme.surface.raised');
+    expect(editProfileSource).toContain('text: theme.ink.primary');
+    expect(editProfileSource).toContain('icon: theme.ink.secondary');
+    expect(editProfileSource).toContain('border: theme.border.strong');
+    expect(editProfileSource).toContain('color={proAppearance.icon}');
+    expect(editProfileSource).toContain('{ color: proAppearance.text }');
+    expect(editProfileSource).toContain('backgroundColor: proAppearance.surface');
+    expect(editProfileSource).toContain('borderColor: proAppearance.border');
+  });
+
+  test.each([
+    ['help', helpSource],
+    ['legal reader', legalSource],
+    ['books', booksSource],
+  ])('%s uses permanent dark appearance', (_name, screenSource) => {
+    expect(screenSource).toContain('useAppTheme');
+    expect(screenSource).toContain('const { colors: theme } = useAppTheme()');
+    expect(screenSource).toContain('useMemo(() => createStyles(theme), [theme])');
+    expect(screenSource).not.toContain("mode === 'light'");
+    expect(screenSource).not.toContain("mode === 'dark'");
+    expect(screenSource).not.toContain('legacyColors');
+    expect(screenSource).not.toContain('const styles = StyleSheet.create({');
+  });
+
+  test.each([
+    ['help', helpSource],
+    ['books', booksSource],
+  ])('%s uses the permanent dark semantic surface hierarchy', (_name, screenSource) => {
+    expect(screenSource).toContain('background: theme.surface.canvas');
+    expect(screenSource).toContain('card: theme.surface.card');
+    expect(screenSource).toContain('field: theme.surface.raised');
+    expect(screenSource).toContain('ink: theme.ink.primary');
+    expect(screenSource).toContain('border: theme.border.subtle');
+    expect(screenSource).toContain('backgroundColor: palette.background');
+    expect(screenSource).toContain('backgroundColor: palette.card');
+    expect(screenSource).toContain('borderColor: palette.border');
+  });
+
+  test('profile editing retains owner data, privacy fields, validation and account deletion guards', () => {
+    expect(editProfileSource).toContain('const { session } = useAuth()');
+    expect(editProfileSource).toContain('const birthdayError = validateBirthday(birthday)');
+    expect(editProfileSource).toContain('gender_private: genderPrivate');
+    expect(editProfileSource).toContain('sexual_orientation_private: orientationPrivate');
+    expect(editProfileSource).toContain('birthday_private: birthdayPrivate');
+    expect(editProfileSource).toContain("'Delete your account?'");
+    expect(editProfileSource).toContain("Alert.alert('Are you absolutely sure?'");
+    expect(editProfileSource).toContain("text: 'Delete forever'");
+    expect(editProfileSource).toContain('prepareAccountDeletionDraftCleanup(deletionDependencies())');
+    expect(editProfileSource).toContain('if (!tryBeginAccountDeletionAttempt(deletionAttempt)) return');
+    expect(editProfileSource).toContain('ImagePicker.requestMediaLibraryPermissionsAsync()');
+  });
+
+  test('support keeps authenticated submission, validation, email fallback and legal routes', () => {
+    expect(helpSource).toContain('if (!body.trim() || busy) return');
+    expect(helpSource).toContain('await sendSupportMessage(kind, body, subject)');
+    expect(helpSource).toContain('Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${subj}`)');
+    expect(helpSource).toContain("router.push('/legal/terms')");
+    expect(helpSource).toContain("router.push('/legal/privacy')");
+    expect(helpSource).toContain('keyboardShouldPersistTaps="handled"');
+  });
+
+  test('legal reader retains the canonical copy selection and every document section', () => {
+    expect(legalSource).toContain("const key: LegalDocKey = doc === 'privacy' ? 'privacy' : 'terms'");
+    expect(legalSource).toContain('const d = DOCS[key]');
+    expect(legalSource).toContain('<Stack.Screen options={{ title: d.title }} />');
+    expect(legalSource).toContain('DOCS, EFFECTIVE_DATE, LEGAL_VERSION');
+    expect(legalSource).toContain('Effective {EFFECTIVE_DATE} · Version {LEGAL_VERSION}');
+    expect(legalSource).toContain('{d.sections.map((s) => (');
+    expect(legalSource).toContain('{s.p.map((para, i) => (');
+  });
+
+  test('books keeps Pro gating, preference persistence and external-reader behavior', () => {
+    expect(booksSource).toContain('const { isPro, loading: proLoading } = useIsPro()');
+    expect(booksSource).toContain('setBookPrefs(next).catch(() => {})');
+    expect(booksSource).toContain('if (interests.length === 0) return; // keep at least one');
+    expect(booksSource).toContain('await WebBrowser.openBrowserAsync(book.readUrl)');
+    expect(booksSource).toContain("router.push('/paywall')");
+  });
+
+  test('direct account and support controls retain at least a 48dp target', () => {
+    expect(editProfileSource).toContain('hitSlop={8}');
+    expect(editProfileSource).toMatch(/input:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(editProfileSource).toMatch(/signOutButton:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(editProfileSource).toMatch(/deleteButton:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(helpSource).toMatch(/pill:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(helpSource).toMatch(/emailRow:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(helpSource).toMatch(/linkRow:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(booksSource).toMatch(/chip:\s*\{[^}]*minHeight: spacing\.touch/s);
+    expect(booksSource).toMatch(/toggleBtn:\s*\{[^}]*minHeight: spacing\.touch/s);
+  });
+});

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,12 +31,22 @@ import {
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing, shadow } from '../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  shadow,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 type Tab = 'discover' | 'requests' | 'buddies';
 
 export default function BuddyHub() {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => buddyPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const [optIn, setOptIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('discover');
@@ -157,7 +167,7 @@ export default function BuddyHub() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -166,7 +176,7 @@ export default function BuddyHub() {
     return (
       <View style={styles.gate}>
         <View style={styles.gateIcon}>
-          <Ionicons name="people" size={44} color={colors.primary} />
+          <Ionicons name="people" size={44} color={palette.action} />
         </View>
         <Text style={styles.gateTitle}>Find an Accountability Buddy</Text>
         <Text style={styles.gateText}>
@@ -200,6 +210,7 @@ export default function BuddyHub() {
               pressed && styles.pressed,
             ]}
             onPress={() => setTab(t)}
+            hitSlop={spacing.xs}
           >
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
               {t === 'discover'
@@ -215,18 +226,20 @@ export default function BuddyHub() {
       <Pressable
         onPress={() => router.push('/buddy-card-edit' as never)}
         style={({ pressed }) => [styles.customizeRow, pressed && styles.pressed]}
+        hitSlop={spacing.sm}
         accessibilityLabel="Customize your buddy card"
       >
-        <Ionicons name="color-palette-outline" size={15} color={colors.primary} />
+        <Ionicons name="color-palette-outline" size={15} color={palette.action} />
         <Text style={styles.customizeText}>Customize how others see your buddy card</Text>
       </Pressable>
 
       <Pressable
         onPress={() => router.push('/compete' as never)}
         style={({ pressed }) => [styles.customizeRow, pressed && styles.pressed]}
+        hitSlop={spacing.sm}
         accessibilityLabel="Compete with your buddies"
       >
-        <Ionicons name="trophy-outline" size={15} color={colors.primary} />
+        <Ionicons name="trophy-outline" size={15} color={palette.action} />
         <Text style={styles.customizeText}>Compete with your buddies &amp; climb the leaderboards</Text>
       </Pressable>
 
@@ -238,21 +251,21 @@ export default function BuddyHub() {
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
             <View style={styles.searchWrap}>
-              <Ionicons name="search" size={17} color={colors.textFaint} />
+              <Ionicons name="search" size={17} color={palette.textFaint} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search by name — add a buddy you know"
-                placeholderTextColor={colors.textFaint}
+                placeholderTextColor={palette.textFaint}
                 value={search}
                 onChangeText={onSearch}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
               {searching ? (
-                <ActivityIndicator size="small" color={colors.primary} />
+                <ActivityIndicator size="small" color={palette.action} />
               ) : search.length > 0 ? (
-                <Pressable onPress={() => onSearch('')} hitSlop={8} accessibilityLabel="Clear search">
-                  <Ionicons name="close-circle" size={18} color={colors.textFaint} />
+                <Pressable onPress={() => onSearch('')} hitSlop={spacing.lg} accessibilityLabel="Clear search">
+                  <Ionicons name="close-circle" size={18} color={palette.textFaint} />
                 </Pressable>
               ) : null}
             </View>
@@ -261,9 +274,9 @@ export default function BuddyHub() {
             <Pressable
               style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
               onPress={() => router.push('/invite-card' as never)}
-              accessibilityLabel="Invite friends to AccountAbility"
+              accessibilityLabel="Invite friends to Mantle"
             >
-              <Ionicons name="paper-plane-outline" size={17} color={colors.primary} />
+              <Ionicons name="paper-plane-outline" size={17} color={palette.action} />
               <Text style={styles.inviteText}>
                 Friend not here yet? Invite them via Messenger, WhatsApp…
               </Text>
@@ -274,7 +287,7 @@ export default function BuddyHub() {
               <EmptyState
                 icon="person-outline"
                 title="No one found"
-                subtitle="They may not be on AccountAbility yet — or they keep buddy matching off (their choice is respected)."
+                subtitle="They may not be on Mantle yet — or they keep buddy matching off (their choice is respected)."
               />
             ) : (
               <EmptyState
@@ -300,6 +313,7 @@ export default function BuddyHub() {
               <Pressable
                 style={({ pressed }) => [styles.connectBtn, pressed && styles.pressed]}
                 onPress={() => onConnect(item)}
+                hitSlop={spacing.xs}
               >
                 <Text style={styles.connectText}>Connect</Text>
               </Pressable>
@@ -309,7 +323,7 @@ export default function BuddyHub() {
                 style={({ pressed }) => [styles.blockBtn, pressed && styles.pressed]}
                 accessibilityLabel={`Block ${authorLabel(item.display_name)}`}
               >
-                <Ionicons name="ban-outline" size={18} color={colors.danger} />
+                <Ionicons name="ban-outline" size={18} color={palette.danger} />
               </Pressable>
             </Pressable>
           )}
@@ -333,6 +347,7 @@ export default function BuddyHub() {
               <Pressable
                 style={({ pressed }) => [styles.connectBtn, pressed && styles.pressed]}
                 onPress={() => onAccept(item)}
+                hitSlop={spacing.xs}
               >
                 <Text style={styles.connectText}>Accept</Text>
               </Pressable>
@@ -342,7 +357,7 @@ export default function BuddyHub() {
                 style={({ pressed }) => [styles.blockBtn, pressed && styles.pressed]}
                 accessibilityLabel={`Decline ${authorLabel(item.name)}`}
               >
-                <Ionicons name="close" size={20} color={colors.textFaint} />
+                <Ionicons name="close" size={20} color={palette.textFaint} />
               </Pressable>
             </View>
           )}
@@ -370,7 +385,7 @@ export default function BuddyHub() {
               <Avatar url={item.avatar} name={item.name} size={44} />
               <Text style={[styles.name, { flex: 1 }]}>{authorLabel(item.name)}</Text>
               <View style={styles.chatHintWrap}>
-                <Ionicons name="chatbubble-outline" size={15} color={colors.primary} />
+                <Ionicons name="chatbubble-outline" size={15} color={palette.action} />
                 <Text style={styles.chatHint}>Chat</Text>
               </View>
             </Pressable>
@@ -381,9 +396,29 @@ export default function BuddyHub() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+function buddyPalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    mutedSurface: theme.surface.muted,
+    raisedSurface: theme.surface.raised,
+    border: theme.border.subtle,
+    primarySoft: theme.surface.raised,
+    text: theme.ink.primary,
+    textSecondary: theme.ink.secondary,
+    textMuted: theme.ink.muted,
+    textFaint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    danger: theme.status.danger,
+  };
+}
+
+type BuddyPalette = ReturnType<typeof buddyPalette>;
+
+const createStyles = (palette: BuddyPalette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.canvas },
   pressed: { opacity: 0.75 },
   gate: {
     flex: 1,
@@ -391,13 +426,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
     gap: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: palette.canvas,
   },
   gateIcon: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -405,10 +440,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: font.extrabold,
     textAlign: 'center',
-    color: colors.text,
+    color: palette.text,
   },
   gateText: {
-    color: colors.textSecondary,
+    color: palette.textSecondary,
     fontFamily: font.regular,
     textAlign: 'center',
     lineHeight: 21,
@@ -419,15 +454,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  gateSmall: { color: colors.textFaint, fontFamily: font.medium, fontSize: 12 },
+  gateSmall: { color: palette.textFaint, fontFamily: font.medium, fontSize: 12 },
   gateBtn: { marginTop: spacing.sm, minWidth: 240 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.mutedSurface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.lg,
     minHeight: 46,
@@ -437,7 +472,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: font.regular,
-    color: colors.text,
+    color: palette.text,
     paddingVertical: 10,
   },
   inviteRow: {
@@ -450,7 +485,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   inviteText: {
-    color: colors.primary,
+    color: palette.action,
     fontFamily: font.semibold,
     fontSize: 13.5,
     flexShrink: 1,
@@ -464,42 +499,42 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
     minHeight: 32,
   },
-  customizeText: { color: colors.primary, fontFamily: font.semibold, fontSize: 12.5 },
+  customizeText: { color: palette.action, fontFamily: font.semibold, fontSize: 12.5 },
   tab: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: radius.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.raisedSurface,
     alignItems: 'center',
     minHeight: 40,
   },
-  tabActive: { backgroundColor: colors.primary },
-  tabText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 13 },
-  tabTextActive: { color: '#fff' },
+  tabActive: { backgroundColor: palette.action },
+  tabText: { color: palette.textSecondary, fontFamily: font.semibold, fontSize: 13 },
+  tabTextActive: { color: palette.onAction },
   list: { padding: spacing.md, gap: 10, flexGrow: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 64,
     ...shadow.card,
   },
-  name: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  meta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
+  name: { fontSize: 15, fontFamily: font.bold, color: palette.text },
+  meta: { color: palette.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
   connectBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     borderRadius: radius.sm,
     paddingVertical: 10,
     paddingHorizontal: 14,
     minHeight: 40,
     justifyContent: 'center',
   },
-  connectText: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
+  connectText: { color: palette.onAction, fontFamily: font.bold, fontSize: 13 },
   blockBtn: {
     minWidth: 44,
     minHeight: 44,
@@ -507,5 +542,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chatHintWrap: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  chatHint: { color: colors.primary, fontFamily: font.bold, fontSize: 14 },
+  chatHint: { color: palette.action, fontFamily: font.bold, fontSize: 14 },
 });

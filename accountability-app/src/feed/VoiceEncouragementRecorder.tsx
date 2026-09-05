@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -18,7 +18,8 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
 type Props = {
   visible: boolean;
@@ -193,6 +194,10 @@ export function VoiceEncouragementRecorder({
   onClose,
   onSend,
 }: Props) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const actionColor = theme.ink.action;
+  const actionInk = theme.ink.inverse;
   const recorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 100);
   const player = useAudioPlayer(null);
@@ -439,7 +444,7 @@ export function VoiceEncouragementRecorder({
               <Text style={styles.subtitle}>A natural, private message · up to 10 seconds</Text>
             </View>
             <Pressable style={styles.iconButton} onPress={onClose} accessibilityLabel="Close recorder">
-              <Ionicons name="close" size={22} color={colors.navy} />
+              <Ionicons name="close" size={22} color={theme.ink.primary} />
             </Pressable>
           </View>
 
@@ -488,8 +493,8 @@ export function VoiceEncouragementRecorder({
               accessibilityState={{ disabled: interruptionPending, busy: interruptionPending }}
             >
               {interruptionPending
-                ? <ActivityIndicator color="#fff" />
-                : <Ionicons name={recorderState.isRecording ? 'stop' : 'mic'} size={24} color="#fff" />}
+                ? <ActivityIndicator color={actionInk} />
+                : <Ionicons name={recorderState.isRecording ? 'stop' : 'mic'} size={24} color={actionInk} />}
               <Text style={styles.recordText}>
                 {recorderState.isRecording ? 'Stop and preview' : 'Start recording'}
               </Text>
@@ -503,11 +508,11 @@ export function VoiceEncouragementRecorder({
                 accessibilityRole="button"
                 accessibilityLabel={playerStatus.playing ? 'Pause preview' : 'Play preview'}
               >
-                <Ionicons name={playerStatus.playing ? 'pause' : 'play'} size={20} color={colors.primary} />
+                <Ionicons name={playerStatus.playing ? 'pause' : 'play'} size={20} color={actionColor} />
                 <Text style={styles.previewText}>{playerStatus.playing ? 'Pause' : 'Preview'}</Text>
               </Pressable>
               <Pressable disabled={uploadPending} onPress={discard} style={styles.previewButton} accessibilityLabel="Delete and re-record">
-                <Ionicons name="refresh" size={20} color={colors.navy} />
+                <Ionicons name="refresh" size={20} color={theme.ink.primary} />
                 <Text style={styles.previewText}>Discard</Text>
               </Pressable>
               <Pressable
@@ -517,7 +522,7 @@ export function VoiceEncouragementRecorder({
                 accessibilityRole="button"
                 accessibilityState={{ busy: sending || uploadPending, disabled: sending || uploadPending }}
               >
-                {sending || uploadPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.sendText}>Send</Text>}
+                {sending || uploadPending ? <ActivityIndicator color={actionInk} /> : <Text style={styles.sendText}>Send</Text>}
               </Pressable>
             </View>
           )}
@@ -527,20 +532,20 @@ export function VoiceEncouragementRecorder({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   modal: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(8,26,58,0.52)' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: theme.interaction.scrim },
   sheet: {
-    backgroundColor: colors.cream,
+    backgroundColor: theme.surface.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: spacing.xl,
     paddingBottom: 32,
   },
   header: { flexDirection: 'row', alignItems: 'center' },
-  title: { color: colors.navy, fontFamily: font.bold, fontSize: 23 },
-  subtitle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12.5, marginTop: 2 },
-  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  title: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 23 },
+  subtitle: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12.5, marginTop: 2 },
+  iconButton: { width: 48, height: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   waveform: {
     height: 72,
     marginTop: spacing.xl,
@@ -549,42 +554,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
   },
-  bar: { width: 4, borderRadius: 2, backgroundColor: colors.primary },
-  timer: { textAlign: 'center', color: colors.navy, fontFamily: font.bold, fontSize: 16 },
-  error: { color: colors.danger, fontFamily: font.medium, textAlign: 'center', marginTop: spacing.md },
+  bar: { width: 4, borderRadius: 2, backgroundColor: theme.ink.action },
+  timer: { textAlign: 'center', color: theme.ink.primary, fontFamily: font.bold, fontSize: 16 },
+  error: { color: theme.status.danger, fontFamily: font.medium, textAlign: 'center', marginTop: spacing.md },
   record: {
     minHeight: 52,
     marginTop: spacing.xl,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  recordText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  recordText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   previewActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl },
   previewButton: {
     minHeight: 48,
     minWidth: 86,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.raised,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 5,
   },
-  previewText: { color: colors.navy, fontFamily: font.semibold, fontSize: 12.5 },
+  previewText: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 12.5 },
   send: {
     flex: 1,
     minHeight: 48,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendText: { color: '#fff', fontFamily: font.bold, fontSize: 15 },
+  sendText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.76 },
 });

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
-import { colors, font, radius, spacing } from './theme';
+import { useAppTheme } from './AppThemeProvider';
+import { font, radius, spacing, type AppThemeColors } from './theme';
+import { withAlpha } from './surfaces';
 
 type Options = {
   title: string;
@@ -22,6 +24,8 @@ export function confirmDialog(opts: Options): void {
 
 /** Mount once near the root (root _layout). */
 export function ConfirmHost() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [opts, setOpts] = useState<Options | null>(null);
 
   useEffect(() => {
@@ -48,15 +52,18 @@ export function ConfirmHost() {
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
           <BlurView
             intensity={60}
-            tint="light"
+            tint="dark"
             style={[StyleSheet.absoluteFill, { borderRadius: radius.lg }]}
           />
           <View style={styles.glass} />
-          <View style={[styles.iconWrap, destructive ? styles.iconDanger : styles.iconInfo]}>
+          <View style={[
+            styles.iconWrap,
+            destructive ? styles.iconDanger : styles.iconInfo,
+          ]}>
             <Ionicons
               name={destructive ? 'trash-outline' : 'help-circle-outline'}
               size={22}
-              color={destructive ? colors.danger : colors.primary}
+              color={destructive ? theme.status.danger : theme.ink.action}
             />
           </View>
           <Text style={styles.title}>{opts?.title}</Text>
@@ -81,7 +88,10 @@ export function ConfirmHost() {
               accessibilityRole="button"
               accessibilityLabel={opts?.confirmLabel ?? 'Confirm'}
             >
-              <Text style={styles.confirmText}>{opts?.confirmLabel ?? 'Confirm'}</Text>
+              <Text style={[
+                styles.confirmText,
+                destructive ? styles.confirmDangerText : styles.confirmPrimaryText,
+              ]}>{opts?.confirmLabel ?? 'Confirm'}</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -90,10 +100,10 @@ export function ConfirmHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.5)',
+    backgroundColor: theme.interaction.scrim,
     justifyContent: 'center',
     padding: spacing.xxl,
   },
@@ -101,7 +111,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: theme.border.strong,
     padding: spacing.xl,
     gap: spacing.sm,
     alignItems: 'center',
@@ -109,14 +119,14 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  // translucent tint over the blur keeps dark title/body text at 4.5:1
+  // dark plate over the blur keeps title and body text readable
   glass: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.66)',
+    backgroundColor: withAlpha(theme.surface.card, 0.88),
   },
   iconWrap: {
     width: 52,
@@ -125,13 +135,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconDanger: { backgroundColor: colors.dangerSoft },
-  iconInfo: { backgroundColor: colors.primarySoft },
-  title: { fontFamily: font.extrabold, fontSize: 18, color: colors.text, textAlign: 'center' },
+  iconDanger: { backgroundColor: theme.status.dangerSoft },
+  iconInfo: { backgroundColor: theme.surface.muted },
+  title: { fontFamily: font.extrabold, fontSize: 18, color: theme.ink.primary, textAlign: 'center' },
   message: {
     fontFamily: font.regular,
     fontSize: 14.5,
-    color: colors.textMuted,
+    color: theme.ink.muted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -143,10 +153,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancel: { backgroundColor: colors.surface },
-  cancelText: { fontFamily: font.bold, fontSize: 15, color: colors.textSecondary },
-  confirmDanger: { backgroundColor: colors.danger },
-  confirmPrimary: { backgroundColor: colors.primary },
-  confirmText: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
+  cancel: { backgroundColor: theme.surface.raised },
+  cancelText: { fontFamily: font.bold, fontSize: 15, color: theme.ink.secondary },
+  confirmDanger: { backgroundColor: theme.status.danger },
+  confirmPrimary: { backgroundColor: theme.ink.action },
+  confirmText: { fontFamily: font.bold, fontSize: 15 },
+  confirmDangerText: { color: theme.ink.inverse },
+  confirmPrimaryText: { color: theme.ink.inverse },
   pressed: { opacity: 0.85 },
 });

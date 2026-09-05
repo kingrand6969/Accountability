@@ -289,10 +289,10 @@ describe('proof action state', () => {
       /if \(!uri\) \{[\s\S]*?type: 'error', action: 'share-external'[\s\S]*?return;/,
     );
     for (const destinationCall of [
-      'createPost(message, imageUrl)',
+      'publishFlexFeedPost({',
       'Sharing.shareAsync(uri',
-      'MediaLibrary.createAssetAsync(uri)',
-      'saveImageToMemories(uri)',
+      'createPhonePhoto(uri)',
+      'saveImageToMemories(uri, null, null, expectedProofOwner(token))',
     ]) {
       const index = source.indexOf(destinationCall);
       expect(index).toBeGreaterThan(0);

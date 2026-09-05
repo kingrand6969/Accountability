@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import {
   Modal,
   Pressable,
@@ -10,7 +10,8 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from './Avatar';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -43,6 +44,8 @@ export function openPostMenu(opts: Options): void {
 }
 
 export function PostMenuHost() {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [opts, setOpts] = useState<Options | null>(null);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -121,21 +124,27 @@ export function PostMenuHost() {
                   accessibilityHint={o.subtitle}
                 >
                   <View
-                    style={[styles.rowIcon, o.destructive ? styles.iconDanger : styles.iconPlain]}
+                    style={[
+                      styles.rowIcon,
+                      o.destructive ? styles.iconDanger : styles.iconPlain,
+                    ]}
                   >
                     <Ionicons
                       name={o.icon}
                       size={17}
-                      color={o.destructive ? colors.danger : colors.textSecondary}
+                      color={o.destructive ? theme.status.danger : theme.ink.secondary}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.rowLabel, o.destructive && { color: colors.danger }]}>
+                    <Text style={[
+                      styles.rowLabel,
+                      o.destructive && { color: theme.status.danger },
+                    ]}>
                       {o.label}
                     </Text>
                     {o.subtitle ? <Text style={styles.rowSub}>{o.subtitle}</Text> : null}
                   </View>
-                  <Ionicons name="chevron-forward" size={15} color={colors.textFaint} />
+                  <Ionicons name="chevron-forward" size={15} color={theme.ink.muted} />
                 </Pressable>
               </View>
             ))}
@@ -155,12 +164,12 @@ export function PostMenuHost() {
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)' },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: theme.interaction.scrim },
   backdropBottom: { justifyContent: 'flex-end' },
   backdropCenter: { justifyContent: 'center', padding: spacing.xxl },
   sheet: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: spacing.lg,
@@ -179,7 +188,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.border,
+    backgroundColor: theme.border.subtle,
     marginBottom: 2,
   },
   preview: {
@@ -189,16 +198,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },
-  previewName: { fontFamily: font.bold, fontSize: 13.5, color: colors.text },
-  previewBody: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
+  previewName: { fontFamily: font.bold, fontSize: 13.5, color: theme.ink.primary },
+  previewBody: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted, marginTop: 1 },
   group: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.muted,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     overflow: 'hidden',
   },
-  divider: { height: 1, backgroundColor: colors.border, marginLeft: 62 },
+  divider: { height: 1, backgroundColor: theme.border.subtle, marginLeft: 62 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -207,7 +216,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
   },
-  rowPressed: { backgroundColor: colors.surface },
+  rowPressed: { backgroundColor: theme.interaction.pressedOverlay },
   rowIcon: {
     width: 36,
     height: 36,
@@ -215,16 +224,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconPlain: { backgroundColor: colors.surface },
-  iconDanger: { backgroundColor: colors.dangerSoft },
-  rowLabel: { fontFamily: font.semibold, fontSize: 15, color: colors.text },
-  rowSub: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted, marginTop: 1.5 },
+  iconPlain: { backgroundColor: theme.surface.raised },
+  iconDanger: { backgroundColor: theme.status.dangerSoft },
+  rowLabel: { fontFamily: font.semibold, fontSize: 15, color: theme.ink.primary },
+  rowSub: { fontFamily: font.regular, fontSize: 12, color: theme.ink.muted, marginTop: 1.5 },
   cancel: {
     minHeight: 50,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.raised,
   },
-  cancelText: { fontFamily: font.bold, fontSize: 15, color: colors.textSecondary },
+  cancelText: { fontFamily: font.bold, fontSize: 15, color: theme.ink.secondary },
 });

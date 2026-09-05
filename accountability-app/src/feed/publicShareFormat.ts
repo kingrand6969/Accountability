@@ -10,7 +10,7 @@ export function publicShareMessage(title: string, url: string): string {
   // operating system supports it. Keep the human message clean so recipients
   // see a polished card rather than suspicious link-heavy copy.
   void url;
-  return `${clean}\n\nShared with permission from AccountAbility.`;
+  return `${clean}\n\nShared with permission from Mantle.`;
 }
 
 export function publicShareContent(title: string, url: string, platform: 'ios' | 'android' | 'web') {

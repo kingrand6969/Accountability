@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,11 +23,19 @@ import { WorkoutTitleModal } from '../../gym/WorkoutTitleModal';
 import { Button } from '../../ui/Button';
 import { EmptyState } from '../../ui/EmptyState';
 import { showToast } from '../../ui/Toast';
-import { colors, font, radius, spacing } from '../../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
 
 /** Frame matches the image's real aspect ratio, so it fills the width with no
  *  white bars and no cropping — same on phone and tablet. */
 function DemoImage({ uri, label }: { uri: string; label: string }) {
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [ratio, setRatio] = useState(4 / 3);
   useEffect(() => {
     let ok = true;
@@ -53,6 +61,9 @@ function DemoImage({ uri, label }: { uri: string; label: string }) {
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => detailPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [ex, setEx] = useState<LibraryExercise | null>(null);
   const [fav, setFav] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -116,7 +127,7 @@ export default function ExerciseDetail() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -142,7 +153,7 @@ export default function ExerciseDetail() {
           <Ionicons
             name={fav ? 'star' : 'star-outline'}
             size={26}
-            color={fav ? colors.accent : colors.textFaint}
+            color={fav ? palette.accent : palette.placeholder}
           />
         </Pressable>
       </View>
@@ -186,47 +197,65 @@ export default function ExerciseDetail() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function detailPalette(theme: AppThemeColors) {
+  return {
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    accent: theme.status.attention,
+  };
+}
+
+function createStyles(theme: AppThemeColors) {
+  const palette = detailPalette(theme);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   pressed: { opacity: 0.7 },
   container: { padding: spacing.xl, gap: 10, paddingBottom: 48 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  name: { fontSize: 22, fontFamily: font.extrabold, color: colors.text, flex: 1 },
+  name: { fontSize: 22, fontFamily: font.extrabold, color: palette.ink, flex: 1 },
   starBtn: {
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: spacing.touch,
+    minHeight: spacing.touch,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  meta: { color: colors.textMuted, fontFamily: font.regular, textTransform: 'capitalize' },
+  meta: { color: palette.muted, fontFamily: font.regular, textTransform: 'capitalize' },
   images: { flexDirection: 'row', gap: spacing.md, marginTop: 6 },
   imageWrap: { flex: 1, gap: spacing.xs },
   image: {
     width: '100%',
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.field,
   },
-  imageLabel: { textAlign: 'center', color: colors.textFaint, fontSize: 12, fontFamily: font.semibold },
-  heading: { fontSize: 16, fontFamily: font.bold, color: colors.text, marginTop: 14 },
+  imageLabel: { textAlign: 'center', color: palette.placeholder, fontSize: 12, fontFamily: font.semibold },
+  heading: { fontSize: 16, fontFamily: font.bold, color: palette.ink, marginTop: 14 },
   step: { flexDirection: 'row', gap: 10, marginTop: 6 },
   stepNum: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: colors.primary,
-    color: colors.onPrimary,
+    backgroundColor: palette.action,
+    color: palette.onAction,
     textAlign: 'center',
     fontFamily: font.bold,
     fontSize: 12,
     lineHeight: 22,
     overflow: 'hidden',
   },
-  stepText: { flex: 1, lineHeight: 21, fontFamily: font.regular, color: colors.text },
+  stepText: { flex: 1, lineHeight: 21, fontFamily: font.regular, color: palette.ink },
   log: { marginTop: spacing.xl },
-});
+  });
+}

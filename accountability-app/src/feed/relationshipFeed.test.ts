@@ -17,6 +17,7 @@ const mockFrom = supabase.from as jest.Mock<any>;
 const mockRpc = supabase.rpc as jest.Mock<any>;
 
 beforeEach(() => {
+  jest.restoreAllMocks();
   mockGetUser.mockReset().mockResolvedValue({ data: { user: { id: 'me' } }, error: null });
   mockGetSession.mockReset().mockResolvedValue({ data: { session: { user: { id: 'me' } } }, error: null });
   mockFrom.mockReset();
@@ -246,6 +247,99 @@ describe('unified personal feed snapshot', () => {
       .mockResolvedValueOnce({ data: { user: { id: 'other' } }, error: null });
 
     await expect(listFeed()).resolves.toEqual([]);
+  });
+
+  test('reuses an owned first page for two minutes without rebuilding 500 candidates', async () => {
+    let now = 1_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    mockRpc
+      .mockResolvedValueOnce({ data: 'reusable-session', error: null })
+      .mockResolvedValueOnce({
+        data: [{ session_id: 'reusable-session', position: 1, id: 'one', source: 'self', suggested: false }],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [{ session_id: 'reusable-session', position: 1, id: 'one', source: 'self', suggested: false }],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: 'fresh-session', error: null })
+      .mockResolvedValueOnce({
+        data: [{ session_id: 'fresh-session', position: 1, id: 'fresh', source: 'buddy', suggested: false }],
+        error: null,
+      });
+    mockFrom.mockImplementation((table: string) => (
+      table === 'posts' ? feedQuery([post('one'), post('fresh')]) : likedQuery([])
+    ));
+
+    await expect(listPersonalFeed('me', undefined, { forceFresh: true })).resolves.toEqual([
+      expect.objectContaining({ id: 'one' }),
+    ]);
+    now += 119_999;
+    await expect(listPersonalFeed('me')).resolves.toEqual([
+      expect.objectContaining({ id: 'one' }),
+    ]);
+    now += 1;
+    await expect(listPersonalFeed('me')).resolves.toEqual([
+      expect.objectContaining({ id: 'fresh' }),
+    ]);
+
+    expect(mockRpc.mock.calls.filter(([name]) => name === 'create_unified_feed_session')).toHaveLength(2);
+    expect(mockRpc).toHaveBeenNthCalledWith(3, 'unified_feed_post_ids', {
+      p_session_id: 'reusable-session', p_after_position: 0, p_limit: 20,
+    });
+    expect(mockGetSession).toHaveBeenCalledTimes(6);
+  });
+
+  test('reused first page confirms the exact owner and fails closed on an account switch', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'owner-session', error: null })
+      .mockResolvedValueOnce({
+        data: [{ session_id: 'owner-session', position: 1, id: 'private', source: 'self', suggested: false }],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [{ session_id: 'owner-session', position: 1, id: 'private', source: 'self', suggested: false }],
+        error: null,
+      });
+    mockFrom.mockImplementation((table: string) => (
+      table === 'posts' ? feedQuery([post('private')]) : likedQuery([])
+    ));
+    mockGetSession
+      .mockResolvedValueOnce({ data: { session: { user: { id: 'me' } } }, error: null })
+      .mockResolvedValueOnce({ data: { session: { user: { id: 'me' } } }, error: null })
+      .mockResolvedValueOnce({ data: { session: { user: { id: 'me' } } }, error: null })
+      .mockResolvedValueOnce({ data: { session: { user: { id: 'other' } } }, error: null });
+
+    await expect(listPersonalFeed('me', undefined, { forceFresh: true })).resolves.toHaveLength(1);
+    await expect(listPersonalFeed('me')).resolves.toEqual([]);
+    expect(mockRpc.mock.calls.filter(([name]) => name === 'create_unified_feed_session')).toHaveLength(1);
+  });
+
+  test('an unavailable reused page gets exactly one fresh-session fallback', async () => {
+    mockRpc
+      .mockResolvedValueOnce({ data: 'expired-session', error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: null, error: { code: 'PFS01', message: 'expired' } })
+      .mockResolvedValueOnce({ data: 'replacement-session', error: null })
+      .mockResolvedValueOnce({
+        data: [{ session_id: 'replacement-session', position: 1, id: 'replacement', source: 'suggested', suggested: true }],
+        error: null,
+      });
+    mockFrom.mockImplementation((table: string) => (
+      table === 'posts' ? feedQuery([post('replacement')]) : likedQuery([])
+    ));
+
+    await expect(listPersonalFeed('me', undefined, { forceFresh: true })).resolves.toEqual([]);
+    await expect(listPersonalFeed('me')).resolves.toEqual([
+      expect.objectContaining({ id: 'replacement', feed_session_id: 'replacement-session' }),
+    ]);
+    expect(mockRpc.mock.calls.map(([name]) => name)).toEqual([
+      'create_unified_feed_session',
+      'unified_feed_post_ids',
+      'unified_feed_post_ids',
+      'create_unified_feed_session',
+      'unified_feed_post_ids',
+    ]);
   });
 });
 

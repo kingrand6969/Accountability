@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -21,12 +22,12 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { CachedImage } from '../ui/CachedImage';
 import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { listStoryGroups, addStory, type StoryGroup } from './api';
 import { authorLabel } from '../feed/format';
 import { PhotoEditor, type EditedPhoto } from '../media/PhotoEditor';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing, contentMax } from '../ui/theme';
+import { font, radius, spacing, contentMax, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type StoryRailHandle = { openPicker: () => void };
@@ -35,14 +36,21 @@ type StoryRailProps = {
   meAvatar?: string | null;
 };
 
+const STORY_BUBBLE = 52;
+const STORY_ITEM = 64;
+const STORY_ADD_TARGET = spacing.touch;
+const STORY_ADD_VISUAL = 22;
+
 export function storyTileSizeForFontScale(fontScale: number) {
-  if (fontScale >= 1.75) {
-    return { tileWidth: 140, tileHeight: 184, hintWidth: 112 };
-  }
-  if (fontScale >= 1.25) {
-    return { tileWidth: 112, tileHeight: 152, hintWidth: 90 };
-  }
-  return { tileWidth: TILE_W, tileHeight: TILE_H, hintWidth: 72 };
+  const tile = fontScale >= 1.75
+    ? { tileWidth: 104, tileHeight: 104 }
+    : fontScale >= 1.25
+      ? { tileWidth: 80, tileHeight: 88 }
+      : { tileWidth: STORY_ITEM, tileHeight: 76 };
+  return {
+    ...tile,
+    hintWidth: tile.tileWidth + spacing.sm + spacing.touch,
+  };
 }
 
 /** Compact, photo-first My Day rail. It supports the feed without becoming the feed. */
@@ -51,6 +59,8 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
   ref,
 ) {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { fontScale } = useWindowDimensions();
   const {
     tileWidth,
@@ -58,6 +68,12 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
     hintWidth,
   } = storyTileSizeForFontScale(fontScale);
   const tileSize = { width: tileWidth, height: tileHeight };
+  const createPlusVisualItemLeft = (tileWidth - STORY_BUBBLE) / 2 + 32;
+  const createPlusTargetLeft = Math.min(
+    tileWidth - STORY_ADD_TARGET,
+    createPlusVisualItemLeft - (STORY_ADD_TARGET - STORY_ADD_VISUAL) / 2,
+  );
+  const createPlusVisualTargetLeft = createPlusVisualItemLeft - createPlusTargetLeft;
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [posting, setPosting] = useState(false);
   const [editorUri, setEditorUri] = useState<string | null>(null);
@@ -187,10 +203,9 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
         <PhotoEditor uri={editorUri} onDone={onEdited} onCancel={() => setEditorUri(null)} />
       ) : null}
 
-      {/* create tile — shows your latest story as background once you have one */}
-      <View style={[styles.tile, tileSize]}>
+      <View style={[styles.storyItem, tileSize]}>
         <Pressable
-          style={({ pressed }) => [styles.tileMainAction, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.createBubble, pressed && styles.pressed]}
           onPress={() => {
             if (mine) {
               router.push({ pathname: '/story/[userId]', params: { userId: mine.user_id } });
@@ -201,60 +216,50 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
           accessibilityLabel={mine ? 'View My Day' : 'Add to My Day'}
           accessibilityRole="button"
         >
-          {mine ? (
-            <CachedImage
-              uri={mine.stories[mine.stories.length - 1].image_url}
-              style={styles.tileImage}
-              contentFit="cover"
-            />
-          ) : (
-            <LinearGradient
-              colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.tileImage}
-            />
-          )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.6)']}
-            style={styles.tileScrim}
-            pointerEvents="none"
-          />
-          <View style={styles.createAvatarRing}>
-            {meAvatar ? (
-              <CachedImage uri={meAvatar} style={styles.createAvatar} contentFit="cover" />
+          <View style={styles.createBubbleRing}>
+            {mine ? (
+              <CachedImage
+                uri={mine.stories[mine.stories.length - 1].image_url}
+                style={styles.bubbleImage}
+                contentFit="cover"
+              />
+            ) : meAvatar ? (
+              <CachedImage uri={meAvatar} style={styles.bubbleImage} contentFit="cover" />
             ) : (
-              <View style={[styles.createAvatar, styles.createAvatarFallback]}>
+              <View style={[styles.bubbleImage, styles.createAvatarFallback]}>
                 <Text style={styles.createInitial}>
                   {(meName?.trim()?.[0] ?? 'Y').toUpperCase()}
                 </Text>
               </View>
             )}
           </View>
-          <Text style={styles.createLabel}>
-            My Day{'\n'}{meName?.trim().split(/\s+/)[0] || 'You'}
-          </Text>
         </Pressable>
+        <Text style={styles.createLabel}>My Day</Text>
         <Pressable
-          style={({ pressed }) => [styles.createPlus, pressed && styles.pressed]}
+          testID="story-create-plus-target"
+          style={[styles.createPlusTarget, { left: createPlusTargetLeft }]}
           onPress={onAddStory}
-          hitSlop={4}
           accessibilityRole="button"
           accessibilityLabel="Add to My Day"
         >
-          {posting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="add" size={22} color="#fff" />
-          )}
+          <View
+            testID="story-create-plus-visual"
+            style={[styles.createPlusVisual, { left: createPlusVisualTargetLeft }]}
+          >
+            {posting ? (
+              <ActivityIndicator size="small" color={theme.ink.inverse} />
+            ) : (
+              <Ionicons name="add" size={14} color={theme.ink.inverse} />
+            )}
+          </View>
         </Pressable>
       </View>
 
       {others.map((g) => (
         <StoryTile
           key={g.user_id}
+          styles={styles}
           image={g.stories[g.stories.length - 1].image_url}
-          avatar={g.avatar}
           name={authorLabel(g.name)}
           viewed={g.viewed}
           tileSize={tileSize}
@@ -279,13 +284,17 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
       {others.length === 0 && showHint ? (
         <View style={[styles.hintTile, { width: hintWidth, height: tileHeight }]}>
           <Pressable
-            style={({ pressed }) => [styles.hintContent, pressed && styles.pressed]}
-            onPress={() => router.push('/buddy')}
+            style={({ pressed }) => [
+              styles.hintContent,
+              { width: tileWidth, height: tileHeight },
+              pressed && styles.pressed,
+            ]}
+            onPress={() => router.push('/discover')}
             accessibilityLabel="Find accountability buddies"
             accessibilityRole="button"
           >
             <View style={styles.hintIcon}>
-              <Ionicons name="people" size={22} color={colors.primary} />
+              <Ionicons name="people" size={22} color={theme.ink.action} />
             </View>
             <Text style={styles.hintText}>Find{'\n'}buddies</Text>
           </Pressable>
@@ -295,11 +304,10 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
               setShowHint(false);
               AsyncStorage.setItem('story-buddy-hint-dismissed', '1').catch(() => {});
             }}
-            hitSlop={6}
             accessibilityLabel="Dismiss My Day suggestion"
             accessibilityRole="button"
           >
-            <Ionicons name="close" size={16} color={colors.textMuted} />
+            <Ionicons name="close" size={16} color={theme.ink.muted} />
           </Pressable>
         </View>
       ) : null}
@@ -308,15 +316,15 @@ export const StoryRail = forwardRef<StoryRailHandle, StoryRailProps>(function St
 });
 
 function StoryTile({
+  styles,
   image,
-  avatar,
   name,
   viewed,
   tileSize,
   onPress,
 }: {
+  styles: StoryRailStyles;
   image: string;
-  avatar: string | null;
   name: string;
   viewed: boolean;
   tileSize: { width: number; height: number };
@@ -324,186 +332,163 @@ function StoryTile({
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.tile, tileSize, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.storyItem, tileSize, pressed && styles.pressed]}
       onPress={onPress}
       accessibilityLabel={`${name}, ${viewed ? 'viewed' : 'unseen'} story`}
       accessibilityRole="button"
     >
-      <CachedImage uri={image} style={styles.tileImage} contentFit="cover" />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.65)']}
-        style={styles.tileScrim}
-        pointerEvents="none"
-      />
-      <View style={[styles.tileAvatarRing, viewed && styles.tileAvatarRingViewed]}>
-        {avatar ? (
-          <CachedImage uri={avatar} style={styles.tileAvatar} />
-        ) : (
-          <View style={[styles.tileAvatar, styles.tileAvatarFallback]}>
-            <Ionicons name="person" size={13} color="#fff" />
-          </View>
-        )}
+      <View style={[styles.storyBubbleRing, viewed && styles.storyBubbleRingViewed]}>
+        <CachedImage uri={image} style={styles.bubbleImage} contentFit="cover" />
       </View>
-      <Text style={styles.tileName} numberOfLines={2}>
+      <Text style={styles.storyName} numberOfLines={1}>
         {name}
       </Text>
     </Pressable>
   );
 }
 
-const TILE_W = 92;
-const TILE_H = 132;
+type StoryRailStyles = ReturnType<typeof createStyles>;
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   rail: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
+    backgroundColor: theme.surface.canvas,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border.subtle,
   },
   pressed: { opacity: 0.85 },
-  tile: {
-    width: TILE_W,
-    height: TILE_H,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
+  storyItem: {
+    width: STORY_ITEM,
+    height: 76,
+    alignItems: 'center',
   },
-  tileMainAction: {
+  storyBubbleRing: {
+    width: STORY_BUBBLE,
+    height: STORY_BUBBLE,
+    borderRadius: STORY_BUBBLE / 2,
+    borderWidth: 2,
+    borderColor: theme.ink.action,
+    backgroundColor: theme.surface.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    padding: 2,
+  },
+  storyBubbleRingViewed: { borderColor: theme.border.strong },
+  bubbleImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: (STORY_BUBBLE - 8) / 2,
+  },
+  storyName: {
+    marginTop: 4,
+    width: '100%',
+    color: theme.ink.muted,
+    fontFamily: font.medium,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
+  },
+  createBubble: {
+    width: STORY_BUBBLE,
+    height: STORY_BUBBLE,
+  },
+  createBubbleRing: {
     flex: 1,
-  },
-  tileImage: { width: '100%', height: '100%' },
-  tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 64 },
-  tileAvatarRing: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 2.5,
-    borderColor: colors.primary,
-    backgroundColor: colors.card,
+    borderRadius: STORY_BUBBLE / 2,
+    borderWidth: 2,
+    borderColor: theme.ink.action,
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    padding: 2,
   },
-  tileAvatar: { width: 25, height: 25, borderRadius: 12.5 },
-  tileAvatarRingViewed: { borderColor: colors.border },
-  tileAvatarFallback: {
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileName: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
-    color: '#fff',
-    fontFamily: font.bold,
-    fontSize: 12.5,
-    lineHeight: 16,
-  },
-  // frosted ➕ floating over the tile — no white strip, all gradient
-  createPlus: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    borderWidth: 2.5,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createAvatarRing: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2.5,
-    borderColor: '#fff',
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  createAvatar: { width: 29, height: 29, borderRadius: 14.5 },
   createAvatarFallback: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createInitial: { color: '#fff', fontFamily: font.bold, fontSize: 13 },
-  createLabel: {
+  createPlusTarget: {
     position: 'absolute',
-    left: 10,
-    right: 44,
-    bottom: 10,
-    color: '#fff',
-    fontFamily: font.bold,
-    fontSize: 12,
-    textAlign: 'left',
-    lineHeight: 16,
+    top: 23,
+    width: STORY_ADD_TARGET,
+    height: STORY_ADD_TARGET,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createPlusVisual: {
+    position: 'absolute',
+    top: 11,
+    width: STORY_ADD_VISUAL,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: theme.ink.action,
+    borderWidth: 2,
+    borderColor: theme.surface.canvas,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createInitial: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 13 },
+  createLabel: {
+    marginTop: 4,
+    width: '100%',
+    color: theme.ink.secondary,
+    fontFamily: font.semibold,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
   },
   hintTile: {
-    width: 72,
-    height: TILE_H,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.primarySoft,
-    overflow: 'hidden',
+    width: STORY_ITEM,
+    height: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   retryTile: {
     width: 112,
-    minHeight: 44,
+    minHeight: spacing.touch,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.sm,
   },
   retryText: {
-    color: colors.primary,
+    color: theme.ink.action,
     fontFamily: font.semibold,
     fontSize: 12,
     lineHeight: 17,
     textAlign: 'center',
   },
   hintContent: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 2,
     paddingHorizontal: 6,
-    paddingVertical: spacing.md,
+    paddingVertical: 1,
   },
   hintClose: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 36,
-    height: 36,
+    width: spacing.touch,
+    height: spacing.touch,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   hintIcon: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.card,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
   hintText: {
-    color: colors.textMuted,
+    color: theme.ink.muted,
     fontFamily: font.semibold,
     fontSize: 11.5,
     textAlign: 'center',

@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CachedImage } from '../ui/CachedImage';
 import { colors, font, radius } from '../ui/theme';
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 
 /** Tallest frame the FEED shows — 4:5 portrait, like Instagram/Facebook.
  *  Anything taller is centre-cropped in the feed and shown in full on tap. */
@@ -19,13 +19,15 @@ export function PostImage({
   url,
   capTall = false,
   immersive = false,
+  detail = false,
 }: {
   url: string;
   capTall?: boolean;
   immersive?: boolean;
+  detail?: boolean;
 }) {
   const [ratio, setRatio] = useState(16 / 9);
-  const resolvedUrl = useResolvedMediaUrl(url);
+  const resolvedUrl = useResolvedImageUrl(url);
 
   const capped = capTall && ratio < FEED_MIN_RATIO;
   const shown = immersive ? FEED_MIN_RATIO : capped ? FEED_MIN_RATIO : ratio;
@@ -44,8 +46,19 @@ export function PostImage({
           borderRadius: immersive ? 0 : radius.sm,
           backgroundColor: colors.surface,
         }}
-        contentFit={immersive ? 'contain' : 'cover'}
-      /> : <View style={[styles.privatePlaceholder, immersive && styles.immersivePlaceholder, { aspectRatio: shown }]} />}
+        contentFit={immersive || detail ? 'contain' : 'cover'}
+      /> : (
+        <View
+          testID="post-image-placeholder"
+          style={[
+            styles.privatePlaceholder,
+            immersive && styles.immersivePlaceholder,
+            { aspectRatio: shown },
+          ]}
+        >
+          {!immersive ? <Ionicons name="image-outline" size={26} color={colors.textMuted} /> : null}
+        </View>
+      )}
       {capped ? (
         <View style={styles.hint} pointerEvents="none">
           <Ionicons name="expand-outline" size={12} color="#fff" />
@@ -58,7 +71,13 @@ export function PostImage({
 
 const styles = StyleSheet.create({
   wrap: { alignSelf: 'stretch', width: '100%' },
-  privatePlaceholder: { width: '100%', borderRadius: radius.sm, backgroundColor: colors.surface },
+  privatePlaceholder: {
+    width: '100%',
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   immersivePlaceholder: { borderRadius: 0, backgroundColor: colors.navy },
   hint: {
     position: 'absolute',

@@ -28,16 +28,18 @@ jest.mock('../lib/supabase', () => {
   const maybeSingle = jest.fn();
   const upload = jest.fn();
   const remove = jest.fn();
+  const getUser = jest.fn(async () => ({
+    data: { user: { id: 'member-1' } },
+    error: null,
+  }));
+  const rpc = jest.fn(async () => ({ data: 0, error: null }));
   return {
-    memoryApiMocks: { insert, maybeSingle, upload, remove },
+    memoryApiMocks: { insert, maybeSingle, upload, remove, getUser, rpc },
     supabase: {
       auth: {
-        getUser: jest.fn(async () => ({
-          data: { user: { id: 'member-1' } },
-          error: null,
-        })),
+        getUser,
       },
-      rpc: jest.fn(async () => ({ data: 0, error: null })),
+      rpc,
       storage: {
         from: jest.fn(() => ({
           upload,
@@ -59,6 +61,12 @@ jest.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg' },
 }));
 
+const imageManipulatorMocks = (
+  jest.requireMock('expo-image-manipulator') as {
+    manipulateAsync: jest.Mock<(...args: any[]) => Promise<any>>;
+  }
+);
+
 const memoryApiMocks = (
   jest.requireMock('../lib/supabase') as {
     memoryApiMocks: {
@@ -66,6 +74,8 @@ const memoryApiMocks = (
       maybeSingle: jest.Mock<(...args: any[]) => Promise<any>>;
       upload: jest.Mock<(...args: any[]) => Promise<any>>;
       remove: jest.Mock<(...args: any[]) => Promise<any>>;
+      getUser: jest.Mock<(...args: any[]) => Promise<any>>;
+      rpc: jest.Mock<(...args: any[]) => Promise<any>>;
     };
   }
 ).memoryApiMocks;
@@ -80,8 +90,17 @@ beforeEach(() => {
   memoryApiMocks.maybeSingle.mockReset();
   memoryApiMocks.upload.mockReset();
   memoryApiMocks.remove.mockReset();
+  memoryApiMocks.getUser.mockReset();
+  memoryApiMocks.rpc.mockReset();
+  memoryApiMocks.getUser.mockResolvedValue({
+    data: { user: { id: 'member-1' } },
+    error: null,
+  });
+  memoryApiMocks.rpc.mockResolvedValue({ data: 0, error: null });
   memoryApiMocks.upload.mockResolvedValue({ error: null });
   memoryApiMocks.remove.mockResolvedValue({ error: null });
+  imageManipulatorMocks.manipulateAsync.mockReset();
+  imageManipulatorMocks.manipulateAsync.mockResolvedValue({ base64: 'AQ==' });
 });
 
 function deferred<T>() {
@@ -478,11 +497,19 @@ describe('RunMediaActions feed availability', () => {
     expect(feedDisabledReasonFor(false)).toBeNull();
   });
 
-  test('normalizes null and Error failures without leaving an empty message', () => {
-    expect(runMediaErrorMessage(new Error('Network unavailable'))).toBe(
-      'Network unavailable',
+  test('turns internal failures into concise destination-safe messages', () => {
+    expect(runMediaErrorMessage('story', new Error('Network unavailable'))).toBe(
+      'Couldn’t add this run to My Day. Your run is still saved—try again.',
     );
-    expect(runMediaErrorMessage(null)).toBe('Something went wrong');
+    expect(runMediaErrorMessage('phone', null)).toBe(
+      'Couldn’t save this image to your phone. Your run is still saved—try again.',
+    );
+    expect(
+      runMediaErrorMessage(
+        'phone',
+        new Error('Photo library permission is required to save this run image.'),
+      ),
+    ).toBe('Allow photo access to save this run image.');
   });
 });
 
@@ -597,6 +624,57 @@ describe('run-media Feed operation identity', () => {
 });
 
 describe('ambiguous Memories row insertion', () => {
+  test('does not upload when the account changes while image manipulation is in flight', async () => {
+    const manipulation = deferred<{ base64: string }>();
+    imageManipulatorMocks.manipulateAsync.mockReturnValue(manipulation.promise);
+
+    const saving = saveImageToMemories(
+      'file:///run.jpg',
+      null,
+      null,
+      'member-1',
+    );
+    await Promise.resolve();
+    memoryApiMocks.getUser.mockResolvedValue({
+      data: { user: { id: 'member-2' } },
+      error: null,
+    });
+    manipulation.resolve({ base64: 'AQ==' });
+
+    await expect(saving).rejects.toThrow('Account changed.');
+    expect(memoryApiMocks.upload).not.toHaveBeenCalled();
+    expect(memoryApiMocks.insert).not.toHaveBeenCalled();
+  });
+
+  test('does not insert into a new account when the account changes during upload', async () => {
+    let currentOwner = 'member-1';
+    memoryApiMocks.getUser.mockImplementation(async () => ({
+      data: { user: { id: currentOwner } },
+      error: null,
+    }));
+    const uploadStarted = deferred<void>();
+    const upload = deferred<{ error: null }>();
+    memoryApiMocks.upload.mockImplementation(() => {
+      uploadStarted.resolve();
+      return upload.promise;
+    });
+    memoryApiMocks.insert.mockResolvedValue({ error: null });
+
+    const saving = saveImageToMemories(
+      'file:///run.jpg',
+      null,
+      null,
+      'member-1',
+    );
+    await uploadStarted.promise;
+    currentOwner = 'member-2';
+    upload.resolve({ error: null });
+
+    await expect(saving).rejects.toThrow('Account changed.');
+    expect(memoryApiMocks.upload).toHaveBeenCalledTimes(1);
+    expect(memoryApiMocks.insert).not.toHaveBeenCalled();
+  });
+
   test('saveImageToMemories confirms a committed row after a lost response without deleting the object', async () => {
     const insertError = new Error('response lost');
     memoryApiMocks.insert.mockResolvedValue({ error: insertError });

@@ -8,7 +8,8 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { colors, font, radius } from './theme';
+import { font, radius, spacing, type AppThemeColors } from './theme';
+import { useAppTheme } from './AppThemeProvider';
 
 type Variant = 'primary' | 'success' | 'outline' | 'danger' | 'ghost';
 
@@ -34,8 +35,9 @@ export function Button({
   style,
   accessibilityLabel,
 }: Props) {
-  const v = VARIANTS[variant];
   const inactive = disabled || loading;
+  const { colors: theme } = useAppTheme();
+  const v = buttonAppearance(theme, variant, inactive);
   const [scale] = useState(() => new Animated.Value(1));
 
   // springy press-in/out — motion tied to the touch, interruptible
@@ -57,11 +59,16 @@ export function Button({
         disabled={inactive}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? title}
+        accessibilityState={{ disabled: inactive, busy: loading }}
         style={({ pressed }) => [
           styles.base,
-          v.container,
+          {
+            backgroundColor: v.backgroundColor,
+            borderColor: v.borderColor,
+            borderWidth: v.borderWidth,
+            borderRadius: variant === 'primary' ? radius.pill : radius.md,
+          },
           pressed && !inactive && styles.pressed,
-          inactive && styles.disabled,
         ]}
       >
         {loading ? (
@@ -77,45 +84,65 @@ export function Button({
   );
 }
 
-const VARIANTS: Record<
-  Variant,
-  { container: ViewStyle; textColor: string; spinner: string }
-> = {
-  primary: {
-    container: { backgroundColor: colors.primary },
-    textColor: colors.onPrimary,
-    spinner: colors.onPrimary,
-  },
-  success: {
-    container: { backgroundColor: colors.success },
-    textColor: colors.onPrimary,
-    spinner: colors.onPrimary,
-  },
-  danger: {
-    container: { backgroundColor: colors.danger },
-    textColor: colors.onPrimary,
-    spinner: colors.onPrimary,
-  },
-  outline: {
-    container: {
-      backgroundColor: colors.card,
+export function buttonAppearance(
+  theme: AppThemeColors,
+  variant: Variant,
+  inactive: boolean,
+): {
+  backgroundColor: string;
+  borderColor: string;
+  borderWidth: number;
+  textColor: string;
+  spinner: string;
+} {
+  if (inactive) {
+    return {
+      backgroundColor: theme.surface.muted,
+      borderColor: theme.border.subtle,
+      borderWidth: 0,
+      textColor: theme.ink.muted,
+      spinner: theme.ink.muted,
+    };
+  }
+
+  const filled = (backgroundColor: string) => ({
+    backgroundColor,
+    borderColor: backgroundColor,
+    borderWidth: 0,
+    textColor: theme.ink.inverse,
+    spinner: theme.ink.inverse,
+  });
+
+  if (variant === 'success') return filled(theme.status.success);
+  if (variant === 'danger') return filled(theme.status.danger);
+  if (variant === 'outline') {
+    return {
+      backgroundColor: 'transparent',
+      borderColor: theme.border.strong,
       borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    textColor: colors.primary,
-    spinner: colors.primary,
-  },
-  ghost: {
-    container: { backgroundColor: colors.surface },
-    textColor: colors.text,
-    spinner: colors.text,
-  },
-};
+      textColor: theme.ink.primary,
+      spinner: theme.ink.primary,
+    };
+  }
+  if (variant === 'ghost') {
+    return {
+      backgroundColor: theme.surface.muted,
+      borderColor: theme.surface.muted,
+      borderWidth: 0,
+      textColor: theme.ink.primary,
+      spinner: theme.ink.primary,
+    };
+  }
+  return {
+    ...filled(theme.ink.action),
+    borderColor: theme.border.action,
+  };
+}
 
 const styles = StyleSheet.create({
   wrap: { alignSelf: 'stretch' },
   base: {
-    minHeight: 48,
+    minHeight: spacing.touch,
     borderRadius: radius.md,
     paddingVertical: 13,
     paddingHorizontal: 18,
@@ -125,6 +152,5 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pressed: { opacity: 0.92 },
-  disabled: { opacity: 0.5 },
   text: { fontFamily: font.bold, fontSize: 16 },
 });

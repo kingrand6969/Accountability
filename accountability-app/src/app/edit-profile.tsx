@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,11 +30,19 @@ import { validateBirthday } from '../profiles/validation';
 import { uploadAvatar, uploadCover } from '../profiles/avatar';
 import { prepareUpload } from '../media/prepareUpload';
 import { CachedImage } from '../ui/CachedImage';
-import { useResolvedMediaUrl } from '../media/useResolvedMediaUrl';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
+import { clearPrivateMediaCache } from '../media/privateMedia';
 import { ChipSelector } from '../profiles/ChipSelector';
 import { Button } from '../ui/Button';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, shadow, spacing } from '../ui/theme';
+import {
+  font,
+  radius,
+  shadow,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import {
   cleanupOwnerDrafts,
   createExpoDraftFileAdapter,
@@ -76,7 +84,15 @@ const ORIENTATION_OPTIONS: { value: SexualOrientation; label: string }[] = [
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  children,
+  styles,
+}: {
+  title: string;
+  children: ReactNode;
+  styles: ReturnType<typeof createStyles>;
+}) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -86,8 +102,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export default function Profile() {
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => profilePalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { session } = useAuth();
   const { isPro } = useIsPro();
+  const proAppearance = useMemo(() => profileProAppearance(theme, isPro), [isPro, theme]);
   const router = useRouter();
   const insets = useSafeAreaInsets(); // cover runs under the status bar
 
@@ -97,8 +117,8 @@ export default function Profile() {
   const [joinedAt, setJoinedAt] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
-  const resolvedAvatarUrl = useResolvedMediaUrl(avatarUrl);
-  const resolvedCoverUrl = useResolvedMediaUrl(coverUrl);
+  const resolvedAvatarUrl = useResolvedImageUrl(avatarUrl);
+  const resolvedCoverUrl = useResolvedImageUrl(coverUrl);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [draftFileAdapter] = useState(() => createExpoDraftFileAdapter());
@@ -231,6 +251,7 @@ export default function Profile() {
       const base64 = await prepareUpload(img.uri, 512);
       const url = await uploadAvatar(base64, 'jpg');
       await updateMyProfile({ avatar_url: url });
+      clearPrivateMediaCache();
       setAvatarUrl(url);
       showToast('Photo updated');
     } catch (e) {
@@ -249,6 +270,7 @@ export default function Profile() {
       const base64 = await prepareUpload(img.uri, 1280);
       const url = await uploadCover(base64, 'jpg');
       await updateMyProfile({ cover_url: url });
+      clearPrivateMediaCache();
       setCoverUrl(url);
       showToast('Cover updated');
     } catch (e) {
@@ -378,7 +400,7 @@ export default function Profile() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={palette.action} />
       </View>
     );
   }
@@ -391,7 +413,7 @@ export default function Profile() {
           <CachedImage uri={resolvedCoverUrl} style={styles.cover} contentFit="cover" />
         ) : (
           <LinearGradient
-            colors={['#1e3a8a', '#2563eb', '#0ea5e9']}
+            colors={['#263223', '#6F9F00', '#83B91B']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.cover}
@@ -400,14 +422,15 @@ export default function Profile() {
         <Pressable
           onPress={onPickCover}
           disabled={uploadingCover}
+          hitSlop={8}
           style={({ pressed }) => [styles.coverBtn, pressed && styles.pressed]}
           accessibilityLabel="Change cover photo"
         >
           {uploadingCover ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <ActivityIndicator color={palette.ink} size="small" />
           ) : (
             <>
-              <Ionicons name="camera" size={14} color="#fff" />
+              <Ionicons name="camera" size={14} color={palette.ink} />
               <Text style={styles.coverBtnText}>{coverUrl ? 'Edit cover' : 'Add cover'}</Text>
             </>
           )}
@@ -433,11 +456,11 @@ export default function Profile() {
           )}
           {uploading ? (
             <View style={styles.avatarOverlay}>
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={palette.ink} />
             </View>
           ) : (
             <View style={styles.avatarEdit}>
-              <Ionicons name="camera" size={13} color="#fff" />
+              <Ionicons name="camera" size={13} color={palette.onAction} />
             </View>
           )}
         </Pressable>
@@ -453,21 +476,25 @@ export default function Profile() {
       <Pressable
         style={({ pressed }) => [
           styles.linkRow,
-          isPro ? styles.proRowActive : styles.proRow,
+          styles.proRow,
+          {
+            backgroundColor: proAppearance.surface,
+            borderColor: proAppearance.border,
+          },
           pressed && styles.pressed,
         ]}
         onPress={() => router.push('/paywall')}
       >
         <View style={styles.linkLeft}>
-          <Ionicons name="star" size={17} color={isPro ? colors.pro : '#fff'} />
-          <Text style={[styles.linkText, { color: isPro ? colors.pro : '#fff' }]}>
-            {isPro ? 'AccountAbility Pro' : 'Upgrade to Pro'}
+          <Ionicons name="star" size={17} color={proAppearance.icon} />
+          <Text style={[styles.linkText, { color: proAppearance.text }]}>
+            {isPro ? 'Mantle Pro' : 'Upgrade to Pro'}
           </Text>
         </View>
         <Ionicons
           name="chevron-forward"
           size={18}
-          color={isPro ? colors.pro : '#fff'}
+          color={proAppearance.icon}
         />
       </Pressable>
 
@@ -476,20 +503,20 @@ export default function Profile() {
         onPress={() => router.push('/buddy')}
       >
         <View style={styles.linkLeft}>
-          <Ionicons name="people-outline" size={18} color={colors.text} />
-          <Text style={[styles.linkText, { color: colors.text }]}>
+          <Ionicons name="people-outline" size={18} color={palette.ink} />
+          <Text style={[styles.linkText, { color: palette.ink }]}>
             Accountability Buddies
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+        <Ionicons name="chevron-forward" size={18} color={palette.placeholder} />
       </Pressable>
 
-      <Section title="About you">
+      <Section title="About you" styles={styles}>
         <Text style={styles.label}>Display name</Text>
         <TextInput
           style={styles.input}
           placeholder="Your name"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           value={displayName}
           onChangeText={setDisplayName}
         />
@@ -497,7 +524,7 @@ export default function Profile() {
         <TextInput
           style={styles.input}
           placeholder="City or region (no exact address)"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           value={area}
           onChangeText={setArea}
         />
@@ -505,14 +532,14 @@ export default function Profile() {
         <TextInput
           style={[styles.input, styles.multiline]}
           placeholder="A short intro"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           value={bio}
           onChangeText={setBio}
           multiline
         />
       </Section>
 
-      <Section title="Private details">
+      <Section title="Private details" styles={styles}>
         <Text style={styles.sectionNote}>
           Optional and private by default - you choose what to show.
         </Text>
@@ -538,7 +565,7 @@ export default function Profile() {
         <TextInput
           style={styles.input}
           placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           autoCapitalize="none"
           value={birthday}
           onChangeText={setBirthday}
@@ -556,17 +583,17 @@ export default function Profile() {
         />
       </Section>
 
-      <Section title="Preferences">
+      <Section title="Preferences" styles={styles}>
         <View style={styles.switchRow}>
           <View style={styles.switchLeft}>
-            <Ionicons name="time-outline" size={17} color={colors.textMuted} />
+            <Ionicons name="time-outline" size={17} color={palette.muted} />
             <Text style={styles.switchLabel}>Show my last-active time</Text>
           </View>
           <Switch value={showLastActive} onValueChange={setShowLastActive} />
         </View>
         <View style={styles.switchRow}>
           <View style={styles.switchLeft}>
-            <Ionicons name="flame" size={17} color={colors.accent} />
+            <Ionicons name="flame" size={17} color={palette.attention} />
             <Text style={styles.switchLabel}>Daily streak reminder</Text>
           </View>
           <Switch value={remindOn} onValueChange={onToggleReminder} />
@@ -589,10 +616,10 @@ export default function Profile() {
         accessibilityLabel="Delete account"
       >
         {deleting ? (
-          <ActivityIndicator size="small" color={colors.danger} />
+          <ActivityIndicator size="small" color={palette.danger} />
         ) : (
           <>
-            <Ionicons name="trash-outline" size={16} color={colors.danger} />
+            <Ionicons name="trash-outline" size={16} color={palette.danger} />
             <Text style={styles.deleteText}>Delete account</Text>
           </>
         )}
@@ -605,14 +632,50 @@ export default function Profile() {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+function profilePalette(theme: AppThemeColors) {
+  return {
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    danger: theme.status.danger,
+    attention: theme.status.attention,
+    scrim: theme.interaction.scrim,
+  };
+}
+
+function profileProAppearance(theme: AppThemeColors, isPro: boolean) {
+  return isPro
+    ? {
+      surface: theme.surface.muted,
+      text: theme.ink.action,
+      icon: theme.ink.action,
+      border: theme.border.action,
+    }
+    : {
+      surface: theme.surface.raised,
+      text: theme.ink.primary,
+      icon: theme.ink.secondary,
+      border: theme.border.strong,
+    };
+}
+
+function createStyles(theme: AppThemeColors) {
+  const palette = profilePalette(theme);
+  return StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.background },
   container: {
     padding: spacing.lg,
     paddingTop: 0,
     gap: spacing.sm,
     paddingBottom: 110, // clear the floating glass tab bar
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   pressed: { opacity: 0.8 },
   coverWrap: {
@@ -627,13 +690,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(15,23,42,0.55)',
+    backgroundColor: palette.scrim,
     borderRadius: radius.pill,
     paddingVertical: 7,
     paddingHorizontal: 12,
     minHeight: 32,
   },
-  coverBtnText: { color: '#fff', fontFamily: font.semibold, fontSize: 12 },
+  coverBtnText: { color: palette.ink, fontFamily: font.semibold, fontSize: 12 },
   // avatar sits almost fully on the cover — its bottom edge (camera badge)
   // lines up with the cover's bottom edge
   avatarBlock: { alignItems: 'center', gap: 4, marginTop: -96, marginBottom: spacing.xs },
@@ -642,16 +705,16 @@ const styles = StyleSheet.create({
     height: 104,
     borderRadius: 52,
     borderWidth: 4,
-    borderColor: colors.card,
-    backgroundColor: colors.card,
+    borderColor: palette.card,
+    backgroundColor: palette.card,
   },
   avatar: { width: 96, height: 96, borderRadius: 48 },
   avatarPlaceholder: {
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: { color: '#fff', fontSize: 40, fontFamily: font.bold },
+  avatarInitial: { color: palette.onAction, fontSize: 40, fontFamily: font.bold },
   avatarOverlay: {
     position: 'absolute',
     top: 0,
@@ -661,7 +724,7 @@ const styles = StyleSheet.create({
     borderRadius: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: palette.scrim,
   },
   avatarEdit: {
     position: 'absolute',
@@ -670,14 +733,14 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: palette.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  email: { fontSize: 18, fontFamily: font.bold, color: colors.text, marginTop: 4 },
-  meta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13 },
+  email: { fontSize: 18, fontFamily: font.bold, color: palette.ink, marginTop: 4 },
+  meta: { color: palette.muted, fontFamily: font.regular, fontSize: 13 },
   linkRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -689,38 +752,33 @@ const styles = StyleSheet.create({
   },
   linkLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   linkText: { fontSize: 15, fontFamily: font.bold },
-  proRow: { backgroundColor: colors.pro },
-  proRowActive: {
-    backgroundColor: colors.proSoft,
-    borderWidth: 1,
-    borderColor: colors.pro,
-  },
+  proRow: { borderWidth: 1 },
   buddyRow: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     ...shadow.card,
   },
   section: { marginTop: spacing.md, gap: 6 },
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: palette.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginLeft: 4,
   },
   sectionCard: {
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     gap: 6,
     ...shadow.card,
   },
   sectionNote: {
-    color: colors.textMuted,
+    color: palette.muted,
     fontFamily: font.regular,
     fontSize: 13,
     marginBottom: 2,
@@ -728,18 +786,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13.5,
     fontFamily: font.semibold,
-    color: colors.textSecondary,
+    color: palette.secondary,
     marginTop: spacing.sm,
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
-    backgroundColor: colors.surfaceAlt,
+    color: palette.ink,
+    backgroundColor: palette.field,
+    minHeight: spacing.touch,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   switchRow: {
@@ -747,35 +806,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.sm,
-    minHeight: 36,
+    minHeight: spacing.touch,
   },
   switchLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
-  switchLabel: { fontSize: 15, fontFamily: font.medium, color: colors.text },
+  switchLabel: { fontSize: 15, fontFamily: font.medium, color: palette.ink },
   save: { marginTop: spacing.xl },
   signOutButton: {
     borderRadius: radius.sm,
     padding: 14,
     alignItems: 'center',
     marginTop: spacing.sm,
-    minHeight: 44,
+    minHeight: spacing.touch,
   },
-  signOutText: { color: colors.danger, fontSize: 15, fontFamily: font.semibold },
+  signOutText: { color: palette.danger, fontSize: 15, fontFamily: font.semibold },
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    minHeight: 44,
+    minHeight: spacing.touch,
     marginTop: spacing.sm,
   },
-  deleteText: { color: colors.danger, fontSize: 14.5, fontFamily: font.bold },
+  deleteText: { color: palette.danger, fontSize: 14.5, fontFamily: font.bold },
   deleteHint: {
     fontFamily: font.regular,
     fontSize: 12,
-    color: colors.textMuted,
+    color: palette.muted,
     textAlign: 'center',
     lineHeight: 17,
     marginTop: 2,
     paddingHorizontal: spacing.lg,
   },
-});
+  });
+}

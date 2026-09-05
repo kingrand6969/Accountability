@@ -1,8 +1,9 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Message } from './api';
 import { CachedImage } from '../ui/CachedImage';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { colors, font, radius, spacing, type AppThemeColors } from '../ui/theme';
 
 /**
  * Presentation for one chat message row — bubble grouping, day separators,
@@ -45,15 +46,25 @@ const timeLabel = (iso: string) =>
 
 export const CHAT_AVATAR = 26;
 
-function TheirAvatar({ visible, avatar }: { visible: boolean; avatar: string | null }) {
+function TheirAvatar({
+  visible,
+  avatar,
+  theme,
+  themedStyles,
+}: {
+  visible: boolean;
+  avatar: string | null;
+  theme?: AppThemeColors;
+  themedStyles: ReturnType<typeof createThemedStyles> | null;
+}) {
   return (
     <View style={styles.avatarSlot}>
       {visible ? (
         avatar ? (
           <CachedImage uri={avatar} style={styles.avatar} />
         ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <Ionicons name="person" size={13} color={colors.textFaint} />
+          <View style={[styles.avatar, styles.avatarFallback, themedStyles?.avatarFallback]}>
+            <Ionicons name="person" size={13} color={theme?.ink.muted ?? colors.textFaint} />
           </View>
         )
       ) : null}
@@ -68,6 +79,7 @@ export function MessageRow({
   mine,
   hasMore,
   avatar,
+  theme,
 }: {
   item: Message;
   newer?: Message;
@@ -77,7 +89,10 @@ export function MessageRow({
    *  separator at the pagination boundary */
   hasMore: boolean;
   avatar: string | null;
+  /** Optional semantic palette; omitted callers retain the legacy Light presentation. */
+  theme?: AppThemeColors;
 }) {
+  const themedStyles = useMemo(() => (theme ? createThemedStyles(theme) : null), [theme]);
   const groupStart = !older || !sameGroup(item, older); // chronologically first of its group
   const groupEnd = !newer || !sameGroup(newer, item); // chronologically last of its group
   const showDay = older ? dayOf(older.created_at) !== dayOf(item.created_at) : !hasMore;
@@ -86,7 +101,7 @@ export function MessageRow({
     <View>
       {showDay ? (
         <View style={styles.dayRow}>
-          <Text style={styles.dayText}>{dayLabel(item.created_at)}</Text>
+          <Text style={[styles.dayText, themedStyles?.dayText]}>{dayLabel(item.created_at)}</Text>
         </View>
       ) : null}
       <View
@@ -96,11 +111,20 @@ export function MessageRow({
           groupStart && styles.rowGroupStart,
         ]}
       >
-        {!mine ? <TheirAvatar visible={groupEnd} avatar={avatar} /> : null}
+        {!mine ? (
+          <TheirAvatar
+            visible={groupEnd}
+            avatar={avatar}
+            theme={theme}
+            themedStyles={themedStyles}
+          />
+        ) : null}
         <View
           style={[
             styles.bubble,
-            mine ? styles.mine : styles.theirs,
+            mine
+              ? [styles.mine, themedStyles?.mine]
+              : [styles.theirs, themedStyles?.theirs],
             mine
               ? {
                   borderTopRightRadius: groupStart ? radius.lg : 6,
@@ -112,11 +136,26 @@ export function MessageRow({
                 },
           ]}
         >
-          <Text style={[styles.bubbleText, mine && styles.mineText]}>{item.body}</Text>
+          <Text
+            style={[
+              styles.bubbleText,
+              themedStyles?.bubbleText,
+              mine && styles.mineText,
+              mine && themedStyles?.mineText,
+            ]}
+          >
+            {item.body}
+          </Text>
         </View>
       </View>
       {groupEnd ? (
-        <Text style={[styles.timeText, mine ? styles.timeMine : styles.timeTheirs]}>
+        <Text
+          style={[
+            styles.timeText,
+            themedStyles?.timeText,
+            mine ? styles.timeMine : styles.timeTheirs,
+          ]}
+        >
           {timeLabel(item.created_at)}
         </Text>
       ) : null}
@@ -158,9 +197,22 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   bubbleText: { fontSize: 15, lineHeight: 21, fontFamily: font.regular, color: colors.text },
-  mineText: { color: '#fff' },
+  mineText: { color: colors.onPrimary },
 
   timeText: { fontFamily: font.regular, fontSize: 10.5, color: colors.textFaint, marginTop: 3 },
   timeMine: { alignSelf: 'flex-end', marginRight: 4 },
   timeTheirs: { alignSelf: 'flex-start', marginLeft: CHAT_AVATAR + 6 + 4 },
+});
+
+const createThemedStyles = (theme: AppThemeColors) => StyleSheet.create({
+  dayText: { color: theme.ink.muted },
+  avatarFallback: { backgroundColor: theme.surface.muted },
+  mine: { backgroundColor: theme.ink.action },
+  theirs: {
+    backgroundColor: theme.surface.muted,
+    borderColor: theme.border.subtle,
+  },
+  bubbleText: { color: theme.ink.primary },
+  mineText: { color: theme.ink.inverse },
+  timeText: { color: theme.ink.muted },
 });

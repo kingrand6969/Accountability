@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.text,
+    backgroundColor: colors.card,
     borderRadius: radius.pill,
     paddingVertical: 12,
     paddingHorizontal: spacing.xl,
@@ -69,5 +69,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },
-  text: { color: '#fff', fontFamily: font.semibold, fontSize: 14.5, flexShrink: 1 },
+  text: { color: colors.text, fontFamily: font.semibold, fontSize: 14.5, flexShrink: 1 },
 });

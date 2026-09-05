@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,9 +27,16 @@ import { timeAgo, taggedLabel } from '../../feed/format';
 import type { FeedPost } from '../../feed/types';
 import { EmptyState } from '../../ui/EmptyState';
 import { Button } from '../../ui/Button';
-import { colors, font, radius, spacing, shadow } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
+import {
+  font,
+  radius,
+  spacing,
+  shadow,
+  type AppThemeColors,
+} from '../../ui/theme';
 
-const COVER_GRADIENT = ['#1e3a8a', '#2563eb', '#0ea5e9'] as const;
+const COVER_GRADIENT = ['#263223', '#6F9F00', '#83B91B'] as const;
 
 function categoryLabel(value: string): string | null {
   return PAGE_CATEGORIES.find((c) => c.value === value)?.label ?? null;
@@ -40,6 +47,11 @@ export default function PageDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [page, setPage] = useState<Page | null>(null);
   const { session } = useAuth();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const actionColor = theme.ink.action;
+  const mutedColor = theme.ink.muted;
+  const faintColor = theme.ink.muted;
   const myId = session?.user.id ?? null;
   const currentOwnerRef = useRef(myId);
   const loadGeneration = useRef(0);
@@ -267,7 +279,7 @@ export default function PageDetail() {
   if (loading || dataViewKey !== viewKey) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={actionColor} />
       </View>
     );
   }
@@ -299,7 +311,7 @@ export default function PageDetail() {
             <Image source={{ uri: page.avatar_url }} style={styles.avatarImage} />
           ) : (
             <View style={styles.avatarFallback}>
-              <Ionicons name="storefront" size={28} color={colors.primary} />
+              <Ionicons name="storefront" size={28} color={actionColor} />
             </View>
           )}
         </View>
@@ -311,7 +323,7 @@ export default function PageDetail() {
             </View>
             {page.is_owner ? (
               <View style={styles.ownerChip}>
-                <Ionicons name="ribbon-outline" size={12} color={colors.primary} />
+                <Ionicons name="ribbon-outline" size={12} color={actionColor} />
                 <Text style={styles.ownerChipText}>Your page</Text>
               </View>
             ) : page.is_following ? (
@@ -350,7 +362,7 @@ export default function PageDetail() {
           <TextInput
             style={styles.composerInput}
             placeholder={`Share an update from ${page.name}…`}
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={faintColor}
             value={body}
             onChangeText={setBody}
             multiline
@@ -363,10 +375,11 @@ export default function PageDetail() {
             ]}
             onPress={onPost}
             disabled={!canPost}
+            hitSlop={2}
             accessibilityLabel="Post to your page"
           >
             {posting ? (
-              <ActivityIndicator color={colors.onPrimary} />
+              <ActivityIndicator color={theme.ink.inverse} />
             ) : (
               <Text style={styles.postBtnText}>Post</Text>
             )}
@@ -386,7 +399,7 @@ export default function PageDetail() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={header}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={actionColor} />
         }
         ListEmptyComponent={
           <EmptyState
@@ -405,7 +418,7 @@ export default function PageDetail() {
                 <Image source={{ uri: page.avatar_url }} style={styles.postAvatarImage} />
               ) : (
                 <View style={styles.postAvatarFallback}>
-                  <Ionicons name="storefront-outline" size={18} color={colors.primary} />
+                  <Ionicons name="storefront-outline" size={18} color={actionColor} />
                 </View>
               )}
               <View style={{ flex: 1 }}>
@@ -431,7 +444,7 @@ export default function PageDetail() {
                 accessibilityLabel="Post options"
                 style={({ pressed }) => [styles.postMenuBtn, pressed && { opacity: 0.6 }]}
               >
-                <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
+                <Ionicons name="ellipsis-horizontal" size={18} color={mutedColor} />
               </Pressable>
             </View>
             {item.body ? (
@@ -470,7 +483,7 @@ export default function PageDetail() {
                 <Ionicons
                   name={item.liked_by_me ? 'flame' : 'flame-outline'}
                   size={19}
-                  color={item.liked_by_me ? colors.cheer : colors.textMuted}
+                  color={item.liked_by_me ? actionColor : mutedColor}
                 />
                 <Text style={[styles.actionText, item.liked_by_me && styles.liked]}>
                   {item.like_count}
@@ -482,7 +495,7 @@ export default function PageDetail() {
                 hitSlop={8}
                 accessibilityLabel="View comments"
               >
-                <Ionicons name="chatbubble-outline" size={18} color={colors.textMuted} />
+                <Ionicons name="chatbubble-outline" size={18} color={mutedColor} />
                 <Text style={styles.actionText}>{item.comment_count}</Text>
               </Pressable>
             </View>
@@ -496,27 +509,27 @@ export default function PageDetail() {
 
 const AVATAR_SIZE = 64;
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xxl,
-    backgroundColor: colors.background,
+    backgroundColor: theme.surface.canvas,
   },
-  notFound: { fontFamily: font.regular, color: colors.textMuted },
+  notFound: { fontFamily: font.regular, color: theme.ink.muted },
   list: { padding: spacing.lg, gap: spacing.md, flexGrow: 1 },
   headerBlock: { gap: spacing.md },
   pageCard: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     overflow: 'hidden',
     ...shadow.card,
   },
-  cover: { width: '100%', height: 180, backgroundColor: colors.surface },
+  cover: { width: '100%', height: 180, backgroundColor: theme.surface.muted },
   avatarWrap: {
     // avatar sits fully on the cover — cover reaches its bottom edge
     marginTop: -(AVATAR_SIZE + 8),
@@ -524,7 +537,7 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE + 8,
     height: AVATAR_SIZE + 8,
     borderRadius: (AVATAR_SIZE + 8) / 2,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.surface.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -532,13 +545,13 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: colors.surface,
+    backgroundColor: theme.surface.muted,
   },
   avatarFallback: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -549,42 +562,42 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  pageName: { fontFamily: font.extrabold, fontSize: 20, color: colors.text },
-  handle: { fontFamily: font.medium, fontSize: 14, color: colors.textMuted, marginTop: 2 },
+  pageName: { fontFamily: font.extrabold, fontSize: 20, color: theme.ink.primary },
+  handle: { fontFamily: font.medium, fontSize: 14, color: theme.ink.muted, marginTop: 2 },
   ownerChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     borderRadius: radius.pill,
     paddingVertical: 6,
     paddingHorizontal: 12,
     marginTop: 4,
   },
-  ownerChipText: { fontFamily: font.bold, fontSize: 12, color: colors.primary },
+  ownerChipText: { fontFamily: font.bold, fontSize: 12, color: theme.ink.action },
   followBtn: { minHeight: 44, paddingVertical: 10, paddingHorizontal: spacing.lg },
-  pageMeta: { fontFamily: font.medium, fontSize: 13.5, color: colors.textMuted },
+  pageMeta: { fontFamily: font.medium, fontSize: 13.5, color: theme.ink.muted },
   bio: {
     fontFamily: font.regular,
     fontSize: 14.5,
     lineHeight: 21,
-    color: colors.textSecondary,
+    color: theme.ink.secondary,
   },
   composer: { gap: spacing.sm },
   composerInput: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
+    color: theme.ink.primary,
     minHeight: 48,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: theme.surface.raised,
   },
   postBtn: {
     alignSelf: 'flex-end',
-    backgroundColor: colors.primary,
+    backgroundColor: theme.ink.action,
     borderRadius: radius.sm,
     paddingVertical: 11,
     paddingHorizontal: 24,
@@ -592,15 +605,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   postBtnDisabled: { opacity: 0.5 },
-  postBtnText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 15 },
+  postBtnText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 15 },
   pressed: { opacity: 0.7 },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderRadius: radius.md,
     padding: spacing.lg,
     gap: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     ...shadow.card,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -612,19 +625,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'flex-start',
   },
-  postAvatarImage: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface },
+  postAvatarImage: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.surface.muted },
   postAvatarFallback: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  author: { fontSize: 15, fontFamily: font.bold, color: colors.text },
-  time: { color: colors.textFaint, fontSize: 12, fontFamily: font.medium },
-  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: colors.text },
-  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: colors.surface },
+  author: { fontSize: 15, fontFamily: font.bold, color: theme.ink.primary },
+  time: { color: theme.ink.muted, fontSize: 12, fontFamily: font.medium },
+  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular, color: theme.ink.primary },
+  postImage: { width: '100%', height: 220, borderRadius: radius.sm, backgroundColor: theme.surface.muted },
   actions: { flexDirection: 'row', gap: spacing.xl, marginTop: 2 },
   action: {
     flexDirection: 'row',
@@ -633,6 +646,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     minHeight: 32,
   },
-  actionText: { fontSize: 14, color: colors.textMuted, fontFamily: font.semibold },
-  liked: { color: colors.cheer },
+  actionText: { fontSize: 14, color: theme.ink.muted, fontFamily: font.semibold },
+  liked: { color: theme.ink.action },
 });

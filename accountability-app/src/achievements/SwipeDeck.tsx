@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(37,99,235,0.12)',
+    backgroundColor: 'rgba(185,255,61,0.18)',
     ...(Platform.OS === 'web' ? { cursor: 'pointer' } : null),
   },
   chevOff: { opacity: 0.3 },
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(30,27,75,0.18)',
+    backgroundColor: 'rgba(17,20,17,0.18)',
   },
   dotOn: { width: 20, backgroundColor: ACCENT },
 });

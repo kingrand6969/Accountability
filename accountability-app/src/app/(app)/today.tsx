@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,16 +24,18 @@ import { GlassBackdrop, GlassCard } from '../../ui/Glass';
 import { contentMaxWidth } from '../../ui/responsive';
 import { resolveTodayRouteSeed } from '../../navigation/scheduleRouteState';
 import type { TimelineItem } from '../../timeline/types';
-import { font, radius, spacing } from '../../ui/theme';
+import { useAppTheme } from '../../ui/AppThemeProvider';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../../ui/theme';
 import JourneyJournal from '../../journey/JournalScreen';
-
-const INK = '#1e1b4b';
-const INK_SOFT = 'rgba(30,27,75,0.72)';
-const ACCENT = '#2563eb';
 
 /** Quick-add shortcuts shown on an empty day — each opens Add pre-set. */
 const QUICK_ADD = [
-  { type: 'task', icon: 'checkmark-circle', label: 'Task', tint: '#2563eb' },
+  { type: 'task', icon: 'checkmark-circle', label: 'Task', tint: '#6F9F00' },
   { type: 'event', icon: 'calendar', label: 'Event', tint: '#0891b2' },
   { type: 'grocery', icon: 'cart', label: 'Groceries', tint: '#16a34a' },
 ] as const;
@@ -63,6 +65,9 @@ function TodayLegacy() {
 
 function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => todayPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const colMax = contentMaxWidth(width);
   const bgRef = useRef<View>(null);
@@ -130,7 +135,7 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
     <GlassCard blurTarget={bgRef} style={styles.emptyCard}>
         <View style={styles.emptyPad}>
           <View style={styles.sunWrap}>
-            <Ionicons name="sunny" size={26} color={ACCENT} />
+            <Ionicons name="sunny" size={26} color={palette.action} />
           </View>
           <Text style={styles.emptyTitle}>Nothing planned yet</Text>
           <Text style={styles.emptySub}>Add a task, an event, or groceries to get your day going.</Text>
@@ -172,9 +177,13 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
             hitSlop={8}
             accessibilityLabel="Previous day"
           >
-            <Ionicons name="chevron-back" size={22} color={ACCENT} />
+            <Ionicons name="chevron-back" size={22} color={palette.action} />
           </Pressable>
-          <Pressable onPress={() => setDay(new Date())} accessibilityLabel="Jump to today">
+          <Pressable
+            onPress={() => setDay(new Date())}
+            accessibilityLabel="Jump to today"
+            hitSlop={14}
+          >
             <Text style={styles.dayTitle}>{dayLabel(day)}</Text>
           </Pressable>
           <Pressable
@@ -183,7 +192,7 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
             hitSlop={8}
             accessibilityLabel="Next day"
           >
-            <Ionicons name="chevron-forward" size={22} color={ACCENT} />
+            <Ionicons name="chevron-forward" size={22} color={palette.action} />
           </Pressable>
         </View>
 
@@ -197,6 +206,7 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
                 pressed && styles.pressed,
               ]}
               onPress={() => setView(v)}
+              hitSlop={{ top: 9, bottom: 9 }}
             >
               <Text style={[styles.toggleText, view === v && styles.toggleTextActive]}>
                 {v === 'list' ? 'List' : 'Hours'}
@@ -208,7 +218,7 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={ACCENT} />
+          <ActivityIndicator size="large" color={palette.action} />
         </View>
       ) : view === 'hours' ? (
         <View style={[styles.flexCol, { maxWidth: colMax }]}>
@@ -231,7 +241,7 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
                 setRefreshing(true);
                 load();
               }}
-              tintColor={ACCENT}
+              tintColor={palette.action}
             />
           }
           ListEmptyComponent={emptyState}
@@ -252,14 +262,33 @@ function TodayLegacyDay({ initialDay }: { initialDay: Date }) {
         onPress={() => router.push('/add')}
         accessibilityLabel="Add to your day"
       >
-        <Ionicons name="add" size={20} color="#fff" />
+        <Ionicons name="add" size={20} color={palette.onAction} />
         <Text style={styles.fabText}>Add</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function todayPalette(theme: AppThemeColors) {
+  return {
+    ink: theme.ink.primary,
+    inkSoft: theme.ink.muted,
+    action: theme.ink.action,
+    toggle: theme.surface.card,
+    glassBorder: theme.border.subtle,
+    selected: theme.surface.raised,
+    sunSoft: theme.surface.muted,
+    quickSurface: theme.surface.card,
+    quickBorder: theme.border.subtle,
+    fabShadow: theme.surface.canvas,
+    onAction: theme.ink.inverse,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors) => {
+  const palette = todayPalette(theme);
+
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   pressed: { opacity: 0.7 },
   topCol: { width: '100%', alignSelf: 'center' },
@@ -279,21 +308,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayTitle: { fontSize: 20, fontFamily: font.bold, color: INK },
+  dayTitle: { fontSize: 20, fontFamily: font.bold, color: palette.ink },
   toggle: {
     flexDirection: 'row',
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: palette.toggle,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: palette.glassBorder,
     borderRadius: radius.sm,
     padding: 3,
     marginBottom: spacing.sm,
   },
   toggleBtn: { paddingVertical: 7, paddingHorizontal: 22, borderRadius: 8 },
-  toggleActive: { backgroundColor: '#fff' },
-  toggleText: { color: INK_SOFT, fontFamily: font.semibold, fontSize: 14 },
-  toggleTextActive: { color: ACCENT },
+  toggleActive: { backgroundColor: palette.selected },
+  toggleText: { color: palette.inkSoft, fontFamily: font.semibold, fontSize: 14 },
+  toggleTextActive: { color: palette.action },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxl, gap: 6 },
   // centre the quick-start card in the space ABOVE the floating Add button,
   // and let it scroll if the viewport is too short to fit it
@@ -312,14 +341,14 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(79,70,229,0.12)',
+    backgroundColor: palette.sunSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 2,
   },
-  emptyTitle: { fontSize: 18, fontFamily: font.bold, color: INK },
+  emptyTitle: { fontSize: 18, fontFamily: font.bold, color: palette.ink },
   emptySub: {
-    color: INK_SOFT,
+    color: palette.inkSoft,
     fontFamily: font.regular,
     fontSize: 13.5,
     textAlign: 'center',
@@ -335,9 +364,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: palette.quickSurface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.85)',
+    borderColor: palette.quickBorder,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xs,
@@ -349,26 +378,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickLabel: { fontSize: 13, fontFamily: font.semibold, color: INK },
+  quickLabel: { fontSize: 13, fontFamily: font.semibold, color: palette.ink },
   fab: {
     position: 'absolute',
     right: spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: ACCENT,
+    backgroundColor: palette.action,
     borderRadius: radius.pill,
     paddingVertical: 14,
     paddingHorizontal: 20,
-    shadowColor: '#4338ca',
+    shadowColor: palette.fabShadow,
     shadowOpacity: 0.3,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
   fabPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
-  fabText: { color: '#fff', fontSize: 16, fontFamily: font.bold },
-});
+  fabText: { color: palette.onAction, fontSize: 16, fontFamily: font.bold },
+  });
+};
 
 void TodayLegacy;
 export default JourneyJournal;

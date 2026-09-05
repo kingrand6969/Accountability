@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,9 +15,18 @@ import { searchFoods, type FoodHit } from '../diet/openfoodfacts';
 import { scaleNutrient, scaleMacro } from '../diet/compute';
 import { addFoodLog, todayString } from '../diet/api';
 import { Button } from '../ui/Button';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 
 export default function FoodSearch() {
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => foodSearchPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<FoodHit[]>([]);
@@ -44,6 +53,11 @@ export default function FoodSearch() {
   const g = parseFloat(grams) || 0;
   const previewKcal = selected ? scaleNutrient(selected.per100.kcal, g) : 0;
 
+  function exitFoodSearch() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/diet' as never);
+  }
+
   async function onAddSelected() {
     if (!selected) return;
     setSaving(true);
@@ -58,7 +72,7 @@ export default function FoodSearch() {
         quantity_g: g,
         log_date: todayString(),
       });
-      router.back();
+      exitFoodSearch();
     } catch (e) {
       Alert.alert('Could not add', String((e as Error).message ?? e));
     } finally {
@@ -83,7 +97,7 @@ export default function FoodSearch() {
         calories: kcal,
         log_date: todayString(),
       });
-      router.back();
+      exitFoodSearch();
     } catch (e) {
       Alert.alert('Could not add', String((e as Error).message ?? e));
     } finally {
@@ -101,7 +115,7 @@ export default function FoodSearch() {
         <TextInput
           style={styles.input}
           placeholder="Search a food (e.g. banana)"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           autoCapitalize="none"
           value={query}
           onChangeText={setQuery}
@@ -116,7 +130,7 @@ export default function FoodSearch() {
           accessibilityLabel="Search"
         >
           {searching ? (
-            <ActivityIndicator color={colors.onPrimary} />
+            <ActivityIndicator color={palette.onAction} />
           ) : (
             <Text style={styles.searchBtnText}>Search</Text>
           )}
@@ -146,7 +160,7 @@ export default function FoodSearch() {
               </Text>
             </View>
             {isSel ? (
-              <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+              <Ionicons name="checkmark-circle" size={22} color={palette.success} />
             ) : null}
           </Pressable>
         );
@@ -160,7 +174,7 @@ export default function FoodSearch() {
             <TextInput
               style={styles.gramsInput}
               keyboardType="number-pad"
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={palette.placeholder}
               value={grams}
               onChangeText={setGrams}
             />
@@ -180,14 +194,14 @@ export default function FoodSearch() {
         <TextInput
           style={styles.input}
           placeholder="Food name"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           value={manualName}
           onChangeText={setManualName}
         />
         <TextInput
           style={styles.input}
           placeholder="Calories"
-          placeholderTextColor={colors.textFaint}
+          placeholderTextColor={palette.placeholder}
           keyboardType="number-pad"
           value={manualKcal}
           onChangeText={setManualKcal}
@@ -203,11 +217,29 @@ export default function FoodSearch() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function foodSearchPalette(theme: AppThemeColors) {
+  return {
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    selected: theme.status.successSoft,
+    ink: theme.ink.primary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
+  };
+}
+
+function createStyles(theme: AppThemeColors) {
+  const palette = foodSearchPalette(theme);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
   container: { padding: spacing.lg, gap: 10, paddingBottom: 48 },
   attribution: {
-    color: colors.textFaint,
+    color: palette.placeholder,
     fontFamily: font.regular,
     fontSize: 11.5,
     textAlign: 'center',
@@ -217,71 +249,72 @@ const styles = StyleSheet.create({
   searchRow: { flexDirection: 'row', gap: spacing.sm },
   input: {
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
+    borderColor: palette.border,
+    backgroundColor: palette.field,
     borderRadius: radius.sm,
     padding: spacing.md,
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
+    color: palette.ink,
     flex: 1,
-    minHeight: 48,
+    minHeight: spacing.touch,
   },
   searchBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     borderRadius: radius.sm,
     paddingHorizontal: 18,
-    minHeight: 44,
+    minHeight: spacing.touch,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  searchBtnText: { color: colors.onPrimary, fontFamily: font.bold },
+  searchBtnText: { color: palette.onAction, fontFamily: font.bold },
   result: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: palette.field,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.sm,
     padding: spacing.md,
-    minHeight: 44,
+    minHeight: spacing.touch,
   },
-  resultSel: { borderWidth: 2, borderColor: colors.success },
-  resultName: { fontFamily: font.semibold, color: colors.text },
-  resultMeta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
+  resultSel: { borderWidth: 2, borderColor: palette.success },
+  resultName: { fontFamily: font.semibold, color: palette.ink },
+  resultMeta: { color: palette.muted, fontFamily: font.regular, fontSize: 13, marginTop: 2 },
   panel: {
-    backgroundColor: colors.successSoft,
+    backgroundColor: palette.selected,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: 14,
     gap: spacing.sm,
   },
-  panelTitle: { fontFamily: font.bold, fontSize: 16, color: colors.text },
-  panelLabel: { fontFamily: font.semibold, color: colors.text },
+  panelTitle: { fontFamily: font.bold, fontSize: 16, color: palette.ink },
+  panelLabel: { fontFamily: font.semibold, color: palette.ink },
   gramsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   gramsInput: {
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: palette.border,
+    backgroundColor: palette.card,
     borderRadius: radius.sm,
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
     minWidth: 90,
-    minHeight: 44,
+    minHeight: spacing.touch,
     textAlign: 'right',
     fontSize: 16,
     fontFamily: font.regular,
-    color: colors.text,
+    color: palette.ink,
   },
-  preview: { fontSize: 18, fontFamily: font.extrabold, color: colors.success },
+  preview: { fontSize: 18, fontFamily: font.extrabold, color: palette.success },
   manual: {
     gap: spacing.sm,
     marginTop: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: palette.border,
     paddingTop: 14,
   },
-  manualHeading: { fontFamily: font.bold, color: colors.textMuted },
-});
+  manualHeading: { fontFamily: font.bold, color: palette.muted },
+  });
+}

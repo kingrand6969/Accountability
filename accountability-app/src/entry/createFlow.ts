@@ -1,3 +1,5 @@
+import type { Href } from 'expo-router';
+
 export type CreateChoice = {
   id: 'post' | 'photo-video' | 'flex' | 'share-run' | 'my-day';
   title: string;
@@ -42,9 +44,9 @@ export const CREATE_CHOICES: readonly CreateChoice[] = [
   },
   {
     id: 'my-day',
-    title: 'Add to My Day',
-    detail: "Update today's promises",
-    accessibilityLabel: "Add to My Day. Update today's promises",
+    title: 'Schedule',
+    detail: 'Add a promise, task, or reminder',
+    accessibilityLabel: 'Schedule. Add a promise, task, or reminder',
     route: '/add',
     action: null,
   },
@@ -52,12 +54,29 @@ export const CREATE_CHOICES: readonly CreateChoice[] = [
 
 export const CREATE_HUB_MODEL = {
   choices: CREATE_CHOICES,
-  sections: ['preview', 'audience'] as const,
+  sections: ['preview'] as const,
   continueLabel: 'Continue',
 };
 
-export type CreateMedia = 'photo' | 'video';
-export type CreateAudience = 'buddies' | 'public';
+export type CreateMedia = 'selfie' | 'photo' | 'video';
+
+export function composerMediaChoices(platform: string, editing: boolean): readonly CreateMedia[] {
+  if (editing) return [];
+  return platform === 'web' ? ['photo', 'video'] : ['selfie', 'photo', 'video'];
+}
+
+export type ComposerCreateAction = CreateMedia | 'event';
+
+export function composerCreateActions(platform: string, editing: boolean): readonly ComposerCreateAction[] {
+  return editing ? [] : [...composerMediaChoices(platform, false), 'event'];
+}
+
+export const DIRECT_POST_HREF = {
+  pathname: '/compose',
+  params: { text: '' },
+} as const satisfies Href;
+
+export type DirectPostHref = typeof DIRECT_POST_HREF;
 
 export function createPickerReadinessGate(initial: CreateMedia | null = null) {
   let pending: CreateMedia | null = initial;
@@ -80,24 +99,22 @@ export function createPickerReadinessGate(initial: CreateMedia | null = null) {
 }
 
 export type CreateContinuation =
-  | { kind: 'editor'; audience: CreateAudience }
-  | { kind: 'picker'; media: CreateMedia; audience: CreateAudience }
+  | { kind: 'editor' }
+  | { kind: 'picker'; media: CreateMedia }
   | { kind: 'route'; route: '/win-card' | '/run' | '/add' };
 
 export function decideCreateContinuation({
   choiceId,
   media,
-  audience,
 }: {
   choiceId: CreateChoice['id'];
   media: CreateMedia;
-  audience: CreateAudience;
 }): CreateContinuation {
   const choice = CREATE_CHOICES.find((candidate) => candidate.id === choiceId);
   if (!choice) throw new Error(`Unknown create choice: ${choiceId}`);
   if (choice.route) return { kind: 'route', route: choice.route };
-  if (choice.action === 'choose-media') return { kind: 'picker', media, audience };
-  return { kind: 'editor', audience };
+  if (choice.action === 'choose-media') return { kind: 'picker', media };
+  return { kind: 'editor' };
 }
 
 type ComposeParams = {
@@ -113,6 +130,6 @@ export function resolveComposeMode(params: ComposeParams): ComposeMode {
   if (typeof params.edit === 'string' && params.edit) return 'edit';
   if (params.event === '1') return 'event';
   if (params.photo === '1') return 'photo';
-  if (typeof params.text === 'string' && params.text) return 'post';
+  if (typeof params.text === 'string') return 'post';
   return 'hub';
 }

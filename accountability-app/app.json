@@ -1,18 +1,19 @@
 {
   "expo": {
-    "name": "AccountAbility",
+    "name": "Mantle",
     "slug": "accountability-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
+    "backgroundColor": "#0B0D0B",
     "icon": "./assets/images/icon.png",
     "scheme": "accountabilityapp",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.awldesk.accountability",
       "supportsTablet": true,
       "icon": "./assets/images/icon.png",
       "infoPlist": {
-        "NSCameraUsageDescription": "AccountAbility uses the front camera for a private on-device beauty preview.",
+        "NSCameraUsageDescription": "Mantle uses the front camera for a private on-device beauty preview.",
         "UIBackgroundModes": [
           "location"
         ]
@@ -22,9 +23,8 @@
       "package": "com.awldesk.accountability",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFC",
+        "backgroundColor": "#0B0D0B",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
@@ -47,7 +47,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FFFFFC",
+          "backgroundColor": "#0B0D0B",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 140
@@ -59,8 +59,8 @@
         {
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true,
-          "locationAlwaysAndWhenInUsePermission": "Accountability App uses your location to track your runs, rides and walks — even with the screen off.",
-          "locationWhenInUsePermission": "Accountability App uses your location to track your runs, rides and walks."
+          "locationAlwaysAndWhenInUsePermission": "Mantle uses your location to track your runs, rides and walks — even with the screen off.",
+          "locationWhenInUsePermission": "Mantle uses your location to track your runs, rides and walks."
         }
       ],
       "expo-notifications",
@@ -69,7 +69,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "AccountAbility uses your microphone only when you choose to record a voice Cheer.",
+          "microphonePermission": "Mantle uses your microphone only when you choose to record a voice Cheer.",
           "recordAudioAndroid": true,
           "enableBackgroundRecording": false
         }
@@ -77,16 +77,16 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "AccountAbility uses your camera for selfies, run cards, stories and profile photos.",
+          "cameraPermission": "Mantle uses your camera for selfies, run cards, stories and profile photos.",
           "microphonePermission": false,
-          "photosPermission": "AccountAbility needs photo and video access when you choose media for a post, run card or Memory."
+          "photosPermission": "Mantle needs photo and video access when you choose media for a post, run card or Memory."
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "AccountAbility needs photo access to add pictures to posts, run cards and Memories.",
-          "savePhotosPermission": "AccountAbility needs permission to save photos and videos to your media library.",
+          "photosPermission": "Mantle needs photo access to add pictures to posts, run cards and Memories.",
+          "savePhotosPermission": "Mantle needs permission to save photos and videos to your media library.",
           "granularPermissions": [
             "photo",
             "video"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,10 +13,8 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import * as MediaLibrary from 'expo-media-library';
 import * as Crypto from 'expo-crypto';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { createPost } from '../feed/api';
 import { addStoryIdempotent } from '../stories/api';
 import { uploadPostImage } from '../feed/uploadPostImage';
 import { saveImageToMemories } from '../memories/api';
@@ -45,7 +43,14 @@ import {
   type ProofExportInput,
   type ProofExportOptIns,
 } from '../entry/proofExport';
-import { colors, font, radius, spacing } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { userFacingErrorMessage } from '../ui/userFacingError';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
 import {
   useProofActionOrchestrator,
 } from '../entry/useProofActionOrchestrator';
@@ -53,22 +58,36 @@ import { withProofLoadTimeout } from '../entry/proofLoadTimeout';
 import { createProofRetryGuard } from '../entry/proofRetryGuard';
 import {
   buildProofCardSummary,
+  createProofShareRenderModel,
   ProofCaptureCard,
+  type ProofShareRenderModel,
   type ProofCaptureRendererContext,
 } from '../entry/ProofCaptureCard';
-import { AchievementSharePrompt } from '../entry/AchievementSharePrompt';
 import {
-  achievementPayloadKey,
   retainAchievementStoryOperation,
   type AchievementCompletion,
   type AchievementStoryOperation,
 } from '../entry/achievementCompletion';
+import { parseFlexContext } from '../entry/flexContext';
+import { publishFlexFeedPost } from '../entry/flexFeedPost';
+import { ShareStudio, type ShareStudioResult } from '../share/ShareStudio';
+import {
+  feedShareAvailability,
+  MOBILE_FEED_SHARING_NOTICE,
+} from '../share/feedShareAvailability';
+import {
+  createPhonePhoto,
+  requestPhonePhotoPermission,
+} from '../media/phoneMediaLibrary';
 
 type ProofFormat = 'portrait' | 'square' | 'landscape';
 
 export default function WinCard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const params = useLocalSearchParams<{
     location?: string | string[];
     route?: string | string[];
@@ -76,14 +95,16 @@ export default function WinCard() {
     achievementKind?: string | string[];
     achievementSourceId?: string | string[];
     achievementTitle?: string | string[];
+    achievementText?: string | string[];
+    audience?: string | string[];
+    showOnCard?: string | string[];
+    showPublicly?: string | string[];
     autoPrompt?: string | string[];
   }>();
   const proofLocation = sanitizeProofParam(params.location);
   const proofRoute = sanitizeProofParam(params.route);
   const proofBuddyName = sanitizeProofParam(params.buddyName);
-  const achievementTitle = sanitizeProofParam(params.achievementTitle);
-  const achievementKind = sanitizeProofParam(params.achievementKind);
-  const achievementSourceId = sanitizeProofParam(params.achievementSourceId);
+  const parsedFlexContext = parseFlexContext(params);
   const {
     stats,
     loadError,
@@ -111,12 +132,14 @@ export default function WinCard() {
   const [privacy, setPrivacy] = useState<ProofPrivacy>({ ...DEFAULT_PROOF_PRIVACY });
   const [selectedCaptureContext, setSelectedCaptureContext] =
     useState<ProofCaptureRendererContext | null>(null);
-  const [sharePromptVisible, setSharePromptVisible] = useState(
-    sanitizeProofParam(params.autoPrompt) === '1',
+  const [shareStudioVisible, setShareStudioVisible] = useState(
+    Platform.OS !== 'web' && sanitizeProofParam(params.autoPrompt) === '1',
   );
+  const shareStudioProofContextRef = useRef<ProofCaptureRendererContext | null>(null);
   const cardRef = useRef<View>(null);
   const retryGuardRef = useRef(createProofRetryGuard());
   const storyOperationRef = useRef<AchievementStoryOperation | null>(null);
+  const [shareBackgroundUri, setShareBackgroundUri] = useState<string | null>(null);
   // Fonts (Inter + Anton) are loaded globally in the root layout.
 
   useFocusEffect(
@@ -146,6 +169,9 @@ export default function WinCard() {
         retryGuardRef.current.invalidate();
         setActionOwner(null);
         setSelectedCaptureContext(null);
+        setShareStudioVisible(false);
+        setShareBackgroundUri(null);
+        shareStudioProofContextRef.current = null;
       };
     // The orchestrator owns mutable session refs; this focus lifecycle must not
     // restart when its render-local facade is recreated.
@@ -162,6 +188,9 @@ export default function WinCard() {
       retryGuard.invalidate();
       setActionOwner(ownerId);
       setSelectedCaptureContext(null);
+      setShareStudioVisible(false);
+      setShareBackgroundUri(null);
+      shareStudioProofContextRef.current = null;
       if (ownerId) void loadOwnerView(ownerId);
     });
     return () => {
@@ -186,7 +215,7 @@ export default function WinCard() {
         <View style={styles.center}>
           {loadError ? (
             <>
-              <Ionicons name="cloud-offline-outline" size={32} color={colors.textSecondary} />
+              <Ionicons name="cloud-offline-outline" size={32} color={palette.secondary} />
               <Text accessibilityRole="header" style={styles.stateTitle}>
                 Could not load your proof
               </Text>
@@ -202,7 +231,7 @@ export default function WinCard() {
             </>
           ) : (
             <>
-              <ActivityIndicator size="large" color={colors.primary} />
+              <ActivityIndicator size="large" color={palette.action} />
               <Text accessibilityLiveRegion="polite" style={styles.stateMessage}>
                 Preparing your Daily Proof…
               </Text>
@@ -213,15 +242,21 @@ export default function WinCard() {
     );
   }
 
-  const message =
-    achievementTitle
-      ? `${achievementTitle} completed on AccountAbility. I showed up today.`
-      : stats.streak > 0
-      ? `${stats.streak}-day streak on AccountAbility. Achieve consistency.`
-      : `Building better habits with AccountAbility - ${stats.weekWorkouts} workouts this week.`;
+  const fallbackMessage =
+    stats.streak > 0
+      ? `${stats.streak}-day streak on Mantle. Achieve consistency.`
+      : `Building better habits with Mantle - ${stats.weekWorkouts} workouts this week.`;
+  const flexContext = parsedFlexContext ?? {
+    kind: 'streak' as const,
+    sourceId: `streak-${stats.streak}-${new Date().toISOString().slice(0, 10)}`,
+    title: 'I showed up today.',
+    body: fallbackMessage,
+    showPublicly: false,
+  };
+  const message = flexContext.body;
   const proofInput: ProofExportInput = {
-    brand: 'AccountAbility',
-    headline: achievementTitle ?? 'I showed up today.',
+    brand: 'Mantle',
+    headline: flexContext.title,
     format,
     metrics: {
       workouts: stats.weekWorkouts,
@@ -239,16 +274,21 @@ export default function WinCard() {
     buddyNames: !privacy.hideBuddyNames,
     buddyPortraits: !privacy.hideBuddyPortraits,
   };
+  const feedProofContext = unavailableRendererContext(
+    buildFeedProofExport(proofInput, proofOptIns),
+  );
+  const feedShare = feedShareAvailability(Platform.OS);
+  if (shareStudioVisible && !shareStudioProofContextRef.current) {
+    shareStudioProofContextRef.current = feedProofContext;
+  }
   const captureContext =
     selectedCaptureContext ??
     unavailableRendererContext(buildExternalProofExport(proofInput, proofOptIns));
   const cardModel = captureContext.dto;
   const proofCardSummary = buildProofCardSummary(cardModel);
   const completionPayload: AchievementCompletion = {
-    kind: achievementKind === 'workout' || achievementKind === 'challenge'
-      ? achievementKind
-      : 'streak',
-    sourceId: achievementSourceId ?? `streak-${stats.streak}-${new Date().toISOString().slice(0, 10)}`,
+    kind: flexContext.kind,
+    sourceId: flexContext.sourceId,
     text: message,
     mediaUri: null,
   };
@@ -283,14 +323,43 @@ export default function WinCard() {
     });
   }
 
-  async function onShareToFeed() {
+  async function captureReviewedProof(
+    model: ProofShareRenderModel,
+    result: 'base64' | 'tmpfile',
+    token: ProofActionToken,
+  ): Promise<string | null> {
+    return captureQueueRef.current.run(async () => {
+      if (!isCurrentAction(token)) return null;
+      try {
+        setSelectedCaptureContext(model.context);
+        setShareBackgroundUri(model.backgroundUri);
+        await nextPaint();
+        if (!isCurrentAction(token)) return null;
+        return await captureCard(result);
+      } finally {
+        if (mountedRef.current) {
+          setSelectedCaptureContext(null);
+          setShareBackgroundUri(null);
+        }
+      }
+    });
+  }
+
+  async function onShareToFeed(draft: ShareStudioResult) {
     const token = beginAction('post-feed');
     if (!token) throw new Error('Another share is already in progress.');
+    const expectedOwnerId = expectedProofOwner(token);
     let pending: PendingProofActionV1 | null = null;
     let dispatched = false;
     try {
-      const base64 = await captureDestination(
-        buildFeedProofExport,
+      if (draft.ownerId !== expectedOwnerId) throw new Error('Account changed.');
+      const reviewedContext = shareStudioProofContextRef.current;
+      if (!reviewedContext) throw new Error('The reviewed Daily Proof is no longer available.');
+      const reviewedModel = createProofShareRenderModel(reviewedContext, draft.media);
+      const shareBody = draft.caption || message;
+      const publishContext = { ...flexContext, body: shareBody, showPublicly: draft.showPublicly };
+      const base64 = await captureReviewedProof(
+        reviewedModel,
         'base64',
         token,
       );
@@ -298,31 +367,47 @@ export default function WinCard() {
         throw new Error('Could not prepare the Daily Proof image. Please try again.');
       }
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      const imageUrl = await uploadPostImage(base64, 'png');
-      if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      pending = await journalDurableAction(token, 'post-feed', base64, message);
+      pending = await journalDurableAction(token, 'post-feed', base64, shareBody, false, draft.operationId);
       if (!await requireCurrentActionOwner(token)) {
         await confirmDurableAction(pending);
         pending = null;
         throw new Error('Account changed.');
       }
-      dispatched = true;
+      const imageUrl = await uploadPostImage(base64, 'png', pending.operationId, expectedOwnerId);
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      await createPost(message, imageUrl);
+      dispatched = true;
+      await publishFlexFeedPost({
+        context: publishContext,
+        mediaRef: imageUrl,
+        mediaSha256: pending.match.imageSha256,
+        operationId: pending.operationId,
+        expectedOwnerId,
+      });
       const ownerStayedCurrent = await requireCurrentActionOwner(token);
       await confirmDurableAction(pending);
+      pending = null;
       if (!ownerStayedCurrent) throw new Error('Account changed.');
+      if (draft.media.kind === 'photo') {
+        await draft.media.release().catch(() => {});
+      }
       mutateForToken(token, () => {
         dispatchAction({ type: 'success', action: 'post-feed' });
         Alert.alert('Shared to your feed', 'Your Daily Proof is now on your feed.');
+        setShareStudioVisible(false);
+        setShareBackgroundUri(null);
+        shareStudioProofContextRef.current = null;
       });
     } catch (error) {
       if (pending && dispatched) {
         retainAmbiguous(token, pending, 'The post may have completed. Check Feed before trying again.');
       } else {
+        if (pending) {
+          await confirmDurableAction(pending);
+          pending = null;
+        }
         mutateForToken(token, () => {
           dispatchAction({ type: 'error', action: 'post-feed', message: safeProofActionMessage('dispatch') });
-          Alert.alert('Could not post Daily Proof', 'Nothing was posted. Please try again.');
+          Alert.alert('Could not post Daily Proof', userFacingErrorMessage(error, 'publish'));
         });
       }
       throw error;
@@ -411,7 +496,7 @@ export default function WinCard() {
       );
       if (!uri) throw new Error('Could not prepare the proof image.');
       if (!await requireCurrentActionOwner(token)) return;
-      const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+      const permission = await requestPhonePhotoPermission();
       if (!await requireCurrentActionOwner(token)) return;
       if (!permission.granted) {
         mutateForToken(token, () => {
@@ -421,7 +506,7 @@ export default function WinCard() {
         return;
       }
       if (!await requireCurrentActionOwner(token)) return;
-      await MediaLibrary.createAssetAsync(uri);
+      await createPhonePhoto(uri);
       if (!await requireCurrentActionOwner(token)) return;
       mutateForToken(token, () => {
         dispatchAction({ type: 'success', action: 'save-phone' });
@@ -458,7 +543,7 @@ export default function WinCard() {
       }
       dispatched = true;
       if (!await requireCurrentActionOwner(token)) throw new Error('Account changed.');
-      await saveImageToMemories(uri);
+      await saveImageToMemories(uri, null, null, expectedProofOwner(token));
       const ownerStayedCurrent = await requireCurrentActionOwner(token);
       await confirmDurableAction(pending);
       if (!ownerStayedCurrent) return;
@@ -503,7 +588,7 @@ export default function WinCard() {
           cardModel.format === 'landscape' && styles.landscape,
         ]}
       >
-        <ProofCaptureCard context={captureContext} />
+        <ProofCaptureCard context={captureContext} backgroundUri={shareBackgroundUri} />
       </View>
 
       <View style={styles.formatRow} accessibilityRole="radiogroup">
@@ -514,6 +599,7 @@ export default function WinCard() {
             style={[styles.formatChip, format === item && styles.formatChipActive]}
             accessibilityRole="radio"
             accessibilityState={{ selected: format === item }}
+            hitSlop={2}
           >
             <Text style={[styles.formatText, format === item && styles.formatTextActive]}>
               {item[0].toUpperCase() + item.slice(1)}
@@ -560,11 +646,27 @@ export default function WinCard() {
       ) : null}
 
       <View style={styles.actions}>
-        <ProofAction icon="people-outline" label="Share achievement" onPress={() => setSharePromptVisible(true)} busy={isProofActionBusy(actionState, 'post-feed')} disabled={actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'} />
+        <ProofAction
+          icon="people-outline"
+          label="Share achievement"
+          onPress={() => {
+            if (!feedShare.available) return;
+            shareStudioProofContextRef.current = feedProofContext;
+            setShareStudioVisible(true);
+          }}
+          busy={isProofActionBusy(actionState, 'post-feed')}
+          disabled={!feedShare.available || actionState['post-feed'].status === 'unresolved' || actionState['post-feed'].status === 'ambiguous'}
+        />
+        <ProofAction icon="time-outline" label="Add to My Day" onPress={() => void onShareToStory()} busy={isProofActionBusy(actionState, 'share-external')} />
         <ProofAction icon="share-social-outline" label="Share outside app" onPress={onShareExternally} busy={isProofActionBusy(actionState, 'share-external')} />
         {Platform.OS !== 'web' ? <ProofAction icon="download-outline" label="Save to phone" onPress={onSavePhone} busy={isProofActionBusy(actionState, 'save-phone')} /> : null}
         <ProofAction icon="bookmark-outline" label="Save to Memories" onPress={onSaveMemories} busy={isProofActionBusy(actionState, 'save-memories')} disabled={actionState['save-memories'].status === 'unresolved' || actionState['save-memories'].status === 'ambiguous'} />
       </View>
+      {!feedShare.available ? (
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.stateMessage}>
+          {feedShare.reason ?? MOBILE_FEED_SHARING_NOTICE}
+        </Text>
+      ) : null}
       {pendingActions.map((entry) => (
         <View key={entry.operationId} style={styles.pendingPanel} accessibilityLiveRegion="polite">
           <Text style={styles.pendingText}>
@@ -577,6 +679,7 @@ export default function WinCard() {
               style={styles.pendingButton}
               accessibilityRole="button"
               onPress={() => router.push(entry.action === 'save-memories' ? '/memories' : '/(app)')}
+              hitSlop={2}
             >
               <Text style={styles.pendingButtonText}>
                 {entry.action === 'save-memories' ? 'Check Memories' : 'Check Feed'}
@@ -586,19 +689,48 @@ export default function WinCard() {
               style={styles.pendingButton}
               accessibilityRole="button"
               onPress={() => void discardPending(entry)}
+              hitSlop={2}
             >
               <Text style={styles.pendingButtonText}>Discard pending</Text>
             </Pressable>
           </View>
         </View>
       ))}
-      <AchievementSharePrompt
-        visible={sharePromptVisible}
-        payloadKey={achievementPayloadKey(completionPayload)}
-        onFeed={onShareToFeed}
-        onStory={onShareToStory}
-        onPrivate={() => Promise.resolve()}
-        onClose={() => setSharePromptVisible(false)}
+      <ShareStudio
+        visible={shareStudioVisible}
+        expectedOwnerId={ownerIdRef.current!}
+        context={{
+          title: flexContext.title,
+          date: new Date().toLocaleDateString(),
+          metrics: [
+            { label: 'Workouts', value: String(stats.weekWorkouts), sensitivity: 'standard' },
+            { label: 'Activities', value: String(stats.weekActivities), sensitivity: 'standard' },
+            { label: 'Streak', value: `${stats.streak} days`, sensitivity: 'standard' },
+          ],
+        }}
+        defaultCaption={message}
+        unavailableReason={feedShare.reason}
+        destinationPreviewAspectRatio={() => proofFormatAspectRatio(
+          (shareStudioProofContextRef.current ?? feedProofContext).dto.format,
+        )}
+        renderDestinationPreview={(state) => {
+          const model = createProofShareRenderModel(
+            shareStudioProofContextRef.current ?? feedProofContext,
+            state.media,
+          );
+          return (
+            <ProofCaptureCard
+              context={model.context}
+              backgroundUri={model.backgroundUri}
+            />
+          );
+        }}
+        onContinue={onShareToFeed}
+        onCancel={() => {
+          setShareStudioVisible(false);
+          setShareBackgroundUri(null);
+          shareStudioProofContextRef.current = null;
+        }}
       />
     </ScrollView>
   );
@@ -643,7 +775,17 @@ export default function WinCard() {
   }
 }
 
+function proofFormatAspectRatio(format: ProofFormat): number {
+  if (format === 'landscape') return 16 / 9;
+  if (format === 'square') return 1;
+  return 0.95;
+}
+
 function ScreenHeader({ onBack }: { onBack: () => void }) {
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.screenHeader}>
       <Pressable
@@ -651,8 +793,9 @@ function ScreenHeader({ onBack }: { onBack: () => void }) {
         onPress={onBack}
         accessibilityRole="button"
         accessibilityLabel="Back"
+        hitSlop={2}
       >
-        <Ionicons name="chevron-back" size={24} color={colors.text} />
+        <Ionicons name="chevron-back" size={24} color={palette.ink} />
       </Pressable>
       <Text accessibilityRole="header" style={styles.screenTitle}>Share proof</Text>
       <View style={styles.headerSpacer} />
@@ -671,6 +814,10 @@ function ToggleRow({
   value: boolean;
   onPress: () => void;
 }) {
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <Pressable
       style={({ pressed }) => [styles.toggleRow, pressed && styles.pressed]}
@@ -679,8 +826,9 @@ function ToggleRow({
       accessibilityState={{ checked: value }}
       accessibilityLabel={`${label.replace(/^Hide /, '')} ${value ? 'hidden' : 'shown'}`}
       accessibilityHint="Double tap to change whether this detail appears in the shared image"
+      hitSlop={2}
     >
-      <Ionicons name={icon} size={19} color={colors.textSecondary} />
+      <Ionicons name={icon} size={19} color={palette.secondary} />
       <Text style={styles.toggleLabel}>{label.replace(/^Hide /, '')}</Text>
       <View style={[styles.switchTrack, value && styles.switchTrackOn]}>
         <View style={[styles.switchThumb, value && styles.switchThumbOn]} />
@@ -690,11 +838,15 @@ function ToggleRow({
 }
 
 function ProofAction({ icon, label, onPress, busy, disabled }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => winCardPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <Pressable style={({ pressed }) => [styles.actionRow, pressed && styles.pressed, disabled && styles.disabled]} onPress={onPress} disabled={busy || disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy: !!busy, disabled: !!disabled || !!busy }}>
-      {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name={icon} size={21} color={colors.primary} />}
+      {busy ? <ActivityIndicator size="small" color={palette.action} /> : <Ionicons name={icon} size={21} color={palette.action} />}
       <Text style={styles.actionLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      <Ionicons name="chevron-forward" size={18} color={palette.faint} />
     </Pressable>
   );
 }
@@ -717,25 +869,49 @@ function nextPaint(): Promise<void> {
   });
 }
 
-const styles = StyleSheet.create({
-  screen: { flexGrow: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 18, gap: 8, backgroundColor: '#F8F5EE' },
-  stateScreen: { flex: 1, paddingHorizontal: 14, backgroundColor: '#F8F5EE' },
+function winCardPalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    surface: theme.surface.card,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    faint: theme.ink.muted,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    neutralBorder: theme.border.subtle,
+    panelBorder: theme.border.subtle,
+    selected: theme.surface.muted,
+    heading: theme.surface.muted,
+    switchOff: theme.border.strong,
+    pending: theme.surface.muted,
+    pendingBorder: theme.status.attention,
+    cardShadow: theme.surface.canvas,
+  } as const;
+}
+
+const createStyles = (theme: AppThemeColors) => {
+  const palette = winCardPalette(theme);
+
+  return StyleSheet.create({
+  screen: { flexGrow: 1, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 18, gap: 8, backgroundColor: palette.canvas },
+  stateScreen: { flex: 1, paddingHorizontal: 14, backgroundColor: palette.canvas },
   screenHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -8 },
-  screenTitle: { color: colors.text, fontFamily: font.extrabold, fontSize: 18 },
+  screenTitle: { color: palette.ink, fontFamily: font.extrabold, fontSize: 18 },
   headerSpacer: { width: 36 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: spacing.lg },
-  stateTitle: { color: colors.text, fontFamily: font.extrabold, fontSize: 20, textAlign: 'center' },
-  stateMessage: { color: colors.textMuted, fontFamily: font.regular, fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  retryButton: { minHeight: 48, minWidth: 128, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.primary, paddingHorizontal: spacing.lg },
-  retryText: { color: '#FFFFFF', fontFamily: font.semibold, fontSize: 15 },
+  stateTitle: { color: palette.ink, fontFamily: font.extrabold, fontSize: 20, textAlign: 'center' },
+  stateMessage: { color: palette.muted, fontFamily: font.regular, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  retryButton: { minHeight: spacing.touch, minWidth: 128, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.action, paddingHorizontal: spacing.lg },
+  retryText: { color: palette.onAction, fontFamily: font.semibold, fontSize: 15 },
   cardWrap: {
     borderRadius: 24,
     overflow: 'hidden',
     alignSelf: 'center',
     width: '100%',
     maxWidth: 340,
-    shadowColor: '#000',
+    shadowColor: palette.cardShadow,
     shadowOpacity: 0.3,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
@@ -745,29 +921,30 @@ const styles = StyleSheet.create({
   square: { aspectRatio: 1 },
   landscape: { aspectRatio: 16 / 9 },
   formatRow: { flexDirection: 'row', alignSelf: 'center', width: '100%', maxWidth: 340, gap: 6 },
-  formatChip: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FFFFFF' },
-  formatChipActive: { borderColor: colors.primary, backgroundColor: '#EEF4FF' },
-  formatText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 13 },
-  formatTextActive: { color: colors.primary },
-  privacyPanel: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5DFD4', overflow: 'hidden' },
-  privacyHeading: { paddingHorizontal: spacing.md, paddingVertical: 6, gap: 1, backgroundColor: '#F3F6FC' },
-  privacyTitle: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
-  privacyHelp: { color: colors.textMuted, fontFamily: font.regular, fontSize: 11, lineHeight: 14 },
+  formatChip: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: palette.neutralBorder, backgroundColor: palette.surface },
+  formatChipActive: { borderColor: palette.action, backgroundColor: palette.selected },
+  formatText: { color: palette.muted, fontFamily: font.semibold, fontSize: 13 },
+  formatTextActive: { color: palette.action },
+  privacyPanel: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.panelBorder, overflow: 'hidden' },
+  privacyHeading: { paddingHorizontal: spacing.md, paddingVertical: 6, gap: 1, backgroundColor: palette.heading },
+  privacyTitle: { color: palette.ink, fontFamily: font.semibold, fontSize: 14 },
+  privacyHelp: { color: palette.muted, fontFamily: font.regular, fontSize: 11, lineHeight: 14 },
   privacyControls: { flexDirection: 'row', flexWrap: 'wrap' },
-  toggleRow: { width: '50%', minHeight: 44, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: '#E5DFD4' },
-  toggleLabel: { flex: 1, color: colors.text, fontFamily: font.medium, fontSize: 13 },
-  switchTrack: { width: 42, height: 24, padding: 2, borderRadius: 12, backgroundColor: '#CBD5E1' },
-  switchTrackOn: { backgroundColor: colors.primary },
-  switchThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFFFFF' },
+  toggleRow: { width: '50%', minHeight: 44, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderColor: palette.panelBorder },
+  toggleLabel: { flex: 1, color: palette.ink, fontFamily: font.medium, fontSize: 13 },
+  switchTrack: { width: 42, height: 24, padding: 2, borderRadius: 12, backgroundColor: palette.switchOff },
+  switchTrackOn: { backgroundColor: palette.action },
+  switchThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: palette.surface },
   switchThumbOn: { transform: [{ translateX: 18 }] },
-  actions: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5DFD4', overflow: 'hidden' },
-  actionRow: { minHeight: 48, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5DFD4' },
-  actionLabel: { flex: 1, color: colors.text, fontFamily: font.semibold, fontSize: 14 },
+  actions: { alignSelf: 'center', width: '100%', maxWidth: 340, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.panelBorder, overflow: 'hidden' },
+  actionRow: { minHeight: spacing.touch, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.panelBorder },
+  actionLabel: { flex: 1, color: palette.ink, fontFamily: font.semibold, fontSize: 14 },
   pressed: { opacity: 0.62 },
   disabled: { opacity: 0.48 },
-  pendingPanel: { alignSelf: 'center', width: '100%', maxWidth: 400, borderRadius: radius.md, backgroundColor: '#FFF7E6', borderWidth: 1, borderColor: '#F2C879', padding: spacing.md, gap: spacing.sm },
-  pendingText: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
+  pendingPanel: { alignSelf: 'center', width: '100%', maxWidth: 400, borderRadius: radius.md, backgroundColor: palette.pending, borderWidth: 1, borderColor: palette.pendingBorder, padding: spacing.md, gap: spacing.sm },
+  pendingText: { color: palette.ink, fontFamily: font.semibold, fontSize: 14 },
   pendingButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  pendingButton: { minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.primary, paddingHorizontal: spacing.md },
-  pendingButtonText: { color: colors.primary, fontFamily: font.semibold, fontSize: 13 },
-});
+  pendingButton: { minHeight: 44, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: palette.action, paddingHorizontal: spacing.md },
+  pendingButtonText: { color: palette.action, fontFamily: font.semibold, fontSize: 13 },
+  });
+};

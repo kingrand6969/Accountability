@@ -16,7 +16,7 @@ describe('trusted public sharing', () => {
 
   test('uses a separate rich-preview URL on iOS', () => {
     expect(publicShareContent('Sunset 5K', publicShareUrl('opaque'), 'ios')).toEqual({
-      message: 'Sunset 5K\n\nShared with permission from AccountAbility.',
+      message: 'Sunset 5K\n\nShared with permission from Mantle.',
       url: 'https://joinaccountability.app/s/opaque',
     });
   });

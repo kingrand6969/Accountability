@@ -1,8 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Stack, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
-import { ActivityIndicator, Linking, Platform, Pressable, View } from 'react-native';
+import { Linking, Platform, Pressable } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFonts } from 'expo-font';
+import { StatusBar } from 'expo-status-bar';
 import { Anton_400Regular } from '@expo-google-fonts/anton/400Regular';
 import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
 import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
@@ -11,24 +21,99 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { Inter_800ExtraBold } from '@expo-google-fonts/inter/800ExtraBold';
 import { PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display/700Bold';
 import { Caveat_600SemiBold } from '@expo-google-fonts/caveat/600SemiBold';
+import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk/700Bold';
+import { Sora_700Bold } from '@expo-google-fonts/sora/700Bold';
+import { BowlbyOneSC_400Regular } from '@expo-google-fonts/bowlby-one-sc/400Regular';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
+import { LegalConsentProvider, useLegalConsent } from '../auth/LegalConsentProvider';
 import { captureReferralFromLaunch, redeemPendingReferral } from '../profiles/referrals';
 import { ProProvider } from '../pro/ProProvider';
 import { ToastHost } from '../ui/Toast';
 import { ConfirmHost } from '../ui/ConfirmDialog';
 import { PostMenuHost } from '../feed/PostMenu';
 import { ModerationGate } from '../moderation/ModerationGate';
-import { colors } from '../ui/theme';
 import { cleanupAbandonedRunMedia } from '../activity/runMediaCache';
 import { ActivitySyncProvider } from '../activity/ActivitySyncProvider';
+import { LocationCollectorBootGate } from '../activity/LocationCollectorBootGate';
+import { LocationCollectorOwnerGate } from '../activity/LocationCollectorOwnerGate';
 import '../notifications/handler';
 import '../activity/locationTask';
 import {
+  createAuthRouteIntentCoordinator,
   createAuthRouteIntentController,
+  onboardingStorageKey,
   routeIntentFromPath,
+  subscribeToOnboardingCompletion,
+  type AuthRouteIntentController,
+  type AuthRouteIntentCoordinator,
   type RouteQuery,
 } from '../navigation/authRouteIntent';
 import { navigateBackSafely } from '../navigation/routeAccessContract';
+import { AppLaunchState } from '../ui/AppLaunchState';
+import { AppThemeProvider, useAppTheme } from '../ui/AppThemeProvider';
+import { getMyProfile } from '../profiles/api';
+
+type OnboardingState = Readonly<{
+  ownerId: string;
+  complete: boolean;
+  failed?: boolean;
+}>;
+
+const AuthRouteIntentContext = createContext<AuthRouteIntentController | null>(null);
+const AuthRouteIntentCoordinatorContext = createContext<AuthRouteIntentCoordinator | null>(null);
+
+function AuthRouteIntentProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
+  const ownerId = session?.user.id ?? null;
+  const pathname = usePathname();
+  const query = useGlobalSearchParams() as RouteQuery;
+  const currentIntent = routeIntentFromPath(pathname, query);
+  const [intentController] = useState(() => createAuthRouteIntentController(ownerId));
+  const [intentCoordinator] = useState(() =>
+    createAuthRouteIntentCoordinator(intentController, ownerId),
+  );
+  const initialLinkCaptureStartedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    intentCoordinator.synchronizeOwner(ownerId, currentIntent);
+  }, [currentIntent, intentCoordinator, ownerId]);
+
+  useEffect(() => {
+    if (initialLinkCaptureStartedRef.current) return;
+    initialLinkCaptureStartedRef.current = true;
+    if (ownerId) return;
+    const ticket = intentController.beginAsyncCapture();
+    Linking.getInitialURL()
+      .then((href) => {
+        if (href) intentController.completeAsyncCapture(ticket, href);
+      })
+      .catch(() => {});
+  }, [intentController, ownerId]);
+
+  return (
+    <AuthRouteIntentContext.Provider value={intentController}>
+      <AuthRouteIntentCoordinatorContext.Provider value={intentCoordinator}>
+        {children}
+      </AuthRouteIntentCoordinatorContext.Provider>
+    </AuthRouteIntentContext.Provider>
+  );
+}
+
+function useAuthRouteIntentController(): AuthRouteIntentController {
+  const intentController = useContext(AuthRouteIntentContext);
+  if (!intentController) {
+    throw new Error('AuthRouteIntentProvider is required.');
+  }
+  return intentController;
+}
+
+function useAuthRouteIntentCoordinator(): AuthRouteIntentCoordinator {
+  const intentCoordinator = useContext(AuthRouteIntentCoordinatorContext);
+  if (!intentCoordinator) {
+    throw new Error('AuthRouteIntentProvider is required.');
+  }
+  return intentCoordinator;
+}
 
 /**
  * A back control that never dead-ends: it pops the stack when there's somewhere
@@ -37,7 +122,7 @@ import { navigateBackSafely } from '../navigation/routeAccessContract';
  */
 function HeaderBack() {
   const router = useRouter();
-  const pathname = usePathname();
+  const { colors: theme } = useAppTheme();
   return (
     <Pressable
       onPress={() => navigateBackSafely(router)}
@@ -46,44 +131,104 @@ function HeaderBack() {
       accessibilityLabel="Go back"
       style={({ pressed }) => [{ paddingRight: 14, paddingVertical: 4 }, pressed && { opacity: 0.6 }]}
     >
-      <Ionicons name="chevron-back" size={26} color={colors.text} />
+      <Ionicons name="chevron-back" size={26} color={theme.ink.primary} />
     </Pressable>
   );
 }
 
 function RootNavigator() {
   const { session, loading } = useAuth();
+  const consent = useLegalConsent();
+  const { colors: theme } = useAppTheme();
   const router = useRouter();
   const pathname = usePathname();
   const query = useGlobalSearchParams() as RouteQuery;
   const ownerId = session?.user.id ?? null;
   const ownerRef = useRef(ownerId);
-  const [intentController] = useState(createAuthRouteIntentController);
+  const intentController = useAuthRouteIntentController();
+  const intentCoordinator = useAuthRouteIntentCoordinator();
+  const [onboardingState, setOnboardingState] = useState<OnboardingState | null>(null);
+  const [onboardingAttempt, setOnboardingAttempt] = useState(0);
+  const ownerOnboardingState = ownerId && onboardingState?.ownerId === ownerId
+    ? onboardingState
+    : null;
+  const onboardingFailed = ownerOnboardingState?.failed === true;
+  const onboarded = ownerId
+    ? ownerOnboardingState && !onboardingFailed
+      ? ownerOnboardingState.complete
+      : null
+    : false;
   const currentIntent = routeIntentFromPath(pathname, query);
+  const shouldHoldIntent =
+    !session ||
+    consent.status !== 'current' ||
+    onboarded === false ||
+    onboardingFailed;
 
   useEffect(() => {
-    if (!session && currentIntent) intentController.capture(currentIntent);
-  }, [currentIntent, intentController, session]);
-
-  useEffect(() => {
-    if (session) return;
-    const controller = intentController;
-    const ticket = controller.beginAsyncCapture();
-    Linking.getInitialURL()
-      .then((href) => {
-        if (href) controller.completeAsyncCapture(ticket, href);
-      })
-      .catch(() => {});
-  }, [intentController, session]);
+    if (!shouldHoldIntent || !currentIntent) return;
+    intentCoordinator.captureForHold(ownerId, currentIntent);
+  }, [currentIntent, intentCoordinator, ownerId, shouldHoldIntent]);
 
   useEffect(() => {
     ownerRef.current = ownerId;
-    const destination = intentController.transitionToOwner(ownerId);
-    if (!destination || !ownerId) return;
+  }, [ownerId]);
+
+  useEffect(() => {
+    if (!ownerId || consent.status !== 'current') return;
+    let active = true;
+    void (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(onboardingStorageKey(ownerId));
+        if (stored === '1') {
+          if (active) setOnboardingState({ ownerId, complete: true });
+          return;
+        }
+        const profile = await getMyProfile();
+        const complete = !!profile?.display_name?.trim() && !!profile?.area?.trim();
+        if (active) {
+          setOnboardingState((current) =>
+            current?.ownerId === ownerId && current.complete
+              ? current
+              : { ownerId, complete, failed: false },
+          );
+        }
+        if (complete) {
+          AsyncStorage.setItem(onboardingStorageKey(ownerId), '1').catch(() => {});
+        }
+      } catch {
+        if (active) {
+          setOnboardingState((current) =>
+            current?.ownerId === ownerId && current.complete
+              ? current
+              : { ownerId, complete: false, failed: true },
+          );
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [consent.status, onboardingAttempt, ownerId]);
+
+  useEffect(() => subscribeToOnboardingCompletion((completedOwnerId) => {
+    if (ownerRef.current !== completedOwnerId) return;
+    setOnboardingState((current) =>
+      current?.ownerId === completedOwnerId && current.complete
+        ? current
+        : { ownerId: completedOwnerId, complete: true, failed: false },
+    );
+  }), []);
+
+  useEffect(() => {
+    if (!ownerId || onboarded !== true) return;
+    const destination = intentController.resumeForOwner(ownerId, true);
+    const target = destination ?? (pathname === '/onboarding' ? '/' : null);
+    if (!target) return;
     queueMicrotask(() => {
-      if (ownerRef.current === ownerId) router.replace(destination as never);
+      if (ownerRef.current === ownerId) router.replace(target as never);
     });
-  }, [intentController, ownerId, router]);
+  }, [intentController, onboarded, ownerId, pathname, router]);
 
   // Referral attribution: remember an invite link on launch, then credit the
   // inviter once this (new) account is signed in.
@@ -91,8 +236,8 @@ function RootNavigator() {
     captureReferralFromLaunch();
   }, []);
   useEffect(() => {
-    if (session) redeemPendingReferral();
-  }, [session]);
+    if (ownerId && consent.status === 'current') redeemPendingReferral(ownerId);
+  }, [consent.status, ownerId]);
 
   const [fontsLoaded, fontError] = useFonts({
     Anton_400Regular,
@@ -103,21 +248,59 @@ function RootNavigator() {
     Inter_800ExtraBold,
     PlayfairDisplay_700Bold,
     Caveat_600SemiBold,
+    SpaceGrotesk_700Bold,
+    Sora_700Bold,
+    BowlbyOneSC_400Regular,
   });
 
   if (loading || (!fontsLoaded && !fontError)) {
+    return <AppLaunchState message="Opening Mantle" />;
+  }
+
+  if (!!session && consent.status === 'current' && onboardingFailed) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
+      <AppLaunchState
+        message="We could not check your account setup"
+        error
+        actionLabel="Try again"
+        onAction={() => {
+          setOnboardingState((current) =>
+            current?.ownerId === ownerId && current.failed ? null : current,
+          );
+          setOnboardingAttempt((attempt) => attempt + 1);
+        }}
+      />
     );
   }
 
+  if (!!session && consent.status === 'current' && onboarded === null) {
+    return <AppLaunchState message="Opening Mantle" />;
+  }
+
   return (
-    <Stack screenOptions={{ headerShown: false, headerLeft: () => <HeaderBack /> }}>
-      <Stack.Protected guard={!!session}>
-        <Stack.Screen name="(app)" />
+    <>
+      <StatusBar style="light" />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          headerLeft: () => <HeaderBack />,
+          headerStyle: { backgroundColor: theme.surface.raised },
+          headerTintColor: theme.ink.primary,
+          headerTitleStyle: { color: theme.ink.primary },
+          contentStyle: { backgroundColor: theme.surface.canvas },
+        }}
+      >
+      <Stack.Protected guard={!!session && consent.status !== 'current'}>
+        <Stack.Screen
+          name="consent-refresh"
+          options={{ gestureEnabled: false }}
+        />
+      </Stack.Protected>
+      <Stack.Protected guard={!!session && consent.status === 'current'}>
         <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      <Stack.Protected guard={!!session && consent.status === 'current' && onboarded === true}>
+        <Stack.Screen name="(app)" />
         <Stack.Screen name="paywall" options={{ headerShown: true, title: 'Go Pro' }} />
         <Stack.Screen name="gym" options={{ headerShown: true, title: 'Exercise Library' }} />
         <Stack.Screen name="exercise/[id]" options={{ headerShown: true, title: 'Exercise' }} />
@@ -156,6 +339,7 @@ function RootNavigator() {
           name="journey-path"
           options={{ headerShown: true, title: 'Journey Path' }}
         />
+        <Stack.Screen name="journey-progress" options={{ headerShown: false }} />
         <Stack.Screen name="groups" options={{ headerShown: true, title: 'Groups' }} />
         <Stack.Screen name="group/[id]" options={{ headerShown: true, title: 'Group' }} />
         <Stack.Screen name="group-new" options={{ headerShown: true, title: 'New Group' }} />
@@ -178,10 +362,36 @@ function RootNavigator() {
         <Stack.Screen name="verify-email" />
         <Stack.Screen name="forgot-password" />
       </Stack.Protected>
-      <Stack.Screen name="share/[id]" options={{ headerShown: true, title: 'Shared update' }} />
+      <Stack.Protected guard={!session || consent.status === 'current'}>
+        <Stack.Screen name="share/[id]" options={{ headerShown: true, title: 'Shared update' }} />
+      </Stack.Protected>
       {/* Legal docs are reachable both signed-out (sign-up consent) and in-app (settings). */}
       <Stack.Screen name="legal/[doc]" options={{ headerShown: true, title: 'Legal' }} />
-    </Stack>
+      </Stack>
+    </>
+  );
+}
+
+function ConsentPriorityRuntime() {
+  const consent = useLegalConsent();
+  const locationGateEnabled = consent.status === 'signed-out' || consent.status === 'current';
+
+  return (
+    <LocationCollectorOwnerGate enabled={locationGateEnabled}>
+      {consent.status === 'current' ? (
+        <ActivitySyncProvider>
+          <ProProvider>
+            <RootNavigator />
+            <ModerationGate />
+            <ToastHost />
+            <ConfirmHost />
+            <PostMenuHost />
+          </ProProvider>
+        </ActivitySyncProvider>
+      ) : (
+        <RootNavigator />
+      )}
+    </LocationCollectorOwnerGate>
   );
 }
 
@@ -194,16 +404,16 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <ActivitySyncProvider>
-        <ProProvider>
-          <RootNavigator />
-          <ModerationGate />
-          <ToastHost />
-          <ConfirmHost />
-          <PostMenuHost />
-        </ProProvider>
-      </ActivitySyncProvider>
-    </AuthProvider>
+    <AppThemeProvider>
+      <LocationCollectorBootGate>
+        <AuthProvider>
+          <LegalConsentProvider>
+            <AuthRouteIntentProvider>
+              <ConsentPriorityRuntime />
+            </AuthRouteIntentProvider>
+          </LegalConsentProvider>
+        </AuthProvider>
+      </LocationCollectorBootGate>
+    </AppThemeProvider>
   );
 }

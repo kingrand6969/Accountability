@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { createGroup, joinGroup } from '../groups/api';
-import { createPost } from '../feed/api';
+import { normalizeStoredPostVisibility, postVisibility } from '../progress/visibility';
 
 export type PostEvent = {
   id: string;
@@ -10,49 +9,74 @@ export type PostEvent = {
   group_id: string;
 };
 
-async function me(): Promise<string | null> {
-  const { data } = await supabase.auth.getUser();
-  return data.user?.id ?? null;
+export type EventAnnouncement = {
+  groupId: string;
+  eventId: string;
+  postId: string;
+};
+
+type EventAnnouncementRow = {
+  result_group_id: string;
+  result_event_id: string;
+  result_post_id: string;
+};
+
+function isAnnouncementRow(value: unknown): value is EventAnnouncementRow {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.result_group_id === 'string'
+    && typeof row.result_event_id === 'string'
+    && typeof row.result_post_id === 'string';
 }
 
 /**
- * Announce an event: creates a group named after it (creator = admin),
- * the event row, and the feed post. Attendees join the group via attendEvent.
+ * Creates the event group, event and feed announcement in one database
+ * transaction. The draft operation id makes a lost-response retry return the
+ * original committed ids instead of creating a second event.
  */
 export async function createEvent(input: {
+  expectedOwnerId: string;
+  operationId: string;
   title: string;
   startsAtIso: string;
   location: string;
   message: string;
-}): Promise<void> {
-  const uid = await me();
-  if (!uid) throw new Error('Not signed in.');
-  const groupId = await createGroup(
-    input.title.trim(),
-    `Event group · ${input.location.trim() || 'meet-up'} — auto-created when the event was announced.`,
-  );
-  const { data, error } = await supabase
-    .from('events')
-    .insert({
-      title: input.title.trim(),
-      starts_at: input.startsAtIso,
-      location: input.location.trim() || null,
-      group_id: groupId,
-      created_by: uid,
+  audience: 'buddies' | 'public';
+  showOnCard: boolean;
+  showPublicly?: boolean;
+}): Promise<EventAnnouncement> {
+  const visibility = input.showPublicly === undefined
+    ? normalizeStoredPostVisibility({
+      audience: input.audience,
+      showOnCard: input.showOnCard,
     })
-    .select('id')
-    .single();
+    : postVisibility(input.showPublicly);
+  const { data, error } = await supabase.rpc('create_event_announcement', {
+    p_expected_owner: input.expectedOwnerId,
+    p_operation_id: input.operationId,
+    p_title: input.title,
+    p_starts_at: input.startsAtIso,
+    p_location: input.location,
+    p_message: input.message,
+    p_audience: visibility.audience,
+    p_show_on_card: visibility.showOnCard,
+  });
   if (error) throw error;
-  await createPost(
-    input.message.trim() || `📅 ${input.title.trim()} — who's in?`,
-    null,
-    null,
-    null,
-    data.id as string,
-  );
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!isAnnouncementRow(row)) throw new Error('Event announcement returned an invalid result.');
+  return {
+    groupId: row.result_group_id,
+    eventId: row.result_event_id,
+    postId: row.result_post_id,
+  };
 }
 
-/** "Yes, I'll attend" — joins the event's group automatically. */
-export async function attendEvent(groupId: string): Promise<void> {
-  await joinGroup(groupId);
+/** "Yes, I'll attend" — joins only through the event announcement's visibility boundary. */
+export async function attendEvent(eventId: string, expectedOwner: string): Promise<void> {
+  const { error } = await supabase.rpc('attend_event', {
+    p_event_id: eventId,
+    p_expected_owner: expectedOwner,
+  });
+  if (error) throw error;
 }

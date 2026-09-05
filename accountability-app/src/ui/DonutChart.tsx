@@ -14,7 +14,7 @@ export function DonutChart({
   centerTitle,
   centerSub,
   trackColor = 'rgba(255,255,255,0.9)',
-  ink = '#1e1b4b',
+  ink = '#111411',
 }: {
   size: number;
   strokeWidth?: number;

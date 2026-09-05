@@ -25,8 +25,15 @@ async function me(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
-export async function getInsights(period: Period): Promise<Insights> {
-  const uid = await me();
+async function assertExpectedOwner(expectedOwnerId: string): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (data.user?.id !== expectedOwnerId) throw new Error('Account changed.');
+  if (error) throw error;
+  return expectedOwnerId;
+}
+
+export async function getInsights(period: Period, expectedOwnerId?: string): Promise<Insights> {
+  const uid = expectedOwnerId ? await assertExpectedOwner(expectedOwnerId) : await me();
   const now = new Date();
   const { start, end } = periodRange(period, now);
   const buckets: Bucket[] = period === 'day' ? [] : chartBuckets(period, now);
@@ -44,7 +51,7 @@ export async function getInsights(period: Period): Promise<Insights> {
   };
   if (!uid) return empty;
 
-  const [actRes, itemsRes] = await Promise.all([
+  const queries = [
     supabase
       .from('activities')
       .select('distance_m,duration_s,started_at')
@@ -60,7 +67,16 @@ export async function getInsights(period: Period): Promise<Insights> {
       .lte('starts_at', end.toISOString())
       .order('starts_at', { ascending: false })
       .limit(1000),
-  ]);
+  ] as const;
+  let actRes: Awaited<(typeof queries)[0]>;
+  let itemsRes: Awaited<(typeof queries)[1]>;
+  try {
+    [actRes, itemsRes] = await Promise.all(queries);
+  } catch (queryError) {
+    if (expectedOwnerId) await assertExpectedOwner(expectedOwnerId);
+    throw queryError;
+  }
+  if (expectedOwnerId) await assertExpectedOwner(expectedOwnerId);
   const failed = [actRes, itemsRes].find((r) => r.error);
   if (failed?.error) throw failed.error;
 

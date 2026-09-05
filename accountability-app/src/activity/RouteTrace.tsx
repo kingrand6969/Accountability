@@ -66,6 +66,7 @@ export function RouteTrace({
   stroke = 3,
   accent,
   showHead = false,
+  showEndpoints = true,
   endStyle = 'dot',
   faint = false,
   pad,
@@ -77,6 +78,7 @@ export function RouteTrace({
   stroke?: number;
   accent?: string; // solid line color (e.g. lime) instead of the blue→violet gradient
   showHead?: boolean;
+  showEndpoints?: boolean;
   endStyle?: 'dot' | 'none'; // 'none' when the parent draws its own head badge
   faint?: boolean;
   pad?: number | Partial<Pad>;
@@ -90,8 +92,8 @@ export function RouteTrace({
       <Svg width={width} height={height}>
         <Defs>
           <SvgGradient id="routeStroke" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#60a5fa" />
-            <Stop offset="1" stopColor="#a855f7" />
+            <Stop offset="0" stopColor="#B9FF3D" />
+            <Stop offset="1" stopColor="#5F8F00" />
           </SvgGradient>
         </Defs>
 
@@ -101,18 +103,21 @@ export function RouteTrace({
           <>
             <Path d={geom.d} stroke={line} strokeWidth={stroke * 3} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={0.16} />
             <Path d={geom.d} stroke={line} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={faint ? 0.5 : 1} />
-            {/* start marker */}
-            <Circle cx={geom.start.x} cy={geom.start.y} r={stroke * 1.6} fill="#22c55e" />
-            <Circle cx={geom.start.x} cy={geom.start.y} r={stroke * 0.7} fill="#fff" />
-            {endStyle === 'dot' ? (
+            {showEndpoints ? (
+              <>
+                <Circle cx={geom.start.x} cy={geom.start.y} r={stroke * 1.6} fill="#22c55e" />
+                <Circle cx={geom.start.x} cy={geom.start.y} r={stroke * 0.7} fill="#fff" />
+              </>
+            ) : null}
+            {showEndpoints && endStyle === 'dot' ? (
               showHead ? (
                 <>
-                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 3} fill={accent ?? '#60a5fa'} opacity={0.28} />
+                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 3} fill={accent ?? '#B9FF3D'} opacity={0.28} />
                   <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 1.5} fill="#fff" />
-                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 0.9} fill={accent ?? '#2563eb'} />
+                  <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 0.9} fill={accent ?? '#6F9F00'} />
                 </>
               ) : (
-                <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 1.4} fill={accent ?? '#a855f7'} />
+                <Circle cx={geom.end.x} cy={geom.end.y} r={stroke * 1.4} fill={accent ?? '#5F8F00'} />
               )
             ) : null}
           </>

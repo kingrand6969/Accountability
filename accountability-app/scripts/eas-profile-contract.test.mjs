@@ -27,11 +27,17 @@ test('development remains a development-client APK profile', () => {
   assert.equal(easConfig.build.development.distribution, 'internal');
   assert.equal(easConfig.build.development.channel, 'development');
   assert.equal(easConfig.build.development.android.buildType, 'apk');
+  assert.deepEqual(easConfig.build.development.env, {
+    APP_VARIANT: 'staging',
+  });
 });
 
 test('production profile retains its existing behavior', () => {
   assert.deepEqual(easConfig.build.production, {
     channel: 'production',
     autoIncrement: true,
+    env: {
+      APP_VARIANT: 'production',
+    },
   });
 });

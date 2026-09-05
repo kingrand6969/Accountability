@@ -3,7 +3,6 @@ import {
   KeyboardAvoidingView,
   Image,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,8 +10,13 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { font, spacing } from './theme';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { font, spacing, type AppThemeColors } from './theme';
 import { BrandMark } from './BrandMark';
+import { useAppTheme } from './AppThemeProvider';
+import { BRAND_WORDMARK } from './brandGeometry';
+import { withAlpha } from './surfaces';
 
 type Props = {
   children: ReactNode;
@@ -29,9 +33,12 @@ export function AuthShell({
   presentation = 'default',
 }: Props) {
   const welcome = presentation === 'welcome';
+  const { colors: theme } = useAppTheme();
+  const styles = createStyles(theme);
 
   return (
     <SafeAreaView style={styles.screen}>
+      <StatusBar style="light" />
       <Image
         source={require('../../assets/images/auth-mountain-hero.png')}
         style={[styles.heroImage, welcome && styles.welcomeHeroImage]}
@@ -39,13 +46,13 @@ export function AuthShell({
         accessibilityIgnoresInvertColors
       />
       <LinearGradient
-        colors={['rgba(3,17,38,0.42)', 'rgba(3,17,38,0.72)', '#031126']}
+        colors={['rgba(11,13,11,0.42)', 'rgba(11,13,11,0.72)', '#0B0D0B']}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.75, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <LinearGradient
-        colors={['transparent', 'rgba(2,10,25,0.84)']}
+        colors={['transparent', 'rgba(5,7,5,0.84)']}
         style={styles.horizonShade}
         pointerEvents="none"
       />
@@ -61,19 +68,19 @@ export function AuthShell({
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.brand, welcome && styles.welcomeBrand]}>
-            <BrandMark
-              size={welcome ? 112 : 76}
-              color="#FFFFFF"
-              accessibilityLabel="AccountAbility logo"
-            />
-            <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>
-              Account<Text style={styles.ability}>Ability</Text>
-            </Text>
+            <View style={styles.lockup}>
+              <BrandMark
+                size={welcome ? 120 : 104}
+                color={theme.ink.action}
+                accessibilityLabel="Mantle logo"
+              />
+              <Text style={[styles.wordmark, welcome && styles.welcomeWordmark]}>{BRAND_WORDMARK}</Text>
+            </View>
             <Text style={styles.tagline}>Build consistency. Together.</Text>
           </View>
           {glass ? (
             <View style={styles.glassFrame}>
-              <BlurView intensity={Platform.OS === 'web' ? 40 : 55} tint="light" style={styles.glass}>
+              <BlurView intensity={Platform.OS === 'web' ? 40 : 55} tint="dark" style={styles.glass}>
                 <View style={styles.glassTint}>{children}</View>
               </BlurView>
             </View>
@@ -87,8 +94,8 @@ export function AuthShell({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#06152E' },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   heroImage: {
     ...StyleSheet.absoluteFill,
     width: '100%',
@@ -102,7 +109,7 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: 'rgba(21,94,239,0.16)',
+    backgroundColor: 'rgba(185,255,61,0.16)',
     top: -100,
     right: -80,
   },
@@ -111,7 +118,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: 'rgba(21,94,239,0.14)',
+    backgroundColor: 'rgba(185,255,61,0.14)',
     bottom: -150,
     left: -110,
   },
@@ -126,25 +133,25 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   brand: { alignItems: 'center', gap: 4, marginBottom: spacing.xl },
+  lockup: { alignItems: 'center', gap: spacing.xs },
   welcomeBrand: {
     marginTop: 52,
     marginBottom: 72,
   },
   wordmark: {
-    fontFamily: font.extrabold,
+    fontFamily: font.brand,
     fontSize: 29,
-    color: '#fff',
+    color: theme.ink.primary,
     letterSpacing: -1.1,
   },
-  ability: { color: '#2F7BFF' },
   welcomeWordmark: { fontSize: 31 },
-  tagline: { fontFamily: font.medium, fontSize: 13.5, color: '#E7F0FF' },
+  tagline: { fontFamily: font.medium, fontSize: 13.5, color: theme.ink.secondary },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: theme.surface.card,
     borderRadius: 28,
     padding: spacing.xl,
     gap: spacing.md,
-    shadowColor: '#000',
+    shadowColor: theme.surface.canvas,
     shadowOpacity: 0.25,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
@@ -157,7 +164,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   welcomeCard: {
-    backgroundColor: '#F7F4EC',
+    backgroundColor: theme.surface.card,
     borderRadius: 22,
     padding: spacing.lg,
     gap: spacing.sm,
@@ -171,8 +178,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.48)',
-    shadowColor: '#0f172a',
+    borderColor: theme.border.strong,
+    shadowColor: theme.surface.canvas,
     shadowOpacity: 0.28,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 14 },
@@ -182,6 +189,6 @@ const styles = StyleSheet.create({
   glassTint: {
     padding: spacing.xl,
     gap: spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.76)',
+    backgroundColor: withAlpha(theme.surface.card, 0.88),
   },
 });

@@ -245,6 +245,80 @@ test('valid private post image resolves to signed HTTPS and reaches moderation',
   assert.match(JSON.stringify(received), /abc123\.r2\.cloudflarestorage\.com/);
 });
 
+test('operation-scoped Journey image resolves for its owner and reaches moderation', async () => {
+  const ownerId = '00000000-0000-4000-8000-000000000000';
+  const operationId = '123e4567-e89b-42d3-a456-426614174000';
+  const digest = 'a'.repeat(64);
+  const ref = `r2://post-images/${ownerId}/${operationId}/${digest}.jpg`;
+  const signedEndpoints: string[] = [];
+  let received: unknown[] = [];
+  const resolveModerationImage = createModerationImageResolver({
+    trustedSupabaseUrl: 'https://project.supabase.co', r2AccountId: 'abc123', r2AccessKeyId: 'key',
+    r2SecretAccessKey: 'secret-key', r2Bucket: 'media',
+    signGet: async (endpoint) => { signedEndpoints.push(endpoint); return `${endpoint}&X-Amz-Signature=signed`; },
+  });
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co', resolveModerationImage,
+    loadSource: async () => ({ text: '', image: ref, ownerId }),
+    moderate: async (input) => { received = input; return validResult; },
+    quarantine: async () => ({ data: true, error: null }),
+  });
+
+  const response = await handler(request({ table: 'posts', id: crypto.randomUUID() }));
+  assert.equal(response.status, 200);
+  assert.equal(signedEndpoints.length, 1);
+  assert.match(signedEndpoints[0], new RegExp(`post-images/${ownerId}/${operationId}/${digest}\\.jpg`));
+  assert.match(JSON.stringify(received), /abc123\.r2\.cloudflarestorage\.com/);
+});
+
+test('operation-scoped moderation rejects foreign owners and malformed nested refs without signing', async () => {
+  const ownerId = '00000000-0000-4000-8000-000000000000';
+  const foreignOwner = '00000000-0000-4000-8000-000000000099';
+  const operationId = '123e4567-e89b-42d3-a456-426614174000';
+  const digest = 'a'.repeat(64);
+  let signCalls = 0;
+  const resolver = createModerationImageResolver({
+    trustedSupabaseUrl: 'https://project.supabase.co', r2AccountId: 'abc123', r2AccessKeyId: 'key',
+    r2SecretAccessKey: 'secret-key', r2Bucket: 'media',
+    signGet: async (endpoint) => { signCalls++; return `${endpoint}&X-Amz-Signature=signed`; },
+  });
+  const invalid = [
+    `r2://post-images/${foreignOwner}/${operationId}/${digest}.jpg`,
+    `r2://post-images/${ownerId}/123e4567-e89b-12d3-a456-426614174000/${digest}.jpg`,
+    `r2://post-images/${ownerId}/${operationId}/${'a'.repeat(63)}.jpg`,
+    `r2://post-images/${ownerId}/${operationId}/${'g'.repeat(64)}.jpg`,
+    `r2://post-images/${ownerId}/${operationId}/${digest}.webp`,
+    `r2://post-images/${ownerId}/${operationId}/${digest}.jpg/extra`,
+    `r2://post-images/${ownerId}/${operationId}/../${digest}.jpg`,
+  ];
+  for (const ref of invalid) assert.equal(await resolver(ref, ownerId), null);
+  const handler = createModerationHandler({
+    secret: 'secret', trustedSupabaseUrl: 'https://project.supabase.co', resolveModerationImage: resolver,
+    loadSource: async () => ({
+      text: '', image: `r2://post-images/${foreignOwner}/${operationId}/${digest}.jpg`, ownerId,
+    }),
+    moderate: async () => validResult,
+    quarantine: async () => ({ data: true, error: null }),
+  });
+  assert.equal((await handler(request({ table: 'posts', id: crypto.randomUUID() }))).status, 503);
+  assert.equal(signCalls, 0);
+});
+
+test('legacy moderation image format remains owner-bound and resolvable', async () => {
+  const ownerId = '00000000-0000-4000-8000-000000000000';
+  let signCalls = 0;
+  const resolver = createModerationImageResolver({
+    trustedSupabaseUrl: 'https://project.supabase.co', r2AccountId: 'abc123', r2AccessKeyId: 'key',
+    r2SecretAccessKey: 'secret-key', r2Bucket: 'media',
+    signGet: async (endpoint) => { signCalls++; return `${endpoint}&X-Amz-Signature=signed`; },
+  });
+  await assert.doesNotReject(async () => {
+    assert.ok(await resolver(`r2://post-images/${ownerId}/proof.webp`, ownerId));
+  });
+  assert.equal(await resolver('r2://post-images/00000000-0000-4000-8000-000000000099/proof.webp', ownerId), null);
+  assert.equal(signCalls, 1);
+});
+
 test('resolver failure plus text-safe is retryable and never quarantines', async () => {
   let quarantines = 0;
   const handler = createModerationHandler({

@@ -38,6 +38,7 @@ yarn-error.*
 
 # local tooling, audit evidence, and generated previews
 /.gstack/
+/.device-verification/
 /.superpowers/
 /.tmp*/
 /supabase/.temp/

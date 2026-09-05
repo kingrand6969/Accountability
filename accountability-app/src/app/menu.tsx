@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Image,
   Pressable,
@@ -16,7 +16,16 @@ import { listPages, type Page } from '../pages/api';
 import { getRank } from '../achievements/api';
 import { RankBadge } from '../achievements/RankBadge';
 import { useAuth } from '../auth/AuthProvider';
-import { colors, font, radius, shadow, spacing, contentMax } from '../ui/theme';
+import {
+  colors,
+  font,
+  radius,
+  spacing,
+  contentMax,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type GridItem = {
@@ -28,30 +37,35 @@ type GridItem = {
 };
 
 const GRID: GridItem[] = [
-  { icon: 'podium-outline', tint: '#1d4ed8', title: 'Leaderboards & Wins', route: '/compete' },
+  { icon: 'podium-outline', tint: '#446B00', title: 'Leaderboards & Wins', route: '/compete' },
   { icon: 'today-outline', tint: '#0284c7', title: 'Planner', route: '/today' },
-  { icon: 'people-outline', tint: '#2563eb', title: 'Groups', route: '/groups' },
+  { icon: 'people-outline', tint: '#6F9F00', title: 'Groups', route: '/groups' },
   { icon: 'storefront-outline', tint: '#0d9488', title: 'Pages', route: '/pages' },
-  { icon: 'images-outline', tint: '#0ea5e9', title: 'Memories', route: '/memories' },
+  { icon: 'images-outline', tint: '#83B91B', title: 'Memories', route: '/memories' },
   { icon: 'person-add-outline', tint: '#db2777', title: 'Buddies', route: '/buddy' },
-  { icon: 'compass-outline', tint: '#2563eb', title: 'Discover', route: '/discover' },
-  { icon: 'color-palette-outline', tint: '#7c3aed', title: 'My buddy card', action: 'owner-buddy-card' },
-  { icon: 'stats-chart-outline', tint: '#ea580c', title: 'Progress', route: '/insights' },
+  { icon: 'compass-outline', tint: '#6F9F00', title: 'Discover', route: '/discover' },
+  { icon: 'color-palette-outline', tint: '#53634E', title: 'My buddy card', action: 'owner-buddy-card' },
+  { icon: 'stats-chart-outline', tint: '#5F8F00', title: 'Progress', route: '/insights' },
   { icon: 'book-outline', tint: '#0d9488', title: 'Daily Reads', route: '/books' },
-  { icon: 'barbell-outline', tint: '#7c3aed', title: 'Exercises', route: '/gym' },
+  { icon: 'barbell-outline', tint: '#53634E', title: 'Exercises', route: '/gym' },
   { icon: 'nutrition-outline', tint: '#16a34a', title: 'Diet', route: '/diet' },
-  { icon: 'walk-outline', tint: '#ea580c', title: 'Activity', route: '/run' },
-  { icon: 'star-outline', tint: '#7c3aed', title: 'Go Pro', route: '/paywall' },
+  { icon: 'walk-outline', tint: '#5F8F00', title: 'Activity', route: '/run' },
+  { icon: 'star-outline', tint: '#53634E', title: 'Go Pro', route: '/paywall' },
 ];
 
 export default function Menu() {
   const router = useRouter();
   const { session } = useAuth();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const ownerId = session?.user.id ?? null;
   const currentOwnerIdRef = useRef(ownerId);
+  // The press handler must never retain the previous signed-in account.
+  // eslint-disable-next-line react-hooks/refs
   currentOwnerIdRef.current = ownerId;
   const [name, setName] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const [myGroups, setMyGroups] = useState<Group[]>([]);
   const [myPages, setMyPages] = useState<Page[]>([]);
   const [rank, setRank] = useState<string | null>(null);
@@ -109,23 +123,25 @@ export default function Menu() {
         accessibilityLabel="View your profile"
       >
         <LinearGradient
-          colors={['#3b82f6', '#2563eb', '#1e40af']}
+          colors={['#B9FF3D', '#6F9F00', '#263223']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.profileRow}
+          style={styles.profileGradient}
         >
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.profileAvatar} />
-          ) : (
-            <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
-              <Ionicons name="person" size={22} color="#fff" />
+          <View style={styles.profilePlate}>
+            {resolvedAvatar ? (
+              <Image source={{ uri: resolvedAvatar }} style={styles.profileAvatar} />
+            ) : (
+              <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
+                <Ionicons name="person" size={22} color="#fff" />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
+              <Text style={styles.profileSub}>View your profile</Text>
             </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>{name ?? 'Your profile'}</Text>
-            <Text style={styles.profileSub}>View your profile</Text>
+            <Ionicons name="chevron-forward" size={18} color="#EEF7E4" />
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#dbeafe" />
         </LinearGradient>
       </Pressable>
 
@@ -137,7 +153,7 @@ export default function Menu() {
         accessibilityLabel="Open your Trophy Case"
       >
         <View style={styles.trophyIcon}>
-          <Ionicons name="medal" size={19} color="#fff" />
+          <Ionicons name="medal" size={19} color={colors.onPrimary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.trophyTitle}>Trophy Case</Text>
@@ -151,16 +167,16 @@ export default function Menu() {
         style={({ pressed }) => [styles.inviteRow, pressed && styles.pressed]}
         onPress={() => router.push('/invite-card' as never)}
         accessibilityRole="button"
-        accessibilityLabel="Invite friends to AccountAbility"
+        accessibilityLabel="Invite friends to Mantle"
       >
         <View style={styles.inviteIcon}>
-          <Ionicons name="paper-plane" size={19} color="#fff" />
+          <Ionicons name="paper-plane" size={19} color={colors.onPrimary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.inviteTitle}>Invite friends</Text>
           <Text style={styles.inviteSub}>Share via Messenger, WhatsApp, TikTok…</Text>
         </View>
-        <Ionicons name="share-social-outline" size={18} color={colors.primary} />
+        <Ionicons name="share-social-outline" size={18} color={theme.ink.action} />
       </Pressable>
 
       {/* shortcuts */}
@@ -184,7 +200,7 @@ export default function Menu() {
                   <Image source={{ uri: s.image }} style={styles.shortcutImage} />
                 ) : (
                   <View style={[styles.shortcutImage, styles.shortcutFallback]}>
-                    <Ionicons name={s.icon} size={22} color={colors.primary} />
+                    <Ionicons name={s.icon} size={22} color={theme.ink.action} />
                   </View>
                 )}
                 <Text style={styles.shortcutName} numberOfLines={2}>
@@ -197,7 +213,7 @@ export default function Menu() {
       ) : null}
 
       {/* everything grid */}
-      <Text style={styles.sectionTitle}>All of AccountAbility</Text>
+      <Text style={styles.sectionTitle}>All of Mantle</Text>
       <View style={styles.grid}>
         {GRID.map((item) => (
           <Pressable
@@ -225,13 +241,13 @@ export default function Menu() {
         accessibilityLabel="Help and Support"
       >
         <View style={styles.helpIcon}>
-          <Ionicons name="help-buoy-outline" size={20} color={colors.primary} />
+          <Ionicons name="help-buoy-outline" size={20} color={theme.ink.action} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.helpLabel}>Help &amp; Support</Text>
           <Text style={styles.helpSub}>Contact us, report a problem, Terms &amp; Privacy</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+        <Ionicons name="chevron-forward" size={18} color={theme.ink.muted} />
       </Pressable>
 
       <View style={styles.legalRow}>
@@ -257,12 +273,12 @@ export default function Menu() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
   container: {
     ...contentMax,
     padding: spacing.lg,
     gap: spacing.sm,
-    backgroundColor: colors.background,
+    backgroundColor: theme.surface.canvas,
     paddingBottom: 40,
   },
   pressed: { opacity: 0.75 },
@@ -274,19 +290,19 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: theme.border.subtle,
+    backgroundColor: theme.surface.card,
   },
   helpIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  helpLabel: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  helpSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
+  helpLabel: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
+  helpSub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted, marginTop: 1 },
   legalRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -295,8 +311,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingTop: spacing.sm,
   },
-  legalLink: { fontFamily: font.medium, fontSize: 12.5, color: colors.textMuted },
-  legalDot: { color: colors.textFaint },
+  legalLink: { fontFamily: font.medium, fontSize: 12.5, color: theme.ink.muted },
+  legalDot: { color: theme.ink.muted },
   profileWrap: {
     borderRadius: radius.md,
     overflow: 'hidden',
@@ -306,12 +322,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  profileRow: {
+  profileGradient: { minHeight: 68 },
+  profilePlate: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     padding: spacing.md,
     minHeight: 68,
+    backgroundColor: 'rgba(11,13,11,0.72)',
   },
   profileAvatar: {
     width: 46,
@@ -326,14 +344,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profileName: { fontFamily: font.bold, fontSize: 16, color: '#fff' },
-  profileSub: { fontFamily: font.medium, fontSize: 12.5, color: '#dbeafe' },
+  profileSub: { fontFamily: font.medium, fontSize: 12.5, color: '#EEF7E4' },
   inviteRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: theme.border.action,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 60,
@@ -346,15 +364,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  inviteTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  inviteSub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  inviteTitle: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
+  inviteSub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted },
   trophyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: '#fff8ec',
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: '#f4d9a6',
+    borderColor: theme.status.attention,
     borderRadius: radius.md,
     padding: spacing.md,
     minHeight: 60,
@@ -367,12 +385,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trophyTitle: { fontFamily: font.bold, fontSize: 15, color: colors.text },
-  trophySub: { fontFamily: font.regular, fontSize: 12.5, color: colors.textMuted },
+  trophyTitle: { fontFamily: font.bold, fontSize: 15, color: theme.ink.primary },
+  trophySub: { fontFamily: font.regular, fontSize: 12.5, color: theme.ink.muted },
   sectionTitle: {
     fontSize: 13,
     fontFamily: font.bold,
-    color: colors.textMuted,
+    color: theme.ink.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: spacing.md,
@@ -381,28 +399,32 @@ const styles = StyleSheet.create({
   shortcut: { alignItems: 'center', gap: 5, width: 72 },
   shortcutImage: { width: 60, height: 60, borderRadius: radius.md },
   shortcutFallback: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: theme.surface.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shortcutName: {
     fontFamily: font.medium,
     fontSize: 11.5,
-    color: colors.textSecondary,
+    color: theme.ink.secondary,
     textAlign: 'center',
     lineHeight: 14,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   card: {
     width: '48.4%',
-    backgroundColor: colors.card,
+    backgroundColor: theme.surface.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: theme.border.subtle,
     borderRadius: radius.md,
     padding: spacing.md,
     gap: 8,
     minHeight: 84,
-    ...shadow.card,
+    shadowColor: theme.ink.primary,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   cardPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
   cardIcon: {
@@ -412,5 +434,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { fontFamily: font.bold, fontSize: 14.5, color: colors.text },
+  cardTitle: { fontFamily: font.bold, fontSize: 14.5, color: theme.ink.primary },
 });

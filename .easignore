@@ -31,6 +31,10 @@
 /accountability-app/admin-site-deploy.tar.gz
 /accountability-app/supabase/
 /accountability-app/docs/
+/accountability-app/.release-evidence/
+/accountability-app/.release-evidence/**
+/accountability-app/.tmp/
+/accountability-app/.tmp/**
 /accountability-app/.superpowers/
 /accountability-app/.claude/
 /accountability-app/.vscode/
@@ -43,3 +47,20 @@
 /accountability-app/*.key
 /accountability-app/*.mobileprovision
 /accountability-app/*.pem
+
+# Worktree-safe recursive exclusions. EAS resolves ignore patterns from the
+# repository root, including when the mobile project is nested in a worktree.
+**/node_modules/
+**/node_modules/**
+**/.release-evidence/
+**/.release-evidence/**
+**/admin-site/
+**/admin-site/**
+**/share-site/
+**/share-site/**
+**/.superpowers/
+**/.superpowers/**
+**/dist/
+**/dist/**
+**/.tmp/
+**/.tmp/**

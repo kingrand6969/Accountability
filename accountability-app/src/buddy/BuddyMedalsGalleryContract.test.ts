@@ -99,9 +99,31 @@ describe('complete Medals and Challenges gallery contract', () => {
     );
   });
 
-  test('offers accessible 48-point medal, retry, and challenge actions in both app schemes', () => {
-    expect(gallerySource).toContain('useColorScheme');
-    expect(gallerySource).toContain("=== 'dark' ? 'dark' : 'light'");
+  test('offers accessible actions on permanent dark semantic app chrome', () => {
+    expect(gallerySource).toContain("import { useAppTheme } from '../../ui/AppThemeProvider'");
+    expect(gallerySource).toContain('const { colors: theme } = useAppTheme();');
+    expect(gallerySource).toContain(
+      'const tone = useMemo(() => buddyMedalsPalette(theme), [theme]);',
+    );
+    expect(gallerySource).toContain(
+      'const styles = useMemo(() => createStyles(theme), [theme]);',
+    );
+    expect(gallerySource).toContain('function buddyMedalsPalette(theme: AppThemeColors)');
+    expect(gallerySource).toContain('background: theme.surface.canvas');
+    expect(gallerySource).toContain('card: theme.surface.card');
+    expect(gallerySource).toContain('raised: theme.surface.raised');
+    expect(gallerySource).toContain('soft: theme.surface.muted');
+    expect(gallerySource).toContain('text: theme.ink.primary');
+    expect(gallerySource).toContain('textMuted: theme.ink.muted');
+    expect(gallerySource).toContain('border: theme.border.subtle');
+    expect(gallerySource).toContain('action: theme.ink.action');
+    expect(gallerySource).toContain('actionInk: theme.ink.inverse');
+    expect(gallerySource).toContain('success: theme.status.success');
+    expect(gallerySource).not.toContain('useColorScheme');
+    expect(gallerySource).not.toContain('const LIGHT');
+    expect(gallerySource).not.toContain('const DARK');
+    expect(gallerySource).not.toContain('const { mode: scheme }');
+    expect(gallerySource).not.toMatch(/#07111f|#0f1b2d|#26364d|#142238/i);
     expect(gallerySource).toContain('minHeight: 48');
     expect(gallerySource).toContain('accessibilityRole="button"');
     expect(gallerySource).toContain('accessibilityLabel={`Open challenge ${item.challenge.title}`}');

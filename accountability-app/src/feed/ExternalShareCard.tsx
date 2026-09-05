@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BrandMark } from '../ui/BrandMark';
+import { BRAND_WORDMARK } from '../ui/brandGeometry';
 import { colors, font } from '../ui/theme';
 
 /**
@@ -13,7 +14,7 @@ export const ExternalShareCard = forwardRef<View, { title: string; author: strin
     return (
       <View ref={ref} collapsable={false} style={styles.card}>
         <LinearGradient
-          colors={['#081A3A', '#0D3D83', '#155EEF']}
+          colors={['#111411', '#263223', '#446B00']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
@@ -21,8 +22,8 @@ export const ExternalShareCard = forwardRef<View, { title: string; author: strin
         <View style={styles.orbitOne} />
         <View style={styles.orbitTwo} />
         <View style={styles.brand}>
-          <BrandMark size={28} color="#FFFFFF" accessibilityLabel="AccountAbility" />
-          <Text style={styles.wordmark}>Account<Text style={styles.ability}>Ability</Text></Text>
+          <BrandMark size={28} color="#B9FF3D" accessibilityLabel="Mantle logo" />
+          <Text style={styles.wordmark}>{BRAND_WORDMARK}</Text>
         </View>
         <View style={styles.copy}>
           <Text style={styles.eyebrow}>{author ? `${author} SHOWED UP` : 'A WIN WORTH SHARING'}</Text>
@@ -50,13 +51,12 @@ const styles = StyleSheet.create({
   orbitOne: { position: 'absolute', width: 560, height: 560, borderRadius: 280, borderWidth: 2, borderColor: 'rgba(255,255,255,0.12)', right: -130, top: -210 },
   orbitTwo: { position: 'absolute', width: 360, height: 360, borderRadius: 180, borderWidth: 2, borderColor: 'rgba(255,255,255,0.16)', right: -20, top: -100 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  wordmark: { color: '#FFFFFF', fontFamily: font.extrabold, fontSize: 28 },
-  ability: { color: '#9CC0FF' },
+  wordmark: { color: '#F4F5F1', fontFamily: font.brand, fontSize: 28 },
   copy: { maxWidth: 900 },
-  eyebrow: { color: '#BFD2F4', fontFamily: font.bold, fontSize: 18, letterSpacing: 2.2 },
+  eyebrow: { color: '#DDE8D7', fontFamily: font.bold, fontSize: 18, letterSpacing: 2.2 },
   title: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 68, lineHeight: 76, marginTop: 18 },
-  note: { color: '#D9E6FF', fontFamily: font.medium, fontStyle: 'italic', fontSize: 24, marginTop: 20 },
+  note: { color: '#EAF2E5', fontFamily: font.medium, fontStyle: 'italic', fontSize: 24, marginTop: 20 },
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   footerText: { color: '#FFFFFF', fontFamily: font.semibold, fontSize: 20 },
-  domain: { color: '#D9E6FF', fontFamily: font.bold, fontSize: 20 },
+  domain: { color: '#EAF2E5', fontFamily: font.bold, fontSize: 20 },
 });

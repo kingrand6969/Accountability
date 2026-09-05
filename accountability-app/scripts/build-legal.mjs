@@ -41,8 +41,8 @@ const esc = (s) =>
     .replace(/"/g, '&quot;');
 
 const CSS = `
-:root{--bg:#f7f8fa;--card:#fff;--ink:#12161d;--sub:#5a6472;--line:#e6e9ee;--accent:#2563eb;--accentSoft:#eff4ff}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#151a21;--ink:#e9edf3;--sub:#9aa4b2;--line:#242a33;--accentSoft:#16233b}}
+:root{--bg:#f4f5f1;--card:#fff;--ink:#111411;--sub:#626b64;--line:#d9ded7;--accent:#446b00;--accentSoft:#eeffd1}
+@media(prefers-color-scheme:dark){:root{--bg:#0b0d0b;--card:#121512;--ink:#f7f8f4;--sub:#9da59d;--line:#272d27;--accent:#b9ff3d;--accentSoft:#202b16}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.62}
 .wrap{max-width:760px;margin:0 auto;padding:28px 20px 80px}
@@ -84,7 +84,7 @@ const docBody = (doc, active) => {
     )
     .join('');
   return (
-    `<header class="top"><div class="logo">Account<span>Ability</span></div>${navHtml(active)}</header>` +
+    `<header class="top"><div class="logo">${esc(OPERATOR)}</div>${navHtml(active)}</header>` +
     `<h1>${esc(doc.title)}</h1>` +
     `<p class="meta">Effective ${esc(EFFECTIVE_DATE)} · Version ${esc(LEGAL_VERSION)}</p>` +
     `<p class="intro">${esc(doc.intro)}</p>` +
@@ -95,7 +95,7 @@ const docBody = (doc, active) => {
 };
 
 const indexBody =
-  `<header class="top"><div class="logo">Account<span>Ability</span></div>${navHtml('')}</header>` +
+  `<header class="top"><div class="logo">${esc(OPERATOR)}</div>${navHtml('')}</header>` +
   `<h1>Legal</h1>` +
   `<p class="meta">Effective ${esc(EFFECTIVE_DATE)} · Version ${esc(LEGAL_VERSION)}</p>` +
   `<p class="intro">The agreements that govern your use of ${esc(OPERATOR)}.</p>` +

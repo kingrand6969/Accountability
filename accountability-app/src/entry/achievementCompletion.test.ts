@@ -1,7 +1,24 @@
 import { describe, expect, test } from '@jest/globals';
-import { achievementPayloadKey, retainAchievementStoryOperation } from './achievementCompletion';
+import {
+  ACHIEVEMENT_COMPLETION_KINDS,
+  achievementPayloadKey,
+  retainAchievementStoryOperation,
+} from './achievementCompletion';
 
 describe('achievement completion identity', () => {
+  test('keeps the concrete identity of every Flex completion', () => {
+    expect(ACHIEVEMENT_COMPLETION_KINDS).toEqual([
+      'manual',
+      'streak',
+      'workout',
+      'challenge',
+      'medal',
+      'rank',
+      'leaderboard',
+      'run',
+    ]);
+  });
+
   test('reuses the operation for retry and resets it for a new concrete completion', () => {
     let serial = 0;
     const create = () => `operation-${++serial}`;

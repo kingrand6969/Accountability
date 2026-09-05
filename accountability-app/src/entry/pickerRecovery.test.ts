@@ -258,8 +258,8 @@ describe('Compose production binding', () => {
   test('recovers pending native picker results behind owner and mount guards', () => {
     expect(source).toContain('ImagePicker.getPendingResultAsync()');
     expect(source).toContain('recoveryControllerRef.current?.recover()');
-    expect(source).toContain('ownerRef.current !== expectedOwner');
-    expect(source).toContain('mountTokenRef.current !== expectedToken');
+    expect(source).toContain('composerMediaLeaseIsCurrent');
+    expect(source).toContain('mediaRequestTokenRef.current');
   });
 
   test('uses the controller and a navigation-focus recovery callback', () => {
@@ -273,8 +273,10 @@ describe('Compose production binding', () => {
     const end = source.indexOf('async function attachVideoAsset(', start);
     const recoveryPhotoSource = source.slice(start, end);
 
-    expect(recoveryPhotoSource).toContain("makeMediaDurable(asset.uri, extension, mimeType, 'photo')");
-    expect(recoveryPhotoSource).toContain('setEditorUri(durable.uri)');
+    expect(recoveryPhotoSource).toContain("makeMediaDurable(asset.uri, extension, mimeType, 'photo', lease, isCurrent)");
+    expect(recoveryPhotoSource).toContain('applyCommittedComposerMedia({');
+    expect(recoveryPhotoSource).toContain('recoveryCurrent: isCurrent');
+    expect(recoveryPhotoSource).toContain('setEditorUri(committed.uri)');
     expect(recoveryPhotoSource).not.toMatch(/uploadPost(Image|Video)|createPost/);
   });
 

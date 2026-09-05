@@ -16,8 +16,8 @@ export type DurableDraftMedia = {
   sha256: string;
   kind: 'photo' | 'video';
 };
-export type ComposeDraftV1 = {
-  version: 1;
+export type ComposeDraftV2 = {
+  version: 2;
   draftId: string;
   ownerId: string;
   kind: ComposeDraftKind;
@@ -25,36 +25,53 @@ export type ComposeDraftV1 = {
   origin: ComposeDraftOrigin;
   queryIdentity: DraftQueryIdentity;
   body: string;
+  showPublicly: boolean;
+  visibilityChanged: boolean;
+  /** Rollback fields understood by the previous app version. */
   audience: 'buddies' | 'public';
+  showOnCard: boolean;
   media: DurableDraftMedia | null;
   event: { open: boolean; title: string; date: string; time: string; location: string };
   tagIds: string[];
   keepInMemories: boolean;
   updatedAt: string;
 };
-export type DraftContext = Pick<ComposeDraftV1, 'kind' | 'editingId' | 'origin' | 'queryIdentity'>;
+export type DraftContext = Pick<ComposeDraftV2, 'kind' | 'editingId' | 'origin' | 'queryIdentity'>;
 export type DraftTrigger =
   | 'field-change' | 'background' | 'process-recovery' | 'explicit-cancel'
   | 'successful-post' | 'successful-edit' | 'hardware-back' | 'upload-error' | 'account-switch';
 export type DraftEffect = 'save' | 'clear' | 'keep' | 'detach';
 
 export function selectDraftCleanupTarget(
-  submitted: ComposeDraftV1 | null | undefined,
-  current: ComposeDraftV1 | null,
-  retained: ComposeDraftV1 | null,
-): ComposeDraftV1 | null {
+  submitted: ComposeDraftV2 | null | undefined,
+  current: ComposeDraftV2 | null,
+  retained: ComposeDraftV2 | null,
+): ComposeDraftV2 | null {
   return submitted === undefined ? current ?? retained : submitted;
 }
 
+export function hasRestorableDraftContent(draft: ComposeDraftV2): boolean {
+  return draft.kind === 'edit'
+    || draft.body.trim().length > 0
+    || draft.media !== null
+    || draft.event.open
+    || draft.tagIds.length > 0
+    || draft.keepInMemories
+    || draft.showPublicly;
+}
+
 export function composeDraftKey(ownerId: string, kind: ComposeDraftKind, draftId: string): string {
-  return `compose-draft:v1:${ownerId}:${kind}:${draftId}`;
+  return `compose-draft:v2:${ownerId}:${kind}:${draftId}`;
 }
 
 export function composeDraftIndexKey(ownerId: string): string {
-  return `compose-draft-index:v1:${ownerId}`;
+  return `compose-draft-index:v2:${ownerId}`;
 }
 function composeDraftPendingKey(ownerId: string): string {
-  return `compose-draft-pending:v1:${ownerId}`;
+  return `compose-draft-pending:v2:${ownerId}`;
+}
+function legacyComposeDraftKey(ownerId: string, kind: ComposeDraftKind, draftId: string): string {
+  return `compose-draft:v1:${ownerId}:${kind}:${draftId}`;
 }
 
 export type DraftStorage = {
@@ -63,11 +80,11 @@ export type DraftStorage = {
   removeItem(key: string): Promise<void>;
 };
 
-function parseIndex(raw: string | null, ownerId: string): string[] {
+function parseIndex(raw: string | null, ownerId: string, version: 1 | 2 = 2): string[] {
   if (!raw) return [];
   try {
     const value: unknown = JSON.parse(raw);
-    const prefix = `compose-draft:v1:${ownerId}:`;
+    const prefix = `compose-draft:v${version}:${ownerId}:`;
     return Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === 'string' && key.startsWith(prefix)))] : [];
   } catch {
     return [];
@@ -88,64 +105,151 @@ async function withOwnerLock<T>(ownerId: string, action: () => Promise<T>): Prom
   }
 }
 
-async function saveComposeDraftUnlocked(draft: ComposeDraftV1, storage: DraftStorage): Promise<void> {
-  if (!parseComposeDraft(JSON.stringify(draft), draft.ownerId)) throw new Error('Invalid compose draft');
+async function removeExactLegacyDraft(draft: ComposeDraftV2, storage: DraftStorage): Promise<void> {
+  const key = legacyComposeDraftKey(draft.ownerId, draft.kind, draft.draftId);
+  const raw = await storage.getItem(key);
+  const legacy = raw ? parseComposeDraft(raw, draft.ownerId) : null;
+  if (!legacy || legacy.kind !== draft.kind || legacy.draftId !== draft.draftId) return;
+
+  // Remove the payload before its recovery references. If a later storage
+  // operation fails, stale index/pending entries cannot resurrect its media.
+  await storage.removeItem(key);
+  const indexKey = `compose-draft-index:v1:${draft.ownerId}`;
+  const index = parseIndex(await storage.getItem(indexKey), draft.ownerId, 1);
+  const retained = index.filter((item) => item !== key);
+  if (retained.length !== index.length) {
+    if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));
+    else await storage.removeItem(indexKey);
+  }
+  const pendingKey = `compose-draft-pending:v1:${draft.ownerId}`;
+  if (await storage.getItem(pendingKey) === key) await storage.removeItem(pendingKey);
+}
+
+async function saveComposeDraftUnlocked(draft: ComposeDraftV2, storage: DraftStorage): Promise<void> {
+  const rollbackVisibility = draft.showPublicly
+    ? { audience: 'public' as const, showOnCard: true }
+    : { audience: 'buddies' as const, showOnCard: false };
+  const serialized = { ...draft, version: 2 as const, ...rollbackVisibility };
+  const normalizedDraft = parseComposeDraft(JSON.stringify(serialized), draft.ownerId);
+  if (!normalizedDraft) throw new Error('Invalid compose draft');
   const key = composeDraftKey(draft.ownerId, draft.kind, draft.draftId);
   const indexKey = composeDraftIndexKey(draft.ownerId);
   const pendingKey = composeDraftPendingKey(draft.ownerId);
   const index = parseIndex(await storage.getItem(indexKey), draft.ownerId);
+  if (!hasRestorableDraftContent(normalizedDraft)) {
+    await removeExactLegacyDraft(normalizedDraft, storage);
+    const retained = index.filter((item) => item !== key);
+    await storage.removeItem(key);
+    if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));
+    else await storage.removeItem(indexKey);
+    await storage.removeItem(pendingKey);
+    return;
+  }
   await storage.setItem(pendingKey, key);
-  await storage.setItem(key, JSON.stringify(draft));
+  await storage.setItem(key, JSON.stringify(normalizedDraft));
   if (!index.includes(key)) await storage.setItem(indexKey, JSON.stringify([...index, key]));
   await storage.removeItem(pendingKey);
 }
-export async function saveComposeDraft(draft: ComposeDraftV1, storage: DraftStorage): Promise<void> {
+export async function saveComposeDraft(draft: ComposeDraftV2, storage: DraftStorage): Promise<void> {
   return withOwnerLock(draft.ownerId, () => saveComposeDraftUnlocked(draft, storage));
 }
 
-async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage, adapter?: DraftFileAdapter): Promise<{ drafts: ComposeDraftV1[]; cleanedInvalid: number }> {
+async function loadComposeDraftsUnlocked(ownerId: string, storage: DraftStorage, adapter?: DraftFileAdapter): Promise<{ drafts: ComposeDraftV2[]; cleanedInvalid: number }> {
   if (!isUuid(ownerId)) return { drafts: [], cleanedInvalid: 0 };
   const indexKey = composeDraftIndexKey(ownerId);
-  const keys = parseIndex(await storage.getItem(indexKey), ownerId);
+  const legacyIndexKey = `compose-draft-index:v1:${ownerId}`;
+  const keys = parseIndex(await storage.getItem(indexKey), ownerId, 2);
+  const legacyKeys = parseIndex(await storage.getItem(legacyIndexKey), ownerId, 1);
+  const legacyPendingKey = `compose-draft-pending:v1:${ownerId}`;
+  const legacyPending = await storage.getItem(legacyPendingKey);
+  const legacyPrefix = `compose-draft:v1:${ownerId}:`;
+  if (legacyPending?.startsWith(legacyPrefix) && !legacyKeys.includes(legacyPending)) {
+    const raw = await storage.getItem(legacyPending);
+    const pendingDraft = raw ? parseComposeDraft(raw, ownerId) : null;
+    if (
+      pendingDraft
+      && legacyPending === legacyComposeDraftKey(ownerId, pendingDraft.kind, pendingDraft.draftId)
+    ) legacyKeys.push(legacyPending);
+  }
   const pendingKey = composeDraftPendingKey(ownerId);
   const pending = await storage.getItem(pendingKey);
-  const prefix = `compose-draft:v1:${ownerId}:`;
+  const prefix = `compose-draft:v2:${ownerId}:`;
   if (pending?.startsWith(prefix) && !keys.includes(pending) && await storage.getItem(pending)) {
     keys.push(pending);
     await storage.setItem(indexKey, JSON.stringify(keys));
   }
   if (pending) await storage.removeItem(pendingKey);
-  const drafts: ComposeDraftV1[] = [];
+  const drafts: ComposeDraftV2[] = [];
+  const seenDraftIdentities = new Set<string>();
+  const authoritativeV2Identities = new Set<string>();
   const retained: string[] = [];
+  const legacyRetained: string[] = [];
   let cleanedInvalid = 0;
-  for (const key of keys) {
+  for (const key of [...keys, ...legacyKeys]) {
     const raw = await storage.getItem(key);
     const draft = raw ? parseComposeDraft(raw, ownerId) : null;
-    if (draft) {
-      drafts.push(draft);
-      retained.push(key);
+    const legacy = key.startsWith(`compose-draft:v1:${ownerId}:`);
+    const exactKey = draft && legacy
+      ? key === legacyComposeDraftKey(ownerId, draft.kind, draft.draftId)
+      : true;
+    if (draft && exactKey && hasRestorableDraftContent(draft)) {
+      const identity = `${draft.kind}:${draft.draftId}`;
+      if (legacy) {
+        if (!authoritativeV2Identities.has(identity)) {
+          await saveComposeDraftUnlocked(draft, storage);
+          const migratedKey = composeDraftKey(ownerId, draft.kind, draft.draftId);
+          if (!retained.includes(migratedKey)) retained.push(migratedKey);
+          authoritativeV2Identities.add(identity);
+        }
+        if (key === legacyPending) await storage.removeItem(legacyPendingKey);
+      } else {
+        authoritativeV2Identities.add(identity);
+      }
+      if (legacy) legacyRetained.push(key);
+      else retained.push(key);
+      if (!seenDraftIdentities.has(identity)) {
+        drafts.push(draft);
+        seenDraftIdentities.add(identity);
+      }
+      if (adapter) await cleanupOrphanTemps(ownerId, draft.draftId, adapter);
+    } else if (draft) {
+      await storage.removeItem(key);
       if (adapter) await cleanupOrphanTemps(ownerId, draft.draftId, adapter);
     } else {
       await storage.removeItem(key);
       cleanedInvalid += 1;
     }
   }
-  if (retained.length !== keys.length) await storage.setItem(indexKey, JSON.stringify(retained));
+  if (retained.length !== keys.length || retained.some((key) => !keys.includes(key))) {
+    if (retained.length) await storage.setItem(indexKey, JSON.stringify(retained));
+    else await storage.removeItem(indexKey);
+  }
+  if (legacyRetained.length !== legacyKeys.length) {
+    if (legacyRetained.length) await storage.setItem(legacyIndexKey, JSON.stringify(legacyRetained));
+    else await storage.removeItem(legacyIndexKey);
+  }
   return { drafts: drafts.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), cleanedInvalid };
 }
 export async function loadComposeDrafts(ownerId: string, storage: DraftStorage, adapter?: DraftFileAdapter) {
   return withOwnerLock(ownerId, () => loadComposeDraftsUnlocked(ownerId, storage, adapter));
 }
 
-async function clearComposeDraftUnlocked(draft: ComposeDraftV1, storage: DraftStorage): Promise<void> {
+async function clearComposeDraftUnlocked(draft: ComposeDraftV2, storage: DraftStorage): Promise<void> {
   const key = composeDraftKey(draft.ownerId, draft.kind, draft.draftId);
   const indexKey = composeDraftIndexKey(draft.ownerId);
   const index = parseIndex(await storage.getItem(indexKey), draft.ownerId).filter((item) => item !== key);
   await storage.removeItem(key);
+  const legacyKey = `compose-draft:v1:${draft.ownerId}:${draft.kind}:${draft.draftId}`;
+  const legacyIndexKey = `compose-draft-index:v1:${draft.ownerId}`;
+  const legacyIndex = parseIndex(await storage.getItem(legacyIndexKey), draft.ownerId, 1)
+    .filter((item) => item !== legacyKey);
+  await storage.removeItem(legacyKey);
+  if (legacyIndex.length) await storage.setItem(legacyIndexKey, JSON.stringify(legacyIndex));
+  else await storage.removeItem(legacyIndexKey);
   if (index.length) await storage.setItem(indexKey, JSON.stringify(index));
   else await storage.removeItem(indexKey);
 }
-export async function clearComposeDraft(draft: ComposeDraftV1, storage: DraftStorage): Promise<void> {
+export async function clearComposeDraft(draft: ComposeDraftV2, storage: DraftStorage): Promise<void> {
   return withOwnerLock(draft.ownerId, () => clearComposeDraftUnlocked(draft, storage));
 }
 
@@ -210,7 +314,7 @@ export function resolveDraftContext(query: { photo?: unknown; event?: unknown; t
   };
 }
 
-export function isCompatibleDraft(draft: ComposeDraftV1, context: DraftContext & { ownerId: string }): boolean {
+export function isCompatibleDraft(draft: ComposeDraftV2, context: DraftContext & { ownerId: string }): boolean {
   return draft.ownerId === context.ownerId &&
     draft.kind === context.kind &&
     draft.editingId === context.editingId &&
@@ -225,21 +329,55 @@ export function draftEffect(trigger: DraftTrigger): DraftEffect {
   return 'keep';
 }
 
-export function parseComposeDraft(raw: string, expectedOwnerId: string): ComposeDraftV1 | null {
+export function parseComposeDraft(raw: string, expectedOwnerId: string): ComposeDraftV2 | null {
   try {
     const value: unknown = JSON.parse(raw);
-    if (!isRecord(value) || value.version !== 1 || value.ownerId !== expectedOwnerId) return null;
+    if (!isRecord(value) || (value.version !== 1 && value.version !== 2) || value.ownerId !== expectedOwnerId) return null;
     if (typeof value.ownerId !== 'string' || typeof value.draftId !== 'string' ||
       !isUuid(value.ownerId) || !isUuid(value.draftId)) return null;
     if (value.kind !== 'new' && value.kind !== 'edit') return null;
     if (value.editingId !== null && typeof value.editingId !== 'string') return null;
     if (!['hub', 'post', 'photo', 'event', 'edit'].includes(String(value.origin))) return null;
     if (!validQuery(value.queryIdentity) || typeof value.body !== 'string') return null;
-    if (value.audience !== 'buddies' && value.audience !== 'public') return null;
+    const hasNewVisibility = value.version === 2 && Object.prototype.hasOwnProperty.call(value, 'showPublicly');
+    let showPublicly: boolean;
+    if (hasNewVisibility) {
+      if (typeof value.showPublicly !== 'boolean') return null;
+      showPublicly = value.showPublicly;
+      if (value.audience !== 'buddies' && value.audience !== 'public') return null;
+      if (typeof value.showOnCard !== 'boolean') return null;
+      if (value.audience !== (showPublicly ? 'public' : 'buddies') || value.showOnCard !== showPublicly) return null;
+    } else {
+      if (value.audience !== 'buddies' && value.audience !== 'public') return null;
+      if (value.showOnCard !== undefined && typeof value.showOnCard !== 'boolean') return null;
+      showPublicly = value.audience === 'public' && value.showOnCard === true;
+    }
+    if (value.visibilityChanged !== undefined && typeof value.visibilityChanged !== 'boolean') return null;
+    const visibilityChanged = hasNewVisibility && value.visibilityChanged === true;
     if (value.media !== null && !validMedia(value.media, value.ownerId, value.draftId)) return null;
     if (!validEvent(value.event) || !Array.isArray(value.tagIds) || !value.tagIds.every((id) => typeof id === 'string')) return null;
     if (typeof value.keepInMemories !== 'boolean' || typeof value.updatedAt !== 'string') return null;
-    const draft = value as ComposeDraftV1;
+    const rollbackVisibility = showPublicly
+      ? { audience: 'public' as const, showOnCard: true }
+      : { audience: 'buddies' as const, showOnCard: false };
+    const draft: ComposeDraftV2 = {
+      version: 2,
+      draftId: value.draftId,
+      ownerId: value.ownerId,
+      kind: value.kind,
+      editingId: value.editingId,
+      origin: value.origin as ComposeDraftOrigin,
+      queryIdentity: value.queryIdentity,
+      body: value.body,
+      showPublicly,
+      visibilityChanged,
+      ...rollbackVisibility,
+      media: value.media,
+      event: value.event,
+      tagIds: value.tagIds,
+      keepInMemories: value.keepInMemories,
+      updatedAt: value.updatedAt,
+    };
     const expected = resolveDraftContext({
       edit: draft.queryIdentity.edit ?? undefined,
       event: draft.queryIdentity.event ? '1' : undefined,
@@ -256,7 +394,7 @@ function validQuery(value: unknown): value is DraftQueryIdentity {
   return isRecord(value) && typeof value.photo === 'boolean' && typeof value.event === 'boolean' &&
     (value.text === null || typeof value.text === 'string') && (value.edit === null || typeof value.edit === 'string');
 }
-function validEvent(value: unknown): value is ComposeDraftV1['event'] {
+function validEvent(value: unknown): value is ComposeDraftV2['event'] {
   return isRecord(value) && typeof value.open === 'boolean' && typeof value.title === 'string' &&
     typeof value.date === 'string' && typeof value.time === 'string' && typeof value.location === 'string';
 }
@@ -363,7 +501,7 @@ export async function persistDurableMedia(input: PersistMediaInput, adapter: Dra
 }
 
 export async function persistDraftMedia(
-  baseDraft: ComposeDraftV1,
+  baseDraft: ComposeDraftV2,
   input: PersistMediaInput,
   storage: DraftStorage,
   adapter: DraftFileAdapter,
@@ -436,35 +574,39 @@ export async function cleanupOrphanTemps(ownerId: string, draftId: string, adapt
 }
 
 export async function commitDraftMedia(
-  previousDraft: ComposeDraftV1,
+  previousDraft: ComposeDraftV2,
   nextMedia: DurableDraftMedia,
   storage: DraftStorage,
   adapter: DraftFileAdapter,
   stillAttached: () => boolean = () => true,
-): Promise<ComposeDraftV1> {
+): Promise<ComposeDraftV2> {
   const nextDraft = { ...previousDraft, media: nextMedia, updatedAt: new Date().toISOString() };
   try {
     await saveComposeDraft(nextDraft, storage);
-    if (!stillAttached()) {
-      await saveComposeDraft(previousDraft, storage);
-      await removeDurableMedia(nextMedia, adapter);
-      throw new Error('Compose account detached');
-    }
   } catch (error) {
-    await removeDurableMedia(nextMedia, adapter).catch(() => {});
+    const raw = await storage.getItem(composeDraftKey(nextDraft.ownerId, nextDraft.kind, nextDraft.draftId))
+      .catch(() => null);
+    const stored = raw ? parseComposeDraft(raw, nextDraft.ownerId) : null;
+    if (stored?.media?.uri !== nextMedia.uri) {
+      await removeDurableMedia(nextMedia, adapter).catch(() => {});
+    }
     throw error;
   }
-  if (previousDraft.media && previousDraft.media.uri !== nextMedia.uri) {
-    await removeDurableMedia(previousDraft.media, adapter);
+  if (!stillAttached()) {
+    // Roll the descriptor/index back first. If rollback fails, keep the new
+    // durable file because the committed descriptor still references it.
+    await saveComposeDraft(previousDraft, storage);
+    await removeDurableMedia(nextMedia, adapter);
+    throw new Error('Compose account detached');
   }
   return nextDraft;
 }
 
 export async function removeDraftMedia(
-  draft: ComposeDraftV1,
+  draft: ComposeDraftV2,
   storage: DraftStorage,
   adapter: DraftFileAdapter,
-): Promise<ComposeDraftV1> {
+): Promise<ComposeDraftV2> {
   const next = { ...draft, media: null, keepInMemories: false, tagIds: [], updatedAt: new Date().toISOString() };
   await saveComposeDraft(next, storage);
   await removeDurableMedia(draft.media, adapter);
@@ -477,10 +619,12 @@ export async function cleanupOwnerDrafts(ownerId: string, storage: DraftStorage,
     const loaded = await loadComposeDraftsUnlocked(ownerId, storage, adapter);
     for (const draft of loaded.drafts) {
       await removeDurableMedia(draft.media, adapter);
-      await storage.removeItem(composeDraftKey(ownerId, draft.kind, draft.draftId));
+      await clearComposeDraftUnlocked(draft, storage);
     }
     await storage.removeItem(composeDraftIndexKey(ownerId));
     await storage.removeItem(composeDraftPendingKey(ownerId));
+    await storage.removeItem(`compose-draft-index:v1:${ownerId}`);
+    await storage.removeItem(`compose-draft-pending:v1:${ownerId}`);
     await adapter.deleteDirectoryIfExists(`${adapter.documentUri.replace(/\/+$/, '')}/compose-drafts/${ownerId}`);
     return loaded.drafts.length;
   });

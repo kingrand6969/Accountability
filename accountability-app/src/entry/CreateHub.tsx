@@ -1,18 +1,22 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { PostAudience } from '../feed/types';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import {
   CREATE_HUB_MODEL,
-  type CreateAudience,
+  composerMediaChoices,
   type CreateChoice,
   type CreateMedia,
 } from './createFlow';
 
 type MediaChoice = CreateMedia;
-type Audience = CreateAudience & Exclude<PostAudience, 'group'>;
 
 const icons: Record<
   CreateChoice['id'],
@@ -30,12 +34,15 @@ export function CreateHub({
   onContinue,
 }: {
   onClose: () => void;
-  onContinue: (choice: CreateChoice, media: MediaChoice, audience: Audience) => void;
+  onContinue: (choice: CreateChoice, media: MediaChoice) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = useMemo(() => createPalette(theme), [theme]);
   const [selectedId, setSelectedId] = useState<CreateChoice['id']>('post');
   const [media, setMedia] = useState<MediaChoice>('photo');
-  const [audience, setAudience] = useState<Audience>('buddies');
+  const mediaChoices = composerMediaChoices(Platform.OS, false);
   const [focusedControl, setFocusedControl] = useState<string | null>(null);
   const selected =
     CREATE_HUB_MODEL.choices.find((choice) => choice.id === selectedId) ??
@@ -55,7 +62,7 @@ export function CreateHub({
           accessibilityRole="button"
           accessibilityLabel="Close create menu"
         >
-          <Ionicons name="chevron-back" size={25} color={colors.text} />
+          <Ionicons name="chevron-back" size={25} color={palette.ink} />
         </Pressable>
         <Text accessibilityRole="header" style={styles.title}>
           Create
@@ -93,7 +100,7 @@ export function CreateHub({
                   <Ionicons
                     name={icons[choice.id]}
                     size={21}
-                    color={selectedChoice ? colors.onPrimary : colors.primary}
+                    color={selectedChoice ? palette.onAction : palette.action}
                   />
                 </View>
                 <View style={styles.copy}>
@@ -103,7 +110,7 @@ export function CreateHub({
                 <Ionicons
                   name="chevron-forward"
                   size={20}
-                  color={selectedChoice ? colors.primary : colors.textFaint}
+                  color={selectedChoice ? palette.action : palette.inkFaint}
                 />
               </Pressable>
             );
@@ -114,32 +121,43 @@ export function CreateHub({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Media</Text>
             <View style={styles.segment} accessibilityRole="radiogroup">
-              {(['photo', 'video'] as const).map((value) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setMedia(value)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: media === value }}
-                  accessibilityLabel={value === 'photo' ? 'Choose photo' : 'Choose video'}
-                  onFocus={() => setFocusedControl(`media-${value}`)}
-                  onBlur={() => setFocusedControl(null)}
-                  style={({ pressed }) => [
-                    styles.segmentButton,
-                    media === value && styles.segmentSelected,
-                    (pressed || focusedControl === `media-${value}`) && styles.controlFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name={value === 'photo' ? 'image-outline' : 'videocam-outline'}
-                    size={20}
-                    color={colors.text}
-                  />
-                  <Text style={styles.segmentText}>
-                    {value === 'photo' ? 'Photo' : 'Video'}
-                    {media === value ? '  ✓' : ''}
-                  </Text>
-                </Pressable>
-              ))}
+              {mediaChoices.map((value) => {
+                const label = value === 'selfie'
+                  ? 'Take selfie'
+                  : value === 'photo'
+                    ? 'Choose photo'
+                    : 'Choose video';
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setMedia(value)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: media === value }}
+                    accessibilityLabel={label}
+                    onFocus={() => setFocusedControl(`media-${value}`)}
+                    onBlur={() => setFocusedControl(null)}
+                    style={({ pressed }) => [
+                      styles.segmentButton,
+                      media === value && styles.segmentSelected,
+                      (pressed || focusedControl === `media-${value}`) && styles.controlFocused,
+                    ]}
+                  >
+                    <Ionicons
+                      name={value === 'selfie'
+                        ? 'camera-outline'
+                        : value === 'photo'
+                          ? 'image-outline'
+                          : 'videocam-outline'}
+                      size={20}
+                      color={palette.ink}
+                    />
+                    <Text style={styles.segmentText}>
+                      {label}
+                      {media === value ? '  ✓' : ''}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         ) : null}
@@ -151,64 +169,32 @@ export function CreateHub({
               <Ionicons
                 name={
                   selected.id === 'photo-video'
-                    ? media === 'photo'
-                      ? 'image'
-                      : 'videocam'
+                    ? media === 'video'
+                      ? 'videocam'
+                      : media === 'selfie'
+                        ? 'camera'
+                        : 'image'
                     : icons[selected.id]
                 }
                 size={34}
-                color={colors.onPrimary}
+                color={palette.onAction}
               />
             </View>
             <View style={styles.copy}>
               <Text style={styles.previewText}>
                 {selected.id === 'photo-video'
-                  ? `${media === 'photo' ? 'Photo' : 'Video'} post`
+                  ? `${media === 'selfie' ? 'Selfie' : media === 'photo' ? 'Photo' : 'Video'} post`
                   : selected.title}
               </Text>
               <Text style={styles.previewDetail}>{selected.detail}</Text>
             </View>
           </View>
         </View>
-
-        {(selectedId === 'post' || selectedId === 'photo-video') && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Audience</Text>
-            <View style={styles.audienceSegment} accessibilityRole="radiogroup">
-              {(['buddies', 'public'] as const).map((value) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setAudience(value)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: audience === value }}
-                  accessibilityLabel={value === 'buddies' ? 'Buddies only' : 'Public'}
-                  onFocus={() => setFocusedControl(`audience-${value}`)}
-                  onBlur={() => setFocusedControl(null)}
-                  style={({ pressed }) => [
-                    styles.audienceButton,
-                    audience === value && styles.segmentSelected,
-                    (pressed || focusedControl === `audience-${value}`) && styles.controlFocused,
-                  ]}
-                >
-                  <Ionicons
-                    name={value === 'buddies' ? 'people-outline' : 'earth-outline'}
-                    size={20}
-                    color={colors.text}
-                  />
-                  <Text style={styles.segmentText}>
-                    {value === 'buddies' ? 'Buddies' : 'Public'}
-                    {audience === value ? '  ✓' : ''}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <Pressable
-          onPress={() => onContinue(selected, media, audience)}
+          onPress={() => onContinue(selected, media)}
           accessibilityRole="button"
           accessibilityLabel={`Continue with ${selected.title}`}
           onFocus={() => setFocusedControl('continue')}
@@ -219,15 +205,33 @@ export function CreateHub({
           ]}
         >
           <Text style={styles.continueText}>{CREATE_HUB_MODEL.continueLabel}</Text>
-          <Ionicons name="arrow-forward" size={20} color={colors.onPrimary} />
+          <Ionicons name="arrow-forward" size={20} color={palette.onAction} />
         </Pressable>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F4EC' },
+function createPalette(theme: AppThemeColors) {
+  return {
+    canvas: theme.surface.canvas,
+    card: theme.surface.card,
+    divider: theme.border.subtle,
+    border: theme.border.subtle,
+    ink: theme.ink.primary,
+    inkMuted: theme.ink.muted,
+    inkFaint: theme.ink.muted,
+    action: theme.ink.action,
+    actionSoft: theme.surface.raised,
+    onAction: theme.ink.inverse,
+    flex: theme.ink.action,
+  };
+}
+
+function createStyles(theme: AppThemeColors) {
+  const palette = createPalette(theme);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.canvas },
   header: {
     minHeight: 52,
     paddingHorizontal: spacing.lg,
@@ -244,18 +248,18 @@ const styles = StyleSheet.create({
     marginLeft: -10,
     borderRadius: radius.pill,
   },
-  title: { color: colors.text, fontFamily: font.extrabold, fontSize: 20 },
+  title: { color: palette.ink, fontFamily: font.extrabold, fontSize: 20 },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md },
   eyebrow: {
-    color: colors.textMuted,
+    color: palette.inkMuted,
     fontFamily: font.semibold,
     fontSize: 13,
   },
   card: {
     borderRadius: radius.lg,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: '#E8E2D7',
+    borderColor: palette.divider,
     overflow: 'hidden',
   },
   row: {
@@ -266,28 +270,28 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     gap: 12,
   },
-  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E8E2D7' },
-  rowSelected: { backgroundColor: colors.primarySoft },
+  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.divider },
+  rowSelected: { backgroundColor: palette.actionSoft },
   destinationIcon: {
     width: 38,
     height: 38,
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primarySoft,
+    backgroundColor: palette.actionSoft,
   },
-  iconSelected: { backgroundColor: colors.primary },
+  iconSelected: { backgroundColor: palette.action },
   copy: { flex: 1, gap: 2, minWidth: 0 },
-  rowTitle: { color: colors.text, fontFamily: font.bold, fontSize: 16, flexShrink: 1 },
+  rowTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 16, flexShrink: 1 },
   rowDetail: {
-    color: colors.textMuted,
+    color: palette.inkMuted,
     fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 18,
     flexShrink: 1,
   },
   section: { gap: spacing.sm },
-  sectionTitle: { color: colors.text, fontFamily: font.bold, fontSize: 14 },
+  sectionTitle: { color: palette.ink, fontFamily: font.bold, fontSize: 14 },
   segment: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   segmentButton: {
     flexGrow: 1,
@@ -295,8 +299,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    borderColor: palette.border,
+    backgroundColor: palette.card,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     flexDirection: 'row',
@@ -304,50 +308,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  segmentSelected: { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  segmentText: { color: colors.text, fontFamily: font.semibold, fontSize: 14, flexShrink: 1 },
-  audienceSegment: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    backgroundColor: colors.card,
-    overflow: 'hidden',
-  },
-  audienceButton: {
-    minHeight: 44,
-    minWidth: 112,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
+  segmentSelected: { borderWidth: 2, borderColor: palette.action, backgroundColor: palette.actionSoft },
+  segmentText: { color: palette.ink, fontFamily: font.semibold, fontSize: 14, flexShrink: 1 },
   previewSection: { gap: spacing.sm },
   preview: {
     minHeight: 92,
     borderRadius: radius.lg,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#E8E2D7',
-    backgroundColor: colors.card,
+    borderColor: palette.divider,
+    backgroundColor: palette.card,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  previewText: { color: colors.text, fontFamily: font.semibold, fontSize: 15, flexShrink: 1 },
-  previewDetail: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12.5, lineHeight: 17 },
+  previewText: { color: palette.ink, fontFamily: font.semibold, fontSize: 15, flexShrink: 1 },
+  previewDetail: { color: palette.inkMuted, fontFamily: font.regular, fontSize: 12.5, lineHeight: 17 },
   previewArtwork: {
     width: 78,
     height: 70,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
   },
-  previewArtworkFlex: { backgroundColor: '#7C3AED' },
-  controlFocused: { opacity: 0.72, outlineColor: colors.primary, outlineWidth: 2 },
+  previewArtworkFlex: { backgroundColor: palette.flex },
+  controlFocused: { opacity: 0.72, outlineColor: palette.action, outlineWidth: 2 },
   footer: {
     position: 'absolute',
     left: 0,
@@ -355,19 +341,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    backgroundColor: '#F7F4EC',
+    backgroundColor: palette.canvas,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: palette.border,
   },
   continueButton: {
     minHeight: 52,
     borderRadius: radius.md,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  continueFocused: { opacity: 0.8, outlineColor: colors.text, outlineWidth: 2 },
-  continueText: { color: colors.onPrimary, fontFamily: font.bold, fontSize: 16 },
-});
+  continueFocused: { opacity: 0.8, outlineColor: palette.ink, outlineWidth: 2 },
+  continueText: { color: palette.onAction, fontFamily: font.bold, fontSize: 16 },
+  });
+}

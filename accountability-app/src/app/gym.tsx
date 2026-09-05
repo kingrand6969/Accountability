@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,14 +29,20 @@ import {
 import { WorkoutTitleModal } from '../gym/WorkoutTitleModal';
 import { EmptyState } from '../ui/EmptyState';
 import { showToast } from '../ui/Toast';
-import { colors, font, radius, spacing } from '../ui/theme';
+import {
+  font,
+  radius,
+  spacing,
+  type AppThemeColors,
+} from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { useLayout } from '../ui/responsive';
 
 const MUSCLE_TINT: Record<MuscleGroup, string> = {
   chest: '#ef4444',
-  back: '#2563eb',
+  back: '#6F9F00',
   shoulders: '#f59e0b',
-  arms: '#7c3aed',
+  arms: '#53634E',
   legs: '#0d9488',
   core: '#db2777',
 };
@@ -51,6 +57,9 @@ function tintForMuscle(raw: string | undefined): string {
 export default function Gym() {
   const router = useRouter();
   const { width, cols, gridMaxWidth: gridMax } = useLayout();
+  const { colors: theme } = useAppTheme();
+  const palette = useMemo(() => gymPalette(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   // On wide/stretched screens, wrap the filter chips so every option is visible
   // (no more cut-off scroller); phones keep the compact horizontal scroll.
   const wide = width >= 520;
@@ -201,24 +210,24 @@ export default function Gym() {
           accessibilityLabel="Create a plan for me"
         >
           <LinearGradient
-            colors={['#3b82f6', '#2563eb']}
+            colors={[palette.action, palette.action]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.planCta}
           >
             <View style={styles.planIcon}>
-              <Ionicons name="sparkles" size={17} color="#fff" />
+              <Ionicons name="sparkles" size={17} color={palette.action} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.planTitle}>Create a plan for me</Text>
               <Text style={styles.planSub}>Pick your focus — we build the workout</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#dbeafe" />
+            <Ionicons name="chevron-forward" size={18} color={palette.onAction} />
           </LinearGradient>
         </Pressable>
 
         <View style={styles.safetyNote}>
-          <Ionicons name="medkit-outline" size={14} color="#b45309" />
+          <Ionicons name="medkit-outline" size={14} color={palette.safetyIcon} />
           <Text style={styles.safetyText}>
             Safety first — check with a doctor (and ideally a coach) before starting new workouts,
             train within your limits, and stop if something hurts.
@@ -226,28 +235,30 @@ export default function Gym() {
         </View>
 
         <View style={styles.searchWrap}>
-          <Ionicons name="search" size={17} color={colors.textFaint} />
+          <Ionicons name="search" size={17} color={palette.placeholder} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search 800+ exercises…"
-            placeholderTextColor={colors.textFaint}
+            placeholderTextColor={palette.placeholder}
             autoCapitalize="none"
             value={search}
             onChangeText={setSearch}
           />
           {search.length > 0 ? (
             <Pressable onPress={() => setSearch('')} hitSlop={8} accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={18} color={colors.textFaint} />
+              <Ionicons name="close-circle" size={18} color={palette.placeholder} />
             </Pressable>
           ) : null}
         </View>
 
-        <ChipBar wide={wide}>
+        <ChipBar wide={wide} styles={styles}>
           <FilterChip
             label="Favorites"
             active={showFavorites}
             onPress={() => setShowFavorites((v) => !v)}
             star
+            styles={styles}
+            palette={palette}
           />
           <FilterChip
             label="All"
@@ -256,6 +267,8 @@ export default function Gym() {
               setShowFavorites(false);
               setMuscle(null);
             }}
+            styles={styles}
+            palette={palette}
           />
           {MUSCLE_GROUPS.map((g) => (
             <FilterChip
@@ -267,12 +280,21 @@ export default function Gym() {
                 setShowFavorites(false);
                 setMuscle(g.value);
               }}
+              styles={styles}
+              palette={palette}
             />
           ))}
         </ChipBar>
 
-        <ChipBar wide={wide}>
-          <FilterChip label="Any gear" active={equipment === null} onPress={() => setEquipment(null)} small />
+        <ChipBar wide={wide} styles={styles}>
+          <FilterChip
+            label="Any gear"
+            active={equipment === null}
+            onPress={() => setEquipment(null)}
+            small
+            styles={styles}
+            palette={palette}
+          />
           {EQUIPMENT_OPTIONS.map((eq) => (
             <FilterChip
               key={eq.value}
@@ -280,6 +302,8 @@ export default function Gym() {
               active={equipment === eq.value}
               onPress={() => setEquipment(equipment === eq.value ? null : eq.value)}
               small
+              styles={styles}
+              palette={palette}
             />
           ))}
         </ChipBar>
@@ -306,7 +330,7 @@ export default function Gym() {
         onEndReachedThreshold={0.5}
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+            <ActivityIndicator size="large" color={palette.action} style={{ marginTop: 40 }} />
           ) : showFavorites ? (
             <EmptyState
               icon="star-outline"
@@ -322,7 +346,7 @@ export default function Gym() {
           )
         }
         ListFooterComponent={
-          loadingMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} /> : null
+          loadingMore ? <ActivityIndicator color={palette.action} style={{ marginVertical: 16 }} /> : null
         }
         renderItem={({ item }) => {
           const picked = !!selected[item.id];
@@ -363,7 +387,7 @@ export default function Gym() {
                 <Ionicons
                   name={fav ? 'star' : 'star-outline'}
                   size={21}
-                  color={fav ? colors.accent : colors.textFaint}
+                  color={fav ? palette.accent : palette.placeholder}
                 />
               </Pressable>
               <Pressable
@@ -373,7 +397,7 @@ export default function Gym() {
                 accessibilityRole="button"
                 accessibilityLabel={picked ? `Remove ${item.name} from workout` : `Add ${item.name} to workout`}
               >
-                <Ionicons name={picked ? 'checkmark' : 'add'} size={21} color={picked ? '#fff' : colors.primary} />
+                <Ionicons name={picked ? 'checkmark' : 'add'} size={21} color={picked ? palette.onAction : palette.action} />
               </Pressable>
             </Pressable>
           );
@@ -390,7 +414,7 @@ export default function Gym() {
           onPress={() => setTitling(true)}
           accessibilityRole="button"
         >
-          <Ionicons name="barbell" size={18} color="#fff" />
+          <Ionicons name="barbell" size={18} color={palette.onAction} />
           <Text style={styles.logText}>Save workout · {selectedNames.length}</Text>
         </Pressable>
       ) : null}
@@ -407,7 +431,15 @@ export default function Gym() {
 }
 
 /** Filter chips: wrap to fit every option on wide screens, scroll on phones. */
-function ChipBar({ wide, children }: { wide: boolean; children: ReactNode }) {
+function ChipBar({
+  wide,
+  children,
+  styles,
+}: {
+  wide: boolean;
+  children: ReactNode;
+  styles: GymStyles;
+}) {
   if (wide) return <View style={styles.chipWrap}>{children}</View>;
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
@@ -423,6 +455,8 @@ function FilterChip({
   small,
   star,
   tint,
+  styles,
+  palette,
 }: {
   label: string;
   active: boolean;
@@ -430,6 +464,8 @@ function FilterChip({
   small?: boolean;
   star?: boolean;
   tint?: string;
+  styles: GymStyles;
+  palette: GymPalette;
 }) {
   return (
     <Pressable
@@ -437,7 +473,6 @@ function FilterChip({
         styles.chip,
         small && styles.chipSmall,
         active && (star ? styles.chipStarActive : styles.chipActive),
-        active && tint ? { backgroundColor: tint } : null,
         pressed && styles.pressed,
       ]}
       onPress={onPress}
@@ -445,26 +480,59 @@ function FilterChip({
       accessibilityState={{ selected: active }}
     >
       {star ? (
-        <Ionicons name={active ? 'star' : 'star-outline'} size={14} color={active ? '#fff' : colors.accent} />
+        <Ionicons name={active ? 'star' : 'star-outline'} size={14} color={active ? palette.onAction : palette.accent} />
       ) : tint && !active ? (
         <View style={[styles.chipDot, { backgroundColor: tint }]} />
       ) : null}
-      <Text style={[styles.chipText, small && styles.chipTextSmall, active && styles.chipTextActive]}>
+      <Text
+        style={[
+          styles.chipText,
+          small && styles.chipTextSmall,
+          active && styles.chipTextActive,
+        ]}
+      >
         {label}
       </Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function gymPalette(theme: AppThemeColors) {
+  return {
+    background: theme.surface.canvas,
+    card: theme.surface.card,
+    field: theme.surface.raised,
+    quietField: theme.surface.muted,
+    ink: theme.ink.primary,
+    secondary: theme.ink.secondary,
+    muted: theme.ink.muted,
+    placeholder: theme.ink.muted,
+    border: theme.border.subtle,
+    action: theme.ink.action,
+    onAction: theme.ink.inverse,
+    success: theme.status.success,
+    successSoft: theme.status.successSoft,
+    accent: theme.status.attention,
+    safetyBackground: theme.surface.muted,
+    safetyBorder: theme.border.strong,
+    safetyInk: theme.ink.secondary,
+    safetyIcon: theme.status.attention,
+  };
+}
+
+type GymPalette = ReturnType<typeof gymPalette>;
+
+function createStyles(theme: AppThemeColors) {
+  const palette = gymPalette(theme);
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
   pressed: { opacity: 0.7 },
   header: {
     paddingTop: 12,
     paddingBottom: 8,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: palette.border,
   },
   // full-width bar, but keep the controls in a centered column on wide screens
   headerInner: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 14, gap: 10 },
@@ -472,18 +540,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 7,
-    backgroundColor: '#fffbeb',
+    backgroundColor: palette.safetyBackground,
     borderWidth: 1,
-    borderColor: '#fde68a',
+    borderColor: palette.safetyBorder,
     borderRadius: radius.sm,
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
-  safetyText: { flex: 1, fontSize: 11.5, lineHeight: 16, fontFamily: font.medium, color: '#78350f' },
+  safetyText: { flex: 1, fontSize: 11.5, lineHeight: 16, fontFamily: font.medium, color: palette.safetyInk },
   planWrap: {
     borderRadius: radius.md,
     overflow: 'hidden',
-    shadowColor: colors.primary,
+    shadowColor: palette.action,
     shadowOpacity: 0.25,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -494,22 +562,22 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: palette.onAction,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  planTitle: { fontFamily: font.bold, fontSize: 15, color: '#fff' },
-  planSub: { fontFamily: font.regular, fontSize: 12.5, color: '#dbeafe', marginTop: 1 },
+  planTitle: { fontFamily: font.bold, fontSize: 15, color: palette.onAction },
+  planSub: { fontFamily: font.regular, fontSize: 12.5, color: palette.onAction, marginTop: 1 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.field,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
-    minHeight: 46,
+    minHeight: spacing.touch,
   },
-  searchInput: { flex: 1, fontSize: 15.5, fontFamily: font.regular, color: colors.text, paddingVertical: 10 },
+  searchInput: { flex: 1, fontSize: 15.5, fontFamily: font.regular, color: palette.ink, paddingVertical: 10 },
   chipRow: { gap: 7, paddingRight: spacing.sm },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: {
@@ -517,58 +585,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.field,
     borderRadius: radius.pill,
     paddingVertical: 9,
     paddingHorizontal: 15,
-    minHeight: 40,
+    minHeight: spacing.touch,
   },
-  chipSmall: { minHeight: 34, paddingVertical: 6, paddingHorizontal: 13, backgroundColor: colors.surfaceAlt },
-  chipActive: { backgroundColor: colors.primary },
-  chipStarActive: { backgroundColor: colors.accent },
+  chipSmall: { minHeight: spacing.touch, paddingVertical: 6, paddingHorizontal: 13, backgroundColor: palette.quietField },
+  chipActive: { backgroundColor: palette.action },
+  chipStarActive: { backgroundColor: palette.accent },
   chipDot: { width: 7, height: 7, borderRadius: 3.5 },
-  chipText: { color: colors.textSecondary, fontFamily: font.semibold, fontSize: 13.5 },
+  chipText: { color: palette.secondary, fontFamily: font.semibold, fontSize: 13.5 },
   chipTextSmall: { fontSize: 12.5 },
-  chipTextActive: { color: '#fff', fontFamily: font.bold },
-  count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
-  countStrong: { color: colors.text, fontFamily: font.bold },
+  chipTextActive: { color: palette.onAction, fontFamily: font.bold },
+  count: { color: palette.muted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
+  countStrong: { color: palette.ink, fontFamily: font.bold },
   listContent: { padding: 14, paddingBottom: 96, width: '100%', alignSelf: 'center' },
   gridRow: { gap: 10, alignItems: 'stretch' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: colors.card,
+    backgroundColor: palette.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: radius.md,
     padding: 10,
     minHeight: 76,
   },
-  rowPicked: { borderColor: colors.success, backgroundColor: '#f0fdf4' },
+  rowPicked: { borderColor: palette.success, backgroundColor: palette.successSoft },
   thumbWrap: {
     width: 60,
     height: 60,
     borderRadius: radius.sm,
     overflow: 'hidden',
-    backgroundColor: colors.surface,
+    backgroundColor: palette.field,
   },
   thumb: { width: '100%', height: '100%' },
-  name: { fontSize: 15.5, fontFamily: font.bold, color: colors.text, lineHeight: 19 },
+  name: { fontSize: 15.5, fontFamily: font.bold, color: palette.ink, lineHeight: 19 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
   muscleDot: { width: 8, height: 8, borderRadius: 4 },
-  meta: { flex: 1, color: colors.textMuted, fontFamily: font.medium, fontSize: 12.5, textTransform: 'capitalize' },
-  starBtn: { minWidth: 40, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  meta: { flex: 1, color: palette.muted, fontFamily: font.medium, fontSize: 12.5, textTransform: 'capitalize' },
+  starBtn: { minWidth: spacing.touch, minHeight: spacing.touch, alignItems: 'center', justifyContent: 'center' },
   addBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: spacing.touch,
+    height: spacing.touch,
+    borderRadius: spacing.touch / 2,
     borderWidth: 1.5,
-    borderColor: colors.primary,
+    borderColor: palette.action,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addBtnOn: { backgroundColor: colors.success, borderColor: colors.success },
+  addBtnOn: { backgroundColor: palette.success, borderColor: palette.success },
   logBar: {
     position: 'absolute',
     left: spacing.lg,
@@ -578,15 +646,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.action,
     borderRadius: radius.pill,
     paddingVertical: 16,
     minHeight: 52,
-    shadowColor: '#0f172a',
+    shadowColor: palette.background,
     shadowOpacity: 0.25,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  logText: { color: '#fff', fontSize: 16, fontFamily: font.extrabold },
-});
+  logText: { color: palette.onAction, fontSize: 16, fontFamily: font.extrabold },
+  });
+}
+
+type GymStyles = ReturnType<typeof createStyles>;

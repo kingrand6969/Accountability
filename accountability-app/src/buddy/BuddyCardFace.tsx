@@ -13,6 +13,7 @@ import { RankBadge } from '../achievements/RankBadge';
 import { Medal } from '../achievements/Medal';
 import { MEDALS, medalState, type MedalState } from '../achievements/catalog';
 import { authorLabel, timeAgo } from '../feed/format';
+import { useResolvedImageUrl } from '../media/useResolvedImageUrl';
 import { font, radius } from '../ui/theme';
 
 /** Rebuild displayable medal states from a card's snapshot (id + tier). */
@@ -69,6 +70,7 @@ export function BuddyCardFace({
 }) {
   const { width: winW } = useWindowDimensions();
   const [availW, setAvailW] = useState(0);
+  const resolvedAvatar = useResolvedImageUrl(avatar);
   const w = availW || winW; // the card's own width once measured
   const wide = w >= 500;
   const avatarSize = wide ? 200 : 150;
@@ -103,13 +105,13 @@ export function BuddyCardFace({
         { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 },
       ]}
     >
-      {avatar ? (
+      {resolvedAvatar ? (
         <Image
-          source={{ uri: avatar }}
+          source={{ uri: resolvedAvatar }}
           style={{ width: avatarSize - 6, height: avatarSize - 6, borderRadius: avatarSize / 2 }}
         />
       ) : (
-        <Ionicons name="person" size={avatarSize * 0.5} color="rgba(37,99,235,0.85)" />
+        <Ionicons name="person" size={avatarSize * 0.5} color="rgba(111,159,0,0.92)" />
       )}
     </View>
   );
@@ -280,7 +282,7 @@ const shadow = {
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
-  frame: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#1d4ed8' },
+  frame: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#446B00' },
 
   // wide layout
   contentWide: { flexDirection: 'row', padding: 20, gap: 20 },
@@ -299,7 +301,7 @@ const styles = StyleSheet.create({
   avatarRing: {
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.95)',
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#F2F5EE',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

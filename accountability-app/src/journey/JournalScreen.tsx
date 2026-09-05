@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listItemsForDay } from '../timeline/api';
 import { toLocalDateString } from '../timeline/datetime';
 import type { TimelineItem } from '../timeline/types';
-import { colors, font, spacing } from '../ui/theme';
+import { font, spacing, type AppThemeColors } from '../ui/theme';
+import { useAppTheme } from '../ui/AppThemeProvider';
 import { EditorialBackdrop } from './EditorialBackdrop';
 import { JourneyTabs } from './JourneyTabs';
 import { hasCompletionProof, timelinePillar } from './data';
@@ -46,6 +47,8 @@ function journalTitle(day: Date, count: number) {
 
 export default function JournalScreen() {
   const router = useRouter();
+  const { colors: theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ date?: string; filter?: string }>();
   const requestGeneration = useRef(0);
@@ -122,18 +125,18 @@ export default function JournalScreen() {
       <EditorialBackdrop />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.sm }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={theme.ink.action} />}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.dateRow}>
           <Pressable onPress={() => shiftDay(-1)} style={styles.navButton} accessibilityLabel="Previous journal day">
-            <Ionicons name="chevron-back" size={20} color={colors.navy} />
+            <Ionicons name="chevron-back" size={20} color={theme.ink.primary} />
           </Pressable>
           <Text style={styles.date}>
             {day.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
           </Text>
           <Pressable onPress={() => shiftDay(1)} style={styles.navButton} accessibilityLabel="Next journal day">
-            <Ionicons name="chevron-forward" size={20} color={colors.navy} />
+            <Ionicons name="chevron-forward" size={20} color={theme.ink.primary} />
           </Pressable>
         </View>
         <JourneyTabs active="journal" />
@@ -169,7 +172,7 @@ export default function JournalScreen() {
         </ScrollView>
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={styles.loader} />
+          <ActivityIndicator color={theme.ink.action} style={styles.loader} />
         ) : error ? (
           <Pressable
             onPress={() => {
@@ -180,7 +183,7 @@ export default function JournalScreen() {
             accessibilityRole="button"
             accessibilityLabel="Retry loading this journal day"
           >
-            <Ionicons name="refresh-outline" size={20} color={colors.primary} />
+            <Ionicons name="refresh-outline" size={20} color={theme.ink.action} />
             <Text style={styles.errorText}>{error}</Text>
           </Pressable>
         ) : (
@@ -197,7 +200,7 @@ export default function JournalScreen() {
                   accessibilityRole="button"
                 >
                   <View style={[styles.checkbox, !hasCompletionProof(item) && styles.checkboxOpen]}>
-                    {hasCompletionProof(item) ? <Ionicons name="checkmark" size={11} color="#FFFFFF" /> : null}
+                    {hasCompletionProof(item) ? <Ionicons name="checkmark" size={11} color={theme.ink.inverse} /> : null}
                   </View>
                   <View style={styles.flex}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
@@ -214,7 +217,7 @@ export default function JournalScreen() {
               ) : visible.slice(0, 5).map((item) => (
                 <View key={item.id} style={styles.proofRow}>
                   <View style={styles.proofIcon}>
-                    <Ionicons name={iconFor(item)} size={15} color={colors.primary} />
+                    <Ionicons name={iconFor(item)} size={15} color={theme.ink.action} />
                   </View>
                   <Text style={styles.proofText} numberOfLines={1}>
                     {hasCompletionProof(item) ? (item.type === 'activity' ? 'Recorded' : 'Completed') : 'No proof yet'}
@@ -240,7 +243,7 @@ export default function JournalScreen() {
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
           accessibilityRole="button"
         >
-          <Ionicons name="add" size={20} color="#FFFFFF" />
+          <Ionicons name="add" size={20} color={theme.ink.inverse} />
           <Text style={styles.addText}>{"Add today's promise"}</Text>
         </Pressable>
       </ScrollView>
@@ -248,49 +251,49 @@ export default function JournalScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.cream },
+const createStyles = (theme: AppThemeColors) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.surface.canvas },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: spacing.lg, paddingBottom: 120 },
   dateRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   navButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  date: { color: colors.inkSoft, fontFamily: font.medium, fontSize: 12 },
+  date: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 12 },
   hero: { marginTop: 14, height: 254, borderRadius: 18, overflow: 'hidden' },
   heroImage: { flex: 1, justifyContent: 'flex-end' },
   heroImageStyle: { borderRadius: 18 },
   heroScrim: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(2,15,34,0.23)' },
   heroCopy: { padding: 18 },
   heroTitle: { color: '#FFFFFF', fontFamily: 'Georgia', fontSize: 35, lineHeight: 37, maxWidth: 300 },
-  handwriting: { color: '#DCE8FF', fontFamily: font.medium, fontSize: 15, fontStyle: 'italic', marginTop: 7 },
+  handwriting: { color: '#EAF2E5', fontFamily: font.medium, fontSize: 15, fontStyle: 'italic', marginTop: 7 },
   filters: { paddingVertical: 12, gap: 8 },
-  filter: { minHeight: 44, borderRadius: 22, paddingHorizontal: 16, justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(8,26,58,0.12)', backgroundColor: 'rgba(255,255,255,0.58)' },
-  filterActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterText: { color: colors.navy, fontFamily: font.bold, fontSize: 12 },
-  filterTextActive: { color: '#FFFFFF' },
+  filter: { minHeight: 44, borderRadius: 22, paddingHorizontal: 16, justifyContent: 'center', borderWidth: 1, borderColor: theme.border.subtle, backgroundColor: theme.surface.card },
+  filterActive: { backgroundColor: theme.ink.action, borderColor: theme.border.action },
+  filterText: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 12 },
+  filterTextActive: { color: theme.ink.inverse },
   pressed: { opacity: 0.68 },
   loader: { marginVertical: 48 },
-  errorCard: { minHeight: 72, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F3B4B4', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  errorText: { flex: 1, color: colors.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
-  recordCard: { minHeight: 226, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1, borderColor: 'rgba(8,26,58,0.10)', flexDirection: 'row', padding: 14 },
+  errorCard: { minHeight: 72, borderRadius: 14, backgroundColor: theme.status.dangerSoft, borderWidth: 1, borderColor: theme.border.danger, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  errorText: { flex: 1, color: theme.status.danger, fontFamily: font.medium, fontSize: 12.5, lineHeight: 18 },
+  recordCard: { minHeight: 226, borderRadius: 16, backgroundColor: theme.surface.card, borderWidth: 1, borderColor: theme.border.subtle, flexDirection: 'row', padding: 14 },
   column: { flex: 1 },
-  columnHeading: { color: colors.navy, fontFamily: font.extrabold, fontSize: 9.5, letterSpacing: 0.9, marginBottom: 8 },
-  divider: { width: 1, backgroundColor: 'rgba(8,26,58,0.10)', marginHorizontal: 10 },
+  columnHeading: { color: theme.ink.primary, fontFamily: font.extrabold, fontSize: 9.5, letterSpacing: 0.9, marginBottom: 8 },
+  divider: { width: 1, backgroundColor: theme.border.subtle, marginHorizontal: 10 },
   promiseRow: { minHeight: 42, flexDirection: 'row', gap: 7, alignItems: 'flex-start' },
-  checkbox: { width: 17, height: 17, borderRadius: 4, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  checkboxOpen: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.textMuted },
+  checkbox: { width: 17, height: 17, borderRadius: 4, backgroundColor: theme.ink.action, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  checkboxOpen: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: theme.ink.muted },
   flex: { flex: 1 },
-  itemTitle: { color: colors.navy, fontFamily: font.semibold, fontSize: 11.5 },
-  itemMeta: { color: colors.textMuted, fontFamily: font.regular, fontSize: 8.5, textTransform: 'capitalize', marginTop: 2 },
+  itemTitle: { color: theme.ink.primary, fontFamily: font.semibold, fontSize: 11.5 },
+  itemMeta: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 8.5, textTransform: 'capitalize', marginTop: 2 },
   proofRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  proofIcon: { width: 25, height: 25, borderRadius: 13, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  proofText: { flex: 1, color: colors.navy, fontFamily: font.medium, fontSize: 10.5 },
-  emptyText: { color: colors.textMuted, fontFamily: font.regular, fontSize: 11, lineHeight: 16 },
+  proofIcon: { width: 25, height: 25, borderRadius: 13, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
+  proofText: { flex: 1, color: theme.ink.primary, fontFamily: font.medium, fontSize: 10.5 },
+  emptyText: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 11, lineHeight: 16 },
   proofSummary: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
-  handwritingSmall: { flex: 1, color: colors.primary, fontFamily: font.medium, fontStyle: 'italic', fontSize: 12.5 },
-  proofCount: { color: colors.textMuted, fontFamily: font.medium, fontSize: 10.5 },
-  encouragement: { minHeight: 72, borderRadius: 15, padding: 10, backgroundColor: '#F0E9DC', borderWidth: 1, borderColor: 'rgba(99,79,46,0.14)', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  encouragementIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  encourageTitle: { color: colors.navy, fontFamily: font.bold, fontSize: 11.5 },
-  encourageMeta: { color: colors.inkSoft, fontFamily: font.regular, fontSize: 9.5, lineHeight: 13, marginTop: 2 },
-  addButton: { minHeight: 52, marginTop: 12, borderRadius: 12, backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  addText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 14 },
+  handwritingSmall: { flex: 1, color: theme.ink.action, fontFamily: font.medium, fontStyle: 'italic', fontSize: 12.5 },
+  proofCount: { color: theme.ink.muted, fontFamily: font.medium, fontSize: 10.5 },
+  encouragement: { minHeight: 72, borderRadius: 15, padding: 10, backgroundColor: theme.surface.card, borderWidth: 1, borderColor: theme.border.subtle, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  encouragementIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.surface.muted, alignItems: 'center', justifyContent: 'center' },
+  encourageTitle: { color: theme.ink.primary, fontFamily: font.bold, fontSize: 11.5 },
+  encourageMeta: { color: theme.ink.muted, fontFamily: font.regular, fontSize: 9.5, lineHeight: 13, marginTop: 2 },
+  addButton: { minHeight: 52, marginTop: 12, borderRadius: 12, backgroundColor: theme.ink.action, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  addText: { color: theme.ink.inverse, fontFamily: font.bold, fontSize: 14 },
 });

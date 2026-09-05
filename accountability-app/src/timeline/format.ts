@@ -8,11 +8,11 @@ export const TIMELINE_TYPES: {
   icon: string;
   tint: string;
 }[] = [
-  { value: 'event', label: 'Event', emoji: '📅', icon: 'calendar-outline', tint: '#2563eb' },
+  { value: 'event', label: 'Event', emoji: '📅', icon: 'calendar-outline', tint: '#6F9F00' },
   { value: 'task', label: 'Task', emoji: '✅', icon: 'checkmark-circle-outline', tint: '#16a34a' },
-  { value: 'workout', label: 'Workout', emoji: '🏋️', icon: 'barbell-outline', tint: '#7c3aed' },
+  { value: 'workout', label: 'Workout', emoji: '🏋️', icon: 'barbell-outline', tint: '#53634E' },
   { value: 'meal', label: 'Meal', emoji: '🥗', icon: 'nutrition-outline', tint: '#16a34a' },
-  { value: 'activity', label: 'Activity', emoji: '🏃', icon: 'walk-outline', tint: '#ea580c' },
+  { value: 'activity', label: 'Activity', emoji: '🏃', icon: 'walk-outline', tint: '#5F8F00' },
   { value: 'grocery', label: 'Groceries', emoji: '🛒', icon: 'cart-outline', tint: '#0d9488' },
   { value: 'other', label: 'Other', emoji: '📌', icon: 'bookmark-outline', tint: '#64748b' },
 ];

@@ -60,9 +60,15 @@ export async function captureReferralFromLaunch(): Promise<void> {
  * clear it. No-op if there's nothing pending. The PK means it only ever counts
  * once, even if this runs on every launch.
  */
-export async function redeemPendingReferral(): Promise<void> {
+export async function redeemPendingReferral(expectedOwnerId: string): Promise<void> {
   const ref = await AsyncStorage.getItem(PENDING_REF_KEY).catch(() => null);
   if (!ref) return;
+  const ownerId = await me();
+  if (!ownerId || ownerId !== expectedOwnerId || ref === ownerId) return;
   await AsyncStorage.removeItem(PENDING_REF_KEY).catch(() => {});
-  await recordReferral(ref).catch(() => {});
+  try {
+    await supabase.from('referrals').insert({ referred_id: ownerId, referrer_id: ref });
+  } catch {
+    // Referral attribution is non-critical; a retry would be rejected by the PK anyway.
+  }
 }

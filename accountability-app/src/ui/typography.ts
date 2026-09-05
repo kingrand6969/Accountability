@@ -13,6 +13,7 @@ export const font = {
   semibold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
   extrabold: 'Inter_800ExtraBold',
+  brand: 'Sora_700Bold',
   display: 'Anton_400Regular',
   serif: 'PlayfairDisplay_700Bold',
   handwritten: 'Caveat_600SemiBold',

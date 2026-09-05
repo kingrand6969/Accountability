@@ -8,6 +8,7 @@ import {
   scheduleIdentityBoundAction,
 } from './SocialModeSelector';
 import type { FeedPost } from './types';
+import { DIRECT_POST_HREF } from '../entry/createFlow';
 
 const feedSource = readFileSync(require.resolve('../app/(app)/index'), 'utf8');
 function source(name: string) {
@@ -59,6 +60,22 @@ function sourceSection(
 }
 
 describe('Group 3 social Feed contract', () => {
+  test('renders offline and refresh failures as compact semantic recovery states', () => {
+    const offline = styleBlock(feedSource, 'offlineNotice');
+    const error = styleBlock(feedSource, 'inlineError');
+
+    expect(offline).toContain('backgroundColor: theme.surface.canvas');
+    expect(offline).not.toContain('margin');
+    expect(offline).toContain('borderBottomWidth: StyleSheet.hairlineWidth');
+    expect(offline).toContain('borderBottomColor: theme.border.subtle');
+    expect(error).toContain('backgroundColor: theme.status.dangerSoft');
+    expect(error).toContain('marginHorizontal: spacing.lg');
+    expect(error).toContain('marginVertical: spacing.sm');
+    expect(error).toContain('borderRadius: radius.md');
+    expect(error).toContain('borderWidth: StyleSheet.hairlineWidth');
+    expect(error).toContain('borderColor: theme.border.danger');
+  });
+
   test('preserves cursor pagination and request-generation guards', () => {
     expect(feedSource).toContain('const loadGeneration = useRef(0)');
     expect(feedSource).toContain('const generation = ++loadGeneration.current');
@@ -90,10 +107,20 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain('<Text style={styles.suggested}>Suggested for you</Text>');
   });
 
-  test('preserves composer, story, post-detail, and encouragement-preview handoffs', () => {
-    expect(feedSource).toContain("router.push('/compose' as never)");
-    expect(feedSource).toContain("router.push('/compose?photo=1' as never)");
-    expect(feedSource).toContain("router.push('/win-card' as never)");
+  test('uses the behavior-tested suggestion coordinator for discovery and requests', () => {
+    expect(feedSource).toContain('createFeedBuddySuggestionCoordinator');
+    expect(feedSource).toContain('suggestionCoordinator.runDiscovery');
+    expect(feedSource).toContain('suggestionCoordinator.startRequest');
+    expect(feedSource).not.toContain('suggestionGeneration');
+    expect(feedSource).not.toContain('buddyRequestsInFlightRef');
+  });
+
+  test('preserves the remaining Feed post-entry paths and other handoffs', () => {
+    expect(DIRECT_POST_HREF).toEqual({ pathname: '/compose', params: { text: '' } });
+    expect(feedSource).toContain("from '../../entry/createFlow'");
+    expect(feedSource).toContain('onCreate={() => setCreateOpen(true)}');
+    expect(feedSource).toContain('route: DIRECT_POST_HREF');
+    expect(feedSource).toContain('router.push(DIRECT_POST_HREF as never)');
     expect(feedSource).toContain('<StoryRail');
     expect(feedSource).toContain('ref={attachStoryRail}');
     expect(feedSource).toContain("pathname: '/post/[id]'");
@@ -110,23 +137,40 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('<FeedProofCard');
   });
 
+  test('renders flat Quiet Social posts with one divider owned by the Feed list', () => {
+    const cardStyle = styleBlock(proofCardSource, 'card');
+    expect(cardStyle).toContain('backgroundColor: theme.surface.canvas');
+    expect(cardStyle).not.toContain('marginHorizontal');
+    expect(cardStyle).not.toContain('marginBottom');
+    expect(cardStyle).not.toContain('borderWidth');
+    expect(cardStyle).not.toContain('borderRadius');
+    expect(cardStyle).not.toContain('shadow.card');
+
+    const actionRowStyle = styleBlock(proofCardSource, 'actions');
+    expect(actionRowStyle).not.toContain('borderTopWidth');
+    expect(feedSource.match(/ItemSeparatorComponent/g)).toHaveLength(1);
+    expect(feedSource).toContain('ItemSeparatorComponent={() => <View style={styles.feedDivider} />}');
+    expect(feedSource).toContain('StyleSheet.hairlineWidth');
+
+    const dividerStyle = styleBlock(feedSource, 'feedDivider');
+    expect(dividerStyle).toContain('height: StyleSheet.hairlineWidth');
+    expect(dividerStyle).toContain('marginHorizontal: spacing.lg');
+    expect(dividerStyle).toContain('backgroundColor: theme.border.subtle');
+  });
+
   test('renders the exact compact social header without a segmented selector', () => {
-    expect(brandHeaderSource).toContain('<BrandMark');
-    expect(brandHeaderSource).toContain('AccountAbility');
+    expect(brandHeaderSource).toContain('<BrandWordmark compact />');
     expect(brandHeaderSource).toContain('accessibilityLabel="Search"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Create"');
     expect(brandHeaderSource).toContain('accessibilityLabel="Notifications"');
-    expect(brandHeaderSource).toContain('minWidth: 44');
+    expect(brandHeaderSource).toContain('width: spacing.touch');
     expect(modeSelectorSource).not.toContain('accessibilityRole="tablist"');
   });
 
   test('keeps the social brand mark accessible without large-text wordmark clipping', () => {
-    expect(brandHeaderSource).toContain('useWindowDimensions');
-    expect(brandHeaderSource).toContain('fontScale >= 1.25');
-    expect(brandHeaderSource).toContain('isLargeText ? null');
-    expect(brandHeaderSource).toContain('accessibilityLabel="AccountAbility"');
-    expect(brandHeaderSource).toContain('minWidth: 44');
-    expect(brandHeaderSource).toContain('minHeight: 44');
+    expect(brandHeaderSource).not.toContain('useWindowDimensions');
+    expect(brandHeaderSource).toContain('width: spacing.touch');
+    expect(brandHeaderSource).toContain('height: spacing.touch');
   });
 
   test('uses approved proof typography, metrics, actions, and supporter summary', () => {
@@ -148,45 +192,89 @@ describe('Group 3 social Feed contract', () => {
     expect(proofCardSource).not.toContain("'I showed up today.'");
   });
 
-  test('uses icon-only Feed actions with visible counts and an icon-only memory affordance', () => {
+  test('keeps truthful run data responsive without vertical rules', () => {
+    expect(metricSource).toContain('<RouteTrace');
+    expect(metricSource).toContain('formatKm(distance)');
+    expect(metricSource).toContain('formatDuration(duration)');
+    expect(metricSource).toContain('formatPace(distance, duration)');
+    expect(metricSource.match(/<LinearGradient/g)).toHaveLength(1);
+    expect(metricSource).not.toContain('styles.rule');
+    expect(metricSource).toContain('const isLargeText = fontScale >= 1.75');
+    expect(metricSource).toContain('runRouteOverlayHeight(fontScale)');
+    expect(metricSource).toContain('styles.routeLarge');
+    expect(metricSource).toContain('styles.statsLarge');
+    expect(styleBlock(metricSource, 'stats')).toContain("alignItems: 'flex-end'");
+    expect(styleBlock(metricSource, 'stats')).toContain('gap: spacing.lg');
+    expect(styleBlock(metricSource, 'statsLarge')).toContain("flexDirection: 'column'");
+    expect(styleBlock(metricSource, 'routeLarge')).toContain("position: 'relative'");
+    expect(styleBlock(metricSource, 'metric')).toContain('minWidth: 68');
+    expect(styleBlock(metricSource, 'value')).toContain("color: '#FFFFFF'");
+    expect(styleBlock(metricSource, 'value')).toContain('lineHeight: 22');
+    expect(styleBlock(metricSource, 'label')).toContain('marginTop: 2');
+    expect(styleBlock(metricSource, 'label')).toContain("color: 'rgba(255,255,255,.72)'");
+  });
+
+  test('uses grouped Feed actions with explicit Share and Save utility labels', () => {
     const actions = jsxCalls(proofCardSource, 'Action');
     const cheerAction = callWith(actions, 'onPress={onToggleLike}');
-    const commentAction = callWith(actions, 'onPress={onOpen}');
+    const commentAction = callWith(actions, 'onPress={onComment}');
     const shareAction = callWith(actions, 'onPress={onShare}');
-    expect(cheerAction).toMatch(/\bicon=["']clap["']/);
+    expect(cheerAction).toMatch(/\bicon=["']cheer["']/);
     expect(cheerAction).toMatch(/\bcount=\{post\.like_count\}/);
     expect(cheerAction).not.toMatch(/\blabel=\{`Cheer/);
     expect(commentAction).toMatch(/\bicon=["']chatbubble-outline["']/);
     expect(commentAction).toMatch(/\bcount=\{post\.comment_count\}/);
     expect(commentAction).not.toMatch(/\blabel=\{`Comment/);
-    expect(shareAction).toMatch(/\bicon=["']paper-plane-outline["']/);
+    expect(shareAction).toMatch(/\bicon=["']share-outline["']/);
+    expect(shareAction).toMatch(/\bshortLabel=["']Share["']/);
+    expect(proofCardSource).not.toContain('paper-plane-outline');
     for (const action of [cheerAction, commentAction, shareAction]) {
       expect(action).toMatch(/\baccessibilityLabel=/);
     }
 
     const memoryAction = jsxCalls(proofCardSource, 'SaveToMemories')[0] ?? '';
     expect(memoryAction).toMatch(/\burl=\{post\.image_url\}/);
-    expect(hasBooleanProp(memoryAction, 'inline')).toBe(true);
-    expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(true);
+    expect(hasBooleanProp(memoryAction, 'feedAction')).toBe(true);
+    expect(hasBooleanProp(memoryAction, 'iconOnly')).toBe(false);
     const actionStyle = styleBlock(proofCardSource, 'action');
-    expect(actionStyle).toMatch(/\bflex:\s*1\b/);
     expect(actionStyle).toMatch(/\bminWidth:\s*48\b/);
     expect(actionStyle).toMatch(/\bminHeight:\s*48\b/);
 
     const actionComponent = sourceSection(
       proofCardSource,
       'function Action(',
-      'const styles = StyleSheet.create',
+      'type ProofCardStyles',
     );
+    expect(actionComponent).toMatch(/shortLabel\s*&&\s*styles\.labeledAction/);
+    expect(actionComponent).toMatch(
+      /\{shortLabel\s*\?\s*<Text\s+style=\{styles\.utilityActionText\}>\{shortLabel\}<\/Text>\s*:\s*null\}/,
+    );
+    expect(actionComponent).toContain("name={active ? 'thumbs-up' : 'thumbs-up-outline'}");
     expect(actionComponent).toContain('accessibilityState={active === undefined ? undefined : { selected: active }}');
     expect(actionComponent).toMatch(
-      /Boolean\(active\)\s*\?\s*colors\.primary\s*:\s*colors\.textMuted/,
+      /active\s*\?\s*theme\.ink\.action\s*:\s*theme\.ink\.muted/,
     );
+    expect(proofCardSource).not.toContain('hand-left-outline');
+    expect(proofCardSource).not.toContain('hand-right-outline');
+    expect(proofCardSource).not.toContain('function CheerIcon(');
+    expect(proofCardSource).toContain('<View style={styles.socialActions}>');
+    expect(proofCardSource).toContain('<View style={styles.utilityActions}>');
+    expect(actionStyle).not.toContain('flex: 1');
+  });
+
+  test('opens only the Comment action with an explicit keyboard-focus intent', () => {
+    const proofCardCall = jsxCalls(feedSource, 'FeedProofCard')[0] ?? '';
+    expect(proofCardSource).toContain('onComment: () => void');
+    expect(proofCardSource).toContain('onPress={onComment}');
+    expect(proofCardSource).toContain('onPress={onOpen}');
+    expect(proofCardSource).toContain('onPress={onOpenMedia ?? onOpen}');
+    expect(proofCardCall).toContain("onOpen={() => router.push({ pathname: '/post/[id]', params: { id: item.id } })}");
+    expect(proofCardCall).toContain("onComment={() => router.push({ pathname: '/post/[id]', params: { id: item.id, comment: '1' } } as never)}");
   });
 
   test.each([
     ['Cheer', 'onPress={onToggleLike}', 'like_count'],
-    ['Comment', 'onPress={onOpen}', 'comment_count'],
+    ['Comment', 'onPress={onComment}', 'comment_count'],
   ])('%s accessibility omits a numeric zero count', (_name, marker, countName) => {
     const action = callWith(jsxCalls(proofCardSource, 'Action'), marker);
     expect(action).toMatch(
@@ -196,7 +284,7 @@ describe('Group 3 social Feed contract', () => {
     );
   });
 
-  test('keeps the memory control accessible, stateful, and label-free in icon-only mode', () => {
+  test('keeps the memory control accessible and stateful', () => {
     const memoryComponent = sourceSection(
       memorySource,
       'export function SaveToMemories(',
@@ -206,25 +294,39 @@ describe('Group 3 social Feed contract', () => {
     expect(memoryComponent).toMatch(
       /accessibilityState=\{\{\s*disabled:\s*busy\s*\|\|\s*saved,\s*busy\s*\}\}/,
     );
-    expect(memoryComponent).toMatch(/inline\s*&&\s*!iconOnly\s*\?/);
   });
 
-  test.each([
-    [
-      'icon-only Memories uses the album glyph at 21',
-      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*name=\{saved\s*\?\s*['"]albums['"]\s*:\s*['"]albums-outline['"]\}[\s\S]*size=\{21\}/,
-    ],
-    [
-      'legacy Memories retains the bookmark glyph at 17',
-      /\biconOnly\s*\?\s*(?:\(|<)[\s\S]*:[\s\S]*name=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\}[\s\S]*size=\{17\}/,
-    ],
-  ])('%s', (_name, contract) => {
+  test('renders the Feed memory action as a labeled stateful bookmark', () => {
     const memoryComponent = sourceSection(
       memorySource,
       'export function SaveToMemories(',
       'const styles = StyleSheet.create',
     );
-    expect(memoryComponent).toMatch(contract);
+
+    expect(memoryComponent).toMatch(
+      /<Ionicons\b(?=[^>]*\bname=\{saved\s*\?\s*['"]bookmark['"]\s*:\s*['"]bookmark-outline['"]\})(?=[^>]*\bsize=\{feedAction\s*\?\s*21\s*:\s*17\})[^>]*\/>/,
+    );
+    expect(memoryComponent).toMatch(
+      /\{inline\s*\|\|\s*feedAction\s*\?\s*\(\s*<Text[\s\S]*?feedAction\s*\?\s*styles\.feedActionText\s*:\s*styles\.inlineText[\s\S]*?>\s*\{feedAction\s*\?\s*['"]Save['"]\s*:\s*saved\s*\?\s*['"]Saved['"]\s*:\s*['"]Save['"]\}\s*<\/Text>/,
+    );
+    expect(memoryComponent).toMatch(/\bsaved\s*&&\s*styles\.inlineSaved\b/);
+    expect(memoryComponent).not.toMatch(/['"]albums(?:-outline)?['"]/);
+
+    const feedActionStyle = styleBlock(memorySource, 'feedAction');
+    expect(feedActionStyle).toMatch(/\bminWidth:\s*48\b/);
+    expect(feedActionStyle).toMatch(/\bminHeight:\s*48\b/);
+  });
+
+  test('keeps memory labels out of the loading state', () => {
+    const memoryComponent = sourceSection(
+      memorySource,
+      'export function SaveToMemories(',
+      'const styles = StyleSheet.create',
+    );
+
+    expect(memoryComponent).toMatch(
+      /\{busy\s*\?\s*\(\s*<ActivityIndicator\b[\s\S]*?\/>\s*\)\s*:\s*\(\s*<>\s*<Ionicons\b[\s\S]*?\/>\s*\{inline\s*\|\|\s*feedAction\s*\?\s*\(\s*<Text\b[\s\S]*?<\/Text>\s*\)\s*:\s*null\}\s*<\/>\s*\)\}/,
+    );
   });
 
   test('preserves one FlatList and an honest unified Feed offset contract', () => {
@@ -242,11 +344,33 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).toContain('<StoryRail');
   });
 
-  test('keeps previews best-effort, suppresses Pro ads, and separates error from empty', () => {
-    expect(feedSource).toContain('setPosts(page)');
-    expect(feedSource.indexOf('setPosts(page)')).toBeLessThan(
-      feedSource.indexOf('await listEncouragementPreviews(page.map((post) => post.id))'),
+  test('commits the critical Feed page through a non-blocking, identity-guarded loader', () => {
+    const loadSource = sourceSection(
+      feedSource,
+      'const load = useCallback',
+      'const unsubscribe = NetInfo.addEventListener',
     );
+    expect(loadSource).toContain('runFeedCriticalLoad({');
+    expect(loadSource).toContain('onPage: (page) =>');
+    expect(loadSource).toContain('onPreviews: setEncouragementPreviews');
+    expect(loadSource).toContain('currentUserIdRef.current === requestedOwnerId');
+    expect(loadSource).toContain('dataOwnerIdRef.current');
+    expect(loadSource).toContain('postCountRef.current');
+    expect(loadSource).toContain('}, [myId]);');
+    expect(loadSource).not.toContain('[dataOwnerId, myId, posts.length]');
+    expect(loadSource).not.toContain('await listEncouragementPreviews');
+  });
+
+  test('keeps the Feed header mounted and replaces the cold blank spinner with fixed post skeletons', () => {
+    expect(feedSource).toContain("viewState === 'initial-loading' ? (");
+    expect(feedSource).toContain('<FeedLoadingSkeleton />');
+    expect(feedSource).toContain('const FEED_SKELETON_ROWS = [0, 1] as const');
+    expect(feedSource).toContain('function FeedLoadingSkeleton()');
+    expect(feedSource).not.toMatch(/\{loading\s*\?\s*\([\s\S]{0,120}<View style=\{styles\.center\}/);
+    expect(feedSource).not.toContain('if (restored) {\n      setLoading(true);');
+  });
+
+  test('keeps previews best-effort, suppresses Pro ads, and separates error from empty', () => {
     expect(feedSource).toContain('adsReady && !isPro && !proLoading');
     expect(feedSource).toContain('ListEmptyComponent={loadError ? null :');
   });
@@ -355,16 +479,42 @@ describe('Group 3 social Feed contract', () => {
     expect(feedSource).not.toContain('onScroll={persistFeedPosition}');
     expect(feedSource).toContain("AppState.addEventListener('change'");
     expect(feedSource).toContain('loadGeneration.current += 1');
-    expect(feedSource).toContain('if (reconnected && restored && myId) void load()');
+    expect(feedSource).toContain(
+      'if (reconnected && restored && myId) void load({ forceFresh: true })',
+    );
+  });
+
+  test('reuses a brief first-page snapshot except for explicit refresh and reconnect', () => {
+    expect(feedSource).toContain(
+      'loadPage: () => listPersonalFeed(requestedOwnerId, undefined, { forceFresh })',
+    );
+    expect(feedSource).toContain('await load({ forceFresh: true })');
+    expect(feedSource).toContain('void load({ forceFresh: true })');
+    expect(feedSource).toContain('if (restored && myId && connectivityRef.current) void load()');
+    expect(feedSource).toContain('void Promise.resolve().then(() => load())');
   });
 
   test('loads once after restoration without refreshing on every Feed focus', () => {
     expect(feedSource).toMatch(
-      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*setLoading\(true\);\s*void load\(\);\s*\}\s*\}, \[load, restored\]\);/,
+      /useEffect\(\(\) => \{\s*if \(restored\) \{\s*void Promise\.resolve\(\)\.then\(\(\) => load\(\)\);\s*\}\s*\}, \[load, restored\]\);/,
     );
     const focusBlock = feedSource.match(/useFocusEffect\([\s\S]*?\n\s*\);/)?.[0] ?? '';
     expect(focusBlock).not.toContain('void load()');
     expect(focusBlock).not.toContain('setLoading(true)');
+  });
+
+  test('prepends newly committed owner posts on focus without replacing the current Feed', () => {
+    expect(feedSource).toContain('reconcileFeedPostsPublished');
+    expect(feedSource).toContain('fetchPost: getPost');
+    expect(feedSource).toContain('currentUserIdRef.current === requestedOwnerId');
+    expect(feedSource).toContain("feed_source: 'self'");
+    expect(feedSource).toContain('suggested: false');
+    expect(feedSource).toMatch(
+      /setPosts\(\(current\) => \[\s*\.\.\.published,\s*\.\.\.current\.filter\(\(post\) => !publishedIds\.has\(post\.id\)\),\s*\]\)/,
+    );
+    const focusBlock = feedSource.match(/useFocusEffect\([\s\S]*?\n\s*\);/)?.[0] ?? '';
+    expect(focusBlock).toContain('void reconcilePublishedPosts()');
+    expect(focusBlock).not.toContain('void load()');
   });
 
   test('clears pending offset only after a real list scroll call', () => {
